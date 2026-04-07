@@ -1,22 +1,22 @@
-# Project agentrc config — cortex
+# Project agentrc config — vanta-conduit
 agentrc_version: 2.2.0
 
 agents:
-  cortex-backend:
-    name: Cortex Backend Engineer
-    description: Go service development for Cortex context memory, RAG, and document storage
+  conduit-backend:
+    name: Vanta Conduit Backend Engineer
+    description: Go service development for Vanta Conduit context memory, RAG, and document storage
     roles: [backend, go]
     skills: [go-build, go-lint, go-test]
     context: agents/backend.md
 
-  cortex-frontend:
-    name: Cortex Frontend Developer
-    description: React frontend development for the Cortex UI
+  conduit-frontend:
+    name: Vanta Conduit Frontend Developer
+    description: React frontend development for the Conduit UI
     roles: [frontend, react]
     context: agents/frontend.md
 
-  cortex-reviewer:
-    name: Cortex Code Reviewer
-    description: Code review for Cortex PRs
+  conduit-reviewer:
+    name: Vanta Conduit Code Reviewer
+    description: Code review for Conduit PRs
     roles: [code-review, go]
     skills: [go-lint, go-test]

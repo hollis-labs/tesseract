@@ -1,3 +1,5 @@
+> **Note:** This document was written when the project was named Cortex. It has since been renamed to Vanta Conduit.
+
 # Embedding Provider Integration — Design Spec
 
 Status: approved

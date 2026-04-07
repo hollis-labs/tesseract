@@ -1,3 +1,5 @@
+> **Note:** This document was written when the project was named Cortex. It has since been renamed to Vanta Conduit.
+
 # Memory Domain D-core Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -1,4 +1,4 @@
-# Cortex — Context Memory and RAG
+# Vanta Conduit — Context Memory and RAG
 
 ## agentrc
 - If `.agentrc/boot-prompt.md` exists, read it first for session context.

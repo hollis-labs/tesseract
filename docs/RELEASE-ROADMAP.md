@@ -1,13 +1,13 @@
-# Cortex Release Roadmap
+# Vanta Conduit Release Roadmap
 
 Status: tracking doc — captured 2026-04-04
-Purpose: decompose the "Cortex 1.0 release" effort into independent workstreams
+Purpose: decompose the "Vanta Conduit 1.0 release" effort into independent workstreams
 with clear ordering and hand-off boundaries. Each track gets its own design spec
 and implementation plan — this file only tracks what the tracks *are* and why.
 
 ## Product framing
 
-Cortex is a local-first **context + memory** service for humans and agents. It
+Vanta Conduit is a local-first **context + memory** service for humans and agents. It
 ships in two deployment profiles:
 
 1. **MCP server mode** — standalone daemon any agent (Claude Code, other MCP
@@ -24,24 +24,20 @@ It ships in two distribution forms:
 ## Workstreams
 
 ### A. Rename + identity
-Current name "Cortex" collides with other AI products. Needs a new name before
-1.0 ships publicly. Existing `ideation-naming-001.md` targeted an orchestration
-system (wrong semantic); memory/context needs its own naming pass. Low urgency
-per user — run as a sidebar once the memory domain has settled, so the name can
-reflect what the thing actually does.
+The project has been renamed from "Cortex" to "Vanta Conduit". This workstream is complete.
 
 ### B. Repository extraction
-Move Cortex out of `fragments-engine/cortex/` into a standalone repo. Own
+Move Conduit out of `fragments-engine/cortex/` into a standalone repo. Own
 `go.mod`, CI, release pipeline, issue tracker. Preserve git history where
 reasonable. Update Nanite's contextbroker integration to point at the new repo.
 
 ### C. Cross-repo TODO audit
-Sweep Fragments Engine (MCP Engine), Nanite, and Cortex's own docs/SPECS for
-open items that belong to Cortex, block Cortex, or are obsoleted by the release
+Sweep Fragments Engine (MCP Engine), Nanite, and Conduit's own docs/SPECS for
+open items that belong to Conduit, block Conduit, or are obsoleted by the release
 plan. Produce one consolidated list before locking scope on later tracks.
 
 ### D. Memory domain *(next up)*
-The actual product gap. Cortex today is a deterministic context registry with
+The actual product gap. Conduit today is a deterministic context registry with
 15 content types — none are memory. `context_search` and `context_rag_query`
 return `embedding_unavailable`. Chat continuity is impossible without this.
 
@@ -54,7 +50,7 @@ In scope:
 - Retrieval access pattern (contextbroker integration)
 
 Blocks: E, and Nanite's `MemoryService` work (see
-`nanite/docs/phase-c-cortex-investigation.md`).
+`nanite/docs/phase-c-conduit-investigation.md`).
 
 ### E. Embedded-runtime API surface
 Library API that Nanite (and future embedding hosts) link in-process. Distinct
@@ -98,7 +94,7 @@ serializable payloads, workers, retry/backoff, failed-jobs table, dispatchable
 interface, pluggable drivers. At 1.0: in-process workers with SQLite-backed
 persistence. Post-1.0: additional drivers (DB, Redis, etc.).
 
-**Why shared:** Every app ends up needing a job queue. Cortex's memory
+**Why shared:** Every app ends up needing a job queue. Conduit's memory
 auto-embed and backfill are the first consumers; every future "do this
 reliably in the background" need across the portfolio benefits.
 
@@ -153,10 +149,10 @@ collapses cleanly.
     on-demand embed/search via library API). Auto-embed deferred to Track I.
   - D-deferred: backfill, semantic similarity, semantic dedup —
     blocked on I. Stub `NoopQueue` in place; swap is mechanical.
-- [ ] E. Embedded-runtime API surface — **partially complete**; `cortex.Open()`
+- [ ] E. Embedded-runtime API surface — **partially complete**; `conduit.Open()`
   with functional options provides the library init pattern. Full API surface TBD.
 - [ ] F. Dual-mode packaging — blocked on E
 - [ ] G. Release readiness — blocked on E, F
 - [ ] H. Shared AI provider module — **in progress**; `pkg/provider` extracted in
-  Nanite, Cortex consuming via replace directive. Standalone repo extraction pending.
+  Nanite, Conduit consuming via replace directive. Standalone repo extraction pending.
 - [ ] I. Shared queue module — not started; blocks D-deferred auto-embed

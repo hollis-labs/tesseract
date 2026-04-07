@@ -1,16 +1,16 @@
 # Vector Search
 
-Cortex provides semantic search over stored records via embeddings. This extends the existing deterministic namespace/key/tag-based retrieval with meaning-based ranking.
+Vanta Conduit provides semantic search over stored records via embeddings. This extends the existing deterministic namespace/key/tag-based retrieval with meaning-based ranking.
 
 ## Architecture
 
 Embeddings are stored in a dedicated `embeddings` table alongside the existing `records` table. Each record can have embeddings from multiple models, keyed by `(record_id, model)`. Vectors are stored as packed float32 BLOBs in SQLite.
 
-Similarity search uses brute-force cosine similarity in Go — no external vector database or C extensions required. This is efficient for Cortex's expected scale (hundreds to low thousands of records).
+Similarity search uses brute-force cosine similarity in Go — no external vector database or C extensions required. This is efficient for Conduit's expected scale (hundreds to low thousands of records).
 
 ## Embedding Provider
 
-Cortex uses a pluggable `Provider` interface for embedding generation:
+Conduit uses a pluggable `Provider` interface for embedding generation:
 
 ```go
 type Provider interface {

@@ -1,4 +1,4 @@
-# Cortex — Session Boot Prompt
+# Vanta Conduit — Session Boot Prompt
 
 Updated: 2026-04-05
 
@@ -29,9 +29,9 @@ See `docs/RELEASE-ROADMAP.md` for the full picture. Summary:
 
 **Unblocked now:**
 - **E. Embedded-runtime API surface** — library API for Nanite to link in-process. Can design against the stable memory domain.
-- **A. Rename + identity** — naming pass for the Cortex rebrand (deferred, low urgency)
-- **B. Repository extraction** — move Cortex out of fragments-engine to standalone repo
-- **C. Cross-repo TODO audit** — sweep Engine/Nanite/Cortex for related items
+- **A. Rename + identity** — naming pass for the Vanta Conduit rebrand (deferred, low urgency)
+- **B. Repository extraction** — move Conduit out of fragments-engine to standalone repo
+- **C. Cross-repo TODO audit** — sweep Engine/Nanite/Conduit for related items
 
 **Blocked on H + I:**
 - **D-deferred** — auto-embed, backfill, semantic similarity, semantic dedup. Stub interfaces in place; swap is mechanical once real providers/queue exist.
@@ -45,7 +45,7 @@ See `docs/RELEASE-ROADMAP.md` for the full picture. Summary:
 ## Key technical knowledge
 
 - **`"trigger"` is a SQLite reserved word** — quoted in DDL with inline comment warning. All DML against `memory_revisions` must quote it.
-- **Module path:** `github.com/hollis-labs/cortex`
+- **Module path:** `github.com/hollis-labs/vanta-conduit`
 - **Pre-commit hook:** gofmt + go vet + golangci-lint (misspell enforces US English)
 - **Testing conventions:** stdlib `testing`, external test package (`_test`), `errors.Is` on all sentinel checks, `var _ Interface = Impl{}` compile-time assertions on stubs
 - **Design spec:** `docs/superpowers/specs/2026-04-04-memory-domain-design.md` — 15 decisions (D1-D15)
