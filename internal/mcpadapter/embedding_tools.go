@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/embedding"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

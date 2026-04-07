@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 func TestNoopQueueSwallowsJobs(t *testing.T) {

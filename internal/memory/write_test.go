@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 func newTestStore(t *testing.T) (*memory.Store, func()) {

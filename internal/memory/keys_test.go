@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 func TestValidateKey(t *testing.T) {

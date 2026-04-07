@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hollis-labs/cortex/internal/plugin"
+	"github.com/hollis-labs/vanta-conduit/internal/plugin"
 	fplugin "github.com/hollis-labs/go-plugin"
 )
 

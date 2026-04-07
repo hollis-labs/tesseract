@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/embedding"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
 // ErrEmbedderUnavailable is returned when an embedding operation is attempted

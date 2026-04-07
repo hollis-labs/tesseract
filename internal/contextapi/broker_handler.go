@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 // PlannerConfig holds server-side caps for context plan validation.

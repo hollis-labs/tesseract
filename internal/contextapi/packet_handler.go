@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 // PacketTimeWindow bounds records by creation time.

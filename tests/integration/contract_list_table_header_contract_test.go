@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/contextcli"
-	"github.com/hollis-labs/cortex/internal/contextpolicy"
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
+	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 func TestContractListTableHeaderContract(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 // handlePromoteDeprecated returns 410 Gone for the old direct-promote endpoint.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 func writeWithOrigin(t *testing.T, ms *memory.Store, key string, origin memory.Origin) memory.Revision {

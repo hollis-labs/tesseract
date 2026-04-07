@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/contextapi"
-	"github.com/hollis-labs/cortex/internal/contextpolicy"
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
+	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 type auditContractGolden struct {

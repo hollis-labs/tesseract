@@ -13,8 +13,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/contextpolicy"
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 // CLI implements context command handlers.

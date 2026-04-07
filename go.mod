@@ -1,4 +1,4 @@
-module github.com/hollis-labs/cortex
+module github.com/hollis-labs/vanta-conduit
 
 go 1.26.1
 
@@ -13,13 +13,13 @@ require (
 	modernc.org/sqlite v1.46.1
 )
 
-replace github.com/hollis-labs/mcp-helpers => ../../framework/libs/go-mcp
+replace github.com/hollis-labs/mcp-helpers => ../fragments-engine/libs/mcp
 
-replace github.com/hollis-labs/otel => ../../framework/libs/go-otel
+replace github.com/hollis-labs/otel => ../fragments-engine/libs/otel
 
-replace github.com/hollis-labs/go-plugin => ../../framework/libs/go-plugin
+replace github.com/hollis-labs/go-plugin => ../framework/libs/go-plugin
 
-replace github.com/hollis-labs/go-providers => ../../framework/libs/go-providers
+replace github.com/hollis-labs/go-providers => ../framework/libs/go-providers
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

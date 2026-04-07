@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 // sessionInput returns a WriteInput rooted in a session-scoped namespace.

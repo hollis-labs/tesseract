@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
 func TestParseServeArgsDefaults(t *testing.T) {

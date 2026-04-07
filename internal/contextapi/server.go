@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/contextpolicy"
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/contexttypes"
+	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
 	feotel "github.com/hollis-labs/otel"
 )
 

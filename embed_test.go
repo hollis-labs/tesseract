@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/embedding"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
 func openTestCortex(t *testing.T, opts ...Option) *Cortex {

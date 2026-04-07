@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/cortex/internal/embedding"
+	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
 func TestOpen_MinimalConfig(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/contextstore"
-	"github.com/hollis-labs/cortex/internal/contexttypes"
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
 )
 
 // TypedWriteRequest is the body for typed context writes.

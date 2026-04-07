@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/cortex/internal/memory"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
 func TestNewULIDUnique(t *testing.T) {
