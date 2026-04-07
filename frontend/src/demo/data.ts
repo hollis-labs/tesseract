@@ -70,7 +70,7 @@ const MOCK_RECORDS: Record[] = [
     record_id: 'rec_006', namespace: 'user/pins', key: 'active-project',
     revision: 1, actor: 'user:jane', checksum: 'sha256:pqr678',
     created_at: ago(24),
-    payload: { project: 'cortex', branch: 'feature/gui-sprint' },
+    payload: { project: 'conduit', branch: 'feature/gui-sprint' },
   },
   {
     record_id: 'rec_007', namespace: 'user/memory/debugging', key: 'known-issues',
@@ -79,7 +79,7 @@ const MOCK_RECORDS: Record[] = [
     payload: { issues: ['SQLite WAL mode on NFS', 'Token expiry race condition'], resolved: ['CORS headers'] },
   },
   {
-    record_id: 'rec_008', namespace: 'app/prod/cortex', key: 'config',
+    record_id: 'rec_008', namespace: 'app/prod/conduit', key: 'config',
     revision: 2, actor: 'system:deploy', checksum: 'sha256:vwx234',
     created_at: ago(72),
     payload: { port: 8080, metrics: true, auth_mode: 'token', max_payload_kb: 512 },
@@ -95,7 +95,7 @@ const MOCK_AUDIT: AuditEvent[] = [
   { id: 98, event_type: 'promote.approve', actor: 'user:jane', namespace: 'user/memory/debugging', key: 'known-issues', revision: 3, record_id: 'rec_007', created_at: ago(6.5) },
   { id: 97, event_type: 'promote.request', actor: 'app:claude-agent', namespace: 'app/test/session/sess-001', key: 'known-issues', revision: 3, record_id: 'rec_007', created_at: ago(7) },
   { id: 96, event_type: 'write', actor: 'user:jane', namespace: 'user/memory/preferences', key: 'editor', revision: 2, record_id: 'rec_003', created_at: ago(48) },
-  { id: 95, event_type: 'write', actor: 'system:deploy', namespace: 'app/prod/cortex', key: 'config', revision: 2, record_id: 'rec_008', created_at: ago(72) },
+  { id: 95, event_type: 'write', actor: 'system:deploy', namespace: 'app/prod/conduit', key: 'config', revision: 2, record_id: 'rec_008', created_at: ago(72) },
 ];
 
 // ── Mock tokens ──────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ export const demo = {
   getHealth(): HealthStatus {
     return {
       status: 'ok',
-      db_path: '/tmp/cortex-demo.db',
+      db_path: '/tmp/conduit-demo.db',
       schema_version: 4,
       record_count: MOCK_RECORDS.length,
       consistency_issues: 0,

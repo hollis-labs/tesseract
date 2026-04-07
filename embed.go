@@ -12,7 +12,7 @@ import (
 )
 
 // ErrEmbedderUnavailable is returned when an embedding operation is attempted
-// but no embedder has been configured on the Cortex instance.
+// but no embedder has been configured on the Conduit instance.
 var ErrEmbedderUnavailable = errors.New("embedder unavailable")
 
 // SearchOptions controls the behavior of a Search call.
@@ -26,24 +26,24 @@ type SearchOptions struct {
 // Embed generates and stores a vector embedding for the record identified by
 // recordID. It fetches the record from the store, extracts embeddable text,
 // calls the configured embedder, and upserts the resulting vector.
-func (c *Cortex) Embed(ctx context.Context, recordID string) error {
+func (c *Conduit) Embed(ctx context.Context, recordID string) error {
 	if c.embedder == nil {
 		return ErrEmbedderUnavailable
 	}
 
 	rec, err := c.store.GetByRecordID(ctx, recordID)
 	if err != nil {
-		return fmt.Errorf("cortex: failed to load record %s: %w", recordID, err)
+		return fmt.Errorf("conduit: failed to load record %s: %w", recordID, err)
 	}
 
 	text := extractTextForEmbedding(rec)
 	if text == "" {
-		return fmt.Errorf("cortex: record %s has no embeddable text content", recordID)
+		return fmt.Errorf("conduit: record %s has no embeddable text content", recordID)
 	}
 
 	result, err := c.embedder.Embed(ctx, text, c.embeddingModel)
 	if err != nil {
-		return fmt.Errorf("cortex: embedding failed: %w", err)
+		return fmt.Errorf("conduit: embedding failed: %w", err)
 	}
 
 	return c.store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
@@ -56,7 +56,7 @@ func (c *Cortex) Embed(ctx context.Context, recordID string) error {
 
 // Search embeds the query string and returns the top matching records ranked by
 // cosine similarity against all stored embeddings for the configured model.
-func (c *Cortex) Search(ctx context.Context, query string, opts SearchOptions) ([]embedding.SearchResult, error) {
+func (c *Conduit) Search(ctx context.Context, query string, opts SearchOptions) ([]embedding.SearchResult, error) {
 	if c.embedder == nil {
 		return nil, ErrEmbedderUnavailable
 	}
@@ -68,7 +68,7 @@ func (c *Cortex) Search(ctx context.Context, query string, opts SearchOptions) (
 
 	queryResult, err := c.embedder.Embed(ctx, query, c.embeddingModel)
 	if err != nil {
-		return nil, fmt.Errorf("cortex: query embedding failed: %w", err)
+		return nil, fmt.Errorf("conduit: query embedding failed: %w", err)
 	}
 
 	filter := contextstore.EmbeddingFilter{
@@ -83,7 +83,7 @@ func (c *Cortex) Search(ctx context.Context, query string, opts SearchOptions) (
 
 	embeddings, records, err := c.store.ListEmbeddings(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("cortex: failed to load embeddings: %w", err)
+		return nil, fmt.Errorf("conduit: failed to load embeddings: %w", err)
 	}
 
 	if len(embeddings) == 0 {

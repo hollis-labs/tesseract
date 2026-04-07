@@ -6,8 +6,8 @@ import (
 	"github.com/hollis-labs/go-plugin"
 )
 
-// Cortex Event Catalog
-// These are the standard events that Cortex emits for plugins to listen to.
+// Conduit Event Catalog
+// These are the standard events that Conduit emits for plugins to listen to.
 const (
 	// Context lifecycle events
 	EventContextWritten  = "context.written"

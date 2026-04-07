@@ -21,7 +21,7 @@ export function AppFooter({ authMode }: Props) {
         </span>
       )}
       <span className="footer-hint" style={{ opacity: 0.5 }}>
-        Cortex v0.1
+        Conduit v0.1
       </span>
     </footer>
   );

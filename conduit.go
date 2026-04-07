@@ -13,7 +13,7 @@ import (
 	"github.com/hollis-labs/go-providers/provider"
 )
 
-// Config holds the top-level configuration for a Cortex instance.
+// Config holds the top-level configuration for a Conduit instance.
 type Config struct {
 	RootDir string
 }
@@ -42,8 +42,8 @@ func WithLogger(fn func(string, ...any)) Option {
 	return func(o *options) { o.logger = fn }
 }
 
-// Cortex is the top-level library handle. Create one via Open().
-type Cortex struct {
+// Conduit is the top-level library handle. Create one via Open().
+type Conduit struct {
 	store          *contextstore.Store
 	memoryStore    *memory.Store
 	embedder       provider.Embedder
@@ -52,11 +52,11 @@ type Cortex struct {
 	cancel         context.CancelFunc
 }
 
-// Open creates a Cortex instance rooted at cfg.RootDir, initializing the
+// Open creates a Conduit instance rooted at cfg.RootDir, initializing the
 // SQLite store, memory subsystem, and decay goroutine.
-func Open(ctx context.Context, cfg Config, opts ...Option) (*Cortex, error) {
+func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 	if cfg.RootDir == "" {
-		return nil, errors.New("cortex: RootDir is required")
+		return nil, errors.New("conduit: RootDir is required")
 	}
 
 	var o options
@@ -95,7 +95,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Cortex, error) {
 	}
 	go decayJob.Run(decayCtx)
 
-	return &Cortex{
+	return &Conduit{
 		store:          store,
 		memoryStore:    memStore,
 		embedder:       o.embedder,
@@ -106,13 +106,13 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Cortex, error) {
 }
 
 // Close stops the decay goroutine and closes the underlying store.
-func (c *Cortex) Close() error {
+func (c *Conduit) Close() error {
 	c.cancel()
 	return c.store.Close()
 }
 
 // Store returns the underlying contextstore.Store.
-func (c *Cortex) Store() *contextstore.Store { return c.store }
+func (c *Conduit) Store() *contextstore.Store { return c.store }
 
 // MemoryStore returns the underlying memory.Store.
-func (c *Cortex) MemoryStore() *memory.Store { return c.memoryStore }
+func (c *Conduit) MemoryStore() *memory.Store { return c.memoryStore }

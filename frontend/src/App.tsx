@@ -85,7 +85,7 @@ export default function App() {
     }
 
     if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
-      window.dispatchEvent(new CustomEvent('cortex:refresh'));
+      window.dispatchEvent(new CustomEvent('conduit:refresh'));
     }
 
     if (e.key === '?' && !e.metaKey && !e.ctrlKey) {

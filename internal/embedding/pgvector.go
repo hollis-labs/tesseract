@@ -16,7 +16,7 @@ type PgVectorIndex struct {
 
 // PgVectorConfig configures the pgvector index.
 type PgVectorConfig struct {
-	// ConnString is the PostgreSQL connection string (e.g. "postgres://user:pass@host:5432/cortex").
+	// ConnString is the PostgreSQL connection string (e.g. "postgres://user:pass@host:5432/conduit").
 	ConnString string
 	// Dimensions is the expected vector dimensionality. Used for schema creation.
 	Dimensions int
@@ -35,7 +35,7 @@ func NewPgVectorIndex(db *sql.DB, dimensions int) (*PgVectorIndex, error) {
 func (p *PgVectorIndex) ensureSchema(ctx context.Context) error {
 	stmts := []string{
 		`CREATE EXTENSION IF NOT EXISTS vector`,
-		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS cortex_vectors (
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS conduit_vectors (
 			record_id  TEXT NOT NULL,
 			namespace  TEXT NOT NULL DEFAULT '',
 			key_name   TEXT NOT NULL DEFAULT '',
@@ -46,9 +46,9 @@ func (p *PgVectorIndex) ensureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			PRIMARY KEY (record_id, model)
 		)`, p.dimensions),
-		`CREATE INDEX IF NOT EXISTS idx_cortex_vectors_vec ON cortex_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100)`,
-		`CREATE INDEX IF NOT EXISTS idx_cortex_vectors_ns ON cortex_vectors (namespace)`,
-		`CREATE INDEX IF NOT EXISTS idx_cortex_vectors_type ON cortex_vectors (record_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_conduit_vectors_vec ON conduit_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100)`,
+		`CREATE INDEX IF NOT EXISTS idx_conduit_vectors_ns ON conduit_vectors (namespace)`,
+		`CREATE INDEX IF NOT EXISTS idx_conduit_vectors_type ON conduit_vectors (record_type)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := p.db.ExecContext(ctx, stmt); err != nil {
@@ -61,7 +61,7 @@ func (p *PgVectorIndex) ensureSchema(ctx context.Context) error {
 func (p *PgVectorIndex) Upsert(ctx context.Context, entry VectorEntry) error {
 	vecStr := pgvectorString(entry.Vector)
 	_, err := p.db.ExecContext(ctx, `
-		INSERT INTO cortex_vectors (record_id, namespace, key_name, record_type, model, dimensions, vector)
+		INSERT INTO conduit_vectors (record_id, namespace, key_name, record_type, model, dimensions, vector)
 		VALUES ($1, $2, $3, $4, $5, $6, $7::vector)
 		ON CONFLICT (record_id, model) DO UPDATE SET
 			namespace = EXCLUDED.namespace,
@@ -120,7 +120,7 @@ func (p *PgVectorIndex) Search(ctx context.Context, query []float32, opts Search
 	// pgvector uses <=> for cosine distance (1 - similarity).
 	query_ := fmt.Sprintf(` //nolint:gosec // where clause built from validated params, limit is an int
 		SELECT record_id, namespace, key_name, 1 - (vector <=> $1::vector) AS similarity
-		FROM cortex_vectors
+		FROM conduit_vectors
 		%s
 		ORDER BY vector <=> $1::vector
 		LIMIT %d`, where, limit)
@@ -146,7 +146,7 @@ func (p *PgVectorIndex) Search(ctx context.Context, query []float32, opts Search
 }
 
 func (p *PgVectorIndex) Delete(ctx context.Context, recordID, model string) error {
-	_, err := p.db.ExecContext(ctx, `DELETE FROM cortex_vectors WHERE record_id = $1 AND model = $2`, recordID, model)
+	_, err := p.db.ExecContext(ctx, `DELETE FROM conduit_vectors WHERE record_id = $1 AND model = $2`, recordID, model)
 	return err
 }
 

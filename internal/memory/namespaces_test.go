@@ -18,7 +18,7 @@ func TestParseNamespace(t *testing.T) {
 		wantErr   bool
 	}{
 		{"user root", "user/chrispian/memory", memory.ScopeUser, "chrispian", "", "", false},
-		{"project", "user/chrispian/project/cortex/memory", memory.ScopeProject, "chrispian", "cortex", "", false},
+		{"project", "user/chrispian/project/conduit/memory", memory.ScopeProject, "chrispian", "conduit", "", false},
 		{"session", "user/chrispian/session/abc123/memory", memory.ScopeSession, "chrispian", "", "abc123", false},
 		{"trailing slash rejected", "user/chrispian/memory/", memory.ScopeUnknown, "", "", "", true},
 		{"missing memory suffix", "user/chrispian", memory.ScopeUnknown, "", "", "", true},

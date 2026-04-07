@@ -70,7 +70,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 
 func (a *Adapter) registerSessionTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("context_session_snapshot",
-		mcp.WithDescription("Write a structured session snapshot to Cortex and auto-embed for semantic search. Combines typed_write + embed into one call with enforced session schema."),
+		mcp.WithDescription("Write a structured session snapshot to Conduit and auto-embed for semantic search. Combines typed_write + embed into one call with enforced session schema."),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("Brief session summary (1-3 sentences)")),

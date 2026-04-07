@@ -1,4 +1,4 @@
-/* ── Cortex HUD Design Tokens ───────────────────────────────────────── */
+/* ── Conduit HUD Design Tokens ──────────────────────────────────────── */
 :root {
   /* Dark monochrome base (inherited from Hadron) */
   --bg:       9 9 11;          /* zinc-950 */
@@ -9,7 +9,7 @@
   --muted:    113 113 122;     /* zinc-500 */
   --accent:   228 228 231;     /* zinc-200 */
 
-  /* Cortex-specific — cyan/teal brand accent */
+  /* Conduit-specific — cyan/teal brand accent */
   --primary:  34 211 238;      /* cyan-400 — active states, nav highlight, logo */
   --ok:       74 222 128;      /* green-400 — success only */
   --danger:   251 113 133;     /* rose-400 — errors */

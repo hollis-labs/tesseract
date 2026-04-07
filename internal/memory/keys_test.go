@@ -19,7 +19,7 @@ func TestValidateKey(t *testing.T) {
 		{"three segments", "user.preferences.verbosity", false},
 		{"six segments max", "a.b.c.d.e.f", false},
 		{"seven segments too many", "a.b.c.d.e.f.g", true},
-		{"digits allowed", "project.cortex_v2.decision_01", false},
+		{"digits allowed", "project.conduit_v2.decision_01", false},
 		{"underscores allowed", "user.pref_set.key_name", false},
 		{"uppercase rejected", "User.Preferences", true},
 		{"hyphen rejected", "user-preferences", true},
@@ -59,7 +59,7 @@ func TestIsReservedPrefix(t *testing.T) {
 		want bool
 	}{
 		{"user.preferences", true},
-		{"project.cortex.decision", true},
+		{"project.conduit.decision", true},
 		{"session.abc123.summary", true},
 		{"contact.alice.role", true},
 		{"agent.claude.trait", true},

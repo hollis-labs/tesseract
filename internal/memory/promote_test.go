@@ -73,7 +73,7 @@ func TestPromote_SessionToProject(t *testing.T) {
 	promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
 		SourceNamespace: "user/chrispian/session/sess123/memory",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/project/cortex/memory",
+		TargetNamespace: "user/chrispian/project/conduit/memory",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})
@@ -81,7 +81,7 @@ func TestPromote_SessionToProject(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	if promoted.Namespace != "user/chrispian/project/cortex/memory" {
+	if promoted.Namespace != "user/chrispian/project/conduit/memory" {
 		t.Fatalf("expected project namespace, got %s", promoted.Namespace)
 	}
 	if promoted.Trigger != memory.TriggerPromotion {
@@ -211,7 +211,7 @@ func TestPromote_RejectsNonSessionSource(t *testing.T) {
 	_, err = ms.Promote(context.Background(), memory.PromoteInput{
 		SourceNamespace: "user/chrispian/memory", // user scope, not session
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/project/cortex/memory",
+		TargetNamespace: "user/chrispian/project/conduit/memory",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})

@@ -1,4 +1,4 @@
-// Package webui serves the embedded Cortex frontend as an SPA.
+// Package webui serves the embedded Vanta Conduit frontend as an SPA.
 package webui
 
 import (

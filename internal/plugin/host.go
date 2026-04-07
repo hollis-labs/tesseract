@@ -10,7 +10,7 @@ import (
 	"github.com/hollis-labs/go-plugin"
 )
 
-// Host implements the plugin.Host interface for Cortex.
+// Host implements the plugin.Host interface for Conduit.
 // It provides the runtime environment and services for plugins.
 type Host struct {
 	mu           sync.RWMutex
@@ -27,7 +27,7 @@ type Host struct {
 	ctxCancel    context.CancelFunc
 }
 
-// NewHost creates a new plugin host for Cortex.
+// NewHost creates a new plugin host for Conduit.
 func NewHost(router *http.ServeMux, logger plugin.Logger) *Host {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Host{
@@ -71,8 +71,8 @@ func (h *Host) GetPlugin(id string) (plugin.Plugin, bool) {
 }
 
 // RegisterCRUDHandler registers a CRUD handler for a resource type.
-// Cortex has an HTTP server so CRUD handlers are registered but not wired to routes
-// since Cortex uses its own API server pattern.
+// Conduit has an HTTP server so CRUD handlers are registered but not wired to routes
+// since Conduit uses its own API server pattern.
 func (h *Host) RegisterCRUDHandler(resourceType string, handler plugin.CRUDHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -95,9 +95,9 @@ func (h *Host) RegisterEventHook(eventTypes []string, hook plugin.EventHook) err
 	return nil
 }
 
-// RegisterUIComponent is a no-op for Cortex (headless service).
+// RegisterUIComponent is a no-op for Conduit (headless service).
 func (h *Host) RegisterUIComponent(component plugin.UIComponent) error {
-	h.logger.Warn("RegisterUIComponent called but Cortex has no frontend — ignoring", "id", component.ID)
+	h.logger.Warn("RegisterUIComponent called but Conduit has no frontend — ignoring", "id", component.ID)
 	return nil
 }
 
@@ -249,44 +249,44 @@ func (h *Host) ListPlugins() []plugin.Plugin {
 	return plugins
 }
 
-// RegisterCommand implements the Host interface. Not supported by Cortex host.
+// RegisterCommand implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterCommand(cmd plugin.SlashCommandDef) error {
-	return fmt.Errorf("RegisterCommand not supported by Cortex host")
+	return fmt.Errorf("RegisterCommand not supported by Conduit host")
 }
 
-// RegisterSlot implements the Host interface. Not supported by Cortex host.
+// RegisterSlot implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterSlot(entry plugin.UISlotEntry) error {
-	return fmt.Errorf("RegisterSlot not supported by Cortex host")
+	return fmt.Errorf("RegisterSlot not supported by Conduit host")
 }
 
-// RegisterKeybinding implements the Host interface. Not supported by Cortex host.
+// RegisterKeybinding implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterKeybinding(kb plugin.KeybindingDef) error {
-	return fmt.Errorf("RegisterKeybinding not supported by Cortex host")
+	return fmt.Errorf("RegisterKeybinding not supported by Conduit host")
 }
 
-// RegisterConnector implements the Host interface. Not supported by Cortex host.
+// RegisterConnector implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterConnector(name string, connector plugin.Connector) error {
-	return fmt.Errorf("RegisterConnector not supported by Cortex host")
+	return fmt.Errorf("RegisterConnector not supported by Conduit host")
 }
 
-// RegisterProvider implements the Host interface. Not supported by Cortex host.
+// RegisterProvider implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterProvider(name string, provider interface{}) error {
-	return fmt.Errorf("RegisterProvider not supported by Cortex host")
+	return fmt.Errorf("RegisterProvider not supported by Conduit host")
 }
 
-// RegisterCLIAdapter implements the Host interface. Not supported by Cortex host.
+// RegisterCLIAdapter implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterCLIAdapter(name string, adapter interface{}) error {
-	return fmt.Errorf("RegisterCLIAdapter not supported by Cortex host")
+	return fmt.Errorf("RegisterCLIAdapter not supported by Conduit host")
 }
 
-// SetConfig implements the Host interface. Not supported by Cortex host.
+// SetConfig implements the Host interface. Not supported by Conduit host.
 func (h *Host) SetConfig(key string, value string) error {
-	return fmt.Errorf("SetConfig not supported by Cortex host")
+	return fmt.Errorf("SetConfig not supported by Conduit host")
 }
 
-// RegisterConfigSchema implements the Host interface. Not supported by Cortex host.
+// RegisterConfigSchema implements the Host interface. Not supported by Conduit host.
 func (h *Host) RegisterConfigSchema(fields []plugin.ConfigFieldDef) error {
-	return fmt.Errorf("RegisterConfigSchema not supported by Cortex host")
+	return fmt.Errorf("RegisterConfigSchema not supported by Conduit host")
 }
 
 // Shutdown gracefully shuts down the plugin host and all loaded plugins.

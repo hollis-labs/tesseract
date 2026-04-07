@@ -100,7 +100,7 @@ func TestRecall_MultiNamespace(t *testing.T) {
 	defer cleanup()
 
 	ns1 := "user/chrispian/memory"
-	ns2 := "user/chrispian/project/cortex/memory"
+	ns2 := "user/chrispian/project/conduit/memory"
 
 	in1 := sampleInput("multi.a")
 	in1.Namespace = ns1

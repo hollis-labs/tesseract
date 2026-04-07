@@ -15,7 +15,7 @@ interface Preset {
   selector: Selector;
 }
 
-const STORAGE_KEY = 'cortex:viewbuilder:presets';
+const STORAGE_KEY = 'conduit:viewbuilder:presets';
 
 function loadPresets(): Preset[] {
   try {

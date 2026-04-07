@@ -818,7 +818,7 @@ func (a *Adapter) handleContextFetch(_ context.Context, req mcp.CallToolRequest)
 }
 
 // buildContextPlan derives namespace patterns and fetch strategy from an intent.
-// This is Cortex's internal query planner — not the universal ContextBroker.
+// This is Conduit's internal query planner — not the universal ContextBroker.
 func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []string, includePins bool, rationale string) {
 	switch intent {
 	case "resume_task":
