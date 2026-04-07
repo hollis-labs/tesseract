@@ -1,0 +1,13 @@
+{
+  "report_markers": [
+    "scripts/bootstrap-sync.sh",
+    "todo=1 doing=0 blocked=0 done=1",
+    "latest_log=.agentrc/logs/run-iteration-001-2026-02-25.md"
+  ],
+  "apply_markers": [
+    "scripts/bootstrap-sync.sh --apply",
+    "applied bootstrap summary updates"
+  ],
+  "updated_tasks_line": "- Tasks: 1 todo, 0 blocked, 1 done",
+  "updated_log_line": "- Last run log: `.agentrc/logs/run-iteration-001-2026-02-25.md`"
+}

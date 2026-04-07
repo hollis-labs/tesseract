@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Artifact Classes — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#five-classes" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Five classes</a>
+          <a href="#key-rules" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Key rules</a>
+          <a href="#intent-field" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">intent: field</a>
+          <a href="#workflow-mapping" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Workflow mapping</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="workflows.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Workflows</a>
+            <a href="pcc.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">PCC</a>
+            <a href="orchestrator.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Orchestrator</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Artifact Classes</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Artifact Classes</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-3">Five distinct artifact classes used in Volon, each with a defined intent, audience, and location.</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">The word "docs" is overloaded. Use these class names and <code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded">intent:</code> frontmatter instead.</p>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <section id="five-classes">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Five artifact classes</h2>
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+              <thead class="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Class</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Intent value</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Audience</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Location</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                <tr>
+                  <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">System Docs</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">system_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Humans</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">docs/</td>
+                </tr>
+                <tr>
+                  <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">Project Docs</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">project_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Humans</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">docs/ or project root</td>
+                </tr>
+                <tr>
+                  <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">Knowledge Artifacts</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">knowledge_artifact</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Humans + Agents</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">artifacts/knowledge/</td>
+                </tr>
+                <tr>
+                  <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">PCC</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">pcc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Agents only</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">.volon/pcc/</td>
+                </tr>
+                <tr>
+                  <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">Bootstrap</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">bootstrap</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Humans + Agents</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">.volon/bootstrap.md</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="key-rules">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Key rules</h2>
+          <div class="space-y-3">
+            <div class="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900 rounded-lg text-sm">
+              <strong class="text-amber-900 dark:text-amber-300">PCC is not docs.</strong>
+              <span class="text-amber-800 dark:text-amber-400 ml-1">PCC is agent-only context. Updating PCC is not "updating documentation."</span>
+            </div>
+            <div class="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900 rounded-lg text-sm">
+              <strong class="text-amber-900 dark:text-amber-300">Bootstrap is not PCC.</strong>
+              <span class="text-amber-800 dark:text-amber-400 ml-1">Bootstrap is an execution boundary. PCC is persistent project memory.</span>
+            </div>
+            <div class="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900 rounded-lg text-sm">
+              <strong class="text-amber-900 dark:text-amber-300">Knowledge Artifacts are not Project Docs.</strong>
+              <span class="text-amber-800 dark:text-amber-400 ml-1">Knowledge Artifacts are investigation outputs — potentially ephemeral. Project Docs are curated human-readable explanations.</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="intent-field">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">The intent: frontmatter field</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">All workflow-produced artifacts should declare their class:</p>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm"><code>---
+intent: system_doc | project_doc | knowledge_artifact | pcc | bootstrap
+---</code></pre>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">Optional for existing artifacts. Required for all new artifacts produced by v0.4+ workflows.</p>
+        </section>
+
+        <section id="workflow-mapping">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Workflow to artifact intent mapping</h2>
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+              <thead class="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Workflow</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Artifact intent</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Rationale</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">workflow-new-feature</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">project_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Describes a feature of the user's project</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">workflow-new-agent</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">system_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Defines a new Volon agent role</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">workflow-new-skill</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">system_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Creates a new Volon skill</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">workflow-app-investigation</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">knowledge_artifact</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Investigation output; may be ephemeral</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">workflow-docs-review</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">system_doc or project_doc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Depends on target</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">pcc-refresh</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">pcc</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Agent-only context</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">bootstrap-update</td>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">bootstrap</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Execution handoff</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+            <strong>Override rule:</strong> When Volon developers use <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">workflow-new-feature</code> to build Volon itself, set <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">intent: system_doc</code> to override the default.
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "markers": [
+    "[smoke] checking readiness",
+    "[smoke] checking mutating auth guard",
+    "[smoke] checking invalid-token auth failure",
+    "[smoke] writing revision",
+    "[smoke] fetching head",
+    "[smoke] fetching history",
+    "[smoke] evaluating view",
+    "[smoke] ok"
+  ]
+}

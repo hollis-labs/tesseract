@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Contracts — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#design-goals" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Design goals</a>
+          <a href="#artifact-conventions" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Artifact conventions</a>
+          <a href="#new-feature" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">new-feature</a>
+          <a href="#docs-review" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">docs-review</a>
+          <a href="#extension-workflows" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Extension workflows</a>
+          <a href="#investigation" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Investigation</a>
+          <a href="#looping" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Loop behavior</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="config.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Configuration</a>
+            <a href="commands.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Commands</a>
+            <a href="artifact-classes.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Artifact Classes</a>
+            <a href="orchestrator.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Orchestrator</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Workflow Contracts</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Workflow Contracts</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-8">Execution contracts for all Volon workflow types.</p>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <section id="design-goals">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Design goals</h2>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Composable workflows: interactive, one-shot, looped, or scheduled.</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Each step produces predictable artifacts with frontmatter.</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Handoffs pass minimal context; sessions can be reset between iterations.</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Default execution role is <strong>Orchestrator</strong> (single writer).</li>
+          </ul>
+        </section>
+
+        <section id="artifact-conventions">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Artifact conventions</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">All workflow artifacts are Markdown files with YAML frontmatter:</p>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm"><code>---
+id: feat-YYYY-MM-DD-slug
+type: idea | requirements | prd | spec | plan
+intent: system_doc | project_doc | knowledge_artifact | pcc | bootstrap
+status: draft
+project: "repo-name"
+tags: ["feature"]
+priority: B
+created_at: YYYY-MM-DD
+updated_at: YYYY-MM-DD
+---</code></pre>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+            Include sections: Summary, Decisions, Open questions, Evidence (if derived from repo).
+          </p>
+        </section>
+
+        <section id="new-feature">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Core workflow: new-feature</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Artifact intent: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">project_doc</code> (default). Override to <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">system_doc</code> when building Volon itself.
+          </p>
+          <div class="space-y-2">
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">1</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Preflight</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">/pcc-refresh</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">2</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Ideation</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">artifacts/ideas/&lt;slug&gt;.md</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">3</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Requirements</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">artifacts/requirements/&lt;slug&gt;.md</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">4</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">PRD</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">artifacts/prd/&lt;slug&gt;.md</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">5</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Spec</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">artifacts/spec/&lt;slug&gt;.md</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">6</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Plan</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">artifacts/plan/&lt;slug&gt;.md</code></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">7</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Create/triage tasks</span></div>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">8</span>
+              <div><span class="font-medium text-gray-900 dark:text-gray-100">Finalize iteration</span> — <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">/bootstrap-update</code></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="docs-review">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Core workflow: docs-review</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Full PCC-grounded scan. Always checks all target files against PCC ground truth. Produces updates to <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">system_doc</code> or <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">project_doc</code> artifacts.
+          </p>
+          <ol class="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+            <li>Preflight: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">/pcc-refresh</code></li>
+            <li>Update target artifacts (minimal diffs against PCC)</li>
+            <li>Sync PCC</li>
+            <li>Optional PR</li>
+            <li>Finalize: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">/bootstrap-update</code></li>
+          </ol>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+            Command: <code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded">/workflow-docs-review</code>
+          </p>
+        </section>
+
+        <section id="extension-workflows">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Extension workflows</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Guided workflows for authoring new Volon extensions. Each follows the staged pattern: preflight → ideation → requirements → spec → plan → tasks → finalize.
+          </p>
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+              <thead class="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Command</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Output path</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                <tr>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">/workflow-new-agent "name"</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">artifacts/agents/&lt;slug&gt;/</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">/workflow-new-skill "name"</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">artifacts/skills/&lt;slug&gt;/</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">/workflow-new-slash-command "name"</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">artifacts/slash-commands/&lt;slug&gt;/</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">/workflow-new-plugin "name"</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">artifacts/plugins/&lt;slug&gt;/</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="investigation">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Investigation workflow</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Investigates applications and codebase components without development intent. Produces Knowledge Artifacts.
+          </p>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm mb-4"><code>/workflow-app-investigation "name" [scope=path] [depth=surface|deep]</code></pre>
+          <div class="space-y-2 text-sm">
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">scope.md</code><span class="text-gray-600 dark:text-gray-400">Investigation boundaries and questions (Stage 2)</span></div>
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">discovery.md</code><span class="text-gray-600 dark:text-gray-400">File inventory, dependencies, entry points (Stage 3)</span></div>
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">analysis.md</code><span class="text-gray-600 dark:text-gray-400">Component breakdown, data flows, patterns, risks (Stage 4)</span></div>
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">findings.md</code><span class="text-gray-600 dark:text-gray-400">Synthesized insights with confidence levels (Stage 5)</span></div>
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">report.md</code><span class="text-gray-600 dark:text-gray-400">Shareable executive summary, status: complete (Stage 6)</span></div>
+          </div>
+          <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+            Key distinction: Investigation does NOT produce tasks or development artifacts. Idempotent — re-run safely, skips existing stages.
+          </div>
+        </section>
+
+        <section id="looping">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Looping behavior (task-driven)</h2>
+          <ol class="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+            <li>Read <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/bootstrap.md</code> if present.</li>
+            <li>Drive execution from <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/tasks/</code>.</li>
+            <li>Update task states and write run logs.</li>
+            <li>Finalize iteration: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">/bootstrap-update</code></li>
+            <li>Idempotent: if no action, output DONE.</li>
+          </ol>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

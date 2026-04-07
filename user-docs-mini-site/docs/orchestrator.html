@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orchestrator Mode — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#purpose" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Purpose</a>
+          <a href="#roles" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Roles</a>
+          <a href="#single-writer" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Single-writer rule</a>
+          <a href="#delegation" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Delegation</a>
+          <a href="#loop" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Orchestrator loop</a>
+          <a href="#pausing" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Pausing and resuming</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="config.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Configuration</a>
+            <a href="pcc.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">PCC</a>
+            <a href="commands.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Commands</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Orchestrator Mode</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Orchestrator Mode</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-3">The primary session role: reads state, selects work, delegates, writes results, and loops.</p>
+      <div class="inline-block px-3 py-1 bg-blue-50 dark:bg-blue-950 border border-blue-100 dark:border-blue-900 rounded-full text-xs text-blue-700 dark:text-blue-300 mb-8">
+        Orchestrator mode is a process role, not a new architecture.
+      </div>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <section id="purpose">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Purpose</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+            Define a <strong>thin primary session</strong> that runs Volon by reading bootstrap/PCC/tasks/config, selecting the next unit of work, delegating bounded work to sub-agents (optional), applying changes as the single writer, verifying, committing per policy, logging, and updating bootstrap.
+          </p>
+        </section>
+
+        <section id="roles">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Roles</h2>
+
+          <div class="space-y-4">
+            <div class="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-medium rounded">Orchestrator</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400">default role</span>
+              </div>
+              <div class="text-sm">
+                <div class="font-medium text-gray-900 dark:text-gray-100 mb-2">Responsibilities:</div>
+                <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                  <li class="flex gap-2"><span class="text-gray-400 shrink-0">+</span> Interpret ground truth from repo artifacts</li>
+                  <li class="flex gap-2"><span class="text-gray-400 shrink-0">+</span> Decide what to do next</li>
+                  <li class="flex gap-2"><span class="text-gray-400 shrink-0">+</span> Enforce policies (single-writer, limits, verification, commits)</li>
+                  <li class="flex gap-2"><span class="text-gray-400 shrink-0">+</span> Delegate bounded work to sub-agents (optional)</li>
+                  <li class="flex gap-2"><span class="text-gray-400 shrink-0">+</span> Integrate results and write changes</li>
+                </ul>
+                <div class="font-medium text-gray-900 dark:text-gray-100 mt-3 mb-2">Must not:</div>
+                <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                  <li class="flex gap-2"><span class="text-rose-400 shrink-0">—</span> Offload state writes to sub-agents</li>
+                  <li class="flex gap-2"><span class="text-rose-400 shrink-0">—</span> Allow recursive sub-agent spawning</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium rounded">Worker</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400">bounded sub-agent</span>
+              </div>
+              <div class="text-sm text-gray-600 dark:text-gray-400">
+                Execute a <strong>single scoped objective</strong> and return results in the requested format. Must not edit files, update tasks/logs/PCC/bootstrap, or spawn agents.
+              </div>
+            </div>
+
+            <div class="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium rounded">Reviewer / Investigator</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400">bounded sub-agent</span>
+              </div>
+              <div class="text-sm text-gray-600 dark:text-gray-400">
+                Same constraints as Worker. Intended for scans (security, dead code), summaries (knowledge artifacts), and generating options or alternatives.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="single-writer">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Single-writer rule</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Only the Orchestrator may write or update these paths. All sub-agents are read-only.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/tasks/**</div>
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/backlog/**</div>
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/logs/**</div>
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/pcc/**</div>
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/bootstrap.md</div>
+            <div class="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-700 dark:text-gray-300">.volon/bootstrap/history/**</div>
+          </div>
+        </section>
+
+        <section id="delegation">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">When to delegate</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <div class="text-xs font-medium uppercase tracking-wide text-green-600 dark:text-green-400 mb-2">Delegate when</div>
+              <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                <li class="flex gap-2"><span class="text-green-500 shrink-0">+</span> Reading multiple filesystem areas</li>
+                <li class="flex gap-2"><span class="text-green-500 shrink-0">+</span> Summarizing code sections</li>
+                <li class="flex gap-2"><span class="text-green-500 shrink-0">+</span> Scanning diffs</li>
+                <li class="flex gap-2"><span class="text-green-500 shrink-0">+</span> Generating option lists</li>
+              </ul>
+            </div>
+            <div>
+              <div class="text-xs font-medium uppercase tracking-wide text-rose-600 dark:text-rose-400 mb-2">Do not delegate</div>
+              <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                <li class="flex gap-2"><span class="text-rose-500 shrink-0">—</span> File edits, renames, or refactors</li>
+                <li class="flex gap-2"><span class="text-rose-500 shrink-0">—</span> Tasks requiring coherent multi-step reasoning</li>
+                <li class="flex gap-2"><span class="text-rose-500 shrink-0">—</span> Anything that writes to state files</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="loop">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Orchestrator loop (canonical)</h2>
+          <div class="space-y-2">
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">1</span>
+              <span class="text-gray-600 dark:text-gray-400">Read <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">.volon/bootstrap.md</code> if present.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">2</span>
+              <span class="text-gray-600 dark:text-gray-400">Determine next action: pick next <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">todo</code> task OR next workflow step.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">3</span>
+              <span class="text-gray-600 dark:text-gray-400">Optional: delegate bounded analysis to sub-agents.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">4</span>
+              <span class="text-gray-600 dark:text-gray-400">Apply changes locally (single writer).</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">5</span>
+              <span class="text-gray-600 dark:text-gray-400">Verify against acceptance criteria.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">6</span>
+              <span class="text-gray-600 dark:text-gray-400">Commit per policy (task vs iteration mode).</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">7</span>
+              <span class="text-gray-600 dark:text-gray-400">Update task status and append to Updates section.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">8</span>
+              <span class="text-gray-600 dark:text-gray-400">Write run log.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">9</span>
+              <span class="text-gray-600 dark:text-gray-400">Finalize: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">/bootstrap-update</code></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="pausing">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Pausing and resuming</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
+            "Pause" is implemented by <strong>externalizing state to disk</strong>, not suspending memory. A paused session can be resumed deterministically in a fresh context because all state lives in files.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div class="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <code class="text-blue-600 dark:text-blue-400 text-xs">/pause-task [mode] [note]</code>
+              <p class="text-gray-600 dark:text-gray-400 text-xs mt-2">Writes task status, bootstrap resume point, optional run log. Preferred mode: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">restart</code>.</p>
+            </div>
+            <div class="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <code class="text-blue-600 dark:text-blue-400 text-xs">/resume-task [note]</code>
+              <p class="text-gray-600 dark:text-gray-400 text-xs mt-2">Re-grounds from bootstrap. Identifies paused task by <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">paused_task_id</code> in bootstrap frontmatter. Continues loop.</p>
+            </div>
+          </div>
+          <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+            <strong>Why restart is preferred:</strong> Agents cannot reliably clear context in-place. Restarting a session is deterministic, testable, and matches the behavior of scheduled/automated runs.
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

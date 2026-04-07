@@ -1,0 +1,76 @@
+/* Volon mini-site — custom styles to complement Tailwind */
+
+/* Inter font via Google Fonts (loaded in each page's <head>) */
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Code blocks */
+pre {
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-size: 0.875em;
+}
+
+/* Inline code */
+:not(pre) > code {
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+}
+
+/* Prose headings spacing */
+.prose h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose h3 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Table layout */
+.volon-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.volon-table th,
+.volon-table td {
+  padding: 0.625rem 1rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid;
+}
+
+/* Active nav link marker */
+.nav-active {
+  color: rgb(37 99 235); /* blue-600 */
+  font-weight: 500;
+}
+
+.dark .nav-active {
+  color: rgb(96 165 250); /* blue-400 */
+}
+
+/* Smooth transitions for theme switching */
+body,
+header,
+nav,
+aside,
+main,
+footer,
+.card {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* Focus visible ring */
+:focus-visible {
+  outline: 2px solid rgb(59 130 246);
+  outline-offset: 2px;
+}

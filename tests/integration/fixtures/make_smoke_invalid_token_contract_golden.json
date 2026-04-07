@@ -1,0 +1,11 @@
+{
+  "markers": [
+    "make smoke AUTH_MODE=static",
+    "scripts/contextd-smoke.sh",
+    "[smoke] checking readiness",
+    "[smoke] checking mutating auth guard",
+    "[smoke] checking invalid-token auth failure",
+    "[smoke] writing revision",
+    "[smoke] ok"
+  ]
+}

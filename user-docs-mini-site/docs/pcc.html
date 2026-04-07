@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Context Cache — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#purpose" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Purpose</a>
+          <a href="#required-files" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Required files</a>
+          <a href="#style-rules" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Style rules</a>
+          <a href="#refresh" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Refresh protocol</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="artifact-classes.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Artifact Classes</a>
+            <a href="orchestrator.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Orchestrator</a>
+            <a href="config.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Configuration</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Project Context Cache</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Project Context Cache</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-8">Compact, truth-checked agent context that eliminates repeated repository scanning.</p>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <section id="purpose">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Purpose</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
+            PCC is an <strong>agent-only</strong> set of short, structured files that reduce the need to re-scan the repository on every session. Each file covers a specific domain (project overview, architecture, conventions, workflows, backlog, decisions) and is kept under a configurable word limit.
+          </p>
+          <div class="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900 rounded-lg text-sm">
+            <strong class="text-amber-900 dark:text-amber-300">PCC is not user documentation.</strong>
+            <span class="text-amber-800 dark:text-amber-400 ml-1">It is a compact context pack for agents. Do not update PCC and call it "updating the docs."</span>
+          </div>
+        </section>
+
+        <section id="required-files">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Required files</h2>
+          <div class="space-y-3">
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">00_project.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">What this repo is, goals/non-goals, repo type signals</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">01_architecture.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">Components, boundaries, data flow</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">02_conventions.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">Coding standards, branching, naming, test commands</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">03_workflows.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">Run/test/release commands, environments</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">04_backlog.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">Current sprint pointer and top roadmap items</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <code class="font-mono text-blue-600 dark:text-blue-400 text-xs shrink-0 w-32">05_decisions.md</code>
+              <span class="text-sm text-gray-600 dark:text-gray-400">Lightweight ADR log (append-only)</span>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Optional files</div>
+            <div class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              <div class="flex gap-2"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono">06_interfaces.md</code><span>Public APIs and CLIs</span></div>
+              <div class="flex gap-2"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono">07_security.md</code><span>Auth surfaces, secret handling, threat notes</span></div>
+              <div class="flex gap-2"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono">08_observability.md</code><span>Logging, metrics, and tracing notes</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="style-rules">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Style rules</h2>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Keep each section short (configured by <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">max_section_words</code>, default 400).</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Prefer bullets and links over prose.</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Never invent behavior; mark unknowns as <strong>TBD</strong>.</li>
+            <li class="flex gap-2"><span class="shrink-0 text-gray-400">—</span> Always include an <strong>Evidence</strong> section (files/commands used to derive the content).</li>
+          </ul>
+        </section>
+
+        <section id="refresh">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Refresh protocol</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Run <code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded">/pcc-refresh</code> to update the cache. Only impacted sections are updated.
+          </p>
+          <div class="space-y-2">
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">1</span>
+              <span class="text-gray-600 dark:text-gray-400">Read existing PCC files.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">2</span>
+              <span class="text-gray-600 dark:text-gray-400">Check git signals: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">git status</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">git diff --name-only</code>, recent log window.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">3</span>
+              <span class="text-gray-600 dark:text-gray-400">Update only PCC sections impacted by changed files.</span>
+            </div>
+            <div class="flex gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm">
+              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs w-5 shrink-0 pt-0.5">4</span>
+              <span class="text-gray-600 dark:text-gray-400">Write run log and decision log (if observability is enabled).</span>
+            </div>
+          </div>
+          <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+            PCC refresh triggers: <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">on_workflow_start</code>, <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">on_git_change</code>. Configurable in <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">volon.yaml</code> under <code class="bg-blue-100 dark:bg-blue-900 px-1 rounded">pcc.refresh</code>.
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

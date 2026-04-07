@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#resolution" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">File resolution</a>
+          <a href="#agents" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Agents</a>
+          <a href="#storage" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Storage</a>
+          <a href="#observability" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Observability</a>
+          <a href="#git" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Git</a>
+          <a href="#pcc" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">PCC</a>
+          <a href="#workflows-config" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Workflows</a>
+          <a href="#models" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Models</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="workflows.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Workflows</a>
+            <a href="task-model.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Task Model</a>
+            <a href="commands.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Commands</a>
+            <a href="artifact-classes.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Artifact Classes</a>
+            <a href="pcc.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">PCC</a>
+            <a href="orchestrator.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Orchestrator</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Configuration</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Configuration</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-8">Reference for <code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded">volon.yaml</code> — all sections and their options.</p>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <!-- Resolution order -->
+        <section id="resolution">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">File resolution order</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Volon checks for the config file in this order:</p>
+          <ol class="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+            <li><code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">volon.yaml</code> at repository root</li>
+            <li><code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/volon.yaml</code></li>
+          </ol>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">Unrecognized keys are ignored for forward compatibility.</p>
+        </section>
+
+        <!-- Agents -->
+        <section id="agents">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">agents</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>agents:
+  orchestrator:
+    enabled: true
+    default_role: pm_orchestrator
+    single_writer: true       # Enforces Orchestrator-only writes
+    read_bootstrap_first: true
+  subagents:
+    enabled: false            # Enable bounded sub-agents
+    max_per_task: 2
+    max_per_run: 6
+    allow_commands: false
+    forbid_writes: true       # Sub-agents are read-only
+    no_recursive_spawns: true</code></pre>
+        </section>
+
+        <!-- Storage -->
+        <section id="storage">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">storage</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>storage:
+  backend: files          # files | nanite
+  files:
+    root: ".volon/tasks"  # Task file location (files backend)
+  nanite:
+    vault: null           # null = nanite's active vault
+    tag_prefix: "volon/"
+    default_priority: "B" # A | B | C</code></pre>
+        </section>
+
+        <!-- Observability -->
+        <section id="observability">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">observability</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>observability:
+  verbosity: normal       # quiet | normal | verbose | trace
+  write_run_log: true
+  write_decision_log: true
+  redact_secrets: true
+  log_dir: ".volon/logs"</code></pre>
+        </section>
+
+        <!-- Git -->
+        <section id="git">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">git</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>git:
+  use_worktrees: true
+  worktree_root: ".worktrees"
+  branch_prefix: "volon/"
+  pr_mode: optional       # off | optional | required
+  pr:
+    base_branch: auto
+    title_prefix: "volon:"
+    body_template: ".volon/templates/pr-body.md"
+  commit_mode: iteration  # iteration | isolated
+  auto_commit: false      # if true, /commit-task runs at finalize</code></pre>
+          <div class="mt-3 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-400">
+            <strong>commit_mode:</strong>
+            <span class="ml-1"><code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">iteration</code> — batch commit per iteration referencing all tasks.</span>
+            <span class="ml-1"><code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">isolated</code> — one commit per task: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">volon: TASK-ID — title</code>.</span>
+          </div>
+        </section>
+
+        <!-- PCC -->
+        <section id="pcc">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">pcc</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>pcc:
+  enabled: true
+  location: ".volon/pcc"
+  commit_to_git: true
+  refresh:
+    on_workflow_start: true
+    on_git_change: true
+    scheduled: false
+  limits:
+    max_files: 25
+    max_section_words: 400  # Per file, not total</code></pre>
+        </section>
+
+        <!-- Workflows -->
+        <section id="workflows-config">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">workflows</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>workflows:
+  new_feature:
+    enabled: true
+    defaults:
+      track_tasks: true
+      require_spec: true
+  update_docs:
+    enabled: true
+  quality_loop:
+    enabled: true
+    cadence_days: 14
+  app_investigation:
+    enabled: true
+    defaults:
+      depth: deep              # surface | deep
+      output_recommendations: false</code></pre>
+        </section>
+
+        <!-- Models -->
+        <section id="models">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">models</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>models:
+  default: claude-sonnet-4-6
+  fallback: claude-haiku-4-5-20251001
+  overrides:
+    read_scan: claude-haiku-4-5-20251001
+    summarize: claude-haiku-4-5-20251001
+    generate: claude-sonnet-4-6
+    plan: claude-sonnet-4-6
+    orchestrate: claude-sonnet-4-6
+    complex_reasoning: claude-opus-4-6
+  workflows:
+    quality_run: claude-sonnet-4-6
+    pcc_refresh: claude-haiku-4-5-20251001
+  agent_caps:
+    worker: claude-haiku-4-5-20251001
+    reviewer: claude-sonnet-4-6
+  large_context_threshold_tokens: 50000
+  large_context_action: warn   # warn | downgrade | block</code></pre>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+            Model selection follows a hierarchy: task-level override → SKILL.md tier → agent cap → workflow default → <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">models.default</code>.
+          </p>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <a href="commands.html" class="hover:text-gray-900 dark:hover:text-gray-100">Commands</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

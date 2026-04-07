@@ -1,0 +1,6 @@
+{
+  "top_keys": ["executed", "count", "items"],
+  "item_keys": ["suite", "command", "ok", "output"],
+  "success_suite": "api",
+  "failure_suite": "api-errors"
+}

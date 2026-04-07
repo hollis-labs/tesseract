@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Volon run logs (verbose, regenerable)
+.agentrc/logs/
+
+# Sensitive files
+*.env
+*.pem
+*.key
+credentials.*
+
+# Git worktrees
+.worktrees/
+
+# Nanite vault database files
+*.db
+*.db-shm
+*.db-wal
+
+# Local Go build caches
+.agentrc/.gomodcache/
+.agentrc/.gocache/
+.cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Compiled binaries (root-level only)
+/volon
+/forge
+/contextd
+
+# Editor
+.claude/

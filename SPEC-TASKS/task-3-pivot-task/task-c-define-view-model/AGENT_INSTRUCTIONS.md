@@ -1,0 +1,1 @@
+Views are selectors, not processors.

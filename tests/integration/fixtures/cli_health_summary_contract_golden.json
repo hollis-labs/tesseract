@@ -1,0 +1,5 @@
+{
+  "json_required_keys": ["status", "healthy", "consistency_issues", "records_dir_exists", "schema_version"],
+  "table_header_tokens": ["STATUS", "HEALTHY", "SCHEMA_VERSION", "CONSISTENCY_ISSUES", "RECORDS_DIR_EXISTS"],
+  "statuses": ["healthy", "degraded", "failing"]
+}

@@ -1,0 +1,7 @@
+{
+  "required_keys": ["code", "message", "details"],
+  "validation_error": {"status": 400, "code": "validation_error"},
+  "policy_denied": {"status": 403, "code": "policy_denied"},
+  "auth_required": {"status": 401, "code": "auth_required"},
+  "not_found": {"status": 404, "code": "not_found"}
+}

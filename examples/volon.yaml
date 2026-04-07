@@ -1,0 +1,49 @@
+version: 1
+
+storage:
+  backend: files
+  files:
+    root: ".agentrc/tasks"
+
+observability:
+  verbosity: verbose
+  write_run_log: true
+  write_decision_log: true
+  redact_secrets: true
+  log_dir: ".agentrc/logs"
+
+git:
+  use_worktrees: true
+  worktree_root: ".worktrees"
+  branch_prefix: "volon/"
+  pr_mode: optional
+  pr:
+    base_branch: auto
+    title_prefix: "volon:"
+    body_template: ".agentrc/templates/pr-body.md"
+
+pcc:
+  enabled: true
+  location: ".agentrc/pcc"
+  commit_to_git: true
+  refresh:
+    on_workflow_start: true
+    on_git_change: true
+    scheduled: false
+  limits:
+    max_files: 25
+    max_section_words: 400
+
+workflows:
+  new_feature:
+    enabled: true
+  update_docs:
+    enabled: true
+  quality_loop:
+    enabled: true
+    cadence_days: 14
+
+quality:
+  modes: [dead_code, security, correctness, perf_smells]
+  on_issue:
+    default_action: create_task

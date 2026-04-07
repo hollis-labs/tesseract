@@ -1,0 +1,7 @@
+{
+  "top_keys": ["items", "count", "next_cursor"],
+  "item_keys": ["id", "event_type", "actor", "namespace", "key", "revision", "record_id", "created_at"],
+  "page_size": 2,
+  "filter_namespace": "user/notes",
+  "filter_event_type": "promote"
+}

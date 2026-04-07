@@ -1,0 +1,5 @@
+{
+  "header_markers": ["SUITE", "OK", "COMMAND"],
+  "success_row_markers": ["api", "true", "go test ./tests/integration -run APIContract -count=1"],
+  "failure_row_markers": ["api-errors", "false", "go test ./tests/integration -run APIErrorContract -count=1"]
+}

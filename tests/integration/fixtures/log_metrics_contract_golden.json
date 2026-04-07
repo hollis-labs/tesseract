@@ -1,0 +1,5 @@
+{
+  "log_required_keys": ["event", "request_id", "method", "path", "status", "latency_ms"],
+  "metrics_route_required_keys": ["method", "path", "status_counts", "recent_request_ids"],
+  "redacted_query_value": "[REDACTED]"
+}

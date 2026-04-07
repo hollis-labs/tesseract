@@ -1,0 +1,6 @@
+{
+  "stderr_markers": [
+    "error:",
+    "output must be json|table"
+  ]
+}

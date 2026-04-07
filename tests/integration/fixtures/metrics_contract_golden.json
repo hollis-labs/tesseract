@@ -1,0 +1,5 @@
+{
+  "top_keys": ["enabled", "routes", "totals"],
+  "totals_keys": ["requests", "errors"],
+  "route_keys": ["method", "path", "requests", "errors", "latency_ns_total", "latency_ns_avg", "status_counts", "recent_request_ids"]
+}

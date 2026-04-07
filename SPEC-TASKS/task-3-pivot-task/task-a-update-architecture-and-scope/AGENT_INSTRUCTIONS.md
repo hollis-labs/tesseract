@@ -1,0 +1,1 @@
+Operate as Architect. Update docs, not code. Record decisions via ADRs.

@@ -1,0 +1,9 @@
+{
+  "header_markers": ["SUITE", "COMMAND"],
+  "row_markers": [
+    "api",
+    "go test ./tests/integration -run APIContract -count=1",
+    "cli-contract-run-table",
+    "go test ./tests/integration -run ContractRunExecuteTableContract -count=1"
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "top_keys": ["count", "items"],
+  "item_keys": ["name", "command"]
+}

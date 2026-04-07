@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volon — Multi-session Repository Automation</title>
+  <meta name="description" content="Volon is a multi-session orchestration system for repository automation. Coordinate workflows, tasks, and knowledge artifacts through a single-writer Orchestrator.">
+  <!-- Anti-flash: must execute before render -->
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="docs/index.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <!-- Moon: shown in light mode -->
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <!-- Sun: shown in dark mode -->
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="max-w-6xl mx-auto px-4 sm:px-6 pt-20 pb-16">
+    <div class="max-w-2xl">
+      <div class="inline-block px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-xs font-medium mb-6 border border-blue-100 dark:border-blue-900">
+        v0.5 — All 6 epics complete
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-6 leading-tight">
+        Multi-session orchestration for repository automation
+      </h1>
+      <p class="text-lg text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">
+        Volon coordinates human-directed workflows, task execution, and knowledge artifact generation through a single-writer Orchestrator that delegates bounded work to sub-agents.
+      </p>
+      <div class="flex flex-wrap gap-3">
+        <a href="setup.html"
+          class="inline-block px-5 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-sm">
+          Get Started
+        </a>
+        <a href="docs/index.html"
+          class="inline-block px-5 py-2.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg border border-gray-200 dark:border-gray-700 transition-colors text-sm">
+          Read the Docs
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+    <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-8">Core capabilities</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <!-- Orchestrated Workflows -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-blue-50 dark:bg-blue-950 border border-blue-100 dark:border-blue-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Orchestrated Workflows</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Composable, staged workflows for new features, code review, investigations, and Volon extensions. Each stage produces verifiable artifacts.
+        </p>
+      </div>
+
+      <!-- Project Context Cache -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-green-50 dark:bg-green-950 border border-green-100 dark:border-green-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Project Context Cache</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Compact, truth-checked context files in <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/pcc/</code> eliminate repeated repository scanning and keep agents grounded.
+        </p>
+      </div>
+
+      <!-- Task Model -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-purple-50 dark:bg-purple-950 border border-purple-100 dark:border-purple-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Task Model</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Structured Markdown task files with full lifecycle tracking: <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">todo</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">doing</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">paused</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">blocked</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">done</code>.
+        </p>
+      </div>
+
+      <!-- Backlog -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-amber-50 dark:bg-amber-950 border border-amber-100 dark:border-amber-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Backlog and Promotion</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Capture ideas in <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/backlog/</code>. Promote items to active tasks when ready. Clear separation between captured and in-flight work.
+        </p>
+      </div>
+
+      <!-- Pause/Resume -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-rose-50 dark:bg-rose-950 border border-rose-100 dark:border-rose-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause and Resume</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Deterministic state externalization via disk, not memory. Pause mid-task and resume cleanly in a fresh session. Works across context resets.
+        </p>
+      </div>
+
+      <!-- Artifact Intent -->
+      <div class="card bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div class="w-8 h-8 bg-teal-50 dark:bg-teal-950 border border-teal-100 dark:border-teal-900 rounded-lg mb-4 flex items-center justify-center">
+          <svg class="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Artifact Intent</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          Five artifact classes — System Docs, Project Docs, Knowledge Artifacts, PCC, and Bootstrap — each with explicit <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">intent:</code> frontmatter.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Quick Start strip -->
+  <section class="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">Ready to get started?</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Set up Volon in your repository in a few steps.</p>
+        </div>
+        <a href="setup.html"
+          class="inline-block px-5 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-sm shrink-0">
+          View Setup Guide
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="about.html" class="hover:text-gray-900 dark:hover:text-gray-100">About</a>
+        <a href="setup.html" class="hover:text-gray-900 dark:hover:text-gray-100">Setup</a>
+        <a href="docs/index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="assets/theme.js"></script>
+</body>
+</html>

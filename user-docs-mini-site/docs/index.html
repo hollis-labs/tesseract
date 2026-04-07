@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs — Volon</title>
+  <meta name="description" content="Volon reference documentation — configuration, workflows, tasks, commands, and more.">
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page header -->
+  <div class="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Documentation</h1>
+      <p class="text-gray-600 dark:text-gray-400">Reference documentation for all Volon systems and concepts.</p>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <!-- Core System -->
+      <div>
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4">Core System</h2>
+        <div class="space-y-2">
+          <a href="config.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Configuration</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">volon.yaml schema and all configuration options</div>
+            </div>
+          </a>
+          <a href="orchestrator.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Orchestrator Mode</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Roles, single-writer rule, delegation, and loop protocol</div>
+            </div>
+          </a>
+          <a href="pcc.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Project Context Cache</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">PCC structure, refresh protocol, and style rules</div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Workflows & Tasks -->
+      <div>
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4">Workflows &amp; Tasks</h2>
+        <div class="space-y-2">
+          <a href="workflows.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Workflow Contracts</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">New feature, docs review, investigation, and extension workflows</div>
+            </div>
+          </a>
+          <a href="task-model.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Task Model</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Task fields, status lifecycle, sprint fields, and Nanite mapping</div>
+            </div>
+          </a>
+          <a href="artifact-classes.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Artifact Classes</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Five artifact classes, intent frontmatter, workflow-to-artifact mapping</div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Commands & Operations -->
+      <div>
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4">Commands &amp; Operations</h2>
+        <div class="space-y-2">
+          <a href="commands.html" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Commands Reference</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">All slash commands with inputs, outputs, and behavior</div>
+            </div>
+          </a>
+          <a href="orchestrator.html#pausing" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Pause / Resume</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">State externalization, bootstrap additions, restart protocol</div>
+            </div>
+          </a>
+          <a href="config.html#git" class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors group">
+            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">Git &amp; Commit Config</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Worktrees, commit modes, PR policy</div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Quick reference table -->
+    <div class="mt-12">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4">Quick reference — key files</h2>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+        <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+          <thead class="bg-gray-50 dark:bg-gray-800/50">
+            <tr>
+              <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">File / Path</th>
+              <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Purpose</th>
+              <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Audience</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">volon.yaml</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">System configuration — agents, storage, git, models</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">.volon/bootstrap.md</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Current iteration state and next actions</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human + Agent</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">.volon/tasks/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Task files with full lifecycle state</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human + Agent</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">.volon/pcc/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Project Context Cache — compact agent context</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Agent only</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">.volon/logs/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Run logs and decision logs per iteration</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human + Agent</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">.volon/backlog/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Captured ideas not yet promoted to active tasks</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human + Agent</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">artifacts/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Workflow-produced artifacts (ideas, specs, knowledge)</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human + Agent</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-800">docs/</td>
+              <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">System documentation (intent: system_doc)</td>
+              <td class="text-gray-500 dark:text-gray-500 border-gray-100 dark:border-gray-800">Human</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="../setup.html" class="hover:text-gray-900 dark:hover:text-gray-100">Setup</a>
+        <a href="../examples.html" class="hover:text-gray-900 dark:hover:text-gray-100">Examples</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

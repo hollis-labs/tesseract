@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — Volon</title>
+  <meta name="description" content="Prerequisites, installation, and first run walkthrough for Volon.">
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="setup.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Setup</a>
+        <a href="use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="docs/index.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page header -->
+  <div class="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Setup</h1>
+      <p class="text-gray-600 dark:text-gray-400">Get Volon running in your repository.</p>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+    <div class="max-w-3xl space-y-12">
+
+      <!-- Prerequisites -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Prerequisites</h2>
+        <div class="space-y-3">
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <div class="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</div>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 mb-1">Claude Code</div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Volon is designed to run with Claude Code (Anthropic's CLI). Ensure you have Claude Code installed and authenticated with an API key.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <div class="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</div>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 mb-1">Git repository</div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Volon operates inside a Git repository. Initialize one with <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">git init</code> or use an existing repo.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <div class="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</div>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100 mb-1">Volon plugin files</div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                The Volon plugin directory (<code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">plugins/</code>) and configuration files (<code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">volon.yaml</code>, <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/</code>) must exist in the repository root.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Directory structure -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Repository structure</h2>
+        <p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed mb-4">
+          Volon uses the following directories at your repository root:
+        </p>
+        <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-5 rounded-xl text-sm leading-relaxed"><code>your-repo/
+├── volon.yaml              # System configuration
+├── .volon/
+│   ├── agent-boot.md       # Agent startup instructions
+│   ├── bootstrap.md        # Current iteration state
+│   ├── tasks/              # Task files (TASK-YYYYMMDD-NNN.md)
+│   ├── backlog/            # Captured backlog items
+│   ├── logs/               # Run and decision logs
+│   └── pcc/                # Project Context Cache (agent-only)
+├── plugins/
+│   └── workflows/          # Workflow skill definitions
+└── docs/                   # System documentation</code></pre>
+      </section>
+
+      <!-- volon.yaml config -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Minimal volon.yaml</h2>
+        <p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed mb-4">
+          Create <code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded">volon.yaml</code> at the repository root with at minimum:
+        </p>
+        <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-5 rounded-xl text-sm leading-relaxed"><code>version: 1
+
+agents:
+  orchestrator:
+    enabled: true
+    single_writer: true
+    read_bootstrap_first: true
+  subagents:
+    enabled: false
+
+storage:
+  backend: files
+  files:
+    root: ".volon/tasks"
+
+observability:
+  write_run_log: true
+  log_dir: ".volon/logs"
+
+git:
+  use_worktrees: false
+  commit_mode: iteration
+  auto_commit: false
+
+pcc:
+  enabled: true
+  location: ".volon/pcc"
+
+models:
+  default: claude-sonnet-4-6</code></pre>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+          See the <a href="docs/config.html" class="text-blue-600 dark:text-blue-400 hover:underline">Configuration reference</a> for all available options.
+        </p>
+      </section>
+
+      <!-- First run -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">First run walkthrough</h2>
+        <div class="space-y-4">
+
+          <div class="flex gap-4">
+            <div class="flex flex-col items-center shrink-0">
+              <div class="w-7 h-7 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-xs font-bold flex items-center justify-center">1</div>
+              <div class="w-px flex-1 bg-gray-200 dark:bg-gray-700 mt-2"></div>
+            </div>
+            <div class="pb-6">
+              <div class="font-medium text-gray-900 dark:text-gray-100 mb-1">Open Claude Code in your repository</div>
+              <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                Start a Claude Code session at the repository root. Volon reads the agent-boot file automatically when configured as a project custom instruction.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex gap-4">
+            <div class="flex flex-col items-center shrink-0">
+              <div class="w-7 h-7 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-xs font-bold flex items-center justify-center">2</div>
+              <div class="w-px flex-1 bg-gray-200 dark:bg-gray-700 mt-2"></div>
+            </div>
+            <div class="pb-6">
+              <div class="font-medium text-gray-900 dark:text-gray-100 mb-1">Initialize the Project Context Cache</div>
+              <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-3 rounded-lg text-sm mt-2"><code>/pcc-refresh</code></pre>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
+                This scans the repository and populates <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/pcc/</code> with compact context files for subsequent runs.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex gap-4">
+            <div class="flex flex-col items-center shrink-0">
+              <div class="w-7 h-7 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-xs font-bold flex items-center justify-center">3</div>
+              <div class="w-px flex-1 bg-gray-200 dark:bg-gray-700 mt-2"></div>
+            </div>
+            <div class="pb-6">
+              <div class="font-medium text-gray-900 dark:text-gray-100 mb-1">Create your first task or start a workflow</div>
+              <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-3 rounded-lg text-sm mt-2"><code># Create a task
+/task-create "Add user authentication"
+
+# Or start a feature workflow
+/workflow-new-feature "user-auth"</code></pre>
+            </div>
+          </div>
+
+          <div class="flex gap-4">
+            <div class="flex flex-col items-center shrink-0">
+              <div class="w-7 h-7 rounded-full bg-blue-600 dark:bg-blue-500 text-white text-xs font-bold flex items-center justify-center">4</div>
+              <div class="w-px flex-1 bg-gray-200 dark:bg-gray-700 mt-2"></div>
+            </div>
+            <div class="pb-6">
+              <div class="font-medium text-gray-900 dark:text-gray-100 mb-1">Finalize the iteration</div>
+              <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-3 rounded-lg text-sm mt-2"><code>/bootstrap-update</code></pre>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
+                This writes <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/bootstrap.md</code> with the current state, enabling clean restarts in future sessions.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex gap-4">
+            <div class="flex flex-col items-center shrink-0">
+              <div class="w-7 h-7 rounded-full bg-green-600 dark:bg-green-500 text-white text-xs font-bold flex items-center justify-center">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+            </div>
+            <div>
+              <div class="font-medium text-gray-900 dark:text-gray-100 mb-1">Volon is set up</div>
+              <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                Future sessions start by reading <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">.volon/bootstrap.md</code> to determine what to do next. No state is held in memory.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Next steps -->
+      <section class="p-6 bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 rounded-xl">
+        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-3">Next steps</h3>
+        <ul class="space-y-2 text-sm">
+          <li><a href="use-cases.html" class="text-blue-600 dark:text-blue-400 hover:underline">Browse use cases</a> — see how Volon handles common scenarios</li>
+          <li><a href="examples.html" class="text-blue-600 dark:text-blue-400 hover:underline">View examples</a> — annotated workflow invocations with step-by-step traces</li>
+          <li><a href="docs/config.html" class="text-blue-600 dark:text-blue-400 hover:underline">Configuration reference</a> — all volon.yaml options</li>
+          <li><a href="docs/commands.html" class="text-blue-600 dark:text-blue-400 hover:underline">Commands reference</a> — full list of slash commands</li>
+        </ul>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="about.html" class="hover:text-gray-900 dark:hover:text-gray-100">About</a>
+        <a href="docs/index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="assets/theme.js"></script>
+</body>
+</html>

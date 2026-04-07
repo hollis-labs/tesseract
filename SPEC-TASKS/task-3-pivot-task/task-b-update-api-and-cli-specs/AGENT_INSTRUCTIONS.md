@@ -1,0 +1,1 @@
+Keep APIs minimal and deterministic.

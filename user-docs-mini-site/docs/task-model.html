@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Model — Volon Docs</title>
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="../index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="../about.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">About</a>
+        <a href="../setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="../use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="../examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="index.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto flex">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:block w-56 shrink-0 py-10 pr-8">
+      <div class="sticky top-20">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">On this page</div>
+        <nav class="space-y-1 text-sm">
+          <a href="#fields" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Required fields</a>
+          <a href="#status" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Status lifecycle</a>
+          <a href="#example" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Task file example</a>
+          <a href="#sprint" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Sprint fields</a>
+          <a href="#actions" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Actions</a>
+        </nav>
+        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">Other docs</div>
+          <nav class="space-y-1 text-sm">
+            <a href="workflows.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Workflows</a>
+            <a href="commands.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Commands</a>
+            <a href="artifact-classes.html" class="block py-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Artifact Classes</a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-10">
+      <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+        <span class="mx-2">/</span>
+        <span>Task Model</span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">Task Model</h1>
+      <p class="text-gray-600 dark:text-gray-400 mb-8">Structure, lifecycle, and fields for Volon task files.</p>
+
+      <div class="space-y-10 max-w-3xl">
+
+        <section id="fields">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Required fields</h2>
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+              <thead class="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Field</th>
+                  <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Description</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">id</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Unique identifier: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">TASK-YYYYMMDD-NNN</code></td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">title</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Short descriptive title</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">status</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">todo | doing | paused | blocked | done</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">priority</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">A (urgent) | B (normal) | C (low)</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">project</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Repository/project name</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">tags</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Array of string tags for filtering</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">context</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Execution context: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">dev</code>, <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">ops</code>, etc.</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">description</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">What needs to be done and why</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">acceptance</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Checklist of acceptance criteria</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">verification</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">How to verify completion (commands, checks)</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">paths</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Files/directories this task will touch</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">created_at</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">ISO date of creation</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800">updated_at</td>
+                  <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">ISO date of last update</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="status">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Status lifecycle</h2>
+          <div class="flex items-center gap-2 flex-wrap text-sm mb-4">
+            <span class="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 rounded-full font-mono text-gray-700 dark:text-gray-300 text-xs">todo</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/50 rounded-full font-mono text-blue-700 dark:text-blue-300 text-xs">doing</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-green-100 dark:bg-green-900/50 rounded-full font-mono text-green-700 dark:text-green-300 text-xs">done</span>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap text-sm mb-4">
+            <span class="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/50 rounded-full font-mono text-blue-700 dark:text-blue-300 text-xs">doing</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-amber-100 dark:bg-amber-900/50 rounded-full font-mono text-amber-700 dark:text-amber-300 text-xs">paused</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/50 rounded-full font-mono text-blue-700 dark:text-blue-300 text-xs">doing</span>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap text-sm">
+            <span class="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/50 rounded-full font-mono text-blue-700 dark:text-blue-300 text-xs">doing</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-rose-100 dark:bg-rose-900/50 rounded-full font-mono text-rose-700 dark:text-rose-300 text-xs">blocked</span>
+            <span class="text-gray-400">→</span>
+            <span class="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/50 rounded-full font-mono text-blue-700 dark:text-blue-300 text-xs">doing</span>
+          </div>
+          <div class="mt-4 space-y-2 text-sm">
+            <div class="flex gap-2"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">paused</code><span class="text-gray-600 dark:text-gray-400">Work intentionally paused; not a blocker. Resume with <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">/resume-task</code>.</span></div>
+            <div class="flex gap-2"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">blocked</code><span class="text-gray-600 dark:text-gray-400">Cannot proceed due to external dependency. Optionally set <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">blocker_type: paused</code>.</span></div>
+          </div>
+        </section>
+
+        <section id="example">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Task file example</h2>
+          <pre class="bg-gray-900 dark:bg-gray-800 text-gray-100 p-4 rounded-xl text-sm leading-relaxed"><code>---
+id: TASK-20260222-001
+title: "Add rate limiting to the API"
+status: todo
+priority: A
+project: my-app
+tags: [api, security, rate-limit]
+context: dev
+created_at: 2026-02-22
+updated_at: 2026-02-22
+iteration_id: 12
+---
+
+## Description
+
+Add per-IP rate limiting to the public API endpoints using a token bucket
+algorithm. Prevent abuse without blocking legitimate high-volume clients.
+
+## Acceptance
+
+- [ ] Rate limiting active on all /api/v1/* routes
+- [ ] Limit: 100 req/min per IP, configurable via environment variable
+- [ ] 429 response includes Retry-After header
+- [ ] Tests cover limit boundary and reset behavior
+
+## Verification
+
+```
+npm test -- --filter=rate-limit
+curl -I http://localhost:3000/api/v1/status
+```
+
+## Paths
+
+- src/middleware/rate-limit.ts (new)
+- src/server.ts (apply middleware)
+
+## Updates
+
+2026-02-22: Created (iteration 12, new-feature workflow).</code></pre>
+        </section>
+
+        <section id="sprint">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Sprint and iteration fields</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Optional fields added in v0.4:</p>
+          <div class="space-y-2 text-sm">
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">sprint_id</code><span class="text-gray-600 dark:text-gray-400">Sprint this task belongs to, e.g. <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">"sprint-2026-02"</code></span></div>
+            <div class="flex gap-3"><code class="bg-gray-100 dark:bg-gray-800 px-1.5 rounded text-xs font-mono shrink-0">iteration_id</code><span class="text-gray-600 dark:text-gray-400">Volon iteration that created this task, e.g. <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">24</code></span></div>
+          </div>
+        </section>
+
+        <section id="actions">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Task actions</h2>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"><code class="text-blue-600 dark:text-blue-400 text-xs">/task-create</code><p class="text-gray-500 dark:text-gray-400 text-xs mt-1">Create a new task from description</p></div>
+            <div class="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"><code class="text-blue-600 dark:text-blue-400 text-xs">/task-update</code><p class="text-gray-500 dark:text-gray-400 text-xs mt-1">Update status or fields on a task</p></div>
+            <div class="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"><code class="text-blue-600 dark:text-blue-400 text-xs">/task-list</code><p class="text-gray-500 dark:text-gray-400 text-xs mt-1">List tasks with optional filters</p></div>
+            <div class="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"><code class="text-blue-600 dark:text-blue-400 text-xs">/backlog-task</code><p class="text-gray-500 dark:text-gray-400 text-xs mt-1">Capture an idea to the backlog</p></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="../index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="../assets/theme.js"></script>
+</body>
+</html>

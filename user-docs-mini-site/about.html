@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — Volon</title>
+  <meta name="description" content="Philosophy, design principles, and v0.5 milestone summary for Volon.">
+  <script>(function(){var s=localStorage.getItem('volon-theme'),d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d))document.documentElement.classList.add('dark')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="index.html" class="font-semibold text-gray-900 dark:text-gray-100 tracking-tight shrink-0">Volon</a>
+      <nav class="flex items-center gap-1 sm:gap-2 text-sm overflow-x-auto">
+        <a href="about.html" class="px-2 py-1 rounded nav-active whitespace-nowrap">About</a>
+        <a href="setup.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Setup</a>
+        <a href="use-cases.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Use Cases</a>
+        <a href="examples.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Examples</a>
+        <a href="docs/index.html" class="px-2 py-1 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">Docs</a>
+      </nav>
+      <button onclick="toggleTheme()" aria-label="Toggle light/dark mode"
+        class="shrink-0 p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page header -->
+  <div class="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50 mb-2">About Volon</h1>
+      <p class="text-gray-600 dark:text-gray-400">Philosophy, design principles, and what Volon is built to do.</p>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+    <div class="max-w-3xl space-y-12">
+
+      <!-- What is Volon -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">What is Volon?</h2>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          Volon is a <strong>multi-session orchestration system for repository automation</strong>. It coordinates human-directed workflows, task execution, and knowledge artifact generation through a single-writer Orchestrator that delegates bounded, read-only work to sub-agents.
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          Volon runs inside your repository. It uses plain Markdown files for tasks, logs, and context — no databases, no external services required. State lives on disk. Sessions can be started, paused, and resumed deterministically.
+        </p>
+      </section>
+
+      <!-- Philosophy -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Philosophy</h2>
+        <div class="space-y-4">
+          <div class="flex gap-4">
+            <div class="shrink-0 w-1 bg-blue-200 dark:bg-blue-800 rounded-full mt-1"></div>
+            <div>
+              <h3 class="font-medium text-gray-900 dark:text-gray-100 mb-1">Project-agnostic</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Volon does not assume a specific language, framework, or deployment model. It adapts to any repository through configuration and PCC.</p>
+            </div>
+          </div>
+          <div class="flex gap-4">
+            <div class="shrink-0 w-1 bg-blue-200 dark:bg-blue-800 rounded-full mt-1"></div>
+            <div>
+              <h3 class="font-medium text-gray-900 dark:text-gray-100 mb-1">Composable</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Workflows, skills, and plugins are independent units. New capabilities can be added without modifying the core system.</p>
+            </div>
+          </div>
+          <div class="flex gap-4">
+            <div class="shrink-0 w-1 bg-blue-200 dark:bg-blue-800 rounded-full mt-1"></div>
+            <div>
+              <h3 class="font-medium text-gray-900 dark:text-gray-100 mb-1">State on disk, not in memory</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Every significant state transition writes to a file. Sessions can be ended and restarted at any time without losing progress. Chat context is not a source of truth.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Design principles -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Design principles</h2>
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          <table class="volon-table text-sm border-gray-200 dark:border-gray-800">
+            <thead class="bg-gray-50 dark:bg-gray-800/50">
+              <tr>
+                <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Principle</th>
+                <th class="text-gray-500 dark:text-gray-400 font-medium border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Single writer</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Only the Orchestrator may modify tasks, logs, PCC, or bootstrap. Sub-agents are read-only.</td>
+              </tr>
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Idempotent</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Workflows are safe to re-run. Stages that already have artifacts are skipped.</td>
+              </tr>
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Minimal diffs</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Each task produces small, verifiable changes. Large tasks are split into bounded increments.</td>
+              </tr>
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Artifact intent</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Every workflow artifact declares its class via <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">intent:</code> frontmatter. Five classes are defined.</td>
+              </tr>
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Ground truth in files</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Agents always re-ground from repository artifacts. Conversation context is not trusted across sessions.</td>
+              </tr>
+              <tr>
+                <td class="font-medium text-gray-900 dark:text-gray-100 border-gray-100 dark:border-gray-800 whitespace-nowrap">Bounded delegation</td>
+                <td class="text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-800">Sub-agents execute a single scoped objective. No recursive spawning. Orchestrator integrates results.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- v0.5 milestone -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">v0.5 milestone</h2>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
+          Volon v0.5 completes six foundational epics, establishing the full core system.
+        </p>
+        <div class="space-y-3">
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-001 — Artifact Classes</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Five-class artifact taxonomy with intent frontmatter and workflow domain separation.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-002 — Workflow Lifecycle Suite</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Full workflow create/edit/clone/deprecate commands and extension workflows for agents, skills, plugins, and slash commands.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-003 — Investigation Workflows</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Application investigation workflow producing Knowledge Artifacts (scope, discovery, analysis, findings, report).</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-004 — Orchestrator Mode</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Single-writer Orchestrator role with bounded sub-agent delegation, model selection, and loop protocol.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-005 — Pause/Resume Protocol</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Deterministic pause and resume via disk-state externalization. Works across context resets and session boundaries.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+            <svg class="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <div class="font-medium text-sm text-gray-900 dark:text-gray-100">EPIC-006 — Model Configuration</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Hierarchical model selection by workflow stage, task override, agent cap, and context size policy.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Non-goals -->
+      <section>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Non-goals</h2>
+        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+          <li class="flex gap-2">
+            <span class="text-gray-400 dark:text-gray-600 shrink-0">—</span>
+            <span>Volon is not a code editor, IDE plugin, or autonomous agent without human direction.</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="text-gray-400 dark:text-gray-600 shrink-0">—</span>
+            <span>Volon does not replace version control — it uses Git as infrastructure.</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="text-gray-400 dark:text-gray-600 shrink-0">—</span>
+            <span>Volon does not manage deployment, CI/CD pipelines, or production infrastructure directly.</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="text-gray-400 dark:text-gray-600 shrink-0">—</span>
+            <span>Volon does not require a server, database, or external API beyond the AI model provider.</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="text-gray-400 dark:text-gray-600 shrink-0">—</span>
+            <span>Volon does not auto-merge pull requests or push without human confirmation.</span>
+          </li>
+        </ul>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 dark:border-gray-800 mt-12">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Volon v0.5 — Multi-session repository automation</span>
+      <nav class="flex gap-4">
+        <a href="index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Home</a>
+        <a href="setup.html" class="hover:text-gray-900 dark:hover:text-gray-100">Setup</a>
+        <a href="docs/index.html" class="hover:text-gray-900 dark:hover:text-gray-100">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="assets/theme.js"></script>
+</body>
+</html>
