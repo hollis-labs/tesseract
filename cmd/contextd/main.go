@@ -57,7 +57,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: cannot determine home directory: " + err.Error() + "\n")
 			return 1
 		}
-		root = filepath.Join(home, ".cortex")
+		root = filepath.Join(home, ".conduit")
 	}
 
 	store, err := contextstore.Open(ctx, contextstore.Config{
@@ -144,18 +144,18 @@ func parseMCPArgs(args []string) (string, error) {
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string) int {
-	_, _ = stderr.WriteString("Cortex MCP adapter starting (stdio)\n")
+	_, _ = stderr.WriteString("Vanta Conduit MCP adapter starting (stdio)\n")
 
 	// Memory subsystem (D-core). Shares contextstore's *sql.DB.
 	memStore := memory.NewStore(store.DB(), nil, memory.NoopQueue{})
 
 	// Start decay job.
 	decayInterval := 1 * time.Hour
-	if v := os.Getenv("CORTEX_MEMORY_DECAY_INTERVAL"); v != "" {
+	if v := os.Getenv("CONDUIT_MEMORY_DECAY_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			decayInterval = d
 		} else {
-			log.Print("warning: invalid CORTEX_MEMORY_DECAY_INTERVAL, using default 1h")
+			log.Print("warning: invalid CONDUIT_MEMORY_DECAY_INTERVAL, using default 1h")
 		}
 	}
 	decayJob := &memory.DecayJob{
@@ -196,12 +196,12 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	}
 
 	// Initialise plugin host and discover plugins.
-	pluginLogger := cplugin.NewLogger("cortex-plugin")
+	pluginLogger := cplugin.NewLogger("conduit-plugin")
 	pluginHost := cplugin.NewHost(http.NewServeMux(), pluginLogger)
 	pluginHost.RegisterService("store", store)
 
 	pluginsDir := "./plugins"
-	if d := os.Getenv("CORTEX_PLUGINS_DIR"); d != "" {
+	if d := os.Getenv("CONDUIT_PLUGINS_DIR"); d != "" {
 		pluginsDir = d
 	}
 	discovered, discoverErr := cplugin.DiscoverPlugins(pluginsDir)
@@ -222,7 +222,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	mux.Handle("/", webui.Handler())
 
 	httpServer := &http.Server{Addr: cfg.Addr, Handler: propagation.HTTPMiddleware(mux)}
-	_, _ = stderr.WriteString("Cortex — Content Memory Service\n")
+	_, _ = stderr.WriteString("Vanta Conduit — Content Memory Service\n")
 	_, _ = stderr.WriteString("  API: http://" + cfg.Addr + "/v1/\n")
 	_, _ = stderr.WriteString("  UI:  http://" + cfg.Addr + "/\n")
 	errCh := make(chan error, 1)
@@ -232,7 +232,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 
 	select {
 	case <-ctx.Done():
-		_, _ = stderr.WriteString("cortex shutdown requested\n")
+		_, _ = stderr.WriteString("conduit shutdown requested\n")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -243,7 +243,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		_, _ = stderr.WriteString("cortex shutdown complete\n")
+		_, _ = stderr.WriteString("conduit shutdown complete\n")
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
