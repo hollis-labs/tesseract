@@ -1,4 +1,4 @@
-package cortex
+package conduit
 
 import (
 	"context"

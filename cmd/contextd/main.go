@@ -43,7 +43,7 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
-	shutdown, err := feotel.Init(ctx, feotel.WithServiceName("cortex"))
+	shutdown, err := feotel.Init(ctx, feotel.WithServiceName("conduit"))
 	if err != nil {
 		log.Printf("warning: OTel init failed: %v", err)
 	} else {
