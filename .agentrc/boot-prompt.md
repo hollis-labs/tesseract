@@ -24,26 +24,33 @@ at `~/.archived/cortex/`.
   `framework/libs/go-providers/`. Multi-provider: Anthropic, OpenAI,
   Ollama, Gemini, Mistral, Azure, OpenRouter, CLI adapters. Conduit
   imports via replace directive.
-- **I. Shared queue module** — done (the module). `go-queue` at
+- **I. Shared queue module** — done. `go-queue` at
   `framework/libs/go-queue/`. Queue interface, Worker, SQLite/memory/noop
-  drivers. **Not yet wired into Conduit** — `NoopQueue` stub still in
-  `internal/memory/queue.go`.
+  drivers. **Wired into Conduit** via PR #1: `QueueAdapter`, `WithQueue()`
+  option, SQLite-backed queue DB, worker with embed handler.
+
+- **D-deferred. Auto-embed on write** — done. `memory.Store.EmbedRevision()`
+  loads revision, extracts text from payload summary+body, calls embedder,
+  writes vector inline to `memory_revisions.embedding_model/embedding_vector`.
+  Queue embed handler wired to call `EmbedRevision` on every write.
+- **D-deferred. Memory similarity recall** — done. `Recall()` with
+  `RankingSimilarity` embeds the query, scores candidates by cosine
+  similarity against stored vectors. Unembedded revisions filtered out.
+  Both `context_search`/`context_rag_query` MCP tools and `memory_recall`
+  now support similarity.
+- **C. Cross-repo TODO audit** — done. All stale "cortex" references
+  replaced with "conduit" (plugin CLI usage strings + env var).
+- **E. Embedded-runtime API surface** — done. `conduit.Open()` with
+  functional options + facade methods: `WriteMemory`, `RecallMemory`,
+  `GetCurrentRevision`, `GetRevisionHistory`, `EmbedRevision`, `Embed`,
+  `Search`, plus `Store()`/`MemoryStore()` accessors for advanced use.
+- **F. Dual-mode packaging** — done. `cmd/contextd` standalone server and
+  `conduit.Open()` library mode both work with clean separation.
 
 ### In progress / not started
 
-- **D-deferred. Auto-embed on write** — unblocked by go-queue, not wired.
-  `NoopQueue` in place, fire-and-forget enqueue in `write.go:163`. Need to:
-  add go-queue dependency, write adapter, register embed handler, wire
-  worker in `main.go` and `conduit.go`.
-- **D-deferred. Memory similarity recall** — `recall.go` returns
-  `ErrSimilarityUnavailable`. Embedder exists but isn't plumbed into the
-  recall path.
 - **D-deferred. Backfill + semantic dedup** — not started.
-- **C. Cross-repo TODO audit** — not started.
-- **E. Embedded-runtime API surface** — partial. `conduit.Open()` with
-  functional options exists. Full API surface TBD.
-- **F. Dual-mode packaging** — blocked on E.
-- **G. Release readiness** — blocked on E, F.
+- **G. Release readiness** — blocked on API stabilization and docs.
 
 ## Key technical knowledge
 
@@ -58,8 +65,20 @@ at `~/.archived/cortex/`.
   `errors.Is` on sentinels, `var _ Interface = Impl{}` compile-time checks
 - **Library entry point:** `conduit.Open(ctx, cfg, opts...)` returns
   `*Conduit`. Options: `WithEmbedder()`, `WithEmbeddingModel()`,
-  `WithLogger()`. Needs `WithQueue()` for go-queue integration.
-- **Memory write path:** `write.go:163` does fire-and-forget
-  `s.queue.Enqueue(ctx, Job{Kind:"embed", ...})`. Currently hits NoopQueue.
-- **go-queue interface:** `queue.Queue` with `Push(ctx, jobType, payload,
-  ...PushOption)`. Adapter needed: `memory.JobQueue.Enqueue` → `queue.Queue.Push`.
+  `WithLogger()`, `WithQueue()`.
+- **Queue wiring:** `WithQueue()` creates `QueueAdapter` (bridges
+  `memory.JobQueue` → `queue.Queue`), starts worker with `"embed"` handler.
+  Separate `queue.db` for write safety. `cmd/contextd/main.go` uses
+  SQLite-backed queue; `conduit.Open()` accepts any `queue.Queue` impl.
+- **Embed handler:** `embed_handler.go` — calls
+  `memory.Store.EmbedRevision()`. Decodes `{"revision_id":"..."}` from
+  job payload, embeds the revision inline.
+- **Memory embedding:** `internal/memory/embed.go` — `EmbedRevision()`
+  loads revision, extracts text from `Payload.Summary`+`Body`, calls
+  embedder, writes vector to `embedding_model`/`embedding_vector` columns.
+- **Similarity recall:** `internal/memory/recall.go` — `RankingSimilarity`
+  embeds the query via `Store.embedder`, scores candidates by cosine
+  similarity using `embedding.CosineSimilarity()`.
+- **Conduit facade:** `WriteMemory`, `RecallMemory`, `GetCurrentRevision`,
+  `GetRevisionHistory`, `EmbedRevision` on `*Conduit`. Library consumers
+  no longer need to reach through `.Store()`/`.MemoryStore()`.
