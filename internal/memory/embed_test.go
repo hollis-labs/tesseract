@@ -43,7 +43,7 @@ func newTestStoreWithEmbedder(t *testing.T) (*memory.Store, func()) {
 		t.Fatalf("contextstore.Open: %v", err)
 	}
 	embedder := &mockEmbedder{vector: []float32{0.1, 0.2, 0.3}}
-	ms := memory.NewStore(cs.DB(), embedder, "test-model", 0, memory.NoopQueue{})
+	ms := memory.NewStore(cs.DB(), embedder, "test-model", 0.85, memory.NoopQueue{})
 	cleanup := func() { _ = cs.Close() }
 	return ms, cleanup
 }

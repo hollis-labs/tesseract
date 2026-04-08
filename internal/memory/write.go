@@ -27,8 +27,10 @@ type WriteInput struct {
 	Origin     Origin
 	Confidence float64
 	Tags       []string
-	TTL        time.Duration
-	Payload    Payload
+	TTL            time.Duration
+	Payload        Payload
+	Dedup          string        // "none" (default), "semantic"
+	DedupThreshold float64       // optional per-call override; 0 = use store default
 }
 
 // WriteRevision creates a new revision in the memory store, handling keyed,
@@ -36,6 +38,32 @@ type WriteInput struct {
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
 	if err := validateWriteInput(in); err != nil {
 		return Revision{}, err
+	}
+
+	// Semantic dedup: if requested, search for similar existing revisions.
+	var dedupMatch string
+	if in.Dedup == "semantic" {
+		if s.embedder == nil {
+			return Revision{}, ErrEmbedderUnavailable
+		}
+		threshold := in.DedupThreshold
+		if threshold == 0 {
+			threshold = s.dedupThreshold
+		}
+		if threshold == 0 {
+			threshold = 0.85
+		}
+		text := revisionEmbedText(Revision{Payload: in.Payload})
+		matchID, sameKey, matchErr := s.findSemanticMatch(ctx, in.Namespace, in.MemoryKey, text, threshold)
+		if matchErr != nil {
+			return Revision{}, fmt.Errorf("semantic dedup: %w", matchErr)
+		}
+		if matchID != "" {
+			dedupMatch = matchID
+			if sameKey && in.Supersedes == "" {
+				in.Supersedes = matchID
+			}
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -182,6 +210,7 @@ INSERT INTO memory_revisions (
 		TTLSeconds: ttlSeconds,
 		ExpiresAt:  expiresAt,
 		Payload:    in.Payload,
+		DedupMatch: dedupMatch,
 	}
 	return rev, nil
 }

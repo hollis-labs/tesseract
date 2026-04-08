@@ -94,6 +94,7 @@ type Revision struct {
 	Payload         Payload    `json:"payload"`
 	EmbeddingModel  string     `json:"embedding_model,omitempty"`
 	EmbeddingVector []float32  `json:"embedding_vector,omitempty"`
+	DedupMatch      string     `json:"dedup_match,omitempty"`
 }
 
 // State is the mutable per-memory state (D9). Lives in memory_state table.
