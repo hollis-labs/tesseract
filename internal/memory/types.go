@@ -91,7 +91,10 @@ type Revision struct {
 	Tags       []string   `json:"tags"`
 	TTLSeconds int64      `json:"ttl_seconds,omitempty"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
-	Payload    Payload    `json:"payload"`
+	Payload         Payload    `json:"payload"`
+	EmbeddingModel  string     `json:"embedding_model,omitempty"`
+	EmbeddingVector []float32  `json:"embedding_vector,omitempty"`
+	DedupMatch      string     `json:"dedup_match,omitempty"`
 }
 
 // State is the mutable per-memory state (D9). Lives in memory_state table.

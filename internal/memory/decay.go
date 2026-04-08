@@ -123,7 +123,7 @@ func (s *Store) collectDecayUpdates(ctx context.Context) ([]decayUpdate, error) 
 		if lastAccessedAt.Valid && lastAccessedAt.String != "" {
 			baseline = lastAccessedAt.String
 		}
-		baseTime, parseErr := time.Parse(time.DateTime, baseline)
+		baseTime, parseErr := parseMemoryTime(baseline)
 		if parseErr != nil {
 			// Skip rows with unparseable timestamps.
 			continue
@@ -170,7 +170,7 @@ func (s *Store) ExportExpireTTLRevisions(ctx context.Context) error {
 // passed. It reuses the authorized Deprecate path which also recomputes
 // current_revision.
 func (s *Store) expireTTLRevisions(ctx context.Context) error {
-	now := time.Now().UTC().Format(time.DateTime)
+	now := time.Now().UTC().Format(memoryTimeFormat)
 	rows, queryErr := s.db.QueryContext(ctx,
 		`SELECT revision_id FROM memory_revisions
 		 WHERE expires_at IS NOT NULL AND expires_at <= ? AND status != ?`,

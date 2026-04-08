@@ -19,7 +19,7 @@ func (s *Store) reinforceAccess(ctx context.Context, results []RecallResult) err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	now := time.Now().UTC().Format(time.DateTime)
+	now := time.Now().UTC().Format(memoryTimeFormat)
 	// Diminishing-returns formula: new = old + 0.1 * (2.0 - old)
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE memory_state

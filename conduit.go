@@ -25,6 +25,7 @@ type Option func(*options)
 type options struct {
 	embedder       provider.Embedder
 	embeddingModel string
+	dedupThreshold float64
 	logger         func(string, ...any)
 	queue          queue.Queue
 }
@@ -42,6 +43,11 @@ func WithEmbeddingModel(model string) Option {
 // WithLogger sets a custom log function (defaults to log.Printf).
 func WithLogger(fn func(string, ...any)) Option {
 	return func(o *options) { o.logger = fn }
+}
+
+// WithDedupThreshold sets the similarity threshold for semantic dedup.
+func WithDedupThreshold(t float64) Option {
+	return func(o *options) { o.dedupThreshold = t }
 }
 
 // WithQueue sets the background job queue used for async embedding.
@@ -99,7 +105,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 		jobQueue = memory.NewQueueAdapter(o.queue, "conduit")
 	}
 
-	memStore := memory.NewStore(store.DB(), o.embedder, jobQueue)
+	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
@@ -116,7 +122,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 			RetryAfter: 30 * time.Second,
 			OnError:    func(err error) { o.logger("queue worker error: %v", err) },
 		})
-		w.Register("embed", NewEmbedHandler(o.logger))
+		w.Register("embed", NewEmbedHandler(memStore, o.embeddingModel, o.logger))
 		go w.Start(workerCtx)
 	}
 
@@ -141,3 +147,31 @@ func (c *Conduit) Store() *contextstore.Store { return c.store }
 
 // MemoryStore returns the underlying memory.Store.
 func (c *Conduit) MemoryStore() *memory.Store { return c.memoryStore }
+
+// WriteMemory writes a new memory revision.
+func (c *Conduit) WriteMemory(ctx context.Context, in memory.WriteInput) (memory.Revision, error) {
+	return c.memoryStore.WriteRevision(ctx, in)
+}
+
+// RecallMemory retrieves memories by namespace, ranking, and filters.
+func (c *Conduit) RecallMemory(ctx context.Context, in memory.RecallInput) ([]memory.RecallResult, error) {
+	return c.memoryStore.Recall(ctx, in)
+}
+
+// GetCurrentRevision returns the current revision for a namespace/key pair.
+func (c *Conduit) GetCurrentRevision(ctx context.Context, namespace, key string) (memory.Revision, error) {
+	return c.memoryStore.GetCurrent(ctx, namespace, key)
+}
+
+// GetRevisionHistory returns all revisions for a namespace/key pair, newest first.
+func (c *Conduit) GetRevisionHistory(ctx context.Context, namespace, key string) ([]memory.Revision, error) {
+	return c.memoryStore.GetHistory(ctx, namespace, key)
+}
+
+// EmbedRevision generates and stores an embedding for a memory revision.
+func (c *Conduit) EmbedRevision(ctx context.Context, revisionID string) error {
+	if c.embedder == nil {
+		return ErrEmbedderUnavailable
+	}
+	return c.memoryStore.EmbedRevision(ctx, revisionID, c.embeddingModel)
+}

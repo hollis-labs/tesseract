@@ -7,6 +7,18 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
+func TestNewULID_Monotonic(t *testing.T) {
+	ids := make([]string, 1000)
+	for i := range ids {
+		ids[i] = memory.NewULID()
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("ULIDs not monotonic at index %d: %s <= %s", i, ids[i], ids[i-1])
+		}
+	}
+}
+
 func TestNewULIDUnique(t *testing.T) {
 	const n = 1000
 	seen := make(map[string]struct{}, n)
@@ -24,10 +36,9 @@ func TestNewULIDUnique(t *testing.T) {
 
 // TestNewULIDSortableAcrossTime verifies the coarse sortability property
 // that D-core ranking and history ordering rely on: ULIDs generated later
-// in wall-clock time sort greater than ULIDs generated earlier, once a
-// millisecond boundary has been crossed. ULID's time prefix guarantees
-// this at millisecond granularity; within a single millisecond, order is
-// not guaranteed (NewULID does not use monotonic entropy).
+// in wall-clock time sort greater than ULIDs generated earlier. The
+// monotonic entropy source guarantees ordering even within the same
+// millisecond (see TestNewULID_Monotonic).
 func TestNewULIDSortableAcrossTime(t *testing.T) {
 	const batchSize = 50
 	before := make([]string, batchSize)

@@ -27,8 +27,10 @@ type WriteInput struct {
 	Origin     Origin
 	Confidence float64
 	Tags       []string
-	TTL        time.Duration
-	Payload    Payload
+	TTL            time.Duration
+	Payload        Payload
+	Dedup          string        // "none" (default), "semantic"
+	DedupThreshold float64       // optional per-call override; 0 = use store default
 }
 
 // WriteRevision creates a new revision in the memory store, handling keyed,
@@ -36,6 +38,36 @@ type WriteInput struct {
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
 	if err := validateWriteInput(in); err != nil {
 		return Revision{}, err
+	}
+
+	// Semantic dedup: if requested, search for similar existing revisions.
+	// NOTE: This runs outside the transaction (before BeginTx). There is a
+	// TOCTOU window where a concurrent write could create a matching revision
+	// between the dedup check and the INSERT. This is acceptable for single-
+	// writer SQLite but should be revisited for multi-writer backends.
+	var dedupMatch string
+	if in.Dedup == "semantic" {
+		if s.embedder == nil {
+			return Revision{}, ErrEmbedderUnavailable
+		}
+		threshold := in.DedupThreshold
+		if threshold == 0 {
+			threshold = s.dedupThreshold
+		}
+		if threshold == 0 {
+			threshold = 0.85
+		}
+		text := revisionEmbedText(Revision{Payload: in.Payload})
+		matchID, sameKey, matchErr := s.findSemanticMatch(ctx, in.Namespace, in.MemoryKey, text, threshold)
+		if matchErr != nil {
+			return Revision{}, fmt.Errorf("semantic dedup: %w", matchErr)
+		}
+		if matchID != "" {
+			dedupMatch = matchID
+			if sameKey && in.Supersedes == "" {
+				in.Supersedes = matchID
+			}
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -85,7 +117,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		if t == nil {
 			return sql.NullString{}
 		}
-		return sql.NullString{String: t.UTC().Format(time.DateTime), Valid: true}
+		return sql.NullString{String: t.UTC().Format(memoryTimeFormat), Valid: true}
 	}
 	nullInt := func(v int64) sql.NullInt64 {
 		if v == 0 {
@@ -106,7 +138,7 @@ INSERT INTO memory_revisions (
 		nullStr(in.MemoryKey),
 		string(status),
 		nullStr(in.Supersedes),
-		now.Format(time.DateTime),
+		now.Format(memoryTimeFormat),
 		in.Author.AgentID,
 		in.Author.AgentVersion,
 		string(in.Trigger),
@@ -182,6 +214,7 @@ INSERT INTO memory_revisions (
 		TTLSeconds: ttlSeconds,
 		ExpiresAt:  expiresAt,
 		Payload:    in.Payload,
+		DedupMatch: dedupMatch,
 	}
 	return rev, nil
 }
@@ -271,6 +304,12 @@ func validateWriteInput(in WriteInput) error {
 	}
 	if in.Payload.Summary == "" {
 		return fmt.Errorf("%w: payload.summary is required", ErrInvalidInput)
+	}
+	if in.Dedup != "" && in.Dedup != "none" && in.Dedup != "semantic" {
+		return fmt.Errorf("%w: invalid dedup mode %q (must be none or semantic)", ErrInvalidInput, in.Dedup)
+	}
+	if in.DedupThreshold < 0 || in.DedupThreshold > 1.0 {
+		return fmt.Errorf("%w: dedup_threshold must be in [0, 1.0], got %f", ErrInvalidInput, in.DedupThreshold)
 	}
 	return nil
 }

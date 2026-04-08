@@ -15,7 +15,7 @@ import (
 func newMemoryAdapter(t *testing.T, scopes ...string) *Adapter {
 	t.Helper()
 	cs := newTestStore(t)
-	ms := memory.NewStore(cs.DB(), nil, memory.NoopQueue{})
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 
 	var tok string
 	if len(scopes) > 0 {

@@ -18,6 +18,8 @@ import (
 	conduit "github.com/hollis-labs/vanta-conduit"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-queue/driver/sqlite"
+	"github.com/hollis-labs/go-providers/provider"
+	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
 	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
@@ -65,6 +67,12 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		root = filepath.Join(home, ".conduit")
 	}
 
+	conduitCfg, cfgErr := config.Load(filepath.Join(root, "config.yaml"))
+	if cfgErr != nil {
+		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
+		conduitCfg = config.Defaults()
+	}
+
 	store, err := contextstore.Open(ctx, contextstore.Config{
 		RootDir:    root,
 		RecordsDir: filepath.Join(root, "data", "records"),
@@ -95,7 +103,11 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runMCP(ctx, store, stderr, token, root)
+		return runMCP(ctx, store, stderr, token, root, conduitCfg)
+	}
+
+	if len(args) > 0 && args[0] == "backfill-embeddings" {
+		return runBackfill(ctx, store, conduitCfg, args[1:], stdout, stderr)
 	}
 
 	cli := &contextcli.CLI{
@@ -148,7 +160,21 @@ func parseMCPArgs(args []string) (string, error) {
 	return strings.TrimSpace(*token), nil
 }
 
-func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string) int {
+// createEmbedder builds an Embedder from config. Returns nil if the provider
+// is unsupported or the required API key is missing. Provider-specific
+// credential handling is delegated to the provider constructor (e.g.,
+// NewOpenAI reads OPENAI_API_KEY from the environment).
+func createEmbedder(cfg config.Config) provider.Embedder {
+	if cfg.Embedding.Provider != "openai" {
+		return nil
+	}
+	e := provider.NewOpenAI()
+	// NewOpenAI reads OPENAI_API_KEY from env. If empty, embedding calls
+	// will fail at invocation time with "OPENAI_API_KEY not set".
+	return e
+}
+
+func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
 	_, _ = stderr.WriteString("Vanta Conduit MCP adapter starting (stdio)\n")
 
 	// Open a separate SQLite DB for the job queue (avoids write contention
@@ -171,7 +197,8 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	queueAdapter := memory.NewQueueAdapter(q, "conduit")
 
 	// Memory subsystem (D-core). Shares contextstore's *sql.DB.
-	memStore := memory.NewStore(store.DB(), nil, queueAdapter)
+	embedder := createEmbedder(conduitCfg)
+	memStore := memory.NewStore(store.DB(), embedder, conduitCfg.Embedding.Model, conduitCfg.Dedup.SimilarityThreshold, queueAdapter)
 
 	// Start queue worker.
 	worker := queue.NewWorker(q, queue.WorkerOpts{
@@ -180,7 +207,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 		RetryAfter: 30 * time.Second,
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
 	})
-	worker.Register("embed", conduit.NewEmbedHandler(log.Printf))
+	worker.Register("embed", conduit.NewEmbedHandler(memStore, conduitCfg.Embedding.Model, log.Printf))
 	go worker.Start(ctx)
 
 	// Start decay job.

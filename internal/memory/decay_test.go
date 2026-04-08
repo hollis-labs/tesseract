@@ -22,7 +22,7 @@ func TestActivationDecay_ReducesAfterTime(t *testing.T) {
 	}
 
 	// Backdate last_accessed_at to 14 days ago.
-	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.DateTime)
+	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.RFC3339Nano)
 	if _, dbErr := ms.DB().ExecContext(ctx,
 		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
 		oldTime, rev.MemoryID,
@@ -58,7 +58,7 @@ func TestActivationDecay_FloorsAt005(t *testing.T) {
 	}
 
 	// Backdate last_accessed_at to 365 days ago — far past any floor.
-	oldTime := time.Now().UTC().Add(-365 * 24 * time.Hour).Format(time.DateTime)
+	oldTime := time.Now().UTC().Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano)
 	if _, dbErr := ms.DB().ExecContext(ctx,
 		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
 		oldTime, rev.MemoryID,
@@ -176,7 +176,7 @@ func TestDecayJob_SuccessiveRunsFurtherDecay(t *testing.T) {
 	}
 
 	// Backdate to 14 days ago.
-	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.DateTime)
+	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.RFC3339Nano)
 	if _, dbErr := ms.DB().ExecContext(ctx,
 		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
 		oldTime, rev.MemoryID,

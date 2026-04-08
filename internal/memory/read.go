@@ -9,6 +9,20 @@ import (
 	"time"
 )
 
+// memoryTimeFormat is the canonical timestamp format for memory tables.
+const memoryTimeFormat = time.RFC3339Nano
+
+// parseMemoryTime parses a timestamp stored in memory tables. It tries
+// RFC3339Nano first, then falls back to time.DateTime for backward
+// compatibility with data written before the precision upgrade.
+func parseMemoryTime(s string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err == nil {
+		return t, nil
+	}
+	return time.Parse(time.DateTime, s)
+}
+
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
 	Scan(dest ...interface{}) error
@@ -19,7 +33,8 @@ const revisionColumns = `revision_id, memory_id, namespace, COALESCE(memory_key,
        status, COALESCE(supersedes, ''), created_at,
        author_agent_id, author_version, trigger, session_id, origin,
        confidence, tags, COALESCE(ttl_seconds, 0), expires_at,
-       COALESCE(payload_summary, ''), COALESCE(payload_body, '')`
+       COALESCE(payload_summary, ''), COALESCE(payload_body, ''),
+       COALESCE(embedding_model, ''), embedding_vector`
 
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
@@ -27,19 +42,21 @@ func scanRevision(r rowScanner) (Revision, error) {
 	var createdAt string
 	var expiresAt sql.NullString
 	var tagsJSON string
+	var embeddingBlob []byte
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
 		&rev.Author.AgentID, &rev.Author.AgentVersion, &rev.Trigger, &rev.SessionID, &rev.Origin,
 		&rev.Confidence, &tagsJSON, &rev.TTLSeconds, &expiresAt,
 		&rev.Payload.Summary, &rev.Payload.Body,
+		&rev.EmbeddingModel, &embeddingBlob,
 	)
 	if err != nil {
 		return Revision{}, err
 	}
-	rev.CreatedAt, _ = time.Parse(time.DateTime, createdAt)
+	rev.CreatedAt, _ = parseMemoryTime(createdAt)
 	if expiresAt.Valid {
-		t, _ := time.Parse(time.DateTime, expiresAt.String)
+		t, _ := parseMemoryTime(expiresAt.String)
 		rev.ExpiresAt = &t
 	}
 	if tagsJSON != "" {
@@ -48,6 +65,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 	if rev.Tags == nil {
 		rev.Tags = []string{}
 	}
+	rev.EmbeddingVector = blobToFloat32(embeddingBlob)
 	return rev, nil
 }
 
@@ -71,11 +89,11 @@ FROM memory_state WHERE memory_id = ?`, memoryID)
 		return State{}, err
 	}
 	if lastAccessed.Valid {
-		t, _ := time.Parse(time.DateTime, lastAccessed.String)
+		t, _ := parseMemoryTime(lastAccessed.String)
 		st.LastAccessedAt = &t
 	}
 	if created.Valid {
-		st.CreatedAt, _ = time.Parse(time.DateTime, created.String)
+		st.CreatedAt, _ = parseMemoryTime(created.String)
 	}
 	return st, nil
 }
