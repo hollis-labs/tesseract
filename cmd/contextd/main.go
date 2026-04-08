@@ -106,6 +106,10 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMCP(ctx, store, stderr, token, root, conduitCfg)
 	}
 
+	if len(args) > 0 && args[0] == "backfill-embeddings" {
+		return runBackfill(ctx, store, conduitCfg, args[1:], stdout, stderr)
+	}
+
 	cli := &contextcli.CLI{
 		Store:  store,
 		Policy: contextpolicy.New(),
