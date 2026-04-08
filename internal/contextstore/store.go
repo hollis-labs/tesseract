@@ -221,6 +221,12 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 
+	// Enable WAL mode for better concurrent read/write performance.
+	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable WAL mode: %w", err)
+	}
+
 	s := &Store{db: db, recordsDir: cfg.RecordsDir, dbPath: cfg.DBPath}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
