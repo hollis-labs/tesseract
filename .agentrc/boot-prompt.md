@@ -1,6 +1,6 @@
 # Vanta Conduit — Session Boot Prompt
 
-Updated: 2026-04-07
+Updated: 2026-04-08
 
 ## Current state
 
@@ -47,10 +47,22 @@ at `~/.archived/cortex/`.
 - **F. Dual-mode packaging** — done. `cmd/contextd` standalone server and
   `conduit.Open()` library mode both work with clean separation.
 
+- **D-deferred. Backfill + semantic dedup** — done.
+  - Backfill CLI: `contextd backfill-embeddings [--namespace=...]`
+  - Semantic dedup: opt-in via `Dedup: "semantic"` on `WriteInput`.
+    Same-key matches auto-supersede; cross-key matches set `DedupMatch`
+    without superseding. Threshold from `config.yaml` (default 0.85),
+    overridable per-call via `DedupThreshold`.
+  - MCP `memory_write` tool has `dedup` and `dedup_threshold` params.
+- **Ordering fix** — done. Monotonic ULIDs (`ulid.Monotonic`) + RFC3339Nano
+  timestamps eliminate nondeterministic revision ordering.
+- **Config file** — done. `~/.conduit/config.yaml` for embedding
+  provider/model and dedup threshold. Falls back to env vars for auth
+  (`OPENAI_API_KEY`).
+
 ### In progress / not started
 
-- **D-deferred. Backfill + semantic dedup** — not started.
-- **G. Release readiness** — blocked on API stabilization and docs.
+- **G. Release readiness** — blocked on docs and final stabilization.
 
 ## Key technical knowledge
 
@@ -65,7 +77,20 @@ at `~/.archived/cortex/`.
   `errors.Is` on sentinels, `var _ Interface = Impl{}` compile-time checks
 - **Library entry point:** `conduit.Open(ctx, cfg, opts...)` returns
   `*Conduit`. Options: `WithEmbedder()`, `WithEmbeddingModel()`,
-  `WithLogger()`, `WithQueue()`.
+  `WithLogger()`, `WithQueue()`, `WithDedupThreshold()`.
+- **Config file:** `~/.conduit/config.yaml` — `embedding.provider`,
+  `embedding.model`, `dedup.similarity_threshold`. Loaded by
+  `internal/config.Load()`. Defaults: OpenAI, text-embedding-3-large, 0.85.
+- **ULIDs:** monotonic via `ulid.Monotonic(rand.Reader, 0)` in `ids.go`.
+  Guarantees lexicographic ordering within the same millisecond.
+- **Timestamps:** `time.RFC3339Nano` in all memory tables. `parseMemoryTime()`
+  falls back to `time.DateTime` for backward compat.
+- **Semantic dedup:** `internal/memory/dedup.go` — `findSemanticMatch()`
+  uses `Recall(RankingSimilarity)`. Wired into `WriteRevision()` when
+  `Dedup: "semantic"` is set. Same-key → auto-supersede. Cross-key →
+  `DedupMatch` only.
+- **Backfill CLI:** `contextd backfill-embeddings [--namespace=...]` —
+  iterates unembedded revisions, calls `EmbedRevision()` for each.
 - **Queue wiring:** `WithQueue()` creates `QueueAdapter` (bridges
   `memory.JobQueue` → `queue.Queue`), starts worker with `"embed"` handler.
   Separate `queue.db` for write safety. `cmd/contextd/main.go` uses
