@@ -141,3 +141,31 @@ func (c *Conduit) Store() *contextstore.Store { return c.store }
 
 // MemoryStore returns the underlying memory.Store.
 func (c *Conduit) MemoryStore() *memory.Store { return c.memoryStore }
+
+// WriteMemory writes a new memory revision.
+func (c *Conduit) WriteMemory(ctx context.Context, in memory.WriteInput) (memory.Revision, error) {
+	return c.memoryStore.WriteRevision(ctx, in)
+}
+
+// RecallMemory retrieves memories by namespace, ranking, and filters.
+func (c *Conduit) RecallMemory(ctx context.Context, in memory.RecallInput) ([]memory.RecallResult, error) {
+	return c.memoryStore.Recall(ctx, in)
+}
+
+// GetCurrentRevision returns the current revision for a namespace/key pair.
+func (c *Conduit) GetCurrentRevision(ctx context.Context, namespace, key string) (memory.Revision, error) {
+	return c.memoryStore.GetCurrent(ctx, namespace, key)
+}
+
+// GetRevisionHistory returns all revisions for a namespace/key pair, newest first.
+func (c *Conduit) GetRevisionHistory(ctx context.Context, namespace, key string) ([]memory.Revision, error) {
+	return c.memoryStore.GetHistory(ctx, namespace, key)
+}
+
+// EmbedRevision generates and stores an embedding for a memory revision.
+func (c *Conduit) EmbedRevision(ctx context.Context, revisionID string) error {
+	if c.embedder == nil {
+		return ErrEmbedderUnavailable
+	}
+	return c.memoryStore.EmbedRevision(ctx, revisionID, c.embeddingModel)
+}
