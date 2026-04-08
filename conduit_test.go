@@ -2,6 +2,8 @@ package conduit
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,9 +87,19 @@ func TestOpen_WithQueue_WorkerProcessesJob(t *testing.T) {
 	dir := t.TempDir()
 	q := memdriver.New()
 
-	processed := make(chan string, 1)
+	handled := make(chan struct{}, 1)
+	logger := func(format string, args ...any) {
+		msg := fmt.Sprintf(format, args...)
+		if strings.Contains(msg, "embed job received") {
+			select {
+			case handled <- struct{}{}:
+			default:
+			}
+		}
+	}
+
 	// Open with queue — this starts the worker.
-	c, err := Open(context.Background(), Config{RootDir: dir}, WithQueue(q))
+	c, err := Open(context.Background(), Config{RootDir: dir}, WithQueue(q), WithLogger(logger))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -99,24 +111,11 @@ func TestOpen_WithQueue_WorkerProcessesJob(t *testing.T) {
 		t.Fatalf("Push: %v", err)
 	}
 
-	// The built-in worker should process it. Give it a moment.
-	go func() {
-		// Poll until queue is empty (worker consumed it).
-		for i := 0; i < 50; i++ {
-			time.Sleep(100 * time.Millisecond)
-			n, _ := q.Size(context.Background(), "conduit")
-			if n == 0 {
-				processed <- "done"
-				return
-			}
-		}
-	}()
-
 	select {
-	case <-processed:
-		// Worker consumed the job.
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for worker to process embed job")
+	case <-handled:
+		// Worker picked up the job and invoked the embed handler.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for worker to invoke embed handler")
 	}
 }
 

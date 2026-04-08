@@ -116,7 +116,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 			RetryAfter: 30 * time.Second,
 			OnError:    func(err error) { o.logger("queue worker error: %v", err) },
 		})
-		w.Register("embed", NewEmbedHandler(o.logger))
+		w.Register("embed", NewEmbedHandler(memStore, o.embeddingModel, o.logger))
 		go w.Start(workerCtx)
 	}
 

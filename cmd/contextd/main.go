@@ -180,7 +180,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 		RetryAfter: 30 * time.Second,
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
 	})
-	worker.Register("embed", conduit.NewEmbedHandler(log.Printf))
+	worker.Register("embed", conduit.NewEmbedHandler(memStore, "", log.Printf))
 	go worker.Start(ctx)
 
 	// Start decay job.
