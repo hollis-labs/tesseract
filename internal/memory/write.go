@@ -305,5 +305,11 @@ func validateWriteInput(in WriteInput) error {
 	if in.Payload.Summary == "" {
 		return fmt.Errorf("%w: payload.summary is required", ErrInvalidInput)
 	}
+	if in.Dedup != "" && in.Dedup != "none" && in.Dedup != "semantic" {
+		return fmt.Errorf("%w: invalid dedup mode %q (must be none or semantic)", ErrInvalidInput, in.Dedup)
+	}
+	if in.DedupThreshold < 0 || in.DedupThreshold > 1.0 {
+		return fmt.Errorf("%w: dedup_threshold must be in [0, 1.0], got %f", ErrInvalidInput, in.DedupThreshold)
+	}
 	return nil
 }

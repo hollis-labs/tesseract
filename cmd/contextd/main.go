@@ -161,16 +161,17 @@ func parseMCPArgs(args []string) (string, error) {
 }
 
 // createEmbedder builds an Embedder from config. Returns nil if the provider
-// is unsupported or the required API key is missing.
+// is unsupported or the required API key is missing. Provider-specific
+// credential handling is delegated to the provider constructor (e.g.,
+// NewOpenAI reads OPENAI_API_KEY from the environment).
 func createEmbedder(cfg config.Config) provider.Embedder {
 	if cfg.Embedding.Provider != "openai" {
 		return nil
 	}
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return nil
-	}
-	return provider.NewOpenAI()
+	e := provider.NewOpenAI()
+	// NewOpenAI reads OPENAI_API_KEY from env. If empty, embedding calls
+	// will fail at invocation time with "OPENAI_API_KEY not set".
+	return e
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {

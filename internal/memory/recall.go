@@ -163,11 +163,13 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		return results[i].Score > results[j].Score
 	})
 
-	// Filter out zero-score results for similarity (revisions without embeddings).
+	// Filter out unembedded revisions for similarity ranking. We check
+	// for embedding presence rather than score > 0 because cosine similarity
+	// can legitimately be 0 (orthogonal) or negative (opposite).
 	if in.Ranking == RankingSimilarity {
 		filtered := results[:0]
 		for _, r := range results {
-			if r.Score > 0 {
+			if len(r.Revision.EmbeddingVector) > 0 {
 				filtered = append(filtered, r)
 			}
 		}

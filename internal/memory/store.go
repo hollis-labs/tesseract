@@ -22,8 +22,8 @@ type Store struct {
 // handle that case internally. embeddingModel is the model name passed to the
 // embedder for query embedding during similarity recall. dedupThreshold is the
 // cosine-similarity threshold above which a write is considered a semantic
-// duplicate (0 disables dedup). queue may be nil and will be replaced with
-// NoopQueue{}.
+// duplicate (0 uses the default threshold). queue may be nil and will be
+// replaced with NoopQueue{}.
 func NewStore(db *sql.DB, embedder provider.Embedder, embeddingModel string, dedupThreshold float64, queue JobQueue) *Store {
 	if queue == nil {
 		queue = NoopQueue{}
