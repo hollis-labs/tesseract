@@ -9,6 +9,20 @@ import (
 	"time"
 )
 
+// memoryTimeFormat is the canonical timestamp format for memory tables.
+const memoryTimeFormat = time.RFC3339Nano
+
+// parseMemoryTime parses a timestamp stored in memory tables. It tries
+// RFC3339Nano first, then falls back to time.DateTime for backward
+// compatibility with data written before the precision upgrade.
+func parseMemoryTime(s string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err == nil {
+		return t, nil
+	}
+	return time.Parse(time.DateTime, s)
+}
+
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
 	Scan(dest ...interface{}) error
@@ -40,9 +54,9 @@ func scanRevision(r rowScanner) (Revision, error) {
 	if err != nil {
 		return Revision{}, err
 	}
-	rev.CreatedAt, _ = time.Parse(time.DateTime, createdAt)
+	rev.CreatedAt, _ = parseMemoryTime(createdAt)
 	if expiresAt.Valid {
-		t, _ := time.Parse(time.DateTime, expiresAt.String)
+		t, _ := parseMemoryTime(expiresAt.String)
 		rev.ExpiresAt = &t
 	}
 	if tagsJSON != "" {
@@ -75,11 +89,11 @@ FROM memory_state WHERE memory_id = ?`, memoryID)
 		return State{}, err
 	}
 	if lastAccessed.Valid {
-		t, _ := time.Parse(time.DateTime, lastAccessed.String)
+		t, _ := parseMemoryTime(lastAccessed.String)
 		st.LastAccessedAt = &t
 	}
 	if created.Valid {
-		st.CreatedAt, _ = time.Parse(time.DateTime, created.String)
+		st.CreatedAt, _ = parseMemoryTime(created.String)
 	}
 	return st, nil
 }

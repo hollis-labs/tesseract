@@ -222,15 +222,15 @@ func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision
 	// Time window.
 	if in.Filters.Since != nil {
 		where = append(where, "r.created_at >= ?")
-		args = append(args, in.Filters.Since.UTC().Format(time.DateTime))
+		args = append(args, in.Filters.Since.UTC().Format(memoryTimeFormat))
 	}
 	if in.Filters.Until != nil {
 		where = append(where, "r.created_at <= ?")
-		args = append(args, in.Filters.Until.UTC().Format(time.DateTime))
+		args = append(args, in.Filters.Until.UTC().Format(memoryTimeFormat))
 	}
 
 	// Always exclude expired revisions.
-	now := time.Now().UTC().Format(time.DateTime)
+	now := time.Now().UTC().Format(memoryTimeFormat)
 	where = append(where, "(r.expires_at IS NULL OR r.expires_at > ?)")
 	args = append(args, now)
 
@@ -311,11 +311,11 @@ FROM memory_state WHERE memory_id IN (%s)`, ph)
 			return nil, err
 		}
 		if lastAccessed.Valid {
-			t, _ := time.Parse(time.DateTime, lastAccessed.String)
+			t, _ := parseMemoryTime(lastAccessed.String)
 			st.LastAccessedAt = &t
 		}
 		if created.Valid {
-			st.CreatedAt, _ = time.Parse(time.DateTime, created.String)
+			st.CreatedAt, _ = parseMemoryTime(created.String)
 		}
 		states[st.MemoryID] = st
 	}

@@ -85,7 +85,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		if t == nil {
 			return sql.NullString{}
 		}
-		return sql.NullString{String: t.UTC().Format(time.DateTime), Valid: true}
+		return sql.NullString{String: t.UTC().Format(memoryTimeFormat), Valid: true}
 	}
 	nullInt := func(v int64) sql.NullInt64 {
 		if v == 0 {
@@ -106,7 +106,7 @@ INSERT INTO memory_revisions (
 		nullStr(in.MemoryKey),
 		string(status),
 		nullStr(in.Supersedes),
-		now.Format(time.DateTime),
+		now.Format(memoryTimeFormat),
 		in.Author.AgentID,
 		in.Author.AgentVersion,
 		string(in.Trigger),
