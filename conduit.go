@@ -25,6 +25,7 @@ type Option func(*options)
 type options struct {
 	embedder       provider.Embedder
 	embeddingModel string
+	dedupThreshold float64
 	logger         func(string, ...any)
 	queue          queue.Queue
 }
@@ -42,6 +43,11 @@ func WithEmbeddingModel(model string) Option {
 // WithLogger sets a custom log function (defaults to log.Printf).
 func WithLogger(fn func(string, ...any)) Option {
 	return func(o *options) { o.logger = fn }
+}
+
+// WithDedupThreshold sets the similarity threshold for semantic dedup.
+func WithDedupThreshold(t float64) Option {
+	return func(o *options) { o.dedupThreshold = t }
 }
 
 // WithQueue sets the background job queue used for async embedding.
@@ -99,7 +105,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 		jobQueue = memory.NewQueueAdapter(o.queue, "conduit")
 	}
 
-	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, jobQueue)
+	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
