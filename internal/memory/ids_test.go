@@ -7,6 +7,18 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
+func TestNewULID_Monotonic(t *testing.T) {
+	ids := make([]string, 1000)
+	for i := range ids {
+		ids[i] = memory.NewULID()
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("ULIDs not monotonic at index %d: %s <= %s", i, ids[i], ids[i-1])
+		}
+	}
+}
+
 func TestNewULIDUnique(t *testing.T) {
 	const n = 1000
 	seen := make(map[string]struct{}, n)
