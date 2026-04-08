@@ -171,7 +171,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	queueAdapter := memory.NewQueueAdapter(q, "conduit")
 
 	// Memory subsystem (D-core). Shares contextstore's *sql.DB.
-	memStore := memory.NewStore(store.DB(), nil, queueAdapter)
+	memStore := memory.NewStore(store.DB(), nil, "", queueAdapter)
 
 	// Start queue worker.
 	worker := queue.NewWorker(q, queue.WorkerOpts{

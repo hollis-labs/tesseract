@@ -19,7 +19,7 @@ func newTestStore(t *testing.T) (*memory.Store, func()) {
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}
-	ms := memory.NewStore(cs.DB(), nil, memory.NoopQueue{})
+	ms := memory.NewStore(cs.DB(), nil, "", memory.NoopQueue{})
 	cleanup := func() { _ = cs.Close() }
 	return ms, cleanup
 }

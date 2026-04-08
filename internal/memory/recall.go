@@ -3,11 +3,12 @@ package memory
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
 // Ranking determines how recall results are ordered.
@@ -30,7 +31,9 @@ const (
 
 // ErrSimilarityUnavailable is returned when similarity ranking is requested
 // but no embedder is configured.
-var ErrSimilarityUnavailable = errors.New("similarity ranking unavailable (embedder not configured)")
+//
+// Deprecated: use ErrEmbedderUnavailable instead.
+var ErrSimilarityUnavailable = ErrEmbedderUnavailable
 
 // RecallInput carries parameters for a recall query.
 type RecallInput struct {
@@ -92,9 +95,14 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		in.Filters.Statuses = []Status{StatusCanonical, StatusReviewed, StatusDraft}
 	}
 
-	// 3. Similarity not yet available.
+	// 3. Similarity ranking requires an embedder and a query.
 	if in.Ranking == RankingSimilarity {
-		return nil, ErrSimilarityUnavailable
+		if s.embedder == nil {
+			return nil, ErrEmbedderUnavailable
+		}
+		if in.Query == "" {
+			return nil, fmt.Errorf("%w: query is required for similarity ranking", ErrInvalidInput)
+		}
 	}
 
 	// 4. Fetch candidate revisions.
@@ -112,6 +120,16 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 			}
 		}
 		candidates = filtered
+	}
+
+	// 4b. Embed the query for similarity ranking.
+	var queryVec []float32
+	if in.Ranking == RankingSimilarity {
+		result, embedErr := s.embedder.Embed(ctx, in.Query, s.embeddingModel)
+		if embedErr != nil {
+			return nil, fmt.Errorf("query embedding: %w", embedErr)
+		}
+		queryVec = result.Embedding
 	}
 
 	// 5. Batch-load states for all distinct memory IDs.
@@ -132,7 +150,7 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		case RankingChronological:
 			score = float64(chronologicalKey(rev))
 		case RankingSimilarity:
-			// Unreachable — guarded above. Included for exhaustive lint.
+			score = similarityScore(rev, queryVec)
 		}
 		results = append(results, RecallResult{
 			Revision: rev,
@@ -144,6 +162,17 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
+
+	// Filter out zero-score results for similarity (revisions without embeddings).
+	if in.Ranking == RankingSimilarity {
+		filtered := results[:0]
+		for _, r := range results {
+			if r.Score > 0 {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
 
 	if len(results) > in.Limit {
 		results = results[:in.Limit]
@@ -318,6 +347,15 @@ func distinctMemoryIDs(revs []Revision) []string {
 		}
 	}
 	return ids
+}
+
+// similarityScore computes the cosine similarity between a revision's
+// embedding vector and the query vector.
+func similarityScore(rev Revision, queryVec []float32) float64 {
+	if len(rev.EmbeddingVector) == 0 || len(queryVec) == 0 {
+		return 0
+	}
+	return embedding.CosineSimilarity(queryVec, rev.EmbeddingVector)
 }
 
 // placeholders returns a comma-separated string of n question marks.

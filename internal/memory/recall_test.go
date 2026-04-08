@@ -356,8 +356,8 @@ func TestRecall_TimelineScope(t *testing.T) {
 	}
 }
 
-func TestRecall_SimilarityReturnsUnavailable(t *testing.T) {
-	ms, cleanup := newTestStore(t)
+func TestRecall_SimilarityNoEmbedder(t *testing.T) {
+	ms, cleanup := newTestStoreNoEmbedder(t)
 	defer cleanup()
 
 	_, err := ms.Recall(context.Background(), memory.RecallInput{
@@ -366,9 +366,112 @@ func TestRecall_SimilarityReturnsUnavailable(t *testing.T) {
 		Query:      "test query",
 	})
 	if err == nil {
-		t.Fatal("expected error for similarity ranking")
+		t.Fatal("expected error for similarity ranking without embedder")
 	}
-	if !errors.Is(err, memory.ErrSimilarityUnavailable) {
-		t.Fatalf("expected ErrSimilarityUnavailable, got %v", err)
+	if !errors.Is(err, memory.ErrEmbedderUnavailable) {
+		t.Fatalf("expected ErrEmbedderUnavailable, got %v", err)
+	}
+}
+
+func TestRecall_SimilarityRequiresQuery(t *testing.T) {
+	ms, cleanup := newTestStoreWithEmbedder(t)
+	defer cleanup()
+
+	_, err := ms.Recall(context.Background(), memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingSimilarity,
+		Query:      "",
+	})
+	if err == nil {
+		t.Fatal("expected error for empty query")
+	}
+	if !errors.Is(err, memory.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestRecall_SimilarityRanking(t *testing.T) {
+	ms, cleanup := newTestStoreWithEmbedder(t)
+	defer cleanup()
+
+	// Write two revisions with different content.
+	rev1, err := ms.WriteRevision(context.Background(), sampleInput("sim.a"))
+	if err != nil {
+		t.Fatalf("write 1: %v", err)
+	}
+	rev2, err := ms.WriteRevision(context.Background(), sampleInput("sim.b"))
+	if err != nil {
+		t.Fatalf("write 2: %v", err)
+	}
+
+	// Embed both revisions.
+	if err := ms.EmbedRevision(context.Background(), rev1.RevisionID, "test-model"); err != nil {
+		t.Fatalf("embed 1: %v", err)
+	}
+	if err := ms.EmbedRevision(context.Background(), rev2.RevisionID, "test-model"); err != nil {
+		t.Fatalf("embed 2: %v", err)
+	}
+
+	// Recall with similarity ranking.
+	results, err := ms.Recall(context.Background(), memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingSimilarity,
+		Query:      "test query about preferences",
+	})
+	if err != nil {
+		t.Fatalf("Recall: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// Both should have positive scores (mock embedder returns same vector).
+	for i, r := range results {
+		if r.Score <= 0 {
+			t.Errorf("result[%d] score=%f, expected > 0", i, r.Score)
+		}
+	}
+
+	// Scores should be sorted descending.
+	for i := 1; i < len(results); i++ {
+		if results[i].Score > results[i-1].Score {
+			t.Errorf("results not sorted: score[%d]=%f > score[%d]=%f",
+				i, results[i].Score, i-1, results[i-1].Score)
+		}
+	}
+}
+
+func TestRecall_SimilarityFiltersUnembedded(t *testing.T) {
+	ms, cleanup := newTestStoreWithEmbedder(t)
+	defer cleanup()
+
+	// Write two revisions, embed only one.
+	rev1, err := ms.WriteRevision(context.Background(), sampleInput("simf.embedded"))
+	if err != nil {
+		t.Fatalf("write 1: %v", err)
+	}
+	if _, err := ms.WriteRevision(context.Background(), sampleInput("simf.plain")); err != nil {
+		t.Fatalf("write 2: %v", err)
+	}
+
+	if err := ms.EmbedRevision(context.Background(), rev1.RevisionID, "test-model"); err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+
+	results, err := ms.Recall(context.Background(), memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingSimilarity,
+		Query:      "some query",
+	})
+	if err != nil {
+		t.Fatalf("Recall: %v", err)
+	}
+
+	// Only the embedded revision should appear.
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result (embedded only), got %d", len(results))
+	}
+	if results[0].Revision.MemoryKey != "simf.embedded" {
+		t.Fatalf("expected simf.embedded, got %s", results[0].Revision.MemoryKey)
 	}
 }

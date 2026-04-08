@@ -99,7 +99,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 		jobQueue = memory.NewQueueAdapter(o.queue, "conduit")
 	}
 
-	memStore := memory.NewStore(store.DB(), o.embedder, jobQueue)
+	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, jobQueue)
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
