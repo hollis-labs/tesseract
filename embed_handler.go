@@ -19,6 +19,9 @@ type embedJobPayload struct {
 //
 // TODO: wire actual memory revision embedding once the embed path for revisions is designed
 func NewEmbedHandler(logger func(string, ...any)) queue.Handler {
+	if logger == nil {
+		logger = func(string, ...any) {}
+	}
 	return func(ctx context.Context, job *queue.QueuedJob) error {
 		var p embedJobPayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {

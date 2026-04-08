@@ -154,7 +154,8 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	// Open a separate SQLite DB for the job queue (avoids write contention
 	// with the context store).
 	queueDBPath := filepath.Join(root, "data", "queue.db")
-	queueDB, err := sql.Open("sqlite", queueDBPath)
+	queueDBDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", queueDBPath)
+	queueDB, err := sql.Open("sqlite", queueDBDSN)
 	if err != nil {
 		_, _ = stderr.WriteString("error: open queue db: " + err.Error() + "\n")
 		return 1
