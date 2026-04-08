@@ -245,7 +245,8 @@ const recallRevisionColumns = `r.revision_id, r.memory_id, r.namespace, COALESCE
        r.status, COALESCE(r.supersedes, ''), r.created_at,
        r.author_agent_id, r.author_version, r.trigger, r.session_id, r.origin,
        r.confidence, r.tags, COALESCE(r.ttl_seconds, 0), r.expires_at,
-       COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, '')`
+       COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, ''),
+       COALESCE(r.embedding_model, ''), r.embedding_vector`
 
 // fetchStates loads memory_state rows for a set of memory IDs.
 func (s *Store) fetchStates(ctx context.Context, memoryIDs []string) (map[string]State, error) {
