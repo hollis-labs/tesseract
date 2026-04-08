@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 )
@@ -25,6 +26,10 @@ func (s *Store) EmbedRevision(ctx context.Context, revisionID, model string) err
 	}
 
 	text := revisionEmbedText(rev)
+	if text == "" {
+		return fmt.Errorf("revision %s has no embeddable text", revisionID)
+	}
+
 	result, err := s.embedder.Embed(ctx, text, model)
 	if err != nil {
 		return err

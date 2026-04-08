@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/go-providers/provider"
@@ -101,6 +102,33 @@ func TestEmbedRevision_NoEmbedder(t *testing.T) {
 	err := ms.EmbedRevision(context.Background(), "nonexistent", "test-model")
 	if !errors.Is(err, memory.ErrEmbedderUnavailable) {
 		t.Fatalf("expected ErrEmbedderUnavailable, got %v", err)
+	}
+}
+
+func TestEmbedRevision_EmptyPayload(t *testing.T) {
+	ms, cleanup := newTestStoreWithEmbedder(t)
+	defer cleanup()
+
+	// WriteRevision requires summary, so write normally then clear via DB.
+	rev, err := ms.WriteRevision(context.Background(), sampleInput("embed.empty"))
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	// Clear payload fields directly so embed sees empty text.
+	_, err = ms.DB().ExecContext(context.Background(),
+		`UPDATE memory_revisions SET payload_summary = '', payload_body = '' WHERE revision_id = ?`,
+		rev.RevisionID)
+	if err != nil {
+		t.Fatalf("clear payload: %v", err)
+	}
+
+	err = ms.EmbedRevision(context.Background(), rev.RevisionID, "test-model")
+	if err == nil {
+		t.Fatal("expected error for empty payload, got nil")
+	}
+	if !strings.Contains(err.Error(), "no embeddable text") {
+		t.Fatalf("expected 'no embeddable text' error, got: %v", err)
 	}
 }
 
