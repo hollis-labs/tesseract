@@ -5,21 +5,24 @@ go 1.26.1
 require (
 	github.com/hollis-labs/go-plugin v0.0.0
 	github.com/hollis-labs/go-providers v0.0.0
+	github.com/hollis-labs/go-queue v0.0.0
 	github.com/hollis-labs/mcp-helpers v0.0.0
 	github.com/hollis-labs/otel v0.0.0
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/oklog/ulid/v2 v2.1.1
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.46.1
+	modernc.org/sqlite v1.48.1
 )
 
-replace github.com/hollis-labs/mcp-helpers => ../fragments-engine/libs/mcp
+replace github.com/hollis-labs/mcp-helpers => ../framework/libs/go-mcp
 
-replace github.com/hollis-labs/otel => ../fragments-engine/libs/otel
+replace github.com/hollis-labs/otel => ../framework/libs/go-otel
 
 replace github.com/hollis-labs/go-plugin => ../framework/libs/go-plugin
 
 replace github.com/hollis-labs/go-providers => ../framework/libs/go-providers
+
+replace github.com/hollis-labs/go-queue => ../framework/libs/go-queue
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -48,7 +51,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
@@ -56,7 +58,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260311181403-84a4fc48630c // indirect
 	google.golang.org/grpc v1.79.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	modernc.org/libc v1.67.6 // indirect
+	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )

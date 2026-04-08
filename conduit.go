@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
+	queue "github.com/hollis-labs/go-queue"
+	"github.com/hollis-labs/go-providers/provider"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
-	"github.com/hollis-labs/go-providers/provider"
 )
 
 // Config holds the top-level configuration for a Conduit instance.
@@ -25,6 +26,7 @@ type options struct {
 	embedder       provider.Embedder
 	embeddingModel string
 	logger         func(string, ...any)
+	queue          queue.Queue
 }
 
 // WithEmbedder sets the embedding provider used for vector indexing.
@@ -40,6 +42,13 @@ func WithEmbeddingModel(model string) Option {
 // WithLogger sets a custom log function (defaults to log.Printf).
 func WithLogger(fn func(string, ...any)) Option {
 	return func(o *options) { o.logger = fn }
+}
+
+// WithQueue sets the background job queue used for async embedding.
+// When set, a worker is started automatically and a QueueAdapter is
+// used instead of the default NoopQueue.
+func WithQueue(q queue.Queue) Option {
+	return func(o *options) { o.queue = q }
 }
 
 // Conduit is the top-level library handle. Create one via Open().
@@ -85,15 +94,31 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 		return nil, err
 	}
 
-	memStore := memory.NewStore(store.DB(), o.embedder, memory.NoopQueue{})
+	var jobQueue memory.JobQueue = memory.NoopQueue{}
+	if o.queue != nil {
+		jobQueue = memory.NewQueueAdapter(o.queue, "conduit")
+	}
 
-	decayCtx, cancel := context.WithCancel(ctx)
+	memStore := memory.NewStore(store.DB(), o.embedder, jobQueue)
+
+	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
 		Store:    memStore,
 		Interval: 1 * time.Hour,
 		Logger:   o.logger,
 	}
-	go decayJob.Run(decayCtx)
+	go decayJob.Run(workerCtx)
+
+	if o.queue != nil {
+		w := queue.NewWorker(o.queue, queue.WorkerOpts{
+			Queues:     []string{"conduit"},
+			MaxTries:   3,
+			RetryAfter: 30 * time.Second,
+			OnError:    func(err error) { o.logger("queue worker error: %v", err) },
+		})
+		w.Register("embed", NewEmbedHandler(o.logger))
+		go w.Start(workerCtx)
+	}
 
 	return &Conduit{
 		store:          store,

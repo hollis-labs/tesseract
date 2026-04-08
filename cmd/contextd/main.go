@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	conduit "github.com/hollis-labs/vanta-conduit"
+	queue "github.com/hollis-labs/go-queue"
+	"github.com/hollis-labs/go-queue/driver/sqlite"
 	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
 	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
@@ -24,6 +28,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/webui"
 	feotel "github.com/hollis-labs/otel"
 	"github.com/hollis-labs/otel/propagation"
+	_ "modernc.org/sqlite"
 )
 
 type serveConfig struct {
@@ -90,7 +95,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runMCP(ctx, store, stderr, token)
+		return runMCP(ctx, store, stderr, token, root)
 	}
 
 	cli := &contextcli.CLI{
@@ -143,11 +148,39 @@ func parseMCPArgs(args []string) (string, error) {
 	return strings.TrimSpace(*token), nil
 }
 
-func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string) int {
+func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string) int {
 	_, _ = stderr.WriteString("Vanta Conduit MCP adapter starting (stdio)\n")
 
+	// Open a separate SQLite DB for the job queue (avoids write contention
+	// with the context store).
+	queueDBPath := filepath.Join(root, "data", "queue.db")
+	queueDB, err := sql.Open("sqlite", queueDBPath)
+	if err != nil {
+		_, _ = stderr.WriteString("error: open queue db: " + err.Error() + "\n")
+		return 1
+	}
+	defer queueDB.Close()
+
+	q, err := sqlite.New(queueDB, sqlite.Opts{})
+	if err != nil {
+		_, _ = stderr.WriteString("error: init queue driver: " + err.Error() + "\n")
+		return 1
+	}
+
+	queueAdapter := memory.NewQueueAdapter(q, "conduit")
+
 	// Memory subsystem (D-core). Shares contextstore's *sql.DB.
-	memStore := memory.NewStore(store.DB(), nil, memory.NoopQueue{})
+	memStore := memory.NewStore(store.DB(), nil, queueAdapter)
+
+	// Start queue worker.
+	worker := queue.NewWorker(q, queue.WorkerOpts{
+		Queues:     []string{"conduit"},
+		MaxTries:   3,
+		RetryAfter: 30 * time.Second,
+		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
+	})
+	worker.Register("embed", conduit.NewEmbedHandler(log.Printf))
+	go worker.Start(ctx)
 
 	// Start decay job.
 	decayInterval := 1 * time.Hour
