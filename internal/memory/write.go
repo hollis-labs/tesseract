@@ -41,6 +41,10 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	}
 
 	// Semantic dedup: if requested, search for similar existing revisions.
+	// NOTE: This runs outside the transaction (before BeginTx). There is a
+	// TOCTOU window where a concurrent write could create a matching revision
+	// between the dedup check and the INSERT. This is acceptable for single-
+	// writer SQLite but should be revisited for multi-writer backends.
 	var dedupMatch string
 	if in.Dedup == "semantic" {
 		if s.embedder == nil {

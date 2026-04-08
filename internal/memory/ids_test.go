@@ -36,10 +36,9 @@ func TestNewULIDUnique(t *testing.T) {
 
 // TestNewULIDSortableAcrossTime verifies the coarse sortability property
 // that D-core ranking and history ordering rely on: ULIDs generated later
-// in wall-clock time sort greater than ULIDs generated earlier, once a
-// millisecond boundary has been crossed. ULID's time prefix guarantees
-// this at millisecond granularity; within a single millisecond, order is
-// not guaranteed (NewULID does not use monotonic entropy).
+// in wall-clock time sort greater than ULIDs generated earlier. The
+// monotonic entropy source guarantees ordering even within the same
+// millisecond (see TestNewULID_Monotonic).
 func TestNewULIDSortableAcrossTime(t *testing.T) {
 	const batchSize = 50
 	before := make([]string, batchSize)
