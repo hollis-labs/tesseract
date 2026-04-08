@@ -1,52 +1,65 @@
 # Vanta Conduit — Session Boot Prompt
 
-Updated: 2026-04-05
+Updated: 2026-04-07
 
-## What just happened
+## Current state
 
-D-core memory subsystem is **complete and merged** (PR #1, 17 commits, 44
-test functions passing). This was a multi-session effort: brainstorm → spec
-→ plan → subagent-driven TDD execution across 15 tasks.
+Vanta Conduit is a standalone repo (`github.com/hollis-labs/vanta-conduit`)
+extracted from `fragments-engine/cortex/`. The old cortex repo is archived
+at `~/.archived/cortex/`.
 
-## What's in the tree
+### Completed tracks
 
-`internal/memory/` — a sibling subsystem to the context registry:
-- Append-only revision storage with caller-declared dot-notation keys
-- User-rooted namespace hierarchy (`user/{id}/memory`, `.../project/{pid}/memory`, `.../session/{sid}/memory`)
-- Write path with keyed/keyless/supersedes, strict validation
-- Read path (GetCurrent, GetHistory, GetRevisionByID)
-- Multi-namespace Recall with activation/chronological ranking + filters
-- Promote (session → user/project) and Deprecate with idempotent lifecycle
-- Activation reinforcement on retrieval, decay job (14-day half-life)
-- Stub `Embedder` (returns `ErrEmbedderUnavailable`) and `NoopQueue` (drops jobs)
-- 6 MCP tools: `memory_write`, `memory_get`, `memory_history`, `memory_recall`, `memory_promote`, `memory_deprecate`
-- Schema v9 in `contextstore/store.go` — `memory_state` + `memory_revisions` tables + 7 indexes
-- Wired in `cmd/contextd/main.go` with decay goroutine
+- **A. Rename + identity** — done. All references updated to Vanta Conduit.
+- **B. Repository extraction** — done. Standalone repo with own `go.mod`.
+- **D-core. Memory domain** — done (PR #1). 15 tasks, 44 test functions.
+  Append-only revisions, namespace hierarchy, write/read/recall/promote/
+  deprecate, activation decay, 6 MCP tools, schema v9.
+- **D-embedding. Provider integration** — done. `Conduit.Embed()` and
+  `Conduit.Search()` library methods, MCP tools (`context_embed`,
+  `context_search`, `context_rag_query`, `context_bulk_ingest`,
+  `context_chunked_ingest`, `context_session_snapshot`). Uses shared
+  `go-providers` package.
+- **H. Shared AI provider module** — done. `go-providers` at
+  `framework/libs/go-providers/`. Multi-provider: Anthropic, OpenAI,
+  Ollama, Gemini, Mistral, Azure, OpenRouter, CLI adapters. Conduit
+  imports via replace directive.
+- **I. Shared queue module** — done (the module). `go-queue` at
+  `framework/libs/go-queue/`. Queue interface, Worker, SQLite/memory/noop
+  drivers. **Not yet wired into Conduit** — `NoopQueue` stub still in
+  `internal/memory/queue.go`.
 
-## What's next — release roadmap
+### In progress / not started
 
-See `docs/RELEASE-ROADMAP.md` for the full picture. Summary:
-
-**Unblocked now:**
-- **E. Embedded-runtime API surface** — library API for Nanite to link in-process. Can design against the stable memory domain.
-- **A. Rename + identity** — naming pass for the Vanta Conduit rebrand (deferred, low urgency)
-- **B. Repository extraction** — move Conduit out of fragments-engine to standalone repo
-- **C. Cross-repo TODO audit** — sweep Engine/Nanite/Conduit for related items
-
-**Blocked on H + I:**
-- **D-deferred** — auto-embed, backfill, semantic similarity, semantic dedup. Stub interfaces in place; swap is mechanical once real providers/queue exist.
-- **H. Shared AI provider Go module** — extract from Nanite's working multi-provider code. Anthropic + OpenAI-compatible + Ollama + CLI adapters.
-- **I. Shared queue Go module** — new, Laravel-inspired. In-process workers at 1.0. First consumer: memory auto-embed.
-
-**Blocked on E:**
-- **F. Dual-mode packaging** — CLI + desktop GUI (Wails app)
-- **G. Release readiness** — versioning, docs, install story
+- **D-deferred. Auto-embed on write** — unblocked by go-queue, not wired.
+  `NoopQueue` in place, fire-and-forget enqueue in `write.go:163`. Need to:
+  add go-queue dependency, write adapter, register embed handler, wire
+  worker in `main.go` and `conduit.go`.
+- **D-deferred. Memory similarity recall** — `recall.go` returns
+  `ErrSimilarityUnavailable`. Embedder exists but isn't plumbed into the
+  recall path.
+- **D-deferred. Backfill + semantic dedup** — not started.
+- **C. Cross-repo TODO audit** — not started.
+- **E. Embedded-runtime API surface** — partial. `conduit.Open()` with
+  functional options exists. Full API surface TBD.
+- **F. Dual-mode packaging** — blocked on E.
+- **G. Release readiness** — blocked on E, F.
 
 ## Key technical knowledge
 
-- **`"trigger"` is a SQLite reserved word** — quoted in DDL with inline comment warning. All DML against `memory_revisions` must quote it.
 - **Module path:** `github.com/hollis-labs/vanta-conduit`
-- **Pre-commit hook:** gofmt + go vet + golangci-lint (misspell enforces US English)
-- **Testing conventions:** stdlib `testing`, external test package (`_test`), `errors.Is` on all sentinel checks, `var _ Interface = Impl{}` compile-time assertions on stubs
-- **Design spec:** `docs/superpowers/specs/2026-04-04-memory-domain-design.md` — 15 decisions (D1-D15)
-- **Implementation plan:** `docs/superpowers/plans/2026-04-04-memory-domain-d-core.md` — 15 tasks, all complete
+- **Shared modules:** `go-providers` and `go-queue` at `framework/libs/`,
+  imported via replace directives in `go.mod`
+- **`"trigger"` is a SQLite reserved word** — quoted in DDL. All DML
+  against `memory_revisions` must quote it.
+- **Pre-commit hook:** gofmt + go vet + golangci-lint (misspell enforces
+  US English)
+- **Testing conventions:** stdlib `testing`, external test package (`_test`),
+  `errors.Is` on sentinels, `var _ Interface = Impl{}` compile-time checks
+- **Library entry point:** `conduit.Open(ctx, cfg, opts...)` returns
+  `*Conduit`. Options: `WithEmbedder()`, `WithEmbeddingModel()`,
+  `WithLogger()`. Needs `WithQueue()` for go-queue integration.
+- **Memory write path:** `write.go:163` does fire-and-forget
+  `s.queue.Enqueue(ctx, Job{Kind:"embed", ...})`. Currently hits NoopQueue.
+- **go-queue interface:** `queue.Queue` with `Push(ctx, jobType, payload,
+  ...PushOption)`. Adapter needed: `memory.JobQueue.Enqueue` → `queue.Queue.Push`.
