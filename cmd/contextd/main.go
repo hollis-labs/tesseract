@@ -28,8 +28,8 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	cplugin "github.com/hollis-labs/vanta-conduit/internal/plugin"
 	"github.com/hollis-labs/vanta-conduit/internal/webui"
-	feotel "github.com/hollis-labs/otel"
-	"github.com/hollis-labs/otel/propagation"
+	feotel "github.com/hollis-labs/go-otel"
+	"github.com/hollis-labs/go-otel/propagation"
 	_ "modernc.org/sqlite"
 )
 

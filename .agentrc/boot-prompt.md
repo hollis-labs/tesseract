@@ -107,3 +107,103 @@ at `~/.archived/cortex/`.
 - **Conduit facade:** `WriteMemory`, `RecallMemory`, `GetCurrentRevision`,
   `GetRevisionHistory`, `EmbedRevision` on `*Conduit`. Library consumers
   no longer need to reach through `.Store()`/`.MemoryStore()`.
+
+## Session 2026-04-14 — Engine planning handoff
+
+Next session is an Engine (task tool) review/planning pass. Context to
+load in before discussing:
+
+### Engine project ID
+
+Renamed `cortex` → `vanta-conduit` in the Engine postgres DB this session.
+All tasks (259), sprints (10), backlog items (17), activity events (2)
+migrated. Project name stays "Vanta Conduit". Use
+`ENGINE_POSTGRES_DSN=postgres://localhost/engine?sslmode=disable` if
+direct DB access is needed again.
+
+### New this session
+
+- **EPIC-20260414-19124** — Hybrid relevance recall. Sprint
+  `SPR-20260414-hybrid-relevance-s1` with 8 tasks: FTS5 (`TASK-...-002`),
+  BM25 fetch (`-003`), `RankingRelevance` RRF fusion (`-004`), reinforce
+  on all modes (`-005`), reranker interface (`-006`), eval harness
+  (`-007`), repurposed chunking (`TASK-20260316-008`), research
+  (`TASK-20260316-024`).
+- **EPIC-20260414-84967** — Knowledge domain. Sprint
+  `SPR-20260414-knowledge-domain-s1` with 8 tasks: domain discriminator
+  + `DomainPolicy` interface (`-008`, foundational — has a planning
+  decision about plugin extensibility), facets `kind`/`source`/`pointer`
+  (`-009`), `knowledge_write` (`-010`), `conduit_lookup` (`-011`),
+  framework+agentrc indexer (`-012`), Obsidian ingester (`-013`), Nil
+  ingester (`-014`), agent convention rollout (`-015`).
+- **TASK-20260414-001** — Wire memory + embeddings into HTTP serve
+  mode. Both epics depend on this for HTTP surfaces.
+- **TASK-20260414-016/017/018** — Standalone P2 primitives enabling an
+  external inbox workflow for memory ingestion:
+  `import_batch_id`, server-side `similarity_threshold`, write
+  `dry_run`.
+- **BLG-20260414-016** — Backlog: evaluate external vector DB (Qdrant /
+  Weaviate / LanceDB / pgvector) when SQLite + in-process cosine hits
+  scale pain.
+
+### Archived / superseded this session
+
+- `TASK-20260316-007` (pgvector) — archived; replaced by BLG above.
+- `TASK-20260225-236/237/238` — stale doc-notes.
+- `TASK-20260314-072` (demo seed), `-108` (drift detection), `TASK-20260313-053` (frontend bug).
+- `BLG-20260311-051` (temporal decay) — deleted, already implemented.
+
+### Cortex → Conduit renames (titles)
+
+9 tasks had "Cortex" in their title; renamed to "Conduit":
+`TASK-20260311-L2-002`, `-L2-003`, `TASK-20260314-137`, `-147`, `-214`,
+`-215`, `-318`, `TASK-20260318-002`, `TASK-20260313-036`.
+
+Some descriptions still say "Cortex" — cosmetic, fix as tasks are picked
+up.
+
+### Open workload snapshot
+
+- 33 todo tasks total across vanta-conduit (down from 39).
+- 2 active epics (hybrid relevance, knowledge domain), both with
+  sprints and tasks populated; both awaiting planning review.
+- Two existing sprints with loose associations that may need re-slotting
+  during planning: `SPR-20260320-Cortex Pipeline Enhancements` and
+  `SPR-20260314-Cortex — Context Pipeline & Maintenance` (tasks `-214`
+  and `-215` currently sit in the latter).
+
+### Planning session asks
+
+1. Review EPIC-20260414-19124 (hybrid relevance) — task breakdown,
+   priorities, sprint ordering.
+2. Review EPIC-20260414-84967 (knowledge domain) — especially the
+   polymorphism decision in `TASK-20260414-008` (in-tree `DomainPolicy`
+   vs plugin-extensible domains).
+3. Decide sprint/epic ordering: hybrid recall first (more self-contained)
+   vs knowledge domain first (unblocks agent-first-search use case).
+   Neither is strictly blocked on the other — `TASK-20260414-001` is the
+   only shared hard dep.
+4. Slot `TASK-20260414-001` (HTTP wiring) — precedes GUI work and is a
+   hard dep for any HTTP surfaces on the new epics.
+5. Re-evaluate GUI tasks (`TASK-20260225-239..242`,
+   `TASK-20260228-001..004`) after new domains/recall land.
+6. Sprint/sprint-archive pass on `SPR-20260320-Cortex Pipeline
+   Enhancements` and `SPR-20260314-Cortex — Context Pipeline &
+   Maintenance`.
+
+### Other context notes
+
+- `cmd/smoke` is the embedding smoke test. Documented in `docs/DEV.md`.
+  Uses the live `~/.conduit` store.
+- `~/.cerberus/config.yaml` now has `conduit-api` / `conduit-frontend`
+  (renamed from `cortex-*`), with `env_file: .env` loading
+  `OPENAI_API_KEY` into the service process.
+- Cortex data migrated to Vanta (137 legacy records in the `records`
+  table; schema v9). Legacy records are NOT in the memory domain —
+  explicitly deferred; the knowledge domain's `kind=pointer` pattern is
+  how we'll surface valuable legacy content going forward.
+- User runs an external inbox for memory ingestion review (plan: agent
+  proposes drafts → inbox UI → approved entries written to Vanta as
+  canonical). Tasks `-016/017/018` support this.
+- Nil was previously called Nanite. Nanite is now the agent chat
+  harness; Nil is the notes app.
