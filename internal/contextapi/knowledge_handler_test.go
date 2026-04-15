@@ -100,6 +100,115 @@ func TestKnowledgeWrite_MissingFacetsReturns400(t *testing.T) {
 	}
 }
 
+func TestKnowledgeGetCurrent_Success(t *testing.T) {
+	srv := newKnowledgeTestServer(t)
+	writeBody := `{
+		"namespace":"user/chrispian/knowledge/framework",
+		"key":"framework.go-providers",
+		"kind":"package",
+		"source":"filesystem",
+		"pointer":{"scheme":"file","locator":"/pkg/go-providers"},
+		"summary":"initial summary",
+		"author":{"agent_id":"indexer","agent_version":"1.0"},
+		"session_id":"indexer:01HX"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/knowledge/write", bytes.NewBufferString(writeBody))
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("write status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet,
+		"/v1/knowledge/current?namespace=user/chrispian/knowledge/framework&key=framework.go-providers", nil)
+	getRR := httptest.NewRecorder()
+	srv.ServeHTTP(getRR, getReq)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200; body=%s", getRR.Code, getRR.Body.String())
+	}
+	var rev memory.Revision
+	if err := json.Unmarshal(getRR.Body.Bytes(), &rev); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if rev.Domain != "knowledge" {
+		t.Errorf("rev.Domain = %q, want knowledge", rev.Domain)
+	}
+	if rev.Payload.Summary != "initial summary" {
+		t.Errorf("summary = %q, want 'initial summary'", rev.Payload.Summary)
+	}
+}
+
+func TestKnowledgeGetCurrent_NotFound(t *testing.T) {
+	srv := newKnowledgeTestServer(t)
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/knowledge/current?namespace=user/chrispian/knowledge/missing&key=nope", nil)
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404; body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestKnowledgeGetCurrent_MissingParams(t *testing.T) {
+	srv := newKnowledgeTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/knowledge/current", nil)
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestKnowledgeGetHistory_OrdersNewestFirst(t *testing.T) {
+	srv := newKnowledgeTestServer(t)
+	writeBody := func(summary, supersedes string) string {
+		return `{
+			"namespace":"user/chrispian/knowledge/framework",
+			"key":"framework.go-providers",
+			"kind":"package",
+			"source":"filesystem",
+			"pointer":{"scheme":"file","locator":"/pkg/go-providers"},
+			"summary":"` + summary + `",
+			"supersedes":"` + supersedes + `",
+			"author":{"agent_id":"indexer","agent_version":"1.0"},
+			"session_id":"indexer:01HX"
+		}`
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/knowledge/write", bytes.NewBufferString(writeBody("v1", "")))
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("write v1 status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	var first memory.Revision
+	_ = json.Unmarshal(rr.Body.Bytes(), &first)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/knowledge/write", bytes.NewBufferString(writeBody("v2", first.RevisionID)))
+	rr2 := httptest.NewRecorder()
+	srv.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("write v2 status = %d, body=%s", rr2.Code, rr2.Body.String())
+	}
+
+	histReq := httptest.NewRequest(http.MethodGet,
+		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&key=framework.go-providers", nil)
+	histRR := httptest.NewRecorder()
+	srv.ServeHTTP(histRR, histReq)
+	if histRR.Code != http.StatusOK {
+		t.Fatalf("history status = %d, body=%s", histRR.Code, histRR.Body.String())
+	}
+	var revs []memory.Revision
+	if err := json.Unmarshal(histRR.Body.Bytes(), &revs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(revs) != 2 {
+		t.Fatalf("len(revs) = %d, want 2", len(revs))
+	}
+	if revs[0].Payload.Summary != "v2" {
+		t.Errorf("newest-first broken: revs[0].summary = %q, want v2", revs[0].Payload.Summary)
+	}
+}
+
 // TestMemoryWrite_RejectsKnowledgeDomain verifies the memory endpoint refuses
 // any attempt to write under a non-memory domain — knowledge writes must go
 // through the dedicated endpoint so facet invariants are enforced.

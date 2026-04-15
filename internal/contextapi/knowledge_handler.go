@@ -66,3 +66,65 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, rev)
 }
+
+// knowledgeStoreUnavailable writes a 503 when KnowledgeStore is not configured.
+func (s *Server) knowledgeStoreUnavailable(w http.ResponseWriter) bool {
+	if s.KnowledgeStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "knowledge_unavailable",
+			"knowledge subsystem not wired into this server", nil)
+		return true
+	}
+	return false
+}
+
+// handleKnowledgeGetCurrent serves GET /v1/knowledge/current?namespace=...&key=...
+func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Request) {
+	if s.knowledgeStoreUnavailable(w) {
+		return
+	}
+	namespace := r.URL.Query().Get("namespace")
+	key := r.URL.Query().Get("key")
+	if namespace == "" || key == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and key are required", nil)
+		return
+	}
+	if !requireNamespaceAccess(w, r, namespace) {
+		return
+	}
+	rev, err := s.KnowledgeStore.GetCurrent(r.Context(), namespace, key)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, rev)
+}
+
+// handleKnowledgeGetHistory serves GET /v1/knowledge/history?namespace=...&key=...
+func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Request) {
+	if s.knowledgeStoreUnavailable(w) {
+		return
+	}
+	namespace := r.URL.Query().Get("namespace")
+	key := r.URL.Query().Get("key")
+	if namespace == "" || key == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and key are required", nil)
+		return
+	}
+	if !requireNamespaceAccess(w, r, namespace) {
+		return
+	}
+	revs, err := s.KnowledgeStore.GetHistory(r.Context(), namespace, key)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, revs)
+}

@@ -279,7 +279,7 @@ git commit -m "docs: rename all Cortex references to Vanta Conduit"
 grep -rn 'cortex\|"context_' internal/mcpadapter/ --include='*.go'
 ```
 
-The MCP server name (what appears as `mcp__cortex__` in tool names) is likely set in `adapter.go`. Change the server registration name from `"cortex"` to `"conduit"`.
+The MCP server name (what appears as `mcp__vanta__` in tool names) is likely set in `adapter.go`. Change the server registration name from `"cortex"` to `"conduit"`.
 
 - [ ] **Step 2: Update the server name**
 

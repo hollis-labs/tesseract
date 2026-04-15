@@ -57,6 +57,7 @@ func (a *Adapter) Run(ctx context.Context) error {
 	if a.KnowledgeStore != nil {
 		a.registerKnowledgeTools(s)
 	}
+	a.registerParityTools(s)
 	ctxFunc := func(_ context.Context) context.Context { return ctx }
 	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
 }

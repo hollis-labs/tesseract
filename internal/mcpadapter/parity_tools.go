@@ -1,0 +1,142 @@
+package mcpadapter
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// registerParityTools adds MCP tools that mirror HTTP routes for agent parity:
+// context_estimate, views_evaluate, memory_get_revision, and (when
+// KnowledgeStore is present) knowledge_get + knowledge_history.
+func (a *Adapter) registerParityTools(s *server.MCPServer) {
+	s.AddTool(mcp.NewTool("context_estimate",
+		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate."),
+		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),
+	), a.handleContextEstimate)
+
+	s.AddTool(mcp.NewTool("views_evaluate",
+		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate."),
+		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector")),
+		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false)")),
+		mcp.WithNumber("limit", mcp.Description("Override selector.limit (0 = use selector or default)")),
+	), a.handleViewsEvaluate)
+
+	if a.MemoryStore != nil {
+		s.AddTool(mcp.NewTool("memory_get_revision",
+			mcp.WithDescription("Fetch a memory revision by its revision_id. Peer of HTTP /v1/memory/revisions/{id}."),
+			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch")),
+		), a.handleMemoryGetRevision)
+	}
+
+	if a.KnowledgeStore != nil {
+		s.AddTool(mcp.NewTool("knowledge_get",
+			mcp.WithDescription("Fetch the current knowledge revision for (namespace, key). Peer of HTTP /v1/knowledge/current."),
+			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
+			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
+		), a.handleKnowledgeGet)
+
+		s.AddTool(mcp.NewTool("knowledge_history",
+			mcp.WithDescription("Fetch the full revision history for a knowledge entry (namespace, key), newest-first. Peer of HTTP /v1/knowledge/history."),
+			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
+			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
+		), a.handleKnowledgeHistory)
+	}
+}
+
+// ── Handlers ─────────────────────────────────────────────────────────────────
+
+func (a *Adapter) handleContextEstimate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw := req.GetString("selector", "")
+	if raw == "" {
+		return toolError("validation_error", "selector is required"), nil
+	}
+	var sel contextstore.Selector
+	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
+		return toolError("validation_error", "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
+	result, err := a.Store.Estimate(ctx, sel)
+	if err != nil {
+		return toolError("selector_error", err.Error()), nil
+	}
+	return toolJSON(result), nil
+}
+
+func (a *Adapter) handleViewsEvaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw := req.GetString("selector", "")
+	if raw == "" {
+		return toolError("validation_error", "selector is required"), nil
+	}
+	var sel contextstore.Selector
+	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
+		return toolError("validation_error", "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
+	includePayload := req.GetBool("include_payload", false)
+	limit := int(req.GetFloat("limit", 0))
+	result, err := a.Store.Evaluate(ctx, sel, includePayload, limit)
+	if err != nil {
+		return toolError("selector_error", err.Error()), nil
+	}
+	return toolJSON(result), nil
+}
+
+func (a *Adapter) handleMemoryGetRevision(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+		return res, nil
+	}
+	revisionID := req.GetString("revision_id", "")
+	if revisionID == "" {
+		return toolError("validation_error", "revision_id is required"), nil
+	}
+	rev, err := a.MemoryStore.GetRevisionByID(ctx, revisionID)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			return toolError("not_found", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(rev), nil
+}
+
+func (a *Adapter) handleKnowledgeGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+		return res, nil
+	}
+	namespace := req.GetString("namespace", "")
+	key := req.GetString("key", "")
+	if namespace == "" || key == "" {
+		return toolError("validation_error", "namespace and key are required"), nil
+	}
+	rev, err := a.KnowledgeStore.GetCurrent(ctx, namespace, key)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			return toolError("not_found", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(rev), nil
+}
+
+func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+		return res, nil
+	}
+	namespace := req.GetString("namespace", "")
+	key := req.GetString("key", "")
+	if namespace == "" || key == "" {
+		return toolError("validation_error", "namespace and key are required"), nil
+	}
+	revs, err := a.KnowledgeStore.GetHistory(ctx, namespace, key)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			return toolError("not_found", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(revs), nil
+}

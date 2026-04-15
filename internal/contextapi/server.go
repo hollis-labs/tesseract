@@ -303,6 +303,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleKnowledgeWrite(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/knowledge/current":
+		s.handleKnowledgeGetCurrent(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/knowledge/history":
+		s.handleKnowledgeGetHistory(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/conduit/lookup":
 		s.handleConduitLookup(w, r)
 	default:
@@ -857,34 +861,18 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
-	if req.Limit > 0 {
-		req.Selector.Limit = req.Limit
-	}
-	if req.Selector.Limit == 0 {
-		req.Selector.Limit = contextstore.DefaultSelectLimit
-	}
-	if len(req.Selector.Order) == 0 {
-		req.Selector.Order = []string{"namespace", "key", "revision"}
-	}
-
-	items, err := s.Store.Select(r.Context(), req.Selector)
+	result, err := s.Store.Evaluate(r.Context(), req.Selector, req.IncludePayload, req.Limit)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
-	if !req.IncludePayload {
-		for i := range items {
-			items[i].Payload = nil
-		}
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
+		"items": result.Items,
 		"evaluation_meta": map[string]any{
-			"sort_keys":        req.Selector.Order,
-			"matched_count":    len(items),
-			"truncated":        len(items) >= req.Selector.Limit,
-			"normalized_scope": normalizedScope(req.Selector.RevisionScope),
+			"sort_keys":        result.SortKeys,
+			"matched_count":    result.MatchedCount,
+			"truncated":        result.Truncated,
+			"normalized_scope": result.NormalizedScope,
 		},
 	})
 }
@@ -944,13 +932,6 @@ func writeError(w http.ResponseWriter, status int, code, message string, details
 		"message": message,
 		"details": details,
 	})
-}
-
-func normalizedScope(scope string) string {
-	if strings.EqualFold(strings.TrimSpace(scope), "all") {
-		return "all"
-	}
-	return "head"
 }
 
 func quoteJSON(s string) string {
