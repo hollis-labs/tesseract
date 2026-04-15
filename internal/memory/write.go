@@ -34,6 +34,7 @@ type WriteInput struct {
 	Tags       []string
 	TTL            time.Duration
 	Payload        Payload
+	Facets         Facets
 	Dedup          string        // "none" (default), "semantic"
 	DedupThreshold float64       // optional per-call override; 0 = use store default
 }
@@ -134,12 +135,21 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		return sql.NullInt64{Int64: v, Valid: true}
 	}
 
+	var pointerScheme, pointerLocator string
+	var pointerResolvedAt *time.Time
+	if in.Facets.Pointer != nil {
+		pointerScheme = in.Facets.Pointer.Scheme
+		pointerLocator = in.Facets.Pointer.Locator
+		pointerResolvedAt = in.Facets.Pointer.ResolvedAt
+	}
+
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
     created_at, author_agent_id, author_version, trigger, session_id, origin,
-    confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
+    facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID,
 		memoryID,
 		string(in.Domain),
@@ -159,6 +169,11 @@ INSERT INTO memory_revisions (
 		nullTime(expiresAt),
 		nullStr(in.Payload.Summary),
 		nullStr(in.Payload.Body),
+		nullStr(in.Facets.Kind),
+		nullStr(in.Facets.Source),
+		nullStr(pointerScheme),
+		nullStr(pointerLocator),
+		nullTime(pointerResolvedAt),
 	)
 	if err != nil {
 		return Revision{}, fmt.Errorf("insert revision: %w", err)
@@ -224,6 +239,7 @@ INSERT INTO memory_revisions (
 		TTLSeconds: ttlSeconds,
 		ExpiresAt:  expiresAt,
 		Payload:    in.Payload,
+		Facets:     in.Facets,
 		DedupMatch: dedupMatch,
 	}
 	return rev, nil

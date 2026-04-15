@@ -36,7 +36,9 @@ const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(mem
        author_agent_id, author_version, trigger, session_id, origin,
        confidence, tags, COALESCE(ttl_seconds, 0), expires_at,
        COALESCE(payload_summary, ''), COALESCE(payload_body, ''),
-       COALESCE(embedding_model, ''), embedding_vector`
+       COALESCE(embedding_model, ''), embedding_vector,
+       facet_kind, facet_source,
+       facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at`
 
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
@@ -46,6 +48,8 @@ func scanRevision(r rowScanner) (Revision, error) {
 	var expiresAt sql.NullString
 	var tagsJSON string
 	var embeddingBlob []byte
+	var facetKind, facetSource sql.NullString
+	var pointerScheme, pointerLocator, pointerResolvedAt sql.NullString
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
@@ -53,6 +57,8 @@ func scanRevision(r rowScanner) (Revision, error) {
 		&rev.Confidence, &tagsJSON, &rev.TTLSeconds, &expiresAt,
 		&rev.Payload.Summary, &rev.Payload.Body,
 		&rev.EmbeddingModel, &embeddingBlob,
+		&facetKind, &facetSource,
+		&pointerScheme, &pointerLocator, &pointerResolvedAt,
 	)
 	if err != nil {
 		return Revision{}, err
@@ -70,6 +76,20 @@ func scanRevision(r rowScanner) (Revision, error) {
 		rev.Tags = []string{}
 	}
 	rev.EmbeddingVector = blobToFloat32(embeddingBlob)
+	if facetKind.Valid {
+		rev.Facets.Kind = facetKind.String
+	}
+	if facetSource.Valid {
+		rev.Facets.Source = facetSource.String
+	}
+	if pointerScheme.Valid || pointerLocator.Valid {
+		p := &Pointer{Scheme: pointerScheme.String, Locator: pointerLocator.String}
+		if pointerResolvedAt.Valid {
+			t, _ := parseMemoryTime(pointerResolvedAt.String)
+			p.ResolvedAt = &t
+		}
+		rev.Facets.Pointer = p
+	}
 	return rev, nil
 }
 

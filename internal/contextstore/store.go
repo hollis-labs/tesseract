@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	schemaVersion = 10
+	schemaVersion = 11
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -528,6 +528,32 @@ CREATE TABLE IF NOT EXISTS memory_revisions (
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_domain ON memory_revisions(domain)`); err != nil {
+				return err
+			}
+		case 11:
+			// Knowledge facets: kind, source, pointer{scheme, locator,
+			// resolved_at}. Nullable on memory_revisions — only populated for
+			// the knowledge domain. Flat columns chosen over a side table for
+			// filter/facet histogram performance in conduit_lookup.
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_kind TEXT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_source TEXT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_pointer_scheme TEXT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_pointer_locator TEXT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_pointer_resolved_at TEXT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_facet_kind ON memory_revisions(facet_kind) WHERE facet_kind IS NOT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_facet_source ON memory_revisions(facet_source) WHERE facet_source IS NOT NULL`); err != nil {
 				return err
 			}
 		}

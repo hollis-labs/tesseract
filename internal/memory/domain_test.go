@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/vanta-conduit/internal/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
@@ -81,6 +82,74 @@ func TestWriteRevision_KnowledgeDomainRejectsMemoryNamespace(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "knowledge") {
 		t.Errorf("err message missing 'knowledge' hint: %v", err)
+	}
+}
+
+// TestWriteRevision_KnowledgeFactsPersist writes a knowledge revision with
+// all facet fields populated and confirms they round-trip through storage.
+func TestWriteRevision_KnowledgeFactsPersist(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	resolvedAt := time.Now().UTC().Truncate(time.Second)
+	in := sampleInput("framework.go-providers")
+	in.Domain = domains.Knowledge
+	in.Namespace = "user/chrispian/knowledge/framework"
+	in.Facets = memory.Facets{
+		Kind:   "package",
+		Source: "filesystem",
+		Pointer: &memory.Pointer{
+			Scheme:     "file",
+			Locator:    "/abs/path/to/pkg",
+			ResolvedAt: &resolvedAt,
+		},
+	}
+
+	rev, err := ms.WriteRevision(context.Background(), in)
+	if err != nil {
+		t.Fatalf("WriteRevision (knowledge): %v", err)
+	}
+
+	got, err := ms.GetRevisionByID(context.Background(), rev.RevisionID)
+	if err != nil {
+		t.Fatalf("GetRevisionByID: %v", err)
+	}
+	if got.Facets.Kind != "package" {
+		t.Errorf("facet.Kind = %q, want %q", got.Facets.Kind, "package")
+	}
+	if got.Facets.Source != "filesystem" {
+		t.Errorf("facet.Source = %q, want %q", got.Facets.Source, "filesystem")
+	}
+	if got.Facets.Pointer == nil {
+		t.Fatal("facet.Pointer is nil; want populated")
+	}
+	if got.Facets.Pointer.Scheme != "file" {
+		t.Errorf("pointer.Scheme = %q, want %q", got.Facets.Pointer.Scheme, "file")
+	}
+	if got.Facets.Pointer.Locator != "/abs/path/to/pkg" {
+		t.Errorf("pointer.Locator = %q, want %q", got.Facets.Pointer.Locator, "/abs/path/to/pkg")
+	}
+	if got.Facets.Pointer.ResolvedAt == nil || !got.Facets.Pointer.ResolvedAt.Equal(resolvedAt) {
+		t.Errorf("pointer.ResolvedAt = %v, want %v", got.Facets.Pointer.ResolvedAt, resolvedAt)
+	}
+}
+
+// TestWriteRevision_MemoryDomainLeavesFactsZero verifies memory-domain
+// writes leave facet columns NULL/zero.
+func TestWriteRevision_MemoryDomainLeavesFactsZero(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	rev, err := ms.WriteRevision(context.Background(), sampleInput("prefs.no_facets"))
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+	got, err := ms.GetRevisionByID(context.Background(), rev.RevisionID)
+	if err != nil {
+		t.Fatalf("GetRevisionByID: %v", err)
+	}
+	if !got.Facets.IsZero() {
+		t.Errorf("memory-domain facets not zero: %+v", got.Facets)
 	}
 }
 
