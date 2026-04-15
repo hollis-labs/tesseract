@@ -52,6 +52,7 @@ func (a *Adapter) Run(ctx context.Context) error {
 	a.registerRAGTools(s)
 	if a.MemoryStore != nil {
 		a.registerMemoryTools(s)
+		a.registerLookupTools(s)
 	}
 	if a.KnowledgeStore != nil {
 		a.registerKnowledgeTools(s)

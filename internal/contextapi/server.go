@@ -303,6 +303,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleKnowledgeWrite(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/conduit/lookup":
+		s.handleConduitLookup(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
 	}

@@ -54,6 +54,15 @@ type RecallFilters struct {
 	ConfidenceMin float64
 	Since         *time.Time
 	Until         *time.Time
+
+	// Domains filters to revisions written under any of the listed domains.
+	// Empty means no domain filter (all domains returned).
+	Domains []domains.Domain
+
+	// FacetKinds / FacetSources constrain knowledge-domain revisions to the
+	// listed facet values. Applied as SQL IN (...) filters when non-empty.
+	FacetKinds   []string
+	FacetSources []string
 }
 
 // RecallResult pairs a revision with its computed score and the parent state.
@@ -69,13 +78,16 @@ const maxRecallLimit = 500
 // Recall retrieves revisions matching the given filters, ranked by the
 // requested strategy. It is the main context-assembly retrieval operation.
 func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, error) {
-	// 1. Validate namespaces.
+	// 1. Validate namespaces — shape is domain-dependent (memory requires
+	// the legacy user/{id}[/project|session/{id}]/memory form; knowledge
+	// namespaces carry a 'knowledge' segment). Require non-empty here and
+	// defer shape checks to the domain policy on write.
 	if len(in.Namespaces) == 0 {
 		return nil, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
 	}
 	for _, ns := range in.Namespaces {
-		if err := ValidateNamespace(ns); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		if strings.TrimSpace(ns) == "" {
+			return nil, fmt.Errorf("%w: namespace entries must be non-empty", ErrInvalidInput)
 		}
 	}
 
@@ -205,6 +217,28 @@ func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision
 		where = append(where, "r.status IN ("+placeholders(len(in.Filters.Statuses))+")")
 		for _, st := range in.Filters.Statuses {
 			args = append(args, string(st))
+		}
+	}
+
+	// Domain filter.
+	if len(in.Filters.Domains) > 0 {
+		where = append(where, "r.domain IN ("+placeholders(len(in.Filters.Domains))+")")
+		for _, d := range in.Filters.Domains {
+			args = append(args, string(d))
+		}
+	}
+
+	// Facet filters (knowledge domain).
+	if len(in.Filters.FacetKinds) > 0 {
+		where = append(where, "r.facet_kind IN ("+placeholders(len(in.Filters.FacetKinds))+")")
+		for _, k := range in.Filters.FacetKinds {
+			args = append(args, k)
+		}
+	}
+	if len(in.Filters.FacetSources) > 0 {
+		where = append(where, "r.facet_source IN ("+placeholders(len(in.Filters.FacetSources))+")")
+		for _, src := range in.Filters.FacetSources {
+			args = append(args, src)
 		}
 	}
 
