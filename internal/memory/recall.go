@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
@@ -53,6 +54,15 @@ type RecallFilters struct {
 	ConfidenceMin float64
 	Since         *time.Time
 	Until         *time.Time
+
+	// Domains filters to revisions written under any of the listed domains.
+	// Empty means no domain filter (all domains returned).
+	Domains []domains.Domain
+
+	// FacetKinds / FacetSources constrain knowledge-domain revisions to the
+	// listed facet values. Applied as SQL IN (...) filters when non-empty.
+	FacetKinds   []string
+	FacetSources []string
 }
 
 // RecallResult pairs a revision with its computed score and the parent state.
@@ -68,13 +78,16 @@ const maxRecallLimit = 500
 // Recall retrieves revisions matching the given filters, ranked by the
 // requested strategy. It is the main context-assembly retrieval operation.
 func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, error) {
-	// 1. Validate namespaces.
+	// 1. Validate namespaces — shape is domain-dependent (memory requires
+	// the legacy user/{id}[/project|session/{id}]/memory form; knowledge
+	// namespaces carry a 'knowledge' segment). Require non-empty here and
+	// defer shape checks to the domain policy on write.
 	if len(in.Namespaces) == 0 {
 		return nil, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
 	}
 	for _, ns := range in.Namespaces {
-		if err := ValidateNamespace(ns); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		if strings.TrimSpace(ns) == "" {
+			return nil, fmt.Errorf("%w: namespace entries must be non-empty", ErrInvalidInput)
 		}
 	}
 
@@ -207,6 +220,28 @@ func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision
 		}
 	}
 
+	// Domain filter.
+	if len(in.Filters.Domains) > 0 {
+		where = append(where, "r.domain IN ("+placeholders(len(in.Filters.Domains))+")")
+		for _, d := range in.Filters.Domains {
+			args = append(args, string(d))
+		}
+	}
+
+	// Facet filters (knowledge domain).
+	if len(in.Filters.FacetKinds) > 0 {
+		where = append(where, "r.facet_kind IN ("+placeholders(len(in.Filters.FacetKinds))+")")
+		for _, k := range in.Filters.FacetKinds {
+			args = append(args, k)
+		}
+	}
+	if len(in.Filters.FacetSources) > 0 {
+		where = append(where, "r.facet_source IN ("+placeholders(len(in.Filters.FacetSources))+")")
+		for _, src := range in.Filters.FacetSources {
+			args = append(args, src)
+		}
+	}
+
 	// Origin filter.
 	if len(in.Filters.Origins) > 0 {
 		where = append(where, "r.origin IN ("+placeholders(len(in.Filters.Origins))+")")
@@ -272,12 +307,14 @@ WHERE ` + whereClause
 
 // recallRevisionColumns is the same column list as revisionColumns but with
 // explicit r. prefix to avoid ambiguity when JOINing with memory_state.
-const recallRevisionColumns = `r.revision_id, r.memory_id, r.namespace, COALESCE(r.memory_key, ''),
+const recallRevisionColumns = `r.revision_id, r.memory_id, r.domain, r.namespace, COALESCE(r.memory_key, ''),
        r.status, COALESCE(r.supersedes, ''), r.created_at,
        r.author_agent_id, r.author_version, r.trigger, r.session_id, r.origin,
        r.confidence, r.tags, COALESCE(r.ttl_seconds, 0), r.expires_at,
        COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, ''),
-       COALESCE(r.embedding_model, ''), r.embedding_vector`
+       COALESCE(r.embedding_model, ''), r.embedding_vector,
+       r.facet_kind, r.facet_source,
+       r.facet_pointer_scheme, r.facet_pointer_locator, r.facet_pointer_resolved_at`
 
 // fetchStates loads memory_state rows for a set of memory IDs.
 func (s *Store) fetchStates(ctx context.Context, memoryIDs []string) (map[string]State, error) {
@@ -287,7 +324,7 @@ func (s *Store) fetchStates(ctx context.Context, memoryIDs []string) (map[string
 
 	ph := placeholders(len(memoryIDs))
 	query := fmt.Sprintf( //nolint:gosec // ph is parameterized ?s, not user input
-		`SELECT memory_id, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
+		`SELECT memory_id, domain, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
        activation, access_count, last_accessed_at, created_at
 FROM memory_state WHERE memory_id IN (%s)`, ph)
 
@@ -305,13 +342,15 @@ FROM memory_state WHERE memory_id IN (%s)`, ph)
 	states := make(map[string]State, len(memoryIDs))
 	for rows.Next() {
 		var st State
+		var domain string
 		var lastAccessed, created sql.NullString
 		if err := rows.Scan(
-			&st.MemoryID, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
+			&st.MemoryID, &domain, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
 			&st.Activation, &st.AccessCount, &lastAccessed, &created,
 		); err != nil {
 			return nil, err
 		}
+		st.Domain = domains.Domain(domain)
 		if lastAccessed.Valid {
 			t, _ := parseMemoryTime(lastAccessed.String)
 			st.LastAccessedAt = &t

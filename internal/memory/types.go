@@ -1,6 +1,10 @@
 package memory
 
-import "time"
+import (
+	"time"
+
+	"github.com/hollis-labs/vanta-conduit/domains"
+)
 
 // Origin categorizes why a memory exists (closed vocabulary, D6/D9).
 type Origin string
@@ -73,14 +77,39 @@ type Payload struct {
 	Body    string `json:"body,omitempty"`
 }
 
+// Pointer identifies an external reference for knowledge revisions. Scheme
+// names the locator scheme (file, http, https, obsidian, nil, ...) and
+// Locator is the scheme-specific address. ResolvedAt records the last time
+// the pointer was verified against the external source.
+type Pointer struct {
+	Scheme     string     `json:"scheme"`
+	Locator    string     `json:"locator"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
+// Facets are structured knowledge-domain attributes. All fields are optional
+// at the storage layer; the knowledge write path enforces required facets.
+// Memory-domain revisions leave Facets zero-valued.
+type Facets struct {
+	Kind    string   `json:"kind,omitempty"`
+	Source  string   `json:"source,omitempty"`
+	Pointer *Pointer `json:"pointer,omitempty"`
+}
+
+// IsZero reports whether f carries no facet data.
+func (f Facets) IsZero() bool {
+	return f.Kind == "" && f.Source == "" && f.Pointer == nil
+}
+
 // Revision is an immutable memory revision. The only field that may be
 // mutated after write is Status, and only via the deprecation code path.
 type Revision struct {
-	RevisionID string     `json:"revision_id"`
-	MemoryID   string     `json:"memory_id"`
-	Namespace  string     `json:"namespace"`
-	MemoryKey  string     `json:"memory_key,omitempty"`
-	Status     Status     `json:"status"`
+	RevisionID string         `json:"revision_id"`
+	MemoryID   string         `json:"memory_id"`
+	Domain     domains.Domain `json:"domain"`
+	Namespace  string         `json:"namespace"`
+	MemoryKey  string         `json:"memory_key,omitempty"`
+	Status     Status         `json:"status"`
 	Supersedes string     `json:"supersedes,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	Author     Author     `json:"author"`
@@ -92,6 +121,7 @@ type Revision struct {
 	TTLSeconds int64      `json:"ttl_seconds,omitempty"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	Payload         Payload    `json:"payload"`
+	Facets          Facets     `json:"facets,omitempty"`
 	EmbeddingModel  string     `json:"embedding_model,omitempty"`
 	EmbeddingVector []float32  `json:"embedding_vector,omitempty"`
 	DedupMatch      string     `json:"dedup_match,omitempty"`
@@ -99,8 +129,9 @@ type Revision struct {
 
 // State is the mutable per-memory state (D9). Lives in memory_state table.
 type State struct {
-	MemoryID        string     `json:"memory_id"`
-	Namespace       string     `json:"namespace"`
+	MemoryID        string         `json:"memory_id"`
+	Domain          domains.Domain `json:"domain"`
+	Namespace       string         `json:"namespace"`
 	MemoryKey       string     `json:"memory_key,omitempty"`
 	CurrentRevision string     `json:"current_revision"`
 	Activation      float64    `json:"activation"`

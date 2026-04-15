@@ -35,3 +35,6 @@ frontend/dist/
 
 # Editor
 .claude/
+
+# stray smoke binary from cmd/smoke build
+/smoke

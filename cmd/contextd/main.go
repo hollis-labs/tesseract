@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -15,21 +14,18 @@ import (
 	"syscall"
 	"time"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
-	queue "github.com/hollis-labs/go-queue"
-	"github.com/hollis-labs/go-queue/driver/sqlite"
 	"github.com/hollis-labs/go-providers/provider"
 	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
 	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/mcpadapter"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	cplugin "github.com/hollis-labs/vanta-conduit/internal/plugin"
 	"github.com/hollis-labs/vanta-conduit/internal/webui"
-	feotel "github.com/hollis-labs/otel"
-	"github.com/hollis-labs/otel/propagation"
+	feotel "github.com/hollis-labs/go-otel"
+	"github.com/hollis-labs/go-otel/propagation"
 	_ "modernc.org/sqlite"
 )
 
@@ -90,7 +86,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runServe(ctx, store, stderr, cfg)
+		return runServe(ctx, store, stderr, cfg, root, conduitCfg)
 	}
 
 	if len(args) > 0 && args[0] == "plugin" {
@@ -177,57 +173,16 @@ func createEmbedder(cfg config.Config) provider.Embedder {
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
 	_, _ = stderr.WriteString("Vanta Conduit MCP adapter starting (stdio)\n")
 
-	// Open a separate SQLite DB for the job queue (avoids write contention
-	// with the context store).
-	queueDBPath := filepath.Join(root, "data", "queue.db")
-	queueDBDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", queueDBPath)
-	queueDB, err := sql.Open("sqlite", queueDBDSN)
+	mem, err := setupMemorySubsystem(ctx, store, stderr, root, conduitCfg)
 	if err != nil {
-		_, _ = stderr.WriteString("error: open queue db: " + err.Error() + "\n")
+		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
 	}
-	defer queueDB.Close()
-
-	q, err := sqlite.New(queueDB, sqlite.Opts{})
-	if err != nil {
-		_, _ = stderr.WriteString("error: init queue driver: " + err.Error() + "\n")
-		return 1
-	}
-
-	queueAdapter := memory.NewQueueAdapter(q, "conduit")
-
-	// Memory subsystem (D-core). Shares contextstore's *sql.DB.
-	embedder := createEmbedder(conduitCfg)
-	memStore := memory.NewStore(store.DB(), embedder, conduitCfg.Embedding.Model, conduitCfg.Dedup.SimilarityThreshold, queueAdapter)
-
-	// Start queue worker.
-	worker := queue.NewWorker(q, queue.WorkerOpts{
-		Queues:     []string{"conduit"},
-		MaxTries:   3,
-		RetryAfter: 30 * time.Second,
-		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
-	})
-	worker.Register("embed", conduit.NewEmbedHandler(memStore, conduitCfg.Embedding.Model, log.Printf))
-	go worker.Start(ctx)
-
-	// Start decay job.
-	decayInterval := 1 * time.Hour
-	if v := os.Getenv("CONDUIT_MEMORY_DECAY_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			decayInterval = d
-		} else {
-			log.Print("warning: invalid CONDUIT_MEMORY_DECAY_INTERVAL, using default 1h")
-		}
-	}
-	decayJob := &memory.DecayJob{
-		Store:    memStore,
-		Interval: decayInterval,
-		Logger:   log.Printf,
-	}
-	go decayJob.Run(ctx)
+	defer mem.Close()
 
 	adapter := mcpadapter.New(store, token)
-	adapter.MemoryStore = memStore
+	adapter.MemoryStore = mem.Store
+	adapter.KnowledgeStore = knowledge.New(mem.Store)
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -235,8 +190,17 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	return 0
 }
 
-func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig) int {
+func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, root string, conduitCfg config.Config) int {
+	mem, err := setupMemorySubsystem(ctx, store, stderr, root, conduitCfg)
+	if err != nil {
+		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
+		return 1
+	}
+	defer mem.Close()
+
 	srv := contextapi.NewServer(store, contextpolicy.New())
+	srv.MemoryStore = mem.Store
+	srv.KnowledgeStore = knowledge.New(mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
 	srv.EnableMetrics = cfg.EnableMetrics

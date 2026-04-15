@@ -362,6 +362,36 @@ Parity pack:
   2. Start `contextd serve ...`
   3. `make smoke BASE_URL=http://127.0.0.1:8080 TOKEN=<token>`
 
+## Embedding smoke test (`cmd/smoke`)
+
+A one-shot program that exercises the full embedding pipeline against the
+live `~/.conduit` store: opens `conduit.Open` with an OpenAI embedder and a
+SQLite-backed queue, writes a memory revision, waits for the queue worker
+to populate `embedding_model`/`embedding_vector`, then runs a
+`RankingSimilarity` recall to confirm end-to-end correctness.
+
+Use it to verify:
+- `OPENAI_API_KEY` is reaching the process
+- Queue + embed handler are wired
+- `text-embedding-3-large` returns a vector (3072-dim) that round-trips
+  through recall
+
+Run:
+
+```sh
+set -a; source .env; set +a
+go run ./cmd/smoke
+```
+
+Notes:
+- Writes into `user/chrispian/project/conduit/memory`. Clean up test
+  revisions periodically or change the namespace/key in the source.
+- Requires the `conduit-api` cerberus service to be stopped OR relies on
+  SQLite WAL concurrency — the smoke process opens the same `context.db`
+  and `queue.db`. Running alongside `contextd serve` is safe for reads but
+  avoid concurrent writers in MCP mode.
+- Source: `cmd/smoke/main.go`.
+
 ## Repository conventions
 - Product specifications: `docs/SPECS/`
 - Architecture decisions: `docs/DECISIONS/`

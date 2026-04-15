@@ -7,6 +7,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
+	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	"github.com/hollis-labs/go-providers/provider"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -27,6 +28,7 @@ type Adapter struct {
 	EmbeddingModel    string                // model name passed to EmbeddingProvider (default: "")
 	VectorIndex       embedding.VectorIndex // optional; nil uses brute-force search via Store
 	MemoryStore       *memory.Store         // optional; nil disables memory_* tools
+	KnowledgeStore    *knowledge.Store      // optional; nil disables knowledge_* tools
 }
 
 // New creates an Adapter for the given store and optional capability token.
@@ -50,6 +52,10 @@ func (a *Adapter) Run(ctx context.Context) error {
 	a.registerRAGTools(s)
 	if a.MemoryStore != nil {
 		a.registerMemoryTools(s)
+		a.registerLookupTools(s)
+	}
+	if a.KnowledgeStore != nil {
+		a.registerKnowledgeTools(s)
 	}
 	ctxFunc := func(_ context.Context) context.Context { return ctx }
 	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))

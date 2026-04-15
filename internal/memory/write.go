@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/hollis-labs/vanta-conduit/domains"
 )
 
 // Sentinels for the memory write path.
@@ -17,6 +19,9 @@ var (
 
 // WriteInput carries all fields for a new revision write.
 type WriteInput struct {
+	// Domain selects the revision's policy bucket. Empty defaults to
+	// domains.Memory to preserve existing call sites.
+	Domain     domains.Domain
 	Namespace  string
 	MemoryKey  string
 	Supersedes string
@@ -29,6 +34,7 @@ type WriteInput struct {
 	Tags       []string
 	TTL            time.Duration
 	Payload        Payload
+	Facets         Facets
 	Dedup          string        // "none" (default), "semantic"
 	DedupThreshold float64       // optional per-call override; 0 = use store default
 }
@@ -36,6 +42,9 @@ type WriteInput struct {
 // WriteRevision creates a new revision in the memory store, handling keyed,
 // keyless, and supersedes cases within a single transaction.
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
+	if in.Domain == "" {
+		in.Domain = domains.Memory
+	}
 	if err := validateWriteInput(in); err != nil {
 		return Revision{}, err
 	}
@@ -76,7 +85,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	memoryID, err := resolveOrCreateMemory(ctx, tx, in.Namespace, in.MemoryKey)
+	memoryID, err := resolveOrCreateMemory(ctx, tx, in.Domain, in.Namespace, in.MemoryKey)
 	if err != nil {
 		return Revision{}, fmt.Errorf("resolve memory: %w", err)
 	}
@@ -126,14 +135,24 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		return sql.NullInt64{Int64: v, Valid: true}
 	}
 
+	var pointerScheme, pointerLocator string
+	var pointerResolvedAt *time.Time
+	if in.Facets.Pointer != nil {
+		pointerScheme = in.Facets.Pointer.Scheme
+		pointerLocator = in.Facets.Pointer.Locator
+		pointerResolvedAt = in.Facets.Pointer.ResolvedAt
+	}
+
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO memory_revisions (
-    revision_id, memory_id, namespace, memory_key, status, supersedes,
+    revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
     created_at, author_agent_id, author_version, trigger, session_id, origin,
-    confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
+    facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID,
 		memoryID,
+		string(in.Domain),
 		in.Namespace,
 		nullStr(in.MemoryKey),
 		string(status),
@@ -150,6 +169,11 @@ INSERT INTO memory_revisions (
 		nullTime(expiresAt),
 		nullStr(in.Payload.Summary),
 		nullStr(in.Payload.Body),
+		nullStr(in.Facets.Kind),
+		nullStr(in.Facets.Source),
+		nullStr(pointerScheme),
+		nullStr(pointerLocator),
+		nullTime(pointerResolvedAt),
 	)
 	if err != nil {
 		return Revision{}, fmt.Errorf("insert revision: %w", err)
@@ -200,6 +224,7 @@ INSERT INTO memory_revisions (
 	rev := Revision{
 		RevisionID: revisionID,
 		MemoryID:   memoryID,
+		Domain:     in.Domain,
 		Namespace:  in.Namespace,
 		MemoryKey:  in.MemoryKey,
 		Status:     status,
@@ -214,6 +239,7 @@ INSERT INTO memory_revisions (
 		TTLSeconds: ttlSeconds,
 		ExpiresAt:  expiresAt,
 		Payload:    in.Payload,
+		Facets:     in.Facets,
 		DedupMatch: dedupMatch,
 	}
 	return rev, nil
@@ -221,15 +247,20 @@ INSERT INTO memory_revisions (
 
 // resolveOrCreateMemory finds an existing memory_state by (namespace, key)
 // or creates a new one. For keyless writes (key == ""), always creates new.
-func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, namespace, key string) (string, error) {
+// Domain is stamped on creation and never changes for a given memory_id.
+func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, domain domains.Domain, namespace, key string) (string, error) {
 	if key != "" {
-		var existing string
+		var existing, existingDomain string
 		row := tx.QueryRowContext(ctx,
-			`SELECT memory_id FROM memory_state WHERE namespace = ? AND memory_key = ?`,
+			`SELECT memory_id, domain FROM memory_state WHERE namespace = ? AND memory_key = ?`,
 			namespace, key,
 		)
-		err := row.Scan(&existing)
+		err := row.Scan(&existing, &existingDomain)
 		if err == nil {
+			if existingDomain != string(domain) {
+				return "", fmt.Errorf("%w: memory %s/%s exists under domain %q, cannot write as %q",
+					ErrInvalidInput, namespace, key, existingDomain, domain)
+			}
 			return existing, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -244,9 +275,9 @@ func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, namespace, key strin
 		keyVal = sql.NullString{String: key, Valid: true}
 	}
 	_, err := tx.ExecContext(ctx, `
-INSERT INTO memory_state (memory_id, namespace, memory_key, activation, access_count)
-VALUES (?, ?, ?, 1.0, 0)`,
-		memoryID, namespace, keyVal,
+INSERT INTO memory_state (memory_id, domain, namespace, memory_key, activation, access_count)
+VALUES (?, ?, ?, ?, 1.0, 0)`,
+		memoryID, string(domain), namespace, keyVal,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert memory_state: %w", err)
@@ -267,13 +298,31 @@ func deprecateRevisionTx(ctx context.Context, tx *sql.Tx, revisionID string) err
 
 // validateWriteInput checks all required fields before a revision is written.
 func validateWriteInput(in WriteInput) error {
+	if !in.Domain.Valid() {
+		return fmt.Errorf("%w: invalid domain %q", ErrInvalidInput, in.Domain)
+	}
+	policy, err := in.Domain.Policy()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
 	if in.Namespace == "" {
 		return fmt.Errorf("%w: namespace is required", ErrInvalidInput)
 	}
-	if err := ValidateNamespace(in.Namespace); err != nil {
+	if err := policy.ValidateNamespace(in.Namespace); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	if in.MemoryKey != "" {
+	// Legacy parser enforces the user/{id}[/project|session/{id}]/memory
+	// shape; only the memory domain is required to satisfy it. Knowledge and
+	// future domains have their own shape policy above.
+	if in.Domain == domains.Memory {
+		if err := ValidateNamespace(in.Namespace); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		}
+	}
+	// Memory-domain keys follow dot-notation lowercase rules. Other domains
+	// may carry keys that violate these constraints (e.g. knowledge pointers
+	// using hyphens or slugs from external sources).
+	if in.MemoryKey != "" && in.Domain == domains.Memory {
 		if err := ValidateKey(in.MemoryKey); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
 		}
