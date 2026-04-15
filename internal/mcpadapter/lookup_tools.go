@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/domains"
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"

@@ -2,10 +2,14 @@
 // external consumers. The implementation lives in internal/memory; this
 // package provides the public API surface.
 //
-// Create a Store via conduit.Open() and then conduit.MemoryStore().
+// External consumers should use the exported types, constants, errors, and
+// helpers in this package as the public memory API surface. The Conduit
+// facade (conduit.Open()) returns *internal/memory.Store types; those are
+// assignable to memory.Store via the Store alias below.
 package memory
 
 import (
+	"github.com/hollis-labs/vanta-conduit/domains"
 	internal "github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
@@ -25,6 +29,15 @@ type Author = internal.Author
 
 // Payload is the structured memory content.
 type Payload = internal.Payload
+
+// Domain identifies a revision's policy bucket (memory, knowledge, ...).
+type Domain = domains.Domain
+
+// Pointer is an external reference stored on a knowledge revision.
+type Pointer = internal.Pointer
+
+// Facets are structured knowledge-domain attributes (kind, source, pointer).
+type Facets = internal.Facets
 
 // Origin categorizes why a memory exists.
 type Origin = internal.Origin
@@ -103,6 +116,9 @@ const (
 	ScopeUser    = internal.ScopeUser
 	ScopeProject = internal.ScopeProject
 	ScopeSession = internal.ScopeSession
+
+	DomainMemory    = domains.Memory
+	DomainKnowledge = domains.Knowledge
 )
 
 // ---- Re-exported sentinel errors ----

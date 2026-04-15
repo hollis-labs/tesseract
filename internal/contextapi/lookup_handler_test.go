@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/domains"
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )

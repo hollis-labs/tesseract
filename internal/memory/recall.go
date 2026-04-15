@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/domains"
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 

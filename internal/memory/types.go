@@ -3,7 +3,7 @@ package memory
 import (
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/domains"
+	"github.com/hollis-labs/vanta-conduit/domains"
 )
 
 // Origin categorizes why a memory exists (closed vocabulary, D6/D9).

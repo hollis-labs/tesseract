@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/domains"
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
@@ -51,6 +51,16 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
 		return
 	}
+	// This endpoint is memory-domain only. Knowledge writes must go through
+	// POST /v1/knowledge/write so facet invariants (kind/source/pointer) are
+	// enforced by knowledge.Store.
+	if req.Domain != "" && req.Domain != domains.Memory {
+		writeError(w, http.StatusBadRequest, "wrong_endpoint",
+			"domain must be empty or 'memory' on /v1/memory/write; use /v1/knowledge/write for knowledge revisions",
+			map[string]any{"domain": string(req.Domain)})
+		return
+	}
+	req.Domain = domains.Memory
 	if !requireNamespaceAccess(w, r, req.Namespace) {
 		return
 	}

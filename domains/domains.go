@@ -76,13 +76,25 @@ func (knowledgePolicy) ValidateNamespace(ns string) error {
 	if ns == "" {
 		return fmt.Errorf("namespace is required")
 	}
+	if strings.HasSuffix(ns, "/") {
+		return fmt.Errorf("knowledge namespace must not have a trailing slash: %q", ns)
+	}
 	segs := strings.Split(ns, "/")
+	if len(segs) < 3 {
+		return fmt.Errorf("knowledge namespace must have shape {user|app}/{id}/knowledge[/...], got %q", ns)
+	}
 	for _, s := range segs {
-		if s == "knowledge" {
-			return nil
+		if s == "" {
+			return fmt.Errorf("knowledge namespace must not contain empty segments: %q", ns)
 		}
 	}
-	return fmt.Errorf("knowledge namespace must contain a 'knowledge' segment, got %q", ns)
+	if segs[0] != "user" && segs[0] != "app" {
+		return fmt.Errorf("knowledge namespace must begin with 'user/' or 'app/', got %q", segs[0])
+	}
+	if segs[2] != "knowledge" {
+		return fmt.Errorf("knowledge namespace third segment must be 'knowledge', got %q in %q", segs[2], ns)
+	}
+	return nil
 }
 
 var registry = map[Domain]DomainPolicy{

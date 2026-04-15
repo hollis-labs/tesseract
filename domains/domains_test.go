@@ -51,6 +51,12 @@ func TestKnowledgePolicyValidateNamespace(t *testing.T) {
 		"",
 		"user/alice/memory",
 		"user/alice/notes",
+		"user/alice/memory/knowledge", // knowledge must be 3rd segment
+		"knowledge/user/alice",        // missing user|app prefix
+		"user/alice/knowledge/",       // trailing slash
+		"user//knowledge",             // empty segment
+		"user/alice",                  // too short
+		"org/acme/knowledge",          // wrong prefix
 	}
 	for _, ns := range bad {
 		if err := p.ValidateNamespace(ns); err == nil {
