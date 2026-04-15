@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 )
 
@@ -166,7 +167,7 @@ func TestRunServeGracefulShutdownOnContextCancel(t *testing.T) {
 		done <- runServe(ctx, s, stderr, serveConfig{
 			Addr:            "127.0.0.1:0",
 			ShutdownTimeout: 2 * time.Second,
-		})
+		}, t.TempDir(), config.Defaults())
 	}()
 	time.Sleep(50 * time.Millisecond)
 	cancel()

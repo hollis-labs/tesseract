@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
+	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	feotel "github.com/hollis-labs/go-otel"
 )
 
@@ -101,6 +102,9 @@ type Server struct {
 	RequestLogMode string
 	// TypeRegistry manages context types and views. May be nil (defaults will be used).
 	TypeRegistry *contexttypes.Registry
+	// MemoryStore backs the /v1/memory/* and /v1/knowledge/* routes. When
+	// nil, those routes respond with 503 service_unavailable.
+	MemoryStore *memory.Store
 	// LogWriter is the destination for structured request logs when enabled.
 	LogWriter  io.Writer
 	startupErr error
@@ -267,6 +271,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleTTLCleanup(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/pack":
 		s.handleContextPack(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/write":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleMemoryWrite(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/recall":
+		s.handleMemoryRecall(w, r)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/memory/revisions/"):
+		s.handleMemoryGetRevision(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/memory/current":
+		s.handleMemoryGetCurrent(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/memory/history":
+		s.handleMemoryHistory(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/deprecate":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleMemoryDeprecate(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/promote":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleMemoryPromote(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
 	}
