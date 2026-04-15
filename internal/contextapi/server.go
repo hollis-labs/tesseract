@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
+	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	feotel "github.com/hollis-labs/go-otel"
 )
@@ -105,6 +106,9 @@ type Server struct {
 	// MemoryStore backs the /v1/memory/* and /v1/knowledge/* routes. When
 	// nil, those routes respond with 503 service_unavailable.
 	MemoryStore *memory.Store
+	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/contextd to
+	// knowledge.New(MemoryStore).
+	KnowledgeStore *knowledge.Store
 	// LogWriter is the destination for structured request logs when enabled.
 	LogWriter  io.Writer
 	startupErr error
@@ -294,6 +298,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleMemoryPromote(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/knowledge/write":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleKnowledgeWrite(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/mcpadapter"
 	cplugin "github.com/hollis-labs/vanta-conduit/internal/plugin"
 	"github.com/hollis-labs/vanta-conduit/internal/webui"
@@ -181,6 +182,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 
 	adapter := mcpadapter.New(store, token)
 	adapter.MemoryStore = mem.Store
+	adapter.KnowledgeStore = knowledge.New(mem.Store)
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -198,6 +200,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 
 	srv := contextapi.NewServer(store, contextpolicy.New())
 	srv.MemoryStore = mem.Store
+	srv.KnowledgeStore = knowledge.New(mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
 	srv.EnableMetrics = cfg.EnableMetrics
