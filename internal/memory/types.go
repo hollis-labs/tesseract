@@ -1,6 +1,10 @@
 package memory
 
-import "time"
+import (
+	"time"
+
+	"github.com/hollis-labs/vanta-conduit/internal/domains"
+)
 
 // Origin categorizes why a memory exists (closed vocabulary, D6/D9).
 type Origin string
@@ -76,11 +80,12 @@ type Payload struct {
 // Revision is an immutable memory revision. The only field that may be
 // mutated after write is Status, and only via the deprecation code path.
 type Revision struct {
-	RevisionID string     `json:"revision_id"`
-	MemoryID   string     `json:"memory_id"`
-	Namespace  string     `json:"namespace"`
-	MemoryKey  string     `json:"memory_key,omitempty"`
-	Status     Status     `json:"status"`
+	RevisionID string         `json:"revision_id"`
+	MemoryID   string         `json:"memory_id"`
+	Domain     domains.Domain `json:"domain"`
+	Namespace  string         `json:"namespace"`
+	MemoryKey  string         `json:"memory_key,omitempty"`
+	Status     Status         `json:"status"`
 	Supersedes string     `json:"supersedes,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	Author     Author     `json:"author"`
@@ -99,8 +104,9 @@ type Revision struct {
 
 // State is the mutable per-memory state (D9). Lives in memory_state table.
 type State struct {
-	MemoryID        string     `json:"memory_id"`
-	Namespace       string     `json:"namespace"`
+	MemoryID        string         `json:"memory_id"`
+	Domain          domains.Domain `json:"domain"`
+	Namespace       string         `json:"namespace"`
 	MemoryKey       string     `json:"memory_key,omitempty"`
 	CurrentRevision string     `json:"current_revision"`
 	Activation      float64    `json:"activation"`

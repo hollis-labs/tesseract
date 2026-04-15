@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/hollis-labs/vanta-conduit/internal/domains"
 )
 
 // memoryTimeFormat is the canonical timestamp format for memory tables.
@@ -29,7 +31,7 @@ type rowScanner interface {
 }
 
 // revisionColumns is the shared SELECT column list for revision queries.
-const revisionColumns = `revision_id, memory_id, namespace, COALESCE(memory_key, ''),
+const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(memory_key, ''),
        status, COALESCE(supersedes, ''), created_at,
        author_agent_id, author_version, trigger, session_id, origin,
        confidence, tags, COALESCE(ttl_seconds, 0), expires_at,
@@ -39,12 +41,13 @@ const revisionColumns = `revision_id, memory_id, namespace, COALESCE(memory_key,
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
 	var rev Revision
+	var domain string
 	var createdAt string
 	var expiresAt sql.NullString
 	var tagsJSON string
 	var embeddingBlob []byte
 	err := r.Scan(
-		&rev.RevisionID, &rev.MemoryID, &rev.Namespace, &rev.MemoryKey,
+		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
 		&rev.Author.AgentID, &rev.Author.AgentVersion, &rev.Trigger, &rev.SessionID, &rev.Origin,
 		&rev.Confidence, &tagsJSON, &rev.TTLSeconds, &expiresAt,
@@ -54,6 +57,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 	if err != nil {
 		return Revision{}, err
 	}
+	rev.Domain = domains.Domain(domain)
 	rev.CreatedAt, _ = parseMemoryTime(createdAt)
 	if expiresAt.Valid {
 		t, _ := parseMemoryTime(expiresAt.String)
@@ -72,16 +76,18 @@ func scanRevision(r rowScanner) (Revision, error) {
 // GetState reads the memory_state row for the given memory_id.
 func (s *Store) GetState(ctx context.Context, memoryID string) (State, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT memory_id, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
+SELECT memory_id, domain, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
        activation, access_count, last_accessed_at, created_at
 FROM memory_state WHERE memory_id = ?`, memoryID)
 
 	var st State
+	var domain string
 	var lastAccessed, created sql.NullString
 	err := row.Scan(
-		&st.MemoryID, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
+		&st.MemoryID, &domain, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
 		&st.Activation, &st.AccessCount, &lastAccessed, &created,
 	)
+	st.Domain = domains.Domain(domain)
 	if errors.Is(err, sql.ErrNoRows) {
 		return State{}, fmt.Errorf("%w: memory_id %s", ErrNotFound, memoryID)
 	}

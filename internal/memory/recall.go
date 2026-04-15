@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/vanta-conduit/internal/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 )
 
@@ -272,7 +273,7 @@ WHERE ` + whereClause
 
 // recallRevisionColumns is the same column list as revisionColumns but with
 // explicit r. prefix to avoid ambiguity when JOINing with memory_state.
-const recallRevisionColumns = `r.revision_id, r.memory_id, r.namespace, COALESCE(r.memory_key, ''),
+const recallRevisionColumns = `r.revision_id, r.memory_id, r.domain, r.namespace, COALESCE(r.memory_key, ''),
        r.status, COALESCE(r.supersedes, ''), r.created_at,
        r.author_agent_id, r.author_version, r.trigger, r.session_id, r.origin,
        r.confidence, r.tags, COALESCE(r.ttl_seconds, 0), r.expires_at,
@@ -287,7 +288,7 @@ func (s *Store) fetchStates(ctx context.Context, memoryIDs []string) (map[string
 
 	ph := placeholders(len(memoryIDs))
 	query := fmt.Sprintf( //nolint:gosec // ph is parameterized ?s, not user input
-		`SELECT memory_id, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
+		`SELECT memory_id, domain, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, ''),
        activation, access_count, last_accessed_at, created_at
 FROM memory_state WHERE memory_id IN (%s)`, ph)
 
@@ -305,13 +306,15 @@ FROM memory_state WHERE memory_id IN (%s)`, ph)
 	states := make(map[string]State, len(memoryIDs))
 	for rows.Next() {
 		var st State
+		var domain string
 		var lastAccessed, created sql.NullString
 		if err := rows.Scan(
-			&st.MemoryID, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
+			&st.MemoryID, &domain, &st.Namespace, &st.MemoryKey, &st.CurrentRevision,
 			&st.Activation, &st.AccessCount, &lastAccessed, &created,
 		); err != nil {
 			return nil, err
 		}
+		st.Domain = domains.Domain(domain)
 		if lastAccessed.Valid {
 			t, _ := parseMemoryTime(lastAccessed.String)
 			st.LastAccessedAt = &t

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	schemaVersion = 9
+	schemaVersion = 10
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -512,6 +512,22 @@ CREATE TABLE IF NOT EXISTS memory_revisions (
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_expires_at ON memory_revisions(expires_at) WHERE expires_at IS NOT NULL`); err != nil {
+				return err
+			}
+		case 10:
+			// Domain discriminator: split memory_state + memory_revisions into
+			// per-domain policies (memory, knowledge, ...). Existing rows
+			// backfill to 'memory' via the column default.
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_state ADD COLUMN domain TEXT NOT NULL DEFAULT 'memory'`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN domain TEXT NOT NULL DEFAULT 'memory'`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_state_domain ON memory_state(domain)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_domain ON memory_revisions(domain)`); err != nil {
 				return err
 			}
 		}
