@@ -10,13 +10,14 @@ import (
 
 // TestRevisionJSON_OmitsEmbeddingVector guards BLG-20260416-037: the
 // embedding_vector field must never be serialized over the MCP wire.
-// A populated 1536-dim vector (text-embedding-3-large) inflates a single
-// Revision to ~39KB; a recall of 5 can blow the 200K context budget.
+// A populated 3072-dim vector (text-embedding-3-large — see docs/DEV.md)
+// inflates a single Revision to ~39KB; a recall of 5 can blow the 200K
+// context budget.
 //
 // EmbeddingVector stays on the struct (ranking + filtering read it
 // directly), but json:"-" keeps it out of every marshaled response.
 func TestRevisionJSON_OmitsEmbeddingVector(t *testing.T) {
-	vec := make([]float32, 1536)
+	vec := make([]float32, 3072)
 	for i := range vec {
 		vec[i] = 0.01
 	}

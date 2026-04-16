@@ -13,9 +13,10 @@ import (
 )
 
 // BLG-20260416-037 guard. memory_recall and conduit_lookup must not ship
-// the embedding_vector field in their JSON responses. A 1536-dim vector
-// per record (text-embedding-3-large) inflates each result by ~39KB,
-// which blows Claude Code's 200K context budget on recalls of 5+.
+// the embedding_vector field in their JSON responses. A 3072-dim vector
+// per record (text-embedding-3-large — see docs/DEV.md) inflates each
+// result by ~39KB, which blows Claude Code's 200K context budget on
+// recalls of 5+.
 
 // stripTestEmbedder returns a fixed vector large enough to prove the
 // leak would be material if the fix regressed.
@@ -81,7 +82,7 @@ func writeAndEmbed(t *testing.T, a *Adapter, args map[string]any) string {
 }
 
 func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
-	vec := make([]float32, 1536)
+	vec := make([]float32, 3072)
 	for i := range vec {
 		vec[i] = 0.01
 	}
@@ -126,7 +127,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 }
 
 func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
-	vec := make([]float32, 1536)
+	vec := make([]float32, 3072)
 	for i := range vec {
 		vec[i] = 0.02
 	}
@@ -166,7 +167,7 @@ func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
 // Similarity ranking must keep working after the fix: vector is still
 // read from the struct internally, just not serialized to the wire.
 func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
-	vec := make([]float32, 1536)
+	vec := make([]float32, 3072)
 	for i := range vec {
 		vec[i] = 0.01
 	}
