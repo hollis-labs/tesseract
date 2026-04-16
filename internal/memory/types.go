@@ -123,7 +123,7 @@ type Revision struct {
 	Payload         Payload    `json:"payload"`
 	Facets          Facets     `json:"facets,omitempty"`
 	EmbeddingModel  string     `json:"embedding_model,omitempty"`
-	EmbeddingVector []float32  `json:"embedding_vector,omitempty"`
+	EmbeddingVector []float32  `json:"-"` // never serialized — BLG-20260416-037
 	DedupMatch      string     `json:"dedup_match,omitempty"`
 }
 
