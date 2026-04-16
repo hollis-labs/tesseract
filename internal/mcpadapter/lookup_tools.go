@@ -17,7 +17,7 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithDescription("Unified lookup across memory and knowledge domains. Prefer this tool BEFORE filesystem or web exploration."),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity ranking)")),
-		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity (default: activation)")),
+		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation)")),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
 		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]")),

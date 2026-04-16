@@ -19,6 +19,7 @@ const (
 	RankingActivation    Ranking = "activation"
 	RankingChronological Ranking = "chronological"
 	RankingSimilarity    Ranking = "similarity"
+	RankingRelevance     Ranking = "relevance"
 )
 
 // RevisionScope controls whether recall returns only the current revision
@@ -91,9 +92,17 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		}
 	}
 
-	// 2. Apply defaults.
+	// 2. Apply defaults. When ranking is unspecified, pick relevance for
+	// queries (BM25 + cosine fusion) and activation otherwise — the
+	// activation primitive remains the sensible default for no-query
+	// recall, while agents asking a semantic question get hybrid recall
+	// by default (EPIC-20260414-19124).
 	if in.Ranking == "" {
-		in.Ranking = RankingActivation
+		if strings.TrimSpace(in.Query) != "" {
+			in.Ranking = RankingRelevance
+		} else {
+			in.Ranking = RankingActivation
+		}
 	}
 	if in.RevisionScope == "" {
 		in.RevisionScope = RevisionScopeCurrent
@@ -116,6 +125,14 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		if in.Query == "" {
 			return nil, fmt.Errorf("%w: query is required for similarity ranking", ErrInvalidInput)
 		}
+	}
+
+	// 3b. Relevance ranking has its own pipeline (BM25 + optional cosine,
+	// fused via RRF and weighted by activation-style modifiers). The
+	// embedder is optional — BM25-only is intentional for freshly-written
+	// memories that haven't been embedded yet.
+	if in.Ranking == RankingRelevance {
+		return s.relevanceRecall(ctx, in)
 	}
 
 	// 4. Fetch candidate revisions.
