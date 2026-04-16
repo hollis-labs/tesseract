@@ -1211,3 +1211,188 @@ func TestMigrationCreatesMemoryTables(t *testing.T) {
 		}
 	}
 }
+
+// TestMigrationCreatesFTS5Index verifies the case-12 migration created the
+// FTS5 virtual table and its sync triggers over memory_revisions content
+// columns.
+func TestMigrationCreatesFTS5Index(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(context.Background(), Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+
+	db := s.DB()
+
+	var name string
+	if err := db.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='memory_revisions_fts'`,
+	).Scan(&name); err != nil {
+		t.Fatalf("expected memory_revisions_fts virtual table: %v", err)
+	}
+
+	for _, trg := range []string{
+		"memory_revisions_fts_ai",
+		"memory_revisions_fts_ad",
+	} {
+		var tname string
+		if err := db.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='trigger' AND name=?`,
+			trg,
+		).Scan(&tname); err != nil {
+			t.Errorf("expected trigger %s: %v", trg, err)
+		}
+	}
+}
+
+// TestFTS5TriggersMirrorRevisionWrites exercises the AFTER INSERT and
+// AFTER DELETE triggers by writing a memory_revisions row, running an
+// FTS5 MATCH search, and confirming the row is indexed and removed on
+// delete. Content (payload_summary, payload_body, tags) is indexed;
+// status is intentionally NOT indexed — status filtering lives at query
+// time via JOIN, keeping the BM25 arm deterministic.
+func TestFTS5TriggersMirrorRevisionWrites(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(context.Background(), Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+
+	db := s.DB()
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO memory_state (memory_id, namespace, memory_key, domain)
+		 VALUES (?, ?, ?, 'memory')`,
+		"mem-1", "user/test", "k1",
+	); err != nil {
+		t.Fatalf("insert memory_state: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO memory_revisions (
+    revision_id, memory_id, domain, namespace, memory_key, status,
+    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    tags, payload_summary, payload_body
+) VALUES (?, ?, 'memory', ?, ?, 'canonical',
+    'agent-1', 'v1', 'manual', 'sess-1', 'agent', 0.9,
+    '["hybrid","fts5"]', 'Hybrid relevance sprint kickoff', 'Reciprocal rank fusion across dense and lexical signals')`,
+		"rev-1", "mem-1", "user/test", "k1",
+	); err != nil {
+		t.Fatalf("insert revision: %v", err)
+	}
+
+	var rowid int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT rowid FROM memory_revisions_fts WHERE memory_revisions_fts MATCH ?`,
+		"kickoff",
+	).Scan(&rowid); err != nil {
+		t.Fatalf("fts match after insert: %v", err)
+	}
+
+	var gotID string
+	if err := db.QueryRowContext(ctx,
+		`SELECT revision_id FROM memory_revisions WHERE rowid = ?`,
+		rowid,
+	).Scan(&gotID); err != nil {
+		t.Fatalf("lookup revision by rowid: %v", err)
+	}
+	if gotID != "rev-1" {
+		t.Fatalf("expected rev-1 via FTS rowid, got %s", gotID)
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`DELETE FROM memory_revisions WHERE revision_id = ?`, "rev-1",
+	); err != nil {
+		t.Fatalf("delete revision: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM memory_revisions_fts WHERE memory_revisions_fts MATCH ?`,
+		"kickoff",
+	).Scan(&count); err != nil {
+		t.Fatalf("fts count after delete: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 FTS rows after delete, got %d", count)
+	}
+}
+
+// TestFTS5BackfillsExistingRevisions asserts that when the migration runs
+// on a database that already contains memory_revisions rows (upgrade
+// path from schema v11 → v12), those rows are backfilled into the FTS
+// index, not only new inserts.
+func TestFTS5BackfillsExistingRevisions(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(context.Background(), Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+
+	db := s.DB()
+	ctx := context.Background()
+
+	// Sanity: we open the store and immediately have FTS plumbing. Simulate
+	// "upgrade" by dropping the FTS index + triggers and re-running migrate.
+	if _, err := db.ExecContext(ctx, `DROP TRIGGER IF EXISTS memory_revisions_fts_ai`); err != nil {
+		t.Fatalf("drop ai trigger: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TRIGGER IF EXISTS memory_revisions_fts_ad`); err != nil {
+		t.Fatalf("drop ad trigger: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS memory_revisions_fts`); err != nil {
+		t.Fatalf("drop fts table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version = 12`); err != nil {
+		t.Fatalf("roll schema_version back: %v", err)
+	}
+
+	// Seed a revision while the FTS index is absent.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO memory_state (memory_id, namespace, memory_key, domain)
+		 VALUES (?, ?, ?, 'memory')`,
+		"mem-legacy", "user/test", "k-legacy",
+	); err != nil {
+		t.Fatalf("insert memory_state: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO memory_revisions (
+    revision_id, memory_id, domain, namespace, memory_key, status,
+    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    tags, payload_summary, payload_body
+) VALUES (?, ?, 'memory', ?, ?, 'canonical',
+    'agent-legacy', 'v1', 'manual', 'sess-legacy', 'agent', 0.8,
+    '[]', 'Legacy revision predates FTS5', '')`,
+		"rev-legacy", "mem-legacy", "user/test", "k-legacy",
+	); err != nil {
+		t.Fatalf("insert legacy revision: %v", err)
+	}
+
+	// Re-run migration; case 12 should backfill.
+	if err := s.migrate(ctx); err != nil {
+		t.Fatalf("re-migrate: %v", err)
+	}
+
+	var rowid int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT rowid FROM memory_revisions_fts WHERE memory_revisions_fts MATCH ?`,
+		"legacy",
+	).Scan(&rowid); err != nil {
+		t.Fatalf("fts match after backfill: %v", err)
+	}
+
+	var gotID string
+	if err := db.QueryRowContext(ctx,
+		`SELECT revision_id FROM memory_revisions WHERE rowid = ?`,
+		rowid,
+	).Scan(&gotID); err != nil {
+		t.Fatalf("lookup revision by rowid: %v", err)
+	}
+	if gotID != "rev-legacy" {
+		t.Errorf("expected rev-legacy via FTS rowid, got %s", gotID)
+	}
+}
