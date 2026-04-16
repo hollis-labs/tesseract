@@ -28,7 +28,7 @@ Vanta Conduit is the context memory and RAG service for the Hollis Labs ecosyste
 - Nanite API calls to Cortex
 - agentrc configs and CLAUDE.md files across projects
 - Shared libs (go-queue, go-provider) if they reference Cortex
-- MCP server/tool names (`mcp__vanta__*` → `mcp__conduit__*`)
+- MCP server/tool names (`mcp__cortex__*` → `mcp__vanta__*`)
 
 **Docs/Config:**
 - CLAUDE.md files across all projects

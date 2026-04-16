@@ -3,6 +3,7 @@ package contextstore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -15,10 +16,10 @@ func seedStoreWithRecords(t *testing.T, count int) *Store {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	for i := 0; i < count; i++ {
-		payload := json.RawMessage([]byte(`{"n":` + string(rune('0'+(i%10))) + `}`))
+		payload := json.RawMessage([]byte(`{"n":` + fmt.Sprintf("%d", i) + `}`))
 		if _, err := s.AppendRecord(context.Background(), AppendInput{
 			Namespace: "app/estimate/session",
-			Key:       string(rune('a' + i)),
+			Key:       fmt.Sprintf("rec-%04d", i),
 			Actor:     "app:test",
 			Payload:   payload,
 		}); err != nil {
@@ -45,6 +46,25 @@ func TestEstimate_ReturnsAggregateCounts(t *testing.T) {
 	wantTokens := (result.TotalBytes + 3) / 4
 	if result.TotalTokensEstimate != wantTokens {
 		t.Errorf("TotalTokensEstimate = %d, want %d (bytes/4 round up)", result.TotalTokensEstimate, wantTokens)
+	}
+}
+
+func TestEstimate_NotCappedByDefaultSelectLimit(t *testing.T) {
+	// DefaultSelectLimit is 200 and Select is hard-capped at MaxSelectLimit
+	// (500). Estimate must count the full matching set regardless — that's
+	// the difference between "what would Select return" and "how big is
+	// this selector?" Seeding more than DefaultSelectLimit catches any
+	// regression where Estimate accidentally inherits Select's cap.
+	const seed = DefaultSelectLimit + 50
+	s := seedStoreWithRecords(t, seed)
+	result, err := s.Estimate(context.Background(), Selector{
+		Namespaces: []string{"app/estimate/session"},
+	})
+	if err != nil {
+		t.Fatalf("Estimate: %v", err)
+	}
+	if result.RecordCount != seed {
+		t.Errorf("RecordCount = %d, want %d (Estimate must not inherit Select limit cap)", result.RecordCount, seed)
 	}
 }
 

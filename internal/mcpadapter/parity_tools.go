@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
@@ -77,12 +78,37 @@ func (a *Adapter) handleViewsEvaluate(ctx context.Context, req mcp.CallToolReque
 		return toolError("validation_error", "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 	includePayload := req.GetBool("include_payload", false)
-	limit := int(req.GetFloat("limit", 0))
+	limit, err := wholeNumberArg(req, "limit", 0)
+	if err != nil {
+		return toolError("validation_error", err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
 	result, err := a.Store.Evaluate(ctx, sel, includePayload, limit)
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError("selector_error", err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
-	return toolJSON(result), nil
+	// Match the HTTP /v1/views/evaluate envelope: items + evaluation_meta.
+	// Keeping the wire shape identical lets agents share parsers across both surfaces.
+	return toolJSON(map[string]any{
+		"items": result.Items,
+		"evaluation_meta": map[string]any{
+			"sort_keys":        result.SortKeys,
+			"matched_count":    result.MatchedCount,
+			"truncated":        result.Truncated,
+			"normalized_scope": result.NormalizedScope,
+		},
+	}), nil
+}
+
+// wholeNumberArg reads an MCP number arg and rejects non-integer values
+// (e.g. 2.5) instead of silently truncating. The HTTP peer decodes the
+// matching field into Go's int and rejects fractions, so MCP behavior
+// must match for parity.
+func wholeNumberArg(req mcp.CallToolRequest, name string, def float64) (int, error) {
+	v := req.GetFloat(name, def)
+	if v != float64(int(v)) {
+		return 0, fmt.Errorf("%s must be a whole number, got %v", name, v)
+	}
+	return int(v), nil
 }
 
 func (a *Adapter) handleMemoryGetRevision(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

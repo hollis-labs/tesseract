@@ -279,15 +279,15 @@ git commit -m "docs: rename all Cortex references to Vanta Conduit"
 grep -rn 'cortex\|"context_' internal/mcpadapter/ --include='*.go'
 ```
 
-The MCP server name (what appears as `mcp__vanta__` in tool names) is likely set in `adapter.go`. Change the server registration name from `"cortex"` to `"conduit"`.
+The MCP server name (what appears as `mcp__cortex__` / `mcp__vanta__` in tool names) is registered in `adapter.go`. The rename target landed as `vanta` (not `conduit`); change the server registration name from `"cortex"` to `"vanta"`.
 
 - [ ] **Step 2: Update the server name**
 
-In `internal/mcpadapter/adapter.go`, find where the server name is set (likely in `NewServer()` or similar) and change `"cortex"` to `"conduit"`.
+In `internal/mcpadapter/adapter.go`, find where the server name is set (likely in `NewServer()` or similar) and change `"cortex"` to `"vanta"`.
 
 - [ ] **Step 3: Verify tool names**
 
-The individual tool names (e.g., `context_write`, `context_search`, `context_view`) use a `context_` prefix which is descriptive of the operation, not the app name. These should stay as-is — they describe what the tool does, and the MCP server name `conduit` already provides the namespace (`mcp__conduit__context_write`).
+The individual tool names (e.g., `context_write`, `context_search`, `context_view`) use a `context_` prefix which is descriptive of the operation, not the app name. These should stay as-is — they describe what the tool does, and the MCP server name `vanta` already provides the namespace (`mcp__vanta__context_write`).
 
 Confirm:
 ```bash
