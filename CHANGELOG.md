@@ -8,7 +8,9 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
-Hybrid Relevance S1 (`SPR-20260414-hybrid-relevance-s1`, `EPIC-20260414-19124`). Adds a fourth ranking mode `relevance` that fuses BM25 (FTS5) and cosine via Reciprocal Rank Fusion and multiplies by the existing activation-style modifiers. Becomes the smart default for query-backed agent recall so freshly-written memories surface immediately via the BM25 arm (previously: invisible to semantic search until the async embedder caught up).
+## [0.4.0] — 2026-04-16
+
+Hybrid Relevance S1 (`SPR-20260414-hybrid-relevance-s1`, `EPIC-20260414-19124`). Adds a fourth ranking mode `relevance` that fuses BM25 (FTS5) and cosine via Reciprocal Rank Fusion and multiplies by the existing activation-style modifiers. Becomes the smart default for query-backed agent recall so freshly-written memories surface immediately via the BM25 arm (previously: invisible to semantic search until the async embedder caught up). Also ships BLG-037 (context-budget fix for MCP recall responses).
 
 Minor-bump candidate — default ranking changes when a query is provided, and access reinforcement widens from activation-only to every recall mode.
 
@@ -24,6 +26,10 @@ Minor-bump candidate — default ranking changes when a query is provided, and a
 - **Ranking default is now smart**: empty `Ranking` with a non-empty `Query` resolves to `relevance`; empty `Ranking` with no query stays on `activation`. Explicit callers are unaffected.
 - **MCP tool descriptions** updated on `memory_recall` and `conduit_lookup`: `activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)`.
 - **Access reinforcement widens to all recall modes** (was activation-only). Dense-only or chronological queries now bump `last_accessed_at` and `access_count` too so hot memories keep their activation trail when agents switch ranking modes. Consumers that depended on "only activation-mode recall reinforces" should flag this — relevant for the Nanite consumer.
+
+### Fixed
+
+- **BLG-037** — `memory_recall` and `conduit_lookup` were shipping the full `EmbeddingVector` (~39KB/record for text-embedding-3-large) in every `Revision` JSON response, blowing agent context budgets on recalls of 5+. `json:"-"` on `Revision.EmbeddingVector` drops the field from every JSON response universally. Struct field is retained — similarity ranking still reads it directly via `similarityScore`/`CosineSimilarity`; SQL storage is untouched. Smoke-test on a live store: `memory_recall limit=10` went from ~390KB to 26KB; `conduit_lookup limit=20` went from ~660KB to 40KB.
 
 ### Operator notes
 
@@ -121,7 +127,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.0.1...v0.1.0
