@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	schemaVersion = 11
+	schemaVersion = 12
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -554,6 +554,46 @@ CREATE TABLE IF NOT EXISTS memory_revisions (
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_facet_source ON memory_revisions(facet_source) WHERE facet_source IS NOT NULL`); err != nil {
+				return err
+			}
+		case 12:
+			// FTS5 external-content virtual table over memory_revisions,
+			// indexing the text columns used by the BM25 arm of hybrid
+			// relevance recall (EPIC-20260414-19124). Content columns
+			// (payload_summary, payload_body, tags) never mutate in
+			// production, so only INSERT + DELETE triggers are needed.
+			// Status is intentionally NOT indexed — status filtering lives
+			// at query time via JOIN to keep the BM25 arm deterministic
+			// (see also memory/recall.go).
+			if _, err = tx.ExecContext(ctx, `
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_revisions_fts USING fts5(
+    payload_summary,
+    payload_body,
+    tags,
+    content='memory_revisions',
+    content_rowid='rowid'
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+INSERT INTO memory_revisions_fts(rowid, payload_summary, payload_body, tags)
+SELECT rowid, payload_summary, payload_body, tags FROM memory_revisions`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS memory_revisions_fts_ai
+AFTER INSERT ON memory_revisions BEGIN
+    INSERT INTO memory_revisions_fts(rowid, payload_summary, payload_body, tags)
+    VALUES (new.rowid, new.payload_summary, new.payload_body, new.tags);
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS memory_revisions_fts_ad
+AFTER DELETE ON memory_revisions BEGIN
+    INSERT INTO memory_revisions_fts(memory_revisions_fts, rowid, payload_summary, payload_body, tags)
+    VALUES ('delete', old.rowid, old.payload_summary, old.payload_body, old.tags);
+END`); err != nil {
 				return err
 			}
 		}

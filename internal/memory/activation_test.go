@@ -60,3 +60,81 @@ func TestReinforcementDiminishingReturns(t *testing.T) {
 		t.Errorf("activation did not grow: %v", st.Activation)
 	}
 }
+
+// TestReinforceAccessAppliesToSimilarityRanking widens the reinforcement
+// invariant beyond activation mode: dense-only queries must also count
+// as access so hot memories don't stop decaying when agents switch to
+// semantic recall (EPIC-20260414-19124, TASK-005).
+func TestReinforceAccessAppliesToSimilarityRanking(t *testing.T) {
+	ms, cleanup := newTestStoreWithEmbedder(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rev, err := ms.WriteRevision(ctx, sampleInput("sim.reinforce"))
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := ms.EmbedRevision(ctx, rev.RevisionID, "test-model"); err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+
+	before, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("get state before: %v", err)
+	}
+
+	if _, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingSimilarity,
+		Query:      "test query",
+	}); err != nil {
+		t.Fatalf("Recall similarity: %v", err)
+	}
+
+	after, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("get state after: %v", err)
+	}
+	if after.AccessCount <= before.AccessCount {
+		t.Errorf("similarity ranking must reinforce access; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+	if after.LastAccessedAt == nil {
+		t.Error("last_accessed_at should be set after similarity recall")
+	}
+}
+
+// TestReinforceAccessAppliesToChronologicalRanking widens the invariant
+// to chronological recall too — any caller expressing interest in a
+// memory counts as an access (TASK-005).
+func TestReinforceAccessAppliesToChronologicalRanking(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rev, err := ms.WriteRevision(ctx, sampleInput("chrono.reinforce"))
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	before, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("get state before: %v", err)
+	}
+
+	if _, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingChronological,
+	}); err != nil {
+		t.Fatalf("Recall chronological: %v", err)
+	}
+
+	after, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("get state after: %v", err)
+	}
+	if after.AccessCount <= before.AccessCount {
+		t.Errorf("chronological ranking must reinforce access; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+}

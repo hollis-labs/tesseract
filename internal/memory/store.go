@@ -2,6 +2,7 @@ package memory
 
 import (
 	"database/sql"
+	"sync"
 
 	"github.com/hollis-labs/go-providers/provider"
 )
@@ -15,6 +16,13 @@ type Store struct {
 	embeddingModel string
 	dedupThreshold float64
 	queue          JobQueue
+
+	// rerankers is guarded by rerankersMu so RegisterReranker may be
+	// called concurrently with Recall. The typical pattern is to register
+	// at startup, but we don't want a data race if a caller wires new
+	// rerankers dynamically (e.g., a hot-reload config path).
+	rerankersMu sync.RWMutex
+	rerankers   map[string]Reranker
 }
 
 // NewStore constructs a memory.Store bound to the given database. embedder may
