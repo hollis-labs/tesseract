@@ -2,6 +2,14 @@
 
 Updated: 2026-04-08
 
+## Agent-facing MCP surface
+
+Use `mcp__vanta__*` tools to hit this service over stdio. Full catalog,
+per-domain scope matrix, and playbooks live at
+[`docs/MCP_TOOLS.md`](../docs/MCP_TOOLS.md). The parity test in
+`tests/parity/parity_test.go` fails if a tool or HTTP route is added
+without a matching catalog entry.
+
 ## Current state
 
 Vanta Conduit is a standalone repo (`github.com/hollis-labs/vanta-conduit`)

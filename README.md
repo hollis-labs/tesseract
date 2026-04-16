@@ -99,6 +99,9 @@ Then in a target repo with `agentrc.yaml` (copy it from the Volon release repo):
 - [`docs/03_workflow-contracts.md`](docs/03_workflow-contracts.md) — workflow execution contracts
 - [`docs/04_task-model.md`](docs/04_task-model.md) — task model
 - [`docs/09_commands.md`](docs/09_commands.md) — all available commands
+- [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md) — agent-facing MCP tool catalog (per-domain tools, scopes, playbooks)
+- [`CHANGELOG.md`](CHANGELOG.md) — release history; consumers (Nanite et al.) watch this for new tools/routes
+- [`docs/RELEASE.md`](docs/RELEASE.md) — versioning + release-cut procedure
 /notes
 - `go build ./cmd/volon` currently emits the CLI binary (prints “Volon” in usage/output).
   The path will move to `cmd/volon` once the module rename (TASK-20260224-010) lands.

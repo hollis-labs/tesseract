@@ -41,9 +41,18 @@ func New(store *contextstore.Store, token string) *Adapter {
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
 		"context-memory-service",
-		"0.1.0",
+		"0.3.0",
 		server.WithToolCapabilities(true),
 	)
+	a.RegisterAllTools(s)
+	ctxFunc := func(_ context.Context) context.Context { return ctx }
+	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
+}
+
+// RegisterAllTools registers every MCP tool supported by this adapter on s.
+// The parity test uses this to introspect the live tool surface without
+// starting a stdio server.
+func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	a.registerTools(s)
 	a.registerTypedTools(s)
 	a.registerEmbeddingTools(s)
@@ -57,8 +66,7 @@ func (a *Adapter) Run(ctx context.Context) error {
 	if a.KnowledgeStore != nil {
 		a.registerKnowledgeTools(s)
 	}
-	ctxFunc := func(_ context.Context) context.Context { return ctx }
-	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
+	a.registerParityTools(s)
 }
 
 // checkScope validates the configured token and checks for the required scope.

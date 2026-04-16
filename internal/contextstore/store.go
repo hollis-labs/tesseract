@@ -839,7 +839,7 @@ func (s *Store) Select(ctx context.Context, sel Selector) ([]Record, error) {
 	if err := validateSelector(&sel); err != nil {
 		return nil, err
 	}
-	scope := normalizedScope(sel.RevisionScope)
+	scope := NormalizedScope(sel.RevisionScope)
 
 	query := `
 SELECT DISTINCT r.record_id, r.namespace, r.key_name, r.revision, r.actor, r.created_at, r.checksum, r.file_path,
@@ -2179,13 +2179,6 @@ func placeholders(n int) string {
 		items[i] = "?"
 	}
 	return strings.Join(items, ",")
-}
-
-func normalizedScope(scope string) string {
-	if strings.EqualFold(strings.TrimSpace(scope), "all") {
-		return "all"
-	}
-	return "head"
 }
 
 func validateSelector(sel *Selector) error {

@@ -253,20 +253,12 @@ func (s *Server) handleEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
-	records, err := s.Store.Select(r.Context(), req.Selector)
+	result, err := s.Store.Estimate(r.Context(), req.Selector)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "selector_error", err.Error(), nil)
 		return
 	}
-	totalBytes := 0
-	for _, rec := range records {
-		totalBytes += len(rec.Payload)
-	}
-	writeJSON(w, http.StatusOK, EstimateResponse{
-		RecordCount:         len(records),
-		TotalBytes:          totalBytes,
-		TotalTokensEstimate: (totalBytes + 3) / 4,
-	})
+	writeJSON(w, http.StatusOK, EstimateResponse(result))
 }
 
 // packetActor extracts an actor identifier from the request or returns "anonymous".

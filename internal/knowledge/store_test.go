@@ -85,3 +85,60 @@ func TestWrite_MemoryNamespaceRejected(t *testing.T) {
 		t.Fatal("expected knowledge-policy rejection for memory namespace")
 	}
 }
+
+func TestGetCurrent_Success(t *testing.T) {
+	s := newTestStore(t)
+	written, err := s.Write(context.Background(), validInput())
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got, err := s.GetCurrent(context.Background(), validInput().Namespace, validInput().Key)
+	if err != nil {
+		t.Fatalf("GetCurrent: %v", err)
+	}
+	if got.RevisionID != written.RevisionID {
+		t.Errorf("RevisionID = %q, want %q", got.RevisionID, written.RevisionID)
+	}
+	if got.Domain != domains.Knowledge {
+		t.Errorf("Domain = %q, want knowledge", got.Domain)
+	}
+}
+
+func TestGetCurrent_NotFound(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.GetCurrent(context.Background(), "user/chrispian/knowledge/missing", "no-such-key")
+	if !errors.Is(err, memory.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound wrap", err)
+	}
+}
+
+func TestGetHistory_MultipleRevisions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	first, err := s.Write(ctx, validInput())
+	if err != nil {
+		t.Fatalf("Write first: %v", err)
+	}
+	in2 := validInput()
+	in2.Supersedes = first.RevisionID
+	in2.Summary = "go-providers: updated summary"
+	second, err := s.Write(ctx, in2)
+	if err != nil {
+		t.Fatalf("Write second: %v", err)
+	}
+	revs, err := s.GetHistory(ctx, validInput().Namespace, validInput().Key)
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	if len(revs) != 2 {
+		t.Fatalf("len(revs) = %d, want 2", len(revs))
+	}
+	if revs[0].RevisionID != second.RevisionID {
+		t.Errorf("newest-first broken: revs[0] = %q, want %q", revs[0].RevisionID, second.RevisionID)
+	}
+	for _, rev := range revs {
+		if rev.Domain != domains.Knowledge {
+			t.Errorf("revision %q has Domain %q, want knowledge", rev.RevisionID, rev.Domain)
+		}
+	}
+}

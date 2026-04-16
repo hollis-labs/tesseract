@@ -111,3 +111,37 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 	}
 	return s.mem.WriteRevision(ctx, memIn)
 }
+
+// GetCurrent returns the current revision for the knowledge entry keyed by
+// (namespace, key). Returns memory.ErrNotFound if the revision exists but
+// is not in the knowledge domain — callers should not see cross-domain reads.
+func (s *Store) GetCurrent(ctx context.Context, namespace, key string) (memory.Revision, error) {
+	rev, err := s.mem.GetCurrent(ctx, namespace, key)
+	if err != nil {
+		return memory.Revision{}, err
+	}
+	if rev.Domain != domains.Knowledge {
+		return memory.Revision{}, fmt.Errorf("%w: revision at %s/%s is not a knowledge entry", memory.ErrNotFound, namespace, key)
+	}
+	return rev, nil
+}
+
+// GetHistory returns the revision history for the knowledge entry keyed by
+// (namespace, key), newest-first. Non-knowledge revisions are filtered out;
+// returns memory.ErrNotFound if the entry exists but has no knowledge revisions.
+func (s *Store) GetHistory(ctx context.Context, namespace, key string) ([]memory.Revision, error) {
+	revs, err := s.mem.GetHistory(ctx, namespace, key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]memory.Revision, 0, len(revs))
+	for _, rev := range revs {
+		if rev.Domain == domains.Knowledge {
+			out = append(out, rev)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%w: no knowledge revisions for %s/%s", memory.ErrNotFound, namespace, key)
+	}
+	return out, nil
+}
