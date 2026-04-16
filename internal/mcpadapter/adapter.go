@@ -44,6 +44,15 @@ func (a *Adapter) Run(ctx context.Context) error {
 		"0.1.0",
 		server.WithToolCapabilities(true),
 	)
+	a.RegisterAllTools(s)
+	ctxFunc := func(_ context.Context) context.Context { return ctx }
+	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
+}
+
+// RegisterAllTools registers every MCP tool supported by this adapter on s.
+// The parity test uses this to introspect the live tool surface without
+// starting a stdio server.
+func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	a.registerTools(s)
 	a.registerTypedTools(s)
 	a.registerEmbeddingTools(s)
@@ -58,8 +67,6 @@ func (a *Adapter) Run(ctx context.Context) error {
 		a.registerKnowledgeTools(s)
 	}
 	a.registerParityTools(s)
-	ctxFunc := func(_ context.Context) context.Context { return ctx }
-	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
 }
 
 // checkScope validates the configured token and checks for the required scope.
