@@ -29,8 +29,11 @@ func (f RerankerFunc) Rerank(ctx context.Context, query string, candidates []Rev
 
 // RegisterReranker wires a Reranker onto this Store under the given
 // name. RecallInput.Reranker selects one per call. Reregistering under
-// the same name overwrites the previous entry.
+// the same name overwrites the previous entry. Safe for concurrent use
+// alongside Recall.
 func (s *Store) RegisterReranker(name string, r Reranker) {
+	s.rerankersMu.Lock()
+	defer s.rerankersMu.Unlock()
 	if s.rerankers == nil {
 		s.rerankers = make(map[string]Reranker)
 	}
@@ -41,11 +44,19 @@ func (s *Store) RegisterReranker(name string, r Reranker) {
 // in.Reranker is set. Returns results unchanged for the no-reranker
 // case. Preserves per-result State and Score — only the ordering
 // (and optional truncation to RerankerTopK) changes.
+//
+// Input-set invariant: callers never lose candidates to a misbehaving
+// reranker. Any revision the reranker drops is appended to the output
+// in its original score order; duplicates in the reranker's output are
+// collapsed. When the caller sets RerankerTopK > 0, the cap is applied
+// after the fallback-append so the caller's explicit intent wins.
 func (s *Store) applyReranker(ctx context.Context, in RecallInput, results []RecallResult) ([]RecallResult, error) {
 	if in.Reranker == "" {
 		return results, nil
 	}
+	s.rerankersMu.RLock()
 	r, ok := s.rerankers[in.Reranker]
+	s.rerankersMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: %q not registered", ErrRerankerUnavailable, in.Reranker)
 	}
@@ -60,6 +71,9 @@ func (s *Store) applyReranker(ctx context.Context, in RecallInput, results []Rec
 		byID[rr.Revision.RevisionID] = i
 	}
 
+	// Hand the reranker the full candidate set as its working window,
+	// clamped by RerankerTopK when the caller set it. The fallback loop
+	// below still appends any dropped items so the set isn't lost.
 	topK := in.RerankerTopK
 	if topK <= 0 {
 		topK = len(revs)
@@ -70,11 +84,27 @@ func (s *Store) applyReranker(ctx context.Context, in RecallInput, results []Rec
 		return nil, fmt.Errorf("rerank %q: %w", in.Reranker, err)
 	}
 
-	out := make([]RecallResult, 0, len(reordered))
+	out := make([]RecallResult, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
 	for _, rev := range reordered {
-		if i, ok := byID[rev.RevisionID]; ok {
-			out = append(out, results[i])
+		if _, dup := seen[rev.RevisionID]; dup {
+			continue
 		}
+		i, ok := byID[rev.RevisionID]
+		if !ok {
+			continue
+		}
+		out = append(out, results[i])
+		seen[rev.RevisionID] = struct{}{}
+	}
+	for i, rr := range results {
+		if _, already := seen[rr.Revision.RevisionID]; already {
+			continue
+		}
+		out = append(out, results[i])
+	}
+	if in.RerankerTopK > 0 && len(out) > in.RerankerTopK {
+		out = out[:in.RerankerTopK]
 	}
 	return out, nil
 }

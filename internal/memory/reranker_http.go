@@ -91,8 +91,16 @@ func (h *HTTPReranker) Rerank(ctx context.Context, query string, candidates []Re
 		Query:     query,
 		Documents: docs,
 	}
-	if topK > 0 && topK < len(candidates) {
+	// Always send top_n when the caller asked for a specific top-K, even
+	// when it matches the document count. Some Cohere/Voyage-compatible
+	// endpoints default top_n to a small constant when the field is
+	// absent, which would silently truncate results. Clamp to the
+	// document count so we never ask the server for more than we sent.
+	if topK > 0 {
 		payload.TopN = topK
+		if payload.TopN > len(candidates) {
+			payload.TopN = len(candidates)
+		}
 	}
 
 	body, err := json.Marshal(payload)

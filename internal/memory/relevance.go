@@ -98,12 +98,14 @@ func (s *Store) relevanceRecall(ctx context.Context, in RecallInput) ([]RecallRe
 		results = results[:in.Limit]
 	}
 
-	_ = s.reinforceAccess(ctx, results)
-
+	// Rerank before reinforce so access metrics reflect only the
+	// post-rerank result set the caller actually sees.
 	results, err = s.applyReranker(ctx, in, results)
 	if err != nil {
 		return nil, err
 	}
+
+	_ = s.reinforceAccess(ctx, results)
 
 	return results, nil
 }
