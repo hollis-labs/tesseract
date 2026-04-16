@@ -203,74 +203,7 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 
 // fetchCandidates builds a dynamic SQL query with parameterized filters.
 func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision, error) {
-	var where []string
-	var args []interface{}
-
-	// Namespace filter.
-	where = append(where, "r.namespace IN ("+placeholders(len(in.Namespaces))+")")
-	for _, ns := range in.Namespaces {
-		args = append(args, ns)
-	}
-
-	// Status filter.
-	if len(in.Filters.Statuses) > 0 {
-		where = append(where, "r.status IN ("+placeholders(len(in.Filters.Statuses))+")")
-		for _, st := range in.Filters.Statuses {
-			args = append(args, string(st))
-		}
-	}
-
-	// Domain filter.
-	if len(in.Filters.Domains) > 0 {
-		where = append(where, "r.domain IN ("+placeholders(len(in.Filters.Domains))+")")
-		for _, d := range in.Filters.Domains {
-			args = append(args, string(d))
-		}
-	}
-
-	// Facet filters (knowledge domain).
-	if len(in.Filters.FacetKinds) > 0 {
-		where = append(where, "r.facet_kind IN ("+placeholders(len(in.Filters.FacetKinds))+")")
-		for _, k := range in.Filters.FacetKinds {
-			args = append(args, k)
-		}
-	}
-	if len(in.Filters.FacetSources) > 0 {
-		where = append(where, "r.facet_source IN ("+placeholders(len(in.Filters.FacetSources))+")")
-		for _, src := range in.Filters.FacetSources {
-			args = append(args, src)
-		}
-	}
-
-	// Origin filter.
-	if len(in.Filters.Origins) > 0 {
-		where = append(where, "r.origin IN ("+placeholders(len(in.Filters.Origins))+")")
-		for _, o := range in.Filters.Origins {
-			args = append(args, string(o))
-		}
-	}
-
-	// Confidence filter.
-	if in.Filters.ConfidenceMin > 0 {
-		where = append(where, "r.confidence >= ?")
-		args = append(args, in.Filters.ConfidenceMin)
-	}
-
-	// Time window.
-	if in.Filters.Since != nil {
-		where = append(where, "r.created_at >= ?")
-		args = append(args, in.Filters.Since.UTC().Format(memoryTimeFormat))
-	}
-	if in.Filters.Until != nil {
-		where = append(where, "r.created_at <= ?")
-		args = append(args, in.Filters.Until.UTC().Format(memoryTimeFormat))
-	}
-
-	// Always exclude expired revisions.
-	now := time.Now().UTC().Format(memoryTimeFormat)
-	where = append(where, "(r.expires_at IS NULL OR r.expires_at > ?)")
-	args = append(args, now)
-
+	where, args := buildRecallFilters(in)
 	whereClause := strings.Join(where, " AND ")
 
 	var query string
