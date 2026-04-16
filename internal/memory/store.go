@@ -15,6 +15,7 @@ type Store struct {
 	embeddingModel string
 	dedupThreshold float64
 	queue          JobQueue
+	rerankers      map[string]Reranker
 }
 
 // NewStore constructs a memory.Store bound to the given database. embedder may

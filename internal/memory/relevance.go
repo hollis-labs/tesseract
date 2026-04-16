@@ -100,6 +100,11 @@ func (s *Store) relevanceRecall(ctx context.Context, in RecallInput) ([]RecallRe
 
 	_ = s.reinforceAccess(ctx, results)
 
+	results, err = s.applyReranker(ctx, in, results)
+	if err != nil {
+		return nil, err
+	}
+
 	return results, nil
 }
 

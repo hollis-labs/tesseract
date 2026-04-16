@@ -45,6 +45,15 @@ type RecallInput struct {
 	Query         string
 	Filters       RecallFilters
 	Limit         int
+
+	// Reranker, when non-empty, names a Reranker registered on the
+	// Store via RegisterReranker. Applied after scoring/sort/truncate
+	// to reorder the result set with a cross-encoder (or any custom
+	// Reranker). Empty means no rerank (default).
+	Reranker string
+	// RerankerTopK caps how many of the top results the reranker sees
+	// and returns. Defaults to len(results) when ≤ 0.
+	RerankerTopK int
 }
 
 // RecallFilters constrains which revisions are returned.
@@ -217,6 +226,13 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 	// semantic recall. Relevance mode reinforces inside relevanceRecall
 	// and short-circuits before this point.
 	_ = s.reinforceAccess(ctx, results)
+
+	// 8. Optional per-call reranker pass. Runs after reinforcement so
+	// even reranked results still count as accessed memories.
+	results, err = s.applyReranker(ctx, in, results)
+	if err != nil {
+		return nil, err
+	}
 
 	return results, nil
 }
