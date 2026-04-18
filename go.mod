@@ -4,10 +4,10 @@ go 1.26.1
 
 require (
 	github.com/hollis-labs/go-otel v0.0.0
-	github.com/hollis-labs/go-plugin v0.0.0
 	github.com/hollis-labs/go-providers v0.0.0
 	github.com/hollis-labs/go-queue v0.0.0
 	github.com/hollis-labs/mcp-helpers v0.0.0
+	github.com/hollis-labs/plugin-sdk v0.3.0
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/oklog/ulid/v2 v2.1.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -17,8 +17,6 @@ require (
 replace github.com/hollis-labs/mcp-helpers => ../framework/libs/go-mcp
 
 replace github.com/hollis-labs/go-otel => ../framework/libs/go-otel
-
-replace github.com/hollis-labs/go-plugin => ../framework/libs/go-plugin
 
 replace github.com/hollis-labs/go-providers => ../framework/libs/go-providers
 

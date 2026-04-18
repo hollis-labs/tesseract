@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hollis-labs/go-plugin"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
-// Logger implements plugin.Logger using Go's standard log package.
+// Logger implements fplugin.Logger using Go's standard log package.
 type Logger struct {
 	prefix string
 }
 
 // NewLogger creates a new plugin logger with an optional prefix.
-func NewLogger(prefix string) plugin.Logger {
+func NewLogger(prefix string) fplugin.Logger {
 	return &Logger{prefix: prefix}
 }
 
@@ -33,7 +33,7 @@ func (l *Logger) Error(msg string, keysAndValues ...interface{}) {
 	l.logWithLevel("ERROR", msg, keysAndValues...)
 }
 
-func (l *Logger) With(keysAndValues ...interface{}) plugin.Logger {
+func (l *Logger) With(keysAndValues ...interface{}) fplugin.Logger {
 	newPrefix := l.prefix
 	if len(keysAndValues) > 0 {
 		newPrefix += " "

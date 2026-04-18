@@ -3,7 +3,7 @@ package plugin
 import (
 	"time"
 
-	"github.com/hollis-labs/go-plugin"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
 // Conduit Event Catalog
@@ -19,8 +19,8 @@ const (
 )
 
 // NewEvent creates a new plugin event with the given type, source, and data.
-func NewEvent(eventType, source string, data map[string]interface{}) plugin.Event {
-	return plugin.Event{
+func NewEvent(eventType, source string, data map[string]interface{}) fplugin.Event {
+	return fplugin.Event{
 		Type:      eventType,
 		Source:    source,
 		Timestamp: time.Now(),

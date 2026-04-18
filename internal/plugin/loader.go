@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	fplugin "github.com/hollis-labs/go-plugin"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
 // DiscoveredPlugin holds metadata parsed from a plugin.yaml plus the
