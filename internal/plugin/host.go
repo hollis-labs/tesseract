@@ -7,34 +7,34 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
-// Host implements the plugin.Host interface for Conduit.
+// Host implements the fplugin.Host interface for Conduit.
 // It provides the runtime environment and services for plugins.
 type Host struct {
 	mu           sync.RWMutex
-	plugins      map[string]plugin.Plugin
-	eventHooks   map[string][]plugin.EventHook
-	crudHandlers map[string]plugin.CRUDHandler
-	uiComponents []plugin.UIComponent
+	plugins      map[string]fplugin.Plugin
+	eventHooks   map[string][]fplugin.EventHook
+	crudHandlers map[string]fplugin.CRUDHandler
+	uiComponents []fplugin.UIComponent
 	services     map[string]interface{}
 	configs      map[string]*PluginConfig
 	activePlugin string
 	router       *http.ServeMux
-	logger       plugin.Logger
+	logger       fplugin.Logger
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
 }
 
 // NewHost creates a new plugin host for Conduit.
-func NewHost(router *http.ServeMux, logger plugin.Logger) *Host {
+func NewHost(router *http.ServeMux, logger fplugin.Logger) *Host {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Host{
-		plugins:      make(map[string]plugin.Plugin),
-		eventHooks:   make(map[string][]plugin.EventHook),
-		crudHandlers: make(map[string]plugin.CRUDHandler),
-		uiComponents: []plugin.UIComponent{},
+		plugins:      make(map[string]fplugin.Plugin),
+		eventHooks:   make(map[string][]fplugin.EventHook),
+		crudHandlers: make(map[string]fplugin.CRUDHandler),
+		uiComponents: []fplugin.UIComponent{},
 		services:     make(map[string]interface{}),
 		configs:      make(map[string]*PluginConfig),
 		router:       router,
@@ -49,10 +49,10 @@ func NewHost(router *http.ServeMux, logger plugin.Logger) *Host {
 func NewHostMinimal() *Host {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Host{
-		plugins:      make(map[string]plugin.Plugin),
-		eventHooks:   make(map[string][]plugin.EventHook),
-		crudHandlers: make(map[string]plugin.CRUDHandler),
-		uiComponents: []plugin.UIComponent{},
+		plugins:      make(map[string]fplugin.Plugin),
+		eventHooks:   make(map[string][]fplugin.EventHook),
+		crudHandlers: make(map[string]fplugin.CRUDHandler),
+		uiComponents: []fplugin.UIComponent{},
 		services:     make(map[string]interface{}),
 		configs:      make(map[string]*PluginConfig),
 		router:       http.NewServeMux(),
@@ -63,7 +63,7 @@ func NewHostMinimal() *Host {
 }
 
 // GetPlugin retrieves another loaded plugin by ID.
-func (h *Host) GetPlugin(id string) (plugin.Plugin, bool) {
+func (h *Host) GetPlugin(id string) (fplugin.Plugin, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	p, exists := h.plugins[id]
@@ -73,7 +73,7 @@ func (h *Host) GetPlugin(id string) (plugin.Plugin, bool) {
 // RegisterCRUDHandler registers a CRUD handler for a resource type.
 // Conduit has an HTTP server so CRUD handlers are registered but not wired to routes
 // since Conduit uses its own API server pattern.
-func (h *Host) RegisterCRUDHandler(resourceType string, handler plugin.CRUDHandler) error {
+func (h *Host) RegisterCRUDHandler(resourceType string, handler fplugin.CRUDHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -83,7 +83,7 @@ func (h *Host) RegisterCRUDHandler(resourceType string, handler plugin.CRUDHandl
 }
 
 // RegisterEventHook registers an event hook for specific event types.
-func (h *Host) RegisterEventHook(eventTypes []string, hook plugin.EventHook) error {
+func (h *Host) RegisterEventHook(eventTypes []string, hook fplugin.EventHook) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -96,7 +96,7 @@ func (h *Host) RegisterEventHook(eventTypes []string, hook plugin.EventHook) err
 }
 
 // RegisterUIComponent is a no-op for Conduit (headless service).
-func (h *Host) RegisterUIComponent(component plugin.UIComponent) error {
+func (h *Host) RegisterUIComponent(component fplugin.UIComponent) error {
 	h.logger.Warn("RegisterUIComponent called but Conduit has no frontend — ignoring", "id", component.ID)
 	return nil
 }
@@ -121,8 +121,8 @@ func (h *Host) RegisterService(name string, service interface{}) {
 	h.logger.Info("registered service", "name", name)
 }
 
-// Logger provides a logger instance for the plugin.
-func (h *Host) Logger() plugin.Logger {
+// Logger provides a logger instance for the fplugin.
+func (h *Host) Logger() fplugin.Logger {
 	return h.logger
 }
 
@@ -131,14 +131,14 @@ func (h *Host) Context() context.Context {
 	return h.ctx
 }
 
-// SetPluginConfig stores configuration for a plugin.
+// SetPluginConfig stores configuration for a fplugin.
 func (h *Host) SetPluginConfig(pluginID string, cfg *PluginConfig) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.configs[pluginID] = cfg
 }
 
-// GetConfig returns a configuration value for the currently-loading plugin.
+// GetConfig returns a configuration value for the currently-loading fplugin.
 func (h *Host) GetConfig(key string) (string, error) {
 	h.mu.RLock()
 	id := h.activePlugin
@@ -152,7 +152,7 @@ func (h *Host) GetConfig(key string) (string, error) {
 }
 
 // LoadPlugin loads a plugin into the host.
-func (h *Host) LoadPlugin(p plugin.Plugin) error {
+func (h *Host) LoadPlugin(p fplugin.Plugin) error {
 	id := p.ID()
 
 	h.mu.Lock()
@@ -212,7 +212,7 @@ func (h *Host) UnloadPlugin(id string) error {
 }
 
 // EmitEvent emits an event to all registered hooks.
-func (h *Host) EmitEvent(event plugin.Event) {
+func (h *Host) EmitEvent(event fplugin.Event) {
 	h.mu.RLock()
 	hooks, exists := h.eventHooks[event.Type]
 	h.mu.RUnlock()
@@ -224,7 +224,7 @@ func (h *Host) EmitEvent(event plugin.Event) {
 	var wg sync.WaitGroup
 	for _, hook := range hooks {
 		wg.Add(1)
-		go func(hook plugin.EventHook) {
+		go func(hook fplugin.EventHook) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
 			defer cancel()
@@ -238,11 +238,11 @@ func (h *Host) EmitEvent(event plugin.Event) {
 }
 
 // ListPlugins returns all loaded plugins.
-func (h *Host) ListPlugins() []plugin.Plugin {
+func (h *Host) ListPlugins() []fplugin.Plugin {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	plugins := make([]plugin.Plugin, 0, len(h.plugins))
+	plugins := make([]fplugin.Plugin, 0, len(h.plugins))
 	for _, p := range h.plugins {
 		plugins = append(plugins, p)
 	}
@@ -250,7 +250,7 @@ func (h *Host) ListPlugins() []plugin.Plugin {
 }
 
 // RegisterConnector implements the Host interface. Not supported by Conduit host.
-func (h *Host) RegisterConnector(name string, connector plugin.Connector) error {
+func (h *Host) RegisterConnector(name string, connector fplugin.Connector) error {
 	return fmt.Errorf("RegisterConnector not supported by Conduit host")
 }
 
@@ -270,7 +270,7 @@ func (h *Host) SetConfig(key string, value string) error {
 }
 
 // RegisterConfigSchema implements the Host interface. Not supported by Conduit host.
-func (h *Host) RegisterConfigSchema(fields []plugin.ConfigFieldDef) error {
+func (h *Host) RegisterConfigSchema(fields []fplugin.ConfigFieldDef) error {
 	return fmt.Errorf("RegisterConfigSchema not supported by Conduit host")
 }
 
