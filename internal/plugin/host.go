@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollis-labs/go-plugin"
+	"github.com/hollis-labs/plugin-sdk"
 )
 
 // Host implements the plugin.Host interface for Conduit.
@@ -247,21 +247,6 @@ func (h *Host) ListPlugins() []plugin.Plugin {
 		plugins = append(plugins, p)
 	}
 	return plugins
-}
-
-// RegisterCommand implements the Host interface. Not supported by Conduit host.
-func (h *Host) RegisterCommand(cmd plugin.SlashCommandDef) error {
-	return fmt.Errorf("RegisterCommand not supported by Conduit host")
-}
-
-// RegisterSlot implements the Host interface. Not supported by Conduit host.
-func (h *Host) RegisterSlot(entry plugin.UISlotEntry) error {
-	return fmt.Errorf("RegisterSlot not supported by Conduit host")
-}
-
-// RegisterKeybinding implements the Host interface. Not supported by Conduit host.
-func (h *Host) RegisterKeybinding(kb plugin.KeybindingDef) error {
-	return fmt.Errorf("RegisterKeybinding not supported by Conduit host")
 }
 
 // RegisterConnector implements the Host interface. Not supported by Conduit host.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	fplugin "github.com/hollis-labs/go-plugin"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
 // PluginConstructor creates a new plugin instance.

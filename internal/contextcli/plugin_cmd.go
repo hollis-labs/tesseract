@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/vanta-conduit/internal/plugin"
-	fplugin "github.com/hollis-labs/go-plugin"
+	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
 const pluginGitOrg = "hollis-labs"

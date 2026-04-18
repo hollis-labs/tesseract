@@ -3,7 +3,7 @@ package plugin
 import (
 	"time"
 
-	"github.com/hollis-labs/go-plugin"
+	"github.com/hollis-labs/plugin-sdk"
 )
 
 // Conduit Event Catalog

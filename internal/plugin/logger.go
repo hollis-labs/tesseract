@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hollis-labs/go-plugin"
+	"github.com/hollis-labs/plugin-sdk"
 )
 
 // Logger implements plugin.Logger using Go's standard log package.
