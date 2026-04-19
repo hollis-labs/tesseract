@@ -1000,9 +1000,7 @@ func TestContextNamespaceShow_NoAuthRequired(t *testing.T) {
 func TestContextAudit_NoAuthRequired(t *testing.T) {
 	s := newTestStore(t)
 	writeRecord(t, s, "app/test/session", "state", `{"v":1}`)
-	_ = s.RecordAuditEvent(context.Background(), contextstore.AuditEvent{
-		EventType: "write", Actor: "test", Namespace: "app/test/session", Key: "state", Revision: 1,
-	})
+	_ = s.EmitWrite(context.Background(), "test", "app/test/session", "state", 1, "", nil)
 
 	a := New(s, "") // no token
 	req := mcp.CallToolRequest{}
@@ -1023,12 +1021,8 @@ func TestContextAudit_NoAuthRequired(t *testing.T) {
 
 func TestContextAudit_FiltersByNamespace(t *testing.T) {
 	s := newTestStore(t)
-	_ = s.RecordAuditEvent(context.Background(), contextstore.AuditEvent{
-		EventType: "write", Actor: "test", Namespace: "app/agent/session", Key: "state", Revision: 1,
-	})
-	_ = s.RecordAuditEvent(context.Background(), contextstore.AuditEvent{
-		EventType: "write", Actor: "test", Namespace: "user/memory/task", Key: "state", Revision: 1,
-	})
+	_ = s.EmitWrite(context.Background(), "test", "app/agent/session", "state", 1, "", nil)
+	_ = s.EmitWrite(context.Background(), "test", "user/memory/task", "state", 1, "", nil)
 
 	a := New(s, "")
 	req := mcp.CallToolRequest{}

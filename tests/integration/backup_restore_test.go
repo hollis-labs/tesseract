@@ -30,14 +30,7 @@ func TestBackupRestoreParity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
-		if err := src.RecordAuditEvent(context.Background(), contextstore.AuditEvent{
-			EventType: "write",
-			Actor:     rec.Actor,
-			Namespace: rec.Namespace,
-			Key:       rec.Key,
-			Revision:  rec.Revision,
-			RecordID:  rec.RecordID,
-		}); err != nil {
+		if err := src.EmitWrite(context.Background(), rec.Actor, rec.Namespace, rec.Key, rec.Revision, rec.RecordID, nil); err != nil {
 			t.Fatalf("record audit: %v", err)
 		}
 	}
