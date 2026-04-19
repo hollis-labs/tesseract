@@ -38,5 +38,5 @@ Pass `supersedes` to `memory_write` or `knowledge_write` to mark an explicit anc
 ## What NOT to expect
 
 - **No in-place edits.** Every change is a new revision.
-- **No hard deletes.** Deprecation is soft; audit remains.
+- **No hard deletes.** Deprecation is soft; history remains.
 - **No write-your-own revision IDs.** The store assigns them.
