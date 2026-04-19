@@ -22,13 +22,13 @@ Search across memory + knowledge with `conduit_lookup` — the unified query sur
 - **Append-only.** Every write creates a new revision. Nothing is mutated in place.
 - **Namespace-owned.** `user/*` is user-owned (write-protected except via promotion). `app/*` is app-owned. See `vanta_skills namespaces`.
 - **Deterministic.** Identical selectors against identical state return identical results.
-- **Audited.** Every write and promotion is logged. Use `vanta_skills audit` to query.
+- **Audited.** Context writes and promotions are logged today; memory and knowledge write audit is in flight (see `vanta_skills audit`). Use `vanta_skills audit` to query.
 - **Views are selectors, not processors.** Retrieval does not synthesize, merge, or infer.
 
 ## How to use `vanta_skills`
 
 - `vanta_skills` with no args — returns this index.
-- `vanta_skills <name>` — returns the full body of a single skill.
+- `vanta_skills` with `name=<skill-name>` — returns the full body of a single skill.
 
 Skills are progressive: the index is small; bodies only load when requested.
 

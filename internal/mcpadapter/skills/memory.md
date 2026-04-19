@@ -44,7 +44,7 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 4. **Get revision** - `memory_get_revision` fetches by `revision_id`.
 5. **Get history** - `memory_history` returns the full revision chain for a keyed memory, newest first.
 6. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
-7. **Deprecate** - `memory_deprecate` when a revision is wrong or outdated. Soft; audit survives.
+7. **Deprecate** - `memory_deprecate` when a revision is wrong or outdated. Soft; history survives.
 
 ## Keyed vs. unkeyed
 

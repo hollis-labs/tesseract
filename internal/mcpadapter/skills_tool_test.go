@@ -44,7 +44,13 @@ func TestVantaSkills_GetByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleVantaSkills: %v", err)
 	}
-	tc := res.Content[0].(mcp.TextContent)
+	if res == nil || len(res.Content) == 0 {
+		t.Fatal("empty result")
+	}
+	tc, ok := res.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("want TextContent, got %T", res.Content[0])
+	}
 	if !strings.Contains(tc.Text, "Vanta") {
 		t.Errorf("body missing expected content")
 	}

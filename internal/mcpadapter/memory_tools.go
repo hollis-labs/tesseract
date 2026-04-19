@@ -58,6 +58,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryGet)
 
@@ -75,6 +76,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryHistory)
 
@@ -101,6 +103,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryRecall)
 
@@ -114,7 +117,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote_*` three-stage workflow.\n"+
 				"• **Deeper:** `vanta_skills promotion`.",
 		),
-		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session namespace (e.g. app/myagent/session/2026-04-19:backend)")),
+		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace (e.g. user/chrispian/session/2026-04-19:backend/memory)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),
 		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project namespace (e.g. user/chrispian/memory)")),
 		mcp.WithString("actor_agent_id", mcp.Required(), mcp.Description("Agent ID performing the promotion")),
@@ -129,10 +132,10 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("memory_deprecate",
 		mcp.WithDescription(
 			"**Soft-remove a memory revision** by revision ID.\n"+
-				"• **Kind of content:** a deprecation event on a specific revision. Revision stays in history and audit.\n"+
+				"• **Kind of content:** a deprecation event on a specific revision. Revision stays in history.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** a revision is wrong, outdated, or should no longer appear in current recall.\n"+
-				"• **Don't use this for:** replacing content — write a new revision with `supersedes`. Hard deletes — not supported (audit trail is canonical).\n"+
+				"• **Don't use this for:** replacing content — write a new revision with `supersedes`. Hard deletes — not supported (history is canonical).\n"+
 				"• **Deeper:** `vanta_skills revisions`.",
 		),
 		mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to deprecate (e.g. 01HX...)")),

@@ -41,6 +41,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleMemoryGetRevision)
 	}
@@ -59,6 +60,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers)")),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleKnowledgeGet)
 
@@ -75,6 +77,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleKnowledgeHistory)
 	}

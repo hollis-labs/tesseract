@@ -64,8 +64,11 @@ func List() ([]SkillMeta, error) {
 func Get(name string) (string, error) {
 	data, err := fs.ReadFile(skillsFS, name+".md")
 	if err != nil {
-		avail, _ := listNames()
-		return "", fmt.Errorf("%w: %q. Available: [%s]", ErrSkillNotFound, name, strings.Join(avail, ", "))
+		if errors.Is(err, fs.ErrNotExist) {
+			avail, _ := listNames()
+			return "", fmt.Errorf("%w: %q. Available: [%s]", ErrSkillNotFound, name, strings.Join(avail, ", "))
+		}
+		return "", fmt.Errorf("read skill %q: %w", name, err)
 	}
 	return string(data), nil
 }
@@ -101,6 +104,10 @@ func parseMeta(filename string) (SkillMeta, error) {
 	}
 	if err := yaml.Unmarshal([]byte(rest[:end]), &m); err != nil {
 		return m, fmt.Errorf("yaml: %w", err)
+	}
+	expectedName := strings.TrimSuffix(filename, ".md")
+	if m.Name != "" && m.Name != expectedName {
+		return m, fmt.Errorf("frontmatter name %q does not match filename %q", m.Name, expectedName)
 	}
 	if m.Name == "" {
 		return m, fmt.Errorf("frontmatter missing name")

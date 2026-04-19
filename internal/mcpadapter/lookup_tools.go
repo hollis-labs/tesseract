@@ -38,6 +38,7 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithString("until", mcp.Description("RFC3339 upper bound")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleConduitLookup)
 }

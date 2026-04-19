@@ -33,7 +33,7 @@ here is registered by `contextd mcp` and has an HTTP peer under
 Every agent hitting this surface should start with `vanta_skills start-here`. The tool is a single progressive-discovery entry point:
 
 - `vanta_skills` with no args → returns the skill index (name + description + scope hint).
-- `vanta_skills <name>` → returns the full markdown body of one skill.
+- `vanta_skills` with `name=<skill-name>` → returns the full markdown body of one skill.
 
 Shipped skills (11):
 
@@ -104,7 +104,7 @@ Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong wit
 | `memory_write` | `memory:write` | `POST /v1/memory/write` | `vanta_skills memory` | New revision (optional semantic dedup) |
 | `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | `vanta_skills memory` | Current revision for a keyed memory |
 | `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | `vanta_skills revisions` | Revision history, newest-first |
-| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `vanta_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity) |
+| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `vanta_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity / relevance) |
 | `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `vanta_skills revisions` | Single revision by id |
 | `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `vanta_skills promotion` | Promote session → user / project |
 | `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `vanta_skills revisions` | Deprecate a revision by id |

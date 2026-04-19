@@ -33,7 +33,7 @@ Pass `supersedes` to `memory_write` or `knowledge_write` to mark an explicit anc
 
 ## Deprecation
 
-`memory_deprecate` marks a revision as removed from the current head pool. It remains in history and the audit log.
+`memory_deprecate` marks a revision as removed from the current head pool. It remains in history (audit emission for memory deprecations is in flight).
 
 ## What NOT to expect
 

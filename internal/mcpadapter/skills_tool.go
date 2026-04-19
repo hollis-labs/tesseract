@@ -17,12 +17,13 @@ func (a *Adapter) registerSkillsTool(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Vanta's self-documenting skill index. Call with no args for the catalog; "+
 				"call with `name` to read a specific skill in full. Progressive discovery — "+
-				"skills only load when requested. Start with `vanta_skills start-here` for orientation.",
+				"skills only load when requested. Start with name=`start-here` for orientation.",
 		),
 		mcp.WithString("name",
 			mcp.Description("Skill name (e.g. start-here, namespaces, memory). Omit to get the skill index.")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleVantaSkills)
 }
