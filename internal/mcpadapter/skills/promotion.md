@@ -1,7 +1,7 @@
 ---
 name: promotion
 description: The app->user promotion workflow - request, approve, apply - and the memory_promote shortcut.
-scope_hint: promote
+scope_hint: none
 related: [namespaces, memory]
 ---
 

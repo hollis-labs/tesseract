@@ -29,7 +29,7 @@ The shared `contextstore.Selector` struct:
 Fields:
 
 - `namespaces` - glob patterns. `views_evaluate` takes an array; `context_view` takes a comma-separated string.
-- `keys` - optional explicit key filter list (up to 128).
+- `keys` - optional explicit key filter list (capped by `maxSelectorKeys`).
 - `revision_scope` - `head` (default; current revision per namespace/key) or `all` (full history). Case-insensitive; anything other than `all` normalizes to `head`.
 - `order` - stable sort keys. Default when omitted: `["namespace", "key", "revision"]`. Allowed: `namespace`, `key`, `revision`, `created_asc`, `created_desc`.
 - `limit` - `DefaultSelectLimit` when 0; max 500.
