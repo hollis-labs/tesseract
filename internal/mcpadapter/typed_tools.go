@@ -15,7 +15,7 @@ import (
 
 func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("context_typed_write",
-		mcp.WithDescription("Write a typed context record with type, status, and optional TTL/pointers/provenance."),
+		mcp.WithDescription("Write a typed context record with type, status, and optional TTL/pointers/provenance. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload")),
@@ -27,7 +27,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleTypedWrite)
 
 	s.AddTool(mcp.NewTool("context_status_promote",
-		mcp.WithDescription("Promote a record's status (draft->reviewed->canonical). Requires 'write' scope."),
+		mcp.WithDescription("Promote a record's status (draft->reviewed->canonical). Requires 'write' scope. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("to_status", mcp.Description("Target status (default: next in chain)")),
@@ -35,14 +35,14 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleStatusPromote)
 
 	s.AddTool(mcp.NewTool("context_status_deprecate",
-		mcp.WithDescription("Deprecate a context record. Requires 'write' scope."),
+		mcp.WithDescription("Deprecate a context record. Requires 'write' scope. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
 	), a.handleStatusDeprecate)
 
 	s.AddTool(mcp.NewTool("context_typed_view",
-		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking."),
+		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("view_id", mcp.Required(), mcp.Description("View ID: task_exec, strategy, or custom")),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs (default: all)")),
 		mcp.WithNumber("max_items", mcp.Description("Max items to return")),
@@ -50,7 +50,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleTypedView)
 
 	s.AddTool(mcp.NewTool("context_pack",
-		mcp.WithDescription("Generate a budget-bounded context pack for a view with token estimation."),
+		mcp.WithDescription("Generate a budget-bounded context pack for a view with token estimation. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("view_id", mcp.Required(), mcp.Description("View ID: task_exec, strategy, or custom")),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs (default: all)")),
 		mcp.WithNumber("max_items", mcp.Description("Max items (default: 50)")),
@@ -58,11 +58,11 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleContextPack)
 
 	s.AddTool(mcp.NewTool("context_types_list",
-		mcp.WithDescription("List all registered context types with their metadata."),
+		mcp.WithDescription("List all registered context types with their metadata. See `vanta_skills start-here` for the primitive model."),
 	), a.handleTypesList)
 
 	s.AddTool(mcp.NewTool("context_views_list",
-		mcp.WithDescription("List all registered context views with their type configurations."),
+		mcp.WithDescription("List all registered context views with their type configurations. See `vanta_skills start-here` for the primitive model."),
 	), a.handleViewsList)
 }
 
@@ -70,7 +70,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 
 func (a *Adapter) registerSessionTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("context_session_snapshot",
-		mcp.WithDescription("Write a structured session snapshot to Conduit and auto-embed for semantic search. Combines typed_write + embed into one call with enforced session schema."),
+		mcp.WithDescription("Write a structured session snapshot to Conduit and auto-embed for semantic search. Combines typed_write + embed into one call with enforced session schema. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("Brief session summary (1-3 sentences)")),
