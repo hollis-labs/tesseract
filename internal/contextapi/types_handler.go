@@ -95,17 +95,10 @@ func (s *Server) handleTypedWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "write_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "typed_write",
-		Actor:     req.Actor,
-		Namespace: req.Namespace,
-		Key:       req.Key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata: json.RawMessage(fmt.Sprintf(
+	_ = s.Store.EmitTypedWrite(r.Context(), req.Actor, req.Namespace, req.Key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(
 			`{"source":"http","record_type":%s,"status":%s,"reason":%s}`,
-			quoteJSON(req.RecordType), quoteJSON(status), quoteJSON(req.Reason))),
-	})
+			quoteJSON(req.RecordType), quoteJSON(status), quoteJSON(req.Reason))))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":       rec.RecordID,
 		"revision":        rec.Revision,
@@ -181,17 +174,10 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "status_promote",
-		Actor:     actor,
-		Namespace: req.Namespace,
-		Key:       req.Key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata: json.RawMessage(fmt.Sprintf(
+	_ = s.Store.EmitStatusPromote(r.Context(), actor, req.Namespace, req.Key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(
 			`{"from_status":%s,"to_status":%s,"record_type":%s}`,
-			quoteJSON(oldStatus), quoteJSON(newStatus), quoteJSON(head.RecordType))),
-	})
+			quoteJSON(oldStatus), quoteJSON(newStatus), quoteJSON(head.RecordType))))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":   rec.RecordID,
@@ -248,17 +234,10 @@ func (s *Server) handleStatusDeprecate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "status_deprecate",
-		Actor:     actor,
-		Namespace: req.Namespace,
-		Key:       req.Key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata: json.RawMessage(fmt.Sprintf(
+	_ = s.Store.EmitStatusDeprecate(r.Context(), actor, req.Namespace, req.Key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(
 			`{"from_status":%s,"record_type":%s}`,
-			quoteJSON(oldStatus), quoteJSON(head.RecordType))),
-	})
+			quoteJSON(oldStatus), quoteJSON(head.RecordType))))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":   rec.RecordID,
@@ -585,17 +564,10 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 		res.Status = "written"
 		written++
 
-		_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-			EventType: "bulk_ingest",
-			Actor:     actor,
-			Namespace: item.Namespace,
-			Key:       item.Key,
-			Revision:  rec.Revision,
-			RecordID:  rec.RecordID,
-			Metadata: json.RawMessage(fmt.Sprintf(
+		_ = s.Store.EmitBulkIngest(r.Context(), actor, item.Namespace, item.Key, rec.Revision, rec.RecordID,
+			json.RawMessage(fmt.Sprintf(
 				`{"source":"http","record_type":%s,"status":%s,"batch_index":%d}`,
-				quoteJSON(item.RecordType), quoteJSON(status), i)),
-		})
+				quoteJSON(item.RecordType), quoteJSON(status), i)))
 
 		results = append(results, res)
 	}
