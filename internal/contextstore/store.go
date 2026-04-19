@@ -1217,8 +1217,10 @@ ON latest.namespace = r.namespace AND latest.key_name = r.key_name AND latest.ma
 	return n, nil
 }
 
-// RecordAuditEvent stores structured metadata for operational audit queries.
-func (s *Store) RecordAuditEvent(ctx context.Context, event AuditEvent) error {
+// recordAuditEvent stores structured metadata for operational audit queries.
+// This is the sole write path into the audit_events table. All external
+// callers go through the Emit* helpers in audit_emit.go.
+func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) error {
 	if strings.TrimSpace(event.EventType) == "" {
 		return errors.New("event_type required")
 	}

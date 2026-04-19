@@ -17,7 +17,7 @@ func (s *Store) emit(ctx context.Context, ev AuditEvent) error {
 	if ev.CreatedAt == "" {
 		ev.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	if err := s.RecordAuditEvent(ctx, ev); err != nil {
+	if err := s.recordAuditEvent(ctx, ev); err != nil {
 		slog.Default().Warn("audit emit failed",
 			"event_type", ev.EventType,
 			"actor", ev.Actor,

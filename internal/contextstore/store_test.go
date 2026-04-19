@@ -408,7 +408,7 @@ func TestCompactionPreservesHeadsAndTrimsAudit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
-		if err := s.RecordAuditEvent(context.Background(), AuditEvent{
+		if err := s.recordAuditEvent(context.Background(), AuditEvent{
 			EventType: "write",
 			Actor:     rec.Actor,
 			Namespace: rec.Namespace,
@@ -471,7 +471,7 @@ func TestQueryAuditEventsFiltersAndCursor(t *testing.T) {
 		{EventType: "promote", Actor: "user", Namespace: "user/notes", Key: "daily", Revision: 1, RecordID: "r3"},
 	}
 	for i := range seed {
-		if err := s.RecordAuditEvent(context.Background(), seed[i]); err != nil {
+		if err := s.recordAuditEvent(context.Background(), seed[i]); err != nil {
 			t.Fatalf("record audit %d: %v", i, err)
 		}
 	}
