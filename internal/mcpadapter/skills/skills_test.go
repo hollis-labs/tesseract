@@ -43,7 +43,7 @@ func TestGet_UnknownSkill_ReturnsTypedError(t *testing.T) {
 }
 
 func TestList_HasExpectedCount(t *testing.T) {
-	const expected = 5 // start-here + 4 primitives — bump as skills ship
+	const expected = 9 // start-here + 4 primitives + 4 domain skills (batch 2) — bump as skills ship
 	got, err := List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
