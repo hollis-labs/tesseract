@@ -661,15 +661,8 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "write_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "write",
-		Actor:     req.Actor,
-		Namespace: req.Namespace,
-		Key:       req.Key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(`{"source":"http","reason":` + quoteJSON(req.Reason) + `}`),
-	})
+	_ = s.Store.EmitWrite(ctx, req.Actor, req.Namespace, req.Key, rec.Revision, rec.RecordID,
+		json.RawMessage(`{"source":"http","reason":`+quoteJSON(req.Reason)+`}`))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":     rec.RecordID,
 		"revision":      rec.Revision,
@@ -735,15 +728,8 @@ func (s *Server) handlePromote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "promote_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "promote",
-		Actor:     req.Actor,
-		Namespace: req.ToNamespace,
-		Key:       req.ToKey,
-		Revision:  out.Revision,
-		RecordID:  out.RecordID,
-		Metadata:  json.RawMessage(`{"source":"http","from_namespace":` + quoteJSON(req.FromNamespace) + `,"from_key":` + quoteJSON(req.FromKey) + `}`),
-	})
+	_ = s.Store.EmitPromote(r.Context(), contextstore.EventPromote, req.Actor, req.ToNamespace, req.ToKey, out.Revision, out.RecordID,
+		json.RawMessage(`{"source":"http","from_namespace":`+quoteJSON(req.FromNamespace)+`,"from_key":`+quoteJSON(req.FromKey)+`}`))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"promoted_record_id": out.RecordID,
 		"target_revision":    out.Revision,
@@ -1099,12 +1085,8 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "maintenance.trim",
-		Actor:     "system",
-		Namespace: req.NamespacePattern,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, trimmed, req.DryRun)),
-	})
+	_ = s.Store.EmitMaintenance(r.Context(), contextstore.EventMaintenanceTrim, "system", req.NamespacePattern,
+		json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, trimmed, req.DryRun)))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trimmed":           trimmed,
 		"namespace_pattern": req.NamespacePattern,
@@ -1141,12 +1123,8 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.RecordAuditEvent(r.Context(), contextstore.AuditEvent{
-		EventType: "maintenance.compact",
-		Actor:     "system",
-		Namespace: req.NamespacePattern,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, compacted, req.DryRun)),
-	})
+	_ = s.Store.EmitMaintenance(r.Context(), contextstore.EventMaintenanceCompact, "system", req.NamespacePattern,
+		json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, compacted, req.DryRun)))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"compacted":         compacted,
 		"namespace_pattern": req.NamespacePattern,
