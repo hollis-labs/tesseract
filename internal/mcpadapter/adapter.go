@@ -67,6 +67,7 @@ func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 		a.registerKnowledgeTools(s)
 	}
 	a.registerParityTools(s)
+	a.registerSkillsTool(s)
 }
 
 // checkScope validates the configured token and checks for the required scope.
