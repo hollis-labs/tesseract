@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Querying the audit log — event types, filters, pagination.
+description: The audit log — emitting events from service-internal code and querying them via context_audit.
 scope_hint: none
 related: [revisions, promotion]
 ---
