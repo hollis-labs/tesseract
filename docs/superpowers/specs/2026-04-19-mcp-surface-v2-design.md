@@ -65,7 +65,7 @@ requested. Start with `vanta_skills start-here` for orientation.
 
 ### 5.2 Skill MD files
 
-Eleven skills ship on day 1. Stored at `docs/agent-skills/*.md` in the Conduit repo, embedded into the `contextd` binary via `//go:embed`.
+Eleven skills ship on day 1. Stored at `internal/mcpadapter/skills/*.md` in the Conduit repo (co-located with the Go package that embeds them — Go's `//go:embed` requires files under the package directory), embedded into the `contextd` binary via `//go:embed`.
 
 | Skill name | Type | Body covers |
 |---|---|---|
@@ -151,30 +151,35 @@ No rewrite, no annotation pass, no schema changes on context tools. This ensures
 
 ```
 vanta-conduit/
-  docs/
-    agent-skills/              # NEW - embedded at build time
-      start-here.md
-      namespaces.md
-      facets-and-kinds.md
-      revisions.md
-      recall-and-ranking.md
-      promotion.md
-      views.md
-      memory.md
-      knowledge.md
-      context-packet.md
-      audit.md
-    MCP_TOOLS.md               # refreshed - new Skills section
   internal/
     mcpadapter/
-      skills/                  # NEW package
+      skills/                  # NEW package — MDs embedded via //go:embed
         skills.go              # embed.FS, List(), Get(name)
         skills_test.go
+        start-here.md
+        namespaces.md
+        facets-and-kinds.md
+        revisions.md
+        recall-and-ranking.md
+        promotion.md
+        views.md
+        memory.md
+        knowledge.md
+        context-packet.md
+        audit.md
       skills_tool.go           # NEW - vanta_skills tool + handler
+      skills_tool_test.go
       memory_tools.go          # rewritten descriptions + annotations
       knowledge_tools.go       # rewritten descriptions + annotations
       lookup_tools.go          # rewritten descriptions + annotations
-      tools.go                 # pointer-footer append on context_* descriptions only
+      parity_tools.go          # partial rewrite + pointer-footer
+      tools.go                 # pointer-footer append on context_* descriptions
+      typed_tools.go           # pointer-footer append
+      bulk_tools.go            # pointer-footer append
+      embedding_tools.go       # pointer-footer append
+      rag_tools.go             # pointer-footer append
+  docs/
+    MCP_TOOLS.md               # refreshed - new Skills section
   tests/
     parity/
       parity_test.go           # add vanta_skills to surfaceCatalog
