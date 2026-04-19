@@ -95,6 +95,9 @@ var surfaceCatalog = []parityOp{
 	// ── Unified lookup ─────────────────────────────────────────────────
 	{MCP: "conduit_lookup", HTTPMethod: http.MethodPost, HTTPPath: "/v1/conduit/lookup"},
 
+	// ── Meta (orientation / discovery) ─────────────────────────────────
+	{MCP: "vanta_skills", Waiver: "MCP-only: progressive-discovery meta-tool; serves embedded skill MDs"},
+
 	// ── HTTP-only (infra, admin, security boundary, batch-2) ───────────
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/metrics", Waiver: "HTTP-only: Prometheus-style scrape endpoint"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/health/readiness", Waiver: "HTTP-only: liveness/readiness probe"},
