@@ -134,7 +134,8 @@ Every rewritten tool declares annotations per the MCP protocol:
 |---|---|---|---|---|
 | `memory_write`, `knowledge_write` | false | false | false | false |
 | `memory_get`, `memory_history`, `memory_get_revision`, `memory_recall`, `knowledge_get`, `knowledge_history`, `conduit_lookup` | true | true | false | false |
-| `memory_promote`, `memory_deprecate` | false | false | false | false |
+| `memory_promote` | false | false | false | false |
+| `memory_deprecate` | false | true | false | false |
 | `vanta_skills` | true | true | false | false |
 
 ### 5.5 Minimal footer on context tools
