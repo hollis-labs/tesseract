@@ -263,8 +263,7 @@ Context cost at boot: tool descriptions (rewritten ~150–200 words each × 12 t
 
 ## 9. Deliverables checklist
 
-- [ ] `docs/agent-skills/` directory with 11 MDs, each with YAML frontmatter.
-- [ ] `internal/mcpadapter/skills/` package with `List()`, `Get()`, embedded MDs.
+- [ ] `internal/mcpadapter/skills/` package: `skills.go` with `List()` / `Get()` / `ErrSkillNotFound`, plus 11 embedded `*.md` files each with YAML frontmatter.
 - [ ] `skills_tool.go` registering `vanta_skills` tool + handler.
 - [ ] Rewritten descriptions + annotations for 11 tools (`memory_write`, `memory_get`, `memory_history`, `memory_recall`, `memory_get_revision`, `memory_promote`, `memory_deprecate`, `knowledge_write`, `knowledge_get`, `knowledge_history`, `conduit_lookup`).
 - [ ] Pointer-footer appended to every `context_*` tool description in `tools.go` + any other `*_tools.go` file that registers `context_*` tools.
