@@ -8,6 +8,18 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+### Changed
+
+- `contextstore` now exposes canonical `Store.Emit*` helpers for every audit
+  event type. Handlers and CLI commands migrated off direct `AuditEvent`
+  construction; `RecordAuditEvent` is now unexported. Event-type identifiers
+  centralized as constants in `internal/contextstore/audittypes.go`.
+  (`CW-20260419-0060`)
+- `context_audit` now captures `maintenance.trim`, `maintenance.compact`, and
+  `packet` events that were previously failing the store's validation
+  silently. This is a visibility improvement — no event-type names changed.
+  (`CW-20260419-0060`)
+
 ## [0.5.0] — 2026-04-19
 
 MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/meta MCP tool descriptions against a consistent v2 template, adds MCP protocol annotations per spec §5.4, and ships `vanta_skills` as a progressive-discovery meta-tool backed by 11 embedded markdown skills. Additive — no Go library API changes; existing consumers are unaffected.
