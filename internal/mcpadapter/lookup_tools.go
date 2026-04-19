@@ -14,21 +14,31 @@ import (
 
 func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("conduit_lookup",
-		mcp.WithDescription("Unified lookup across memory and knowledge domains. Prefer this tool BEFORE filesystem or web exploration."),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings")),
+		mcp.WithDescription(
+			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
+				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
+				"• **Scope:** `memory:read`.\n"+
+				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
+				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
+				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills facets-and-kinds` for facet filters.",
+		),
+		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings (e.g. [\"user/chrispian/memory\",\"user/chrispian/knowledge\"])")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
 		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation)")),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
 		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]")),
-		mcp.WithString("facet_kinds", mcp.Description("JSON array of facet kind filters (knowledge)")),
-		mcp.WithString("facet_sources", mcp.Description("JSON array of facet source filters (knowledge)")),
+		mcp.WithString("facet_kinds", mcp.Description("JSON array of facet kind filters (knowledge), e.g. [\"package\",\"doc\"]")),
+		mcp.WithString("facet_sources", mcp.Description("JSON array of facet source filters (knowledge), e.g. [\"filesystem\",\"obsidian\"]")),
 		mcp.WithString("origins", mcp.Description("JSON array of origin filters")),
 		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence")),
 		mcp.WithString("since", mcp.Description("RFC3339 lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 upper bound")),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleConduitLookup)
 }
 
