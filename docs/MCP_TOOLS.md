@@ -28,6 +28,31 @@ here is registered by `contextd mcp` and has an HTTP peer under
 - **Capability token:** required for any tool that requires a `write`/`read`/`promote` scope. Token claims are checked per-tool.
 - **No duplicated logic:** every tool and its HTTP peer call the same store/domain function. Responses match 1:1.
 
+## Agent-facing skills (vanta_skills)
+
+Every agent hitting this surface should start with `vanta_skills start-here`. The tool is a single progressive-discovery entry point:
+
+- `vanta_skills` with no args → returns the skill index (name + description + scope hint).
+- `vanta_skills <name>` → returns the full markdown body of one skill.
+
+Shipped skills (11):
+
+| Name | Type | Body covers |
+|---|---|---|
+| `start-here` | orientation | Vanta's three domains, invariants, how to use this surface. |
+| `namespaces` | primitive | Canonical tier patterns, ownership, memory-domain stricter form. |
+| `facets-and-kinds` | primitive | Facet vocabulary, the `kind` convention, extension rules. |
+| `revisions` | primitive | Append-only model, supersede chains, dedup, revision IDs. |
+| `recall-and-ranking` | primitive | Activation / chronological / similarity / relevance (RRF). |
+| `promotion` | primitive | App→user workflow: request → approve → apply. |
+| `views` | primitive | Selectors-not-processors; namespace globs. |
+| `memory` | domain | When to use memory, common patterns. |
+| `knowledge` | domain | Pointer-first model, `kind`/`source`/`pointer` facets. |
+| `context-packet` | feature | Boot workflows, broker plan/fetch, budget tuning. |
+| `audit` | feature | Querying the audit log. |
+
+Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong with consumers (agent-ops, Nanite, Engine) and are authored in consumer repos — Vanta ships primitives + reference docs only.
+
 ## Domains
 
 - **Context** — generic revisioned key-value records. Thirty-ish tools for read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit.
@@ -74,29 +99,35 @@ here is registered by `contextd mcp` and has an HTTP peer under
 
 ### Memory
 
-| Tool | Scope | HTTP peer | Notes |
-|---|---|---|---|
-| `memory_write` | `memory:write` | `POST /v1/memory/write` | New revision (optional semantic dedup) |
-| `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | Current revision for a keyed memory |
-| `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | Revision history, newest-first |
-| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | Multi-knob recall (activation / chronological / similarity) |
-| `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | Single revision by id |
-| `memory_promote` | `memory:write` | `POST /v1/memory/promote` | Promote session → user / project |
-| `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | Deprecate a revision by id |
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `memory_write` | `memory:write` | `POST /v1/memory/write` | `vanta_skills memory` | New revision (optional semantic dedup) |
+| `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | `vanta_skills memory` | Current revision for a keyed memory |
+| `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | `vanta_skills revisions` | Revision history, newest-first |
+| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `vanta_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity) |
+| `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `vanta_skills revisions` | Single revision by id |
+| `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `vanta_skills promotion` | Promote session → user / project |
+| `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `vanta_skills revisions` | Deprecate a revision by id |
 
 ### Knowledge
 
-| Tool | Scope | HTTP peer | Notes |
-|---|---|---|---|
-| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | Pointer-first write with `kind`/`source`/`pointer` facets |
-| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&key=` | Current knowledge revision for (namespace, key) |
-| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&key=` | Full history for a knowledge entry |
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `vanta_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
+| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&key=` | `vanta_skills knowledge` | Current knowledge revision for (namespace, key) |
+| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&key=` | `vanta_skills revisions` | Full history for a knowledge entry |
 
 ### Unified
 
-| Tool | Scope | HTTP peer | Notes |
-|---|---|---|---|
-| `conduit_lookup` | `memory:read` | `POST /v1/conduit/lookup` | Search memory + knowledge together |
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `conduit_lookup` | `memory:read` | `POST /v1/conduit/lookup` | `vanta_skills recall-and-ranking` | Search memory + knowledge together |
+
+### Meta
+
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `vanta_skills` | — | — (MCP-only meta-tool) | self-documenting | Call with no args for the index; with `name` for the full skill body |
 
 ## Playbooks
 
