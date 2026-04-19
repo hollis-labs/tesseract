@@ -41,3 +41,18 @@ func TestGet_UnknownSkill_ReturnsTypedError(t *testing.T) {
 		t.Errorf("error message should list available skills; got %q", err.Error())
 	}
 }
+
+func TestList_HasExpectedCount(t *testing.T) {
+	const expected = 5 // start-here + 4 primitives — bump as skills ship
+	got, err := List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != expected {
+		names := make([]string, len(got))
+		for i, m := range got {
+			names[i] = m.Name
+		}
+		t.Errorf("skill count = %d, want %d. Skills: %v", len(got), expected, names)
+	}
+}
