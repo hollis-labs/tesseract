@@ -168,15 +168,8 @@ func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// Audit log
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "session_snapshot",
-		Actor:     actor,
-		Namespace: ns,
-		Key:       key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"session_id":%q,"project_id":%q}`, sessionID, projectID)),
-	})
+	_ = a.Store.EmitSessionSnapshot(ctx, actor, ns, key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"session_id":%q,"project_id":%q}`, sessionID, projectID)))
 
 	result := map[string]any{
 		"record_id": rec.RecordID,
@@ -302,15 +295,8 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 		return toolError("write_failed", err.Error()), nil
 	}
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "typed_write",
-		Actor:     actor,
-		Namespace: ns,
-		Key:       key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q}`, recordType, status)),
-	})
+	_ = a.Store.EmitTypedWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q}`, recordType, status)))
 
 	return toolJSON(map[string]any{
 		"record_id":   rec.RecordID,
@@ -366,15 +352,8 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 		return toolError("promote_failed", err.Error()), nil
 	}
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "status_promote",
-		Actor:     actor,
-		Namespace: ns,
-		Key:       key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"from":%q,"to":%q,"source":"mcp"}`, oldStatus, newStatus)),
-	})
+	_ = a.Store.EmitStatusPromote(ctx, actor, ns, key, rec.Revision, rec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"from":%q,"to":%q,"source":"mcp"}`, oldStatus, newStatus)))
 
 	return toolJSON(map[string]any{
 		"record_id":   rec.RecordID,
