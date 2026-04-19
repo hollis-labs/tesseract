@@ -8,6 +8,30 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-19
+
+MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/meta MCP tool descriptions against a consistent v2 template, adds MCP protocol annotations per spec §5.4, and ships `vanta_skills` as a progressive-discovery meta-tool backed by 11 embedded markdown skills. Additive — no Go library API changes; existing consumers are unaffected.
+
+### Added
+
+- **MCP tool: `vanta_skills`** — progressive-discovery meta-tool. No-args returns an 11-entry index; `name=<skill>` returns the full markdown body. Skills embedded via `//go:embed` at `internal/mcpadapter/skills/*.md`: `start-here`, `namespaces`, `facets-and-kinds`, `revisions`, `recall-and-ranking`, `promotion`, `views`, `memory`, `knowledge`, `context-packet`, `audit`. `start-here` is indexed first; rest alphabetical.
+- **MCP protocol annotations** on all 12 memory / knowledge / unified / meta tools — `ReadOnlyHint`, `IdempotentHint`, `DestructiveHint`, `OpenWorldHint` per spec §5.4. `memory_deprecate` correctly carries `IdempotentHint=true` (second call is a no-op).
+- **Drift guardrail:** `internal/mcpadapter/annotations_test.go` fails CI if any of the 12 v2-template tools drops its required annotations.
+
+### Changed
+
+- **MCPServer version string** bumped `0.4.0 → 0.5.0`.
+- **12 MCP tool descriptions** rewritten to v2 template — bold action phrase + `Kind of content` / `Scope` / `Use this when` / `Don't use this for` / `Deeper:` bullets plus concrete parameter-value examples. Covers all memory, knowledge, unified-lookup, and meta surfaces.
+- **30 context-domain tool descriptions** get an appended `See vanta_skills start-here for the primitive model.` footer. Minimum-touch; full context-domain rewrite is deferred.
+- **Parity catalog** — `vanta_skills` registered as MCP-only meta-tool in `surfaceCatalog`.
+- **`docs/MCP_TOOLS.md`** refreshed — new Skills section, `Deeper` column on memory/knowledge/unified tables, new Meta section for `vanta_skills`.
+
+### Follow-ups filed (not in this release)
+
+- `CW-20260419-0040` — `memory_write` / `memory_deprecate` / `knowledge_write` don't call `RecordAuditEvent`; `context_audit` silently omits those writes. `AuditEvent.Metadata` persisted but not projected in the MCP response.
+- `CW-20260419-0041` — `context_packet` uses `max_items` / `max_tokens_estimate` while `context_broker_*` uses `budget_items` / `budget_tokens` (same knob, two names, divergent defaults 8000 vs 4000).
+- `CW-20260419-0042` — `docs/SPECS/VIEWS.md` documents `evaluation_meta` fields (`normalized_selector`, `returned_count`) absent from the actual `EvaluateResult` struct / `views_evaluate` handler.
+
 ## [0.4.0] — 2026-04-16
 
 Hybrid Relevance S1 (`SPR-20260414-hybrid-relevance-s1`, `EPIC-20260414-19124`). Adds a fourth ranking mode `relevance` that fuses BM25 (FTS5) and cosine via Reciprocal Rank Fusion and multiplies by the existing activation-style modifiers. Becomes the smart default for query-backed agent recall so freshly-written memories surface immediately via the BM25 arm (previously: invisible to semantic search until the async embedder caught up). Also ships BLG-037 (context-budget fix for MCP recall responses).
@@ -127,7 +151,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.1.0...v0.2.0
