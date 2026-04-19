@@ -14,12 +14,19 @@ import (
 
 func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("knowledge_write",
-		mcp.WithDescription("Write a knowledge revision: a pointer-first reference to external content (package, doc, note) with structured facets."),
+		mcp.WithDescription(
+			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
+				"• **Kind of content:** package / doc / note / pointer records with `kind`/`source`/`pointer` facets.\n"+
+				"• **Scope:** `memory:write`.\n"+
+				"• **Use this when:** you are cataloging something that lives outside Vanta (a file, URL, library, doc).\n"+
+				"• **Don't use this for:** agent-authored content with no external source — use `memory_write`. Generic records — use `context_write`.\n"+
+				"• **Deeper:** `vanta_skills knowledge` for patterns; `vanta_skills facets-and-kinds` for facet vocabulary.",
+		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
 		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision")),
-		mcp.WithString("kind", mcp.Required(), mcp.Description("Facet: the kind of entry (package, doc, note, pointer, ...)")),
-		mcp.WithString("source", mcp.Required(), mcp.Description("Facet: where this knowledge came from (filesystem, obsidian, nil, web, manual, ...)")),
-		mcp.WithString("pointer_scheme", mcp.Required(), mcp.Description("Pointer scheme: file, http, https, obsidian, nil, ...")),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Facet: the kind of entry (e.g. package, doc, note, pointer)")),
+		mcp.WithString("source", mcp.Required(), mcp.Description("Facet: where this knowledge came from (e.g. filesystem, obsidian, nil, web, manual)")),
+		mcp.WithString("pointer_scheme", mcp.Required(), mcp.Description("Pointer scheme (e.g. file, http, https, obsidian, nil)")),
 		mcp.WithString("pointer_locator", mcp.Required(), mcp.Description("Pointer locator: scheme-specific address (path, URL, vault id, ...)")),
 		mcp.WithString("pointer_resolved_at", mcp.Description("Optional RFC3339 timestamp for when the pointer was last verified. Defaults to now.")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("Short summary text (feeds embeddings)")),
@@ -31,6 +38,10 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 		mcp.WithNumber("ttl_seconds", mcp.Description("Optional TTL in seconds (0 = no expiry)")),
 		mcp.WithNumber("confidence", mcp.Description("Confidence score in [0, 1.0] (default 0.9)")),
 		mcp.WithString("supersedes", mcp.Description("Optional revision_id this entry supersedes")),
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleKnowledgeWrite)
 }
 

@@ -17,12 +17,12 @@ import (
 // KnowledgeStore is present) knowledge_get + knowledge_history.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("context_estimate",
-		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate."),
+		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),
 	), a.handleContextEstimate)
 
 	s.AddTool(mcp.NewTool("views_evaluate",
-		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate."),
+		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector")),
 		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false)")),
 		mcp.WithNumber("limit", mcp.Description("Override selector.limit (0 = use selector or default)")),
@@ -30,22 +30,55 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 
 	if a.MemoryStore != nil {
 		s.AddTool(mcp.NewTool("memory_get_revision",
-			mcp.WithDescription("Fetch a memory revision by its revision_id. Peer of HTTP /v1/memory/revisions/{id}."),
-			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch")),
+			mcp.WithDescription(
+				"**Fetch a memory revision by its revision_id.** Peer of HTTP /v1/memory/revisions/{id}.\n"+
+					"• **Kind of content:** a single revision record, including body, facets, and lineage.\n"+
+					"• **Scope:** `memory:read`.\n"+
+					"• **Use this when:** a recall or history result referenced a revision_id and you want the full content.\n"+
+					"• **Don't use this for:** resolving by (namespace, memory_key) — use `memory_get`.\n"+
+					"• **Deeper:** `vanta_skills revisions`.",
+			),
+			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleMemoryGetRevision)
 	}
 
 	if a.KnowledgeStore != nil {
 		s.AddTool(mcp.NewTool("knowledge_get",
-			mcp.WithDescription("Fetch the current knowledge revision for (namespace, key). Peer of HTTP /v1/knowledge/current."),
-			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
-			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
+			mcp.WithDescription(
+				"**Fetch the current knowledge revision** for `(namespace, key)`. Peer of HTTP /v1/knowledge/current.\n"+
+					"• **Kind of content:** the latest non-deprecated knowledge revision for this entry.\n"+
+					"• **Scope:** `memory:read`.\n"+
+					"• **Use this when:** you know the key and want the current pointer + summary + body.\n"+
+					"• **Don't use this for:** full history (`knowledge_history`), cross-entry search (`conduit_lookup`).\n"+
+					"• **Deeper:** `vanta_skills knowledge`.",
+			),
+			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace (must contain 'knowledge' segment, e.g. user/chrispian/knowledge/framework)")),
+			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers)")),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleKnowledgeGet)
 
 		s.AddTool(mcp.NewTool("knowledge_history",
-			mcp.WithDescription("Fetch the full revision history for a knowledge entry (namespace, key), newest-first. Peer of HTTP /v1/knowledge/history."),
+			mcp.WithDescription(
+				"**Fetch the full revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
+					"• **Kind of content:** every revision under `(namespace, key)`, including superseded.\n"+
+					"• **Scope:** `memory:read`.\n"+
+					"• **Use this when:** you need to trace how a knowledge entry evolved (e.g. pointer churn, summary rewrites).\n"+
+					"• **Don't use this for:** just the current value (`knowledge_get`).\n"+
+					"• **Deeper:** `vanta_skills revisions`.",
+			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
 			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleKnowledgeHistory)
 	}
 }

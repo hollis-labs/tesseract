@@ -14,43 +14,83 @@ import (
 func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	// ── memory_write ─────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_write",
-		mcp.WithDescription("Write a new memory revision. Returns the created revision."),
+		mcp.WithDescription(
+			"**Append an agent memory revision** under `(namespace, memory_key)`.\n"+
+				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
+				"• **Scope:** `memory:write`.\n"+
+				"• **Use this when:** the content is authored by you or another agent and belongs to the memory domain.\n"+
+				"• **Don't use this for:** pointer-to-external-content (`knowledge_write`) or generic revisioned records (`context_write`).\n"+
+				"• **Deeper:** `vanta_skills memory` for patterns; `vanta_skills namespaces` for namespace rules.",
+		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace (e.g. user/chrispian/memory)")),
-		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories")),
-		mcp.WithString("supersedes", mcp.Description("Revision ID this revision supersedes")),
+		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style)")),
+		mcp.WithString("supersedes", mcp.Description("Revision ID this revision supersedes (e.g. 01HX...)")),
 		mcp.WithString("status", mcp.Description("Status: draft|reviewed|canonical (default: draft)")),
-		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the author")),
+		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the author (e.g. claude, nanite)")),
 		mcp.WithString("author_version", mcp.Description("Agent version string")),
 		mcp.WithString("trigger", mcp.Required(), mcp.Description("Trigger: explicit|post_compact|per_turn|promotion|manual")),
-		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
+		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier (e.g. 2026-04-19:backend)")),
 		mcp.WithString("origin", mcp.Required(), mcp.Description("Origin: user|feedback|project|reference|observation")),
-		mcp.WithNumber("confidence", mcp.Required(), mcp.Description("Confidence score in [0, 1.0]")),
-		mcp.WithString("tags", mcp.Description("JSON array of string tags")),
+		mcp.WithNumber("confidence", mcp.Required(), mcp.Description("Confidence score in [0, 1.0] (e.g. 0.9)")),
+		mcp.WithString("tags", mcp.Description("JSON array of string tags (e.g. [\"preference\",\"style\"])")),
 		mcp.WithNumber("ttl_seconds", mcp.Description("Time-to-live in seconds (0 = no expiry)")),
 		mcp.WithString("payload_summary", mcp.Required(), mcp.Description("Summary text for the memory payload")),
 		mcp.WithString("payload_body", mcp.Description("Optional body text for the memory payload")),
 		mcp.WithString("dedup", mcp.Description("Dedup mode: none (default) or semantic")),
-		mcp.WithNumber("dedup_threshold", mcp.Description("Similarity threshold override for semantic dedup (0 = use config default)")),
+		mcp.WithNumber("dedup_threshold", mcp.Description("Similarity threshold override for semantic dedup (0 = use config default 0.85)")),
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryWrite)
 
 	// ── memory_get ───────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_get",
-		mcp.WithDescription("Get the current (latest) revision for a keyed memory."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace")),
+		mcp.WithDescription(
+			"**Get the current (head) revision** for a keyed memory.\n"+
+				"• **Kind of content:** the latest revision under `(namespace, memory_key)`, deprecations skipped.\n"+
+				"• **Scope:** `memory:read`.\n"+
+				"• **Use this when:** you have a specific key and want its current value.\n"+
+				"• **Don't use this for:** revision history (`memory_history`), ranked recall (`memory_recall`), or a specific revision by ID (`memory_get_revision`).\n"+
+				"• **Deeper:** `vanta_skills memory`.",
+		),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace (e.g. user/chrispian/memory)")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryGet)
 
 	// ── memory_history ───────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_history",
-		mcp.WithDescription("Get the full revision history for a keyed memory, newest first."),
+		mcp.WithDescription(
+			"**Get the full revision history** for a keyed memory, newest-first.\n"+
+				"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded and deprecated ones.\n"+
+				"• **Scope:** `memory:read`.\n"+
+				"• **Use this when:** you need to trace how a memory evolved, or inspect superseded content.\n"+
+				"• **Don't use this for:** just the current value (`memory_get`).\n"+
+				"• **Deeper:** `vanta_skills revisions`.",
+		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryHistory)
 
 	// ── memory_recall ────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_recall",
-		mcp.WithDescription("Multi-knob recall: retrieve memories by namespace, ranking, and filters."),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings")),
+		mcp.WithDescription(
+			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
+				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
+				"• **Scope:** `memory:read`.\n"+
+				"• **Use this when:** you want the best-match memories for a query or the top-of-mind memories without a query.\n"+
+				"• **Don't use this for:** cross-domain search — `conduit_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+
+				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills memory` for patterns.",
+		),
+		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings (e.g. [\"user/chrispian/memory\"])")),
 		mcp.WithString("revision_scope", mcp.Description("current or timeline (default: current)")),
 		mcp.WithString("ranking", mcp.Description("activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)")),
 		mcp.WithString("query", mcp.Description("Semantic query string (required for similarity or relevance ranking)")),
@@ -61,22 +101,48 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("since", mcp.Description("RFC3339 timestamp lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 timestamp upper bound")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryRecall)
 
 	// ── memory_promote ───────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_promote",
-		mcp.WithDescription("Promote a session-scoped memory to user or project scope."),
-		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session namespace")),
+		mcp.WithDescription(
+			"**Promote a session-scoped memory** to user or project scope.\n"+
+				"• **Kind of content:** a copy of the source memory revision, re-scoped to the target namespace.\n"+
+				"• **Scope:** `memory:write`.\n"+
+				"• **Use this when:** a session memory has proven durable and you want it to survive session boundaries.\n"+
+				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote_*` three-stage workflow.\n"+
+				"• **Deeper:** `vanta_skills promotion`.",
+		),
+		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace (e.g. user/chrispian/session/2026-04-19:backend/memory)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),
-		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project namespace")),
+		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project namespace (e.g. user/chrispian/memory)")),
 		mcp.WithString("actor_agent_id", mcp.Required(), mcp.Description("Agent ID performing the promotion")),
 		mcp.WithString("actor_version", mcp.Description("Agent version string")),
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryPromote)
 
 	// ── memory_deprecate ─────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("memory_deprecate",
-		mcp.WithDescription("Deprecate a memory revision by revision ID."),
-		mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to deprecate")),
+		mcp.WithDescription(
+			"**Soft-remove a memory revision** by revision ID.\n"+
+				"• **Kind of content:** a deprecation event on a specific revision. Revision stays in history.\n"+
+				"• **Scope:** `memory:write`.\n"+
+				"• **Use this when:** a revision is wrong, outdated, or should no longer appear in current recall.\n"+
+				"• **Don't use this for:** replacing content — write a new revision with `supersedes`. Hard deletes — not supported (history is canonical).\n"+
+				"• **Deeper:** `vanta_skills revisions`.",
+		),
+		mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to deprecate (e.g. 01HX...)")),
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryDeprecate)
 }
 
