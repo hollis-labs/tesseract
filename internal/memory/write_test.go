@@ -275,3 +275,46 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 		t.Errorf("key: got %q, want %q", ev.Key, "notes.today")
 	}
 }
+
+func TestDeprecateEmitsAuditEvent(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/memory",
+		MemoryKey:  "notes.today",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "sess-1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "hello"},
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	if err := ms.Deprecate(context.Background(), rev.RevisionID); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	// Expect 2 events: write + deprecate, newest-first.
+	if len(events) != 2 {
+		t.Fatalf("expected 2 audit events, got %d", len(events))
+	}
+	if events[0].EventType != contextstore.EventMemoryDeprecate {
+		t.Errorf("newest event_type: got %q, want %q", events[0].EventType, contextstore.EventMemoryDeprecate)
+	}
+	if events[0].RecordID != rev.RevisionID {
+		t.Errorf("record_id: got %q, want %q", events[0].RecordID, rev.RevisionID)
+	}
+	if events[0].Actor != "system" {
+		t.Errorf("actor: got %q, want %q", events[0].Actor, "system")
+	}
+}

@@ -158,5 +158,22 @@ LIMIT 1`,
 		return fmt.Errorf("update current_revision: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	if s.auditSink != nil {
+		// Namespace/key not directly available on this signature — reload
+		// memory_state for observability. If that read fails, skip the emit
+		// rather than fail Deprecate (emit is best-effort observability).
+		if state, stErr := s.GetState(ctx, memoryID); stErr == nil {
+			key := state.MemoryKey
+			if key == "" {
+				key = memoryID
+			}
+			_ = s.auditSink.EmitMemoryDeprecate(ctx, "system", state.Namespace, key, revisionID, nil)
+		}
+	}
+
+	return nil
 }
