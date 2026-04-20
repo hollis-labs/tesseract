@@ -52,12 +52,15 @@ Event types actually emitted by the MCP surface:
 - `status_promote` / `status_deprecate` — `context_status_promote` / `context_status_deprecate`.
 - `session_snapshot` — `context_session_snapshot`.
 - `bulk_ingest` / `chunked_ingest` — bulk/chunked write tools.
+- `memory.write` — a memory revision was written. Emitted by `memory_write` and internal memory paths.
+- `memory.supersede` — a memory write whose `Supersedes` field is set (the write replaces a prior revision).
+- `memory.deprecate` — a memory revision was deprecated (also fires on the source side of a promote).
+- `memory.promote` — umbrella event for a session → user/project memory promotion. A promote also emits the nested `memory.write` (target) and `memory.deprecate` (source).
+- `knowledge.write` / `knowledge.supersede` — the knowledge-domain equivalents.
 
-Not all write paths emit audit events today. Notably, `memory_write`,
-`memory_deprecate`, and `knowledge_write` do not record audit events —
-reconstruct memory/knowledge history via `memory_history` / `knowledge_history`
-instead. (Follow-up: `CW-20260419-0040` will land these emits using the
-helpers above.)
+Embedding (the async `EmbedRevision` queue) does not emit audit events —
+embedder progress is observability, not an audit concern. Use the
+`embed_runs` operational view or service logs to trace embedder state.
 
 ## Envelope shape
 
@@ -70,8 +73,7 @@ Each returned event carries:
 - `revision` — numeric revision number for the affected record.
 - `record_id` — ULID of the record (when known).
 - `created_at` — RFC3339 timestamp.
-
-Metadata is stored on the row but not projected into the MCP response today.
+- `metadata` — JSON object carrying per-event context (source, correlation IDs, session markers) when the emit site attached it. Omitted when empty.
 
 ## Common queries
 
