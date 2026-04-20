@@ -1050,3 +1050,35 @@ func TestContextAudit_Empty(t *testing.T) {
 		t.Errorf("expected 0 items in empty store, got %d", len(items))
 	}
 }
+
+func TestContextAudit_ProjectsMetadata(t *testing.T) {
+	s := newTestStore(t)
+	writeRecord(t, s, "app/test/session", "state", `{"v":1}`)
+	_ = s.EmitWrite(context.Background(), "tester", "app/test/session", "state", 1, "rec-x",
+		json.RawMessage(`{"source":"http","correlation_id":"abc"}`))
+
+	a := New(s, "")
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{}
+	res, err := a.handleAudit(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleAudit: %v", err)
+	}
+	body := parseResult(t, res)
+	items := parseItems(t, body)
+	if len(items) == 0 {
+		t.Fatal("expected at least 1 audit event")
+	}
+	md, ok := items[0].(map[string]any)["metadata"]
+	if !ok {
+		t.Fatal("expected metadata field on audit item")
+	}
+	// After round-trip through JSON, metadata comes back as map[string]any.
+	mdMap, ok := md.(map[string]any)
+	if !ok {
+		t.Fatalf("metadata is not a map: %T", md)
+	}
+	if mdMap["source"] != "http" {
+		t.Errorf("metadata.source: got %v, want \"http\"", mdMap["source"])
+	}
+}
