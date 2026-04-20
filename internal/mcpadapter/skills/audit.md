@@ -73,7 +73,7 @@ Each returned event carries:
 - `revision` — numeric revision number for the affected record.
 - `record_id` — ULID of the record (when known).
 - `created_at` — RFC3339 timestamp.
-- `metadata` — JSON object carrying per-event context (source, correlation IDs, session markers) when the emit site attached it. Omitted when empty.
+- `metadata` — JSON value carrying per-event context (source, correlation IDs, session markers) when the emit site attached it. Omitted when empty.
 
 ## Common queries
 

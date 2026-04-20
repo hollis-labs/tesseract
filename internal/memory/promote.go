@@ -169,7 +169,7 @@ LIMIT 1`,
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return fmt.Errorf("commit: %w", err)
 	}
 
 	if s.auditSink != nil {

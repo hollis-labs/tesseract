@@ -216,8 +216,8 @@ func TestOnlyDeprecationPathMutatesRevisionStatus(t *testing.T) {
 	}
 }
 
-// newTestStoreWithAudit builds a memory.Store wired to its contextstore as
-// the audit sink, and returns both so tests can assert on emitted events.
+// newTestStoreWithAudit creates and returns a contextstore.Store that tests
+// can use as an audit sink and inspect for emitted events.
 func newTestStoreWithAudit(t *testing.T) *contextstore.Store {
 	t.Helper()
 	dir := t.TempDir()
