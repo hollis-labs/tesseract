@@ -318,3 +318,58 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 		t.Errorf("actor: got %q, want %q", events[0].Actor, "system")
 	}
 }
+
+func TestPromoteEmitsThreeEvents(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	// Seed a session-scoped source revision.
+	srcRev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/session/s1/memory",
+		MemoryKey:  "note.42",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "s1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "s"},
+	})
+	if err != nil {
+		t.Fatalf("seed WriteRevision: %v", err)
+	}
+
+	_, err = ms.Promote(context.Background(), memory.PromoteInput{
+		SourceNamespace: "user/alice/session/s1/memory",
+		SourceMemoryID:  srcRev.MemoryID,
+		TargetNamespace: "user/alice/memory",
+		ActorAgentID:    "promoter",
+	})
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	// Expect 4 events: seed write + promote-nested write + deprecate + umbrella promote.
+	if len(events) != 4 {
+		t.Fatalf("expected 4 audit events, got %d: %+v", len(events), events)
+	}
+	// Newest-first: umbrella promote at index 0.
+	if events[0].EventType != contextstore.EventMemoryPromote {
+		t.Errorf("events[0]: got %q, want %q", events[0].EventType, contextstore.EventMemoryPromote)
+	}
+	// Newest 3 must include umbrella, deprecate, and the nested write. Seed write is at index 3.
+	gotTypes := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		gotTypes[events[i].EventType] = true
+	}
+	for _, want := range []string{contextstore.EventMemoryPromote, contextstore.EventMemoryDeprecate, contextstore.EventMemoryWrite} {
+		if !gotTypes[want] {
+			t.Errorf("missing event type in newest 3: %q (got: %v)", want, gotTypes)
+		}
+	}
+}

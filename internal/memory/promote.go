@@ -95,6 +95,16 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		return Revision{}, fmt.Errorf("deprecate source revision: %w", depErr)
 	}
 
+	// Umbrella promote event. Nested WriteRevision (for target) and Deprecate
+	// (for source) emit their own events — callers see three events per promote.
+	if s.auditSink != nil {
+		key := promoted.MemoryKey
+		if key == "" {
+			key = promoted.MemoryID
+		}
+		_ = s.auditSink.EmitMemoryPromote(ctx, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
+	}
+
 	return promoted, nil
 }
 
