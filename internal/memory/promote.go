@@ -95,6 +95,16 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		return Revision{}, fmt.Errorf("deprecate source revision: %w", depErr)
 	}
 
+	// Umbrella promote event. Nested WriteRevision (for target) and Deprecate
+	// (for source) emit their own events — callers see three events per promote.
+	if s.auditSink != nil {
+		key := promoted.MemoryKey
+		if key == "" {
+			key = promoted.MemoryID
+		}
+		_ = s.auditSink.EmitMemoryPromote(ctx, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
+	}
+
 	return promoted, nil
 }
 
@@ -158,5 +168,22 @@ LIMIT 1`,
 		return fmt.Errorf("update current_revision: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	if s.auditSink != nil {
+		// Namespace/key not directly available on this signature — reload
+		// memory_state for observability. If that read fails, skip the emit
+		// rather than fail Deprecate (emit is best-effort observability).
+		if state, stErr := s.GetState(ctx, memoryID); stErr == nil {
+			key := state.MemoryKey
+			if key == "" {
+				key = memoryID
+			}
+			_ = s.auditSink.EmitMemoryDeprecate(ctx, "system", state.Namespace, key, revisionID, nil)
+		}
+	}
+
+	return nil
 }

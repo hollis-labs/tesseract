@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
@@ -212,5 +213,163 @@ func TestOnlyDeprecationPathMutatesRevisionStatus(t *testing.T) {
 	}
 	if matches[0] != "write.go" {
 		t.Fatalf("expected the mutation to live in write.go, found it in %s", matches[0])
+	}
+}
+
+// newTestStoreWithAudit creates and returns a contextstore.Store that tests
+// can use as an audit sink and inspect for emitted events.
+func newTestStoreWithAudit(t *testing.T) *contextstore.Store {
+	t.Helper()
+	dir := t.TempDir()
+	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("contextstore.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+// TestWriteRevisionEmitsAuditEvent verifies that memory.WriteRevision emits a
+// memory.write audit event when an AuditSink is configured.
+func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/memory",
+		MemoryKey:  "notes.today",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "sess-1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "hello"},
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	ev := events[0]
+	if ev.EventType != contextstore.EventMemoryWrite {
+		t.Errorf("event_type: got %q, want %q", ev.EventType, contextstore.EventMemoryWrite)
+	}
+	if ev.RecordID != rev.RevisionID {
+		t.Errorf("record_id: got %q, want %q", ev.RecordID, rev.RevisionID)
+	}
+	if ev.Actor != "test-agent" {
+		t.Errorf("actor: got %q, want %q", ev.Actor, "test-agent")
+	}
+	if ev.Namespace != "user/alice/memory" {
+		t.Errorf("namespace: got %q, want %q", ev.Namespace, "user/alice/memory")
+	}
+	if ev.Key != "notes.today" {
+		t.Errorf("key: got %q, want %q", ev.Key, "notes.today")
+	}
+}
+
+func TestDeprecateEmitsAuditEvent(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/memory",
+		MemoryKey:  "notes.today",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "sess-1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "hello"},
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	if err := ms.Deprecate(context.Background(), rev.RevisionID); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	// Expect 2 events: write + deprecate, newest-first.
+	if len(events) != 2 {
+		t.Fatalf("expected 2 audit events, got %d", len(events))
+	}
+	if events[0].EventType != contextstore.EventMemoryDeprecate {
+		t.Errorf("newest event_type: got %q, want %q", events[0].EventType, contextstore.EventMemoryDeprecate)
+	}
+	if events[0].RecordID != rev.RevisionID {
+		t.Errorf("record_id: got %q, want %q", events[0].RecordID, rev.RevisionID)
+	}
+	if events[0].Actor != "system" {
+		t.Errorf("actor: got %q, want %q", events[0].Actor, "system")
+	}
+}
+
+func TestPromoteEmitsThreeEvents(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	// Seed a session-scoped source revision.
+	srcRev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/session/s1/memory",
+		MemoryKey:  "note.42",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "s1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "s"},
+	})
+	if err != nil {
+		t.Fatalf("seed WriteRevision: %v", err)
+	}
+
+	_, err = ms.Promote(context.Background(), memory.PromoteInput{
+		SourceNamespace: "user/alice/session/s1/memory",
+		SourceMemoryID:  srcRev.MemoryID,
+		TargetNamespace: "user/alice/memory",
+		ActorAgentID:    "promoter",
+	})
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	// Expect 4 events: seed write + promote-nested write + deprecate + umbrella promote.
+	if len(events) != 4 {
+		t.Fatalf("expected 4 audit events, got %d: %+v", len(events), events)
+	}
+	// Newest-first: umbrella promote at index 0.
+	if events[0].EventType != contextstore.EventMemoryPromote {
+		t.Errorf("events[0]: got %q, want %q", events[0].EventType, contextstore.EventMemoryPromote)
+	}
+	// Newest 3 must include umbrella, deprecate, and the nested write. Seed write is at index 3.
+	gotTypes := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		gotTypes[events[i].EventType] = true
+	}
+	for _, want := range []string{contextstore.EventMemoryPromote, contextstore.EventMemoryDeprecate, contextstore.EventMemoryWrite} {
+		if !gotTypes[want] {
+			t.Errorf("missing event type in newest 3: %q (got: %v)", want, gotTypes)
+		}
 	}
 }

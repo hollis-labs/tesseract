@@ -28,6 +28,7 @@ func runBackfill(ctx context.Context, store *contextstore.Store, cfg config.Conf
 	}
 
 	ms := memory.NewStore(store.DB(), embedder, cfg.Embedding.Model, cfg.Dedup.SimilarityThreshold, nil)
+	ms.SetAuditSink(store)
 
 	// Query unembedded revisions.
 	query := `SELECT revision_id FROM memory_revisions WHERE embedding_vector IS NULL`

@@ -37,4 +37,14 @@ const (
 	// Maintenance.
 	EventMaintenanceTrim    = "maintenance.trim"
 	EventMaintenanceCompact = "maintenance.compact"
+
+	// Memory domain.
+	EventMemoryWrite     = "memory.write"
+	EventMemorySupersede = "memory.supersede"
+	EventMemoryDeprecate = "memory.deprecate"
+	EventMemoryPromote   = "memory.promote"
+
+	// Knowledge domain.
+	EventKnowledgeWrite     = "knowledge.write"
+	EventKnowledgeSupersede = "knowledge.supersede"
 )

@@ -973,6 +973,11 @@ func (a *Adapter) handleAudit(_ context.Context, req mcp.CallToolRequest) (*mcp.
 		if ev.RecordID != "" {
 			item["record_id"] = ev.RecordID
 		}
+		if len(ev.Metadata) > 0 {
+			// Metadata is json.RawMessage; pass as-is so callers receive
+			// the parsed object rather than a quoted string.
+			item["metadata"] = json.RawMessage(ev.Metadata)
+		}
 		items[i] = item
 	}
 

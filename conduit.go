@@ -106,6 +106,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 	}
 
 	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
+	memStore.SetAuditSink(store)
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{

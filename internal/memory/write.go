@@ -221,6 +221,24 @@ INSERT INTO memory_revisions (
 		Payload: []byte(fmt.Sprintf(`{"revision_id":%q}`, revisionID)),
 	})
 
+	if s.auditSink != nil {
+		actor := in.Author.AgentID
+		key := in.MemoryKey
+		if key == "" {
+			key = memoryID // logical memory identity for keyless writes
+		}
+		switch {
+		case in.Domain == domains.Knowledge && in.Supersedes != "":
+			_ = s.auditSink.EmitKnowledgeSupersede(ctx, actor, in.Namespace, key, revisionID, nil)
+		case in.Domain == domains.Knowledge:
+			_ = s.auditSink.EmitKnowledgeWrite(ctx, actor, in.Namespace, key, revisionID, nil)
+		case in.Supersedes != "":
+			_ = s.auditSink.EmitMemorySupersede(ctx, actor, in.Namespace, key, revisionID, nil)
+		default:
+			_ = s.auditSink.EmitMemoryWrite(ctx, actor, in.Namespace, key, revisionID, nil)
+		}
+	}
+
 	rev := Revision{
 		RevisionID: revisionID,
 		MemoryID:   memoryID,

@@ -20,6 +20,36 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
   silently. This is a visibility improvement — no event-type names changed.
   (`CW-20260419-0060`)
 
+### Fixed
+
+- `memory_write` / `memory_deprecate` / `memory_promote` / `knowledge_write`
+  now record audit events. Previously these write paths bypassed the audit
+  log entirely, making `context_audit` queries for memory/knowledge
+  namespaces silently empty. Emits at the domain layer so all surfaces
+  (MCP, HTTP, library-facade) are covered. (`CW-20260419-0040`)
+- `context_audit` MCP response now includes the `metadata` field per row
+  when non-empty. HTTP `/v1/context/audit` already projected metadata via
+  struct serialization. (`CW-20260419-0040`)
+
+### Added
+
+- Six new audit event types: `memory.write`, `memory.supersede`,
+  `memory.deprecate`, `memory.promote`, `knowledge.write`,
+  `knowledge.supersede`. Existing event-type strings unchanged.
+  (`CW-20260419-0040`)
+- `memory.AuditSink` interface + `memory.Store.SetAuditSink(sink)` setter —
+  new dependency-injection seam for domain-layer audit. `contextstore.Store`
+  satisfies the interface structurally. (`CW-20260419-0040`)
+
+### Not in scope (flagged)
+
+- `memory.EmbedRevision` async queue audit — infrastructure-only
+  observability; not an audit concern. Intentionally scoped out of
+  `CW-20260419-0040`.
+- `memory.Deprecate` audit events record `actor="system"` because the
+  method signature has no actor parameter. Extending the signature is a
+  follow-up ticket candidate. (`CW-20260419-0040`)
+
 ## [0.5.0] — 2026-04-19
 
 MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/meta MCP tool descriptions against a consistent v2 template, adds MCP protocol annotations per spec §5.4, and ships `vanta_skills` as a progressive-discovery meta-tool backed by 11 embedded markdown skills. Additive — no Go library API changes; existing consumers are unaffected.
