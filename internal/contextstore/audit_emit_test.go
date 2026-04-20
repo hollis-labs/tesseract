@@ -183,3 +183,63 @@ func TestEmitFillsCreatedAtWhenEmpty(t *testing.T) {
 		t.Fatal("CreatedAt was not populated by helper")
 	}
 }
+
+func TestEmitMemoryWrite(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitMemoryWrite(context.Background(), "user", "user/alice/memory", "notes.today", "01J...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventMemoryWrite {
+		t.Fatalf("event_type: got %q, want %q", got, EventMemoryWrite)
+	}
+}
+
+func TestEmitMemorySupersede(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitMemorySupersede(context.Background(), "user", "user/alice/memory", "notes.today", "01K...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventMemorySupersede {
+		t.Fatalf("event_type: got %q, want %q", got, EventMemorySupersede)
+	}
+}
+
+func TestEmitMemoryDeprecate(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitMemoryDeprecate(context.Background(), "user", "user/alice/memory", "notes.today", "01J...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventMemoryDeprecate {
+		t.Fatalf("event_type: got %q, want %q", got, EventMemoryDeprecate)
+	}
+}
+
+func TestEmitMemoryPromote(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitMemoryPromote(context.Background(), "user", "user/alice/memory", "notes.today", "01L...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventMemoryPromote {
+		t.Fatalf("event_type: got %q, want %q", got, EventMemoryPromote)
+	}
+}
+
+func TestEmitKnowledgeWrite(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitKnowledgeWrite(context.Background(), "user", "user/alice/knowledge", "pkg/react", "01M...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventKnowledgeWrite {
+		t.Fatalf("event_type: got %q, want %q", got, EventKnowledgeWrite)
+	}
+}
+
+func TestEmitKnowledgeSupersede(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitKnowledgeSupersede(context.Background(), "user", "user/alice/knowledge", "pkg/react", "01N...", nil); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if got := lastEventType(t, s); got != EventKnowledgeSupersede {
+		t.Fatalf("event_type: got %q, want %q", got, EventKnowledgeSupersede)
+	}
+}
