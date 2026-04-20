@@ -408,8 +408,8 @@ func TestCompactionPreservesHeadsAndTrimsAudit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
-		if err := s.RecordAuditEvent(context.Background(), AuditEvent{
-			EventType: "write",
+		if err := s.recordAuditEvent(context.Background(), AuditEvent{
+			EventType: EventWrite,
 			Actor:     rec.Actor,
 			Namespace: rec.Namespace,
 			Key:       rec.Key,
@@ -466,12 +466,12 @@ func TestQueryAuditEventsFiltersAndCursor(t *testing.T) {
 	defer s.Close()
 
 	seed := []AuditEvent{
-		{EventType: "write", Actor: "app:editor", Namespace: "app/editor/session", Key: "summary", Revision: 1, RecordID: "r1"},
-		{EventType: "write", Actor: "app:editor", Namespace: "app/editor/session", Key: "summary", Revision: 2, RecordID: "r2"},
-		{EventType: "promote", Actor: "user", Namespace: "user/notes", Key: "daily", Revision: 1, RecordID: "r3"},
+		{EventType: EventWrite, Actor: "app:editor", Namespace: "app/editor/session", Key: "summary", Revision: 1, RecordID: "r1"},
+		{EventType: EventWrite, Actor: "app:editor", Namespace: "app/editor/session", Key: "summary", Revision: 2, RecordID: "r2"},
+		{EventType: EventPromote, Actor: "user", Namespace: "user/notes", Key: "daily", Revision: 1, RecordID: "r3"},
 	}
 	for i := range seed {
-		if err := s.RecordAuditEvent(context.Background(), seed[i]); err != nil {
+		if err := s.recordAuditEvent(context.Background(), seed[i]); err != nil {
 			t.Fatalf("record audit %d: %v", i, err)
 		}
 	}

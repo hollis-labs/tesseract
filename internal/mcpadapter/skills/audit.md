@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Querying the audit log — event types, filters, pagination.
+description: The audit log — emitting events from service-internal code and querying them via context_audit.
 scope_hint: none
 related: [revisions, promotion]
 ---
@@ -8,6 +8,26 @@ related: [revisions, promotion]
 # Audit
 
 Every write and every promotion stage records a structured audit event. The audit log is append-only: no tool mutates it. Use `context_audit` to query it — no scope required.
+
+## Emitting (for service-internal code)
+
+All audit writes go through helper methods on `*contextstore.Store`. Handlers
+and CLI commands do NOT construct `AuditEvent` values directly, and the raw
+emit path (`recordAuditEvent`) is unexported. The helpers live in
+`internal/contextstore/audit_emit.go` and the canonical event-type names live
+in `internal/contextstore/audittypes.go`.
+
+Helpers (one per semantic class):
+
+- `EmitWrite`, `EmitTypedWrite`, `EmitStatusPromote`, `EmitStatusDeprecate`
+- `EmitSessionSnapshot`, `EmitPacket`
+- `EmitBulkIngest`, `EmitChunkedIngest`
+- `EmitPromote(ctx, eventType, ...)` — accepts any of the promote-stage constants
+- `EmitMaintenance(ctx, eventType, ...)` — accepts `EventMaintenanceTrim` or `EventMaintenanceCompact`
+
+Helpers structured-log on error via `log/slog`; callers may continue to
+discard the error (`_ = store.EmitWrite(...)`), which is the project
+convention for audit emits.
 
 ## Querying
 
@@ -33,7 +53,11 @@ Event types actually emitted by the MCP surface:
 - `session_snapshot` — `context_session_snapshot`.
 - `bulk_ingest` / `chunked_ingest` — bulk/chunked write tools.
 
-Not all write paths emit audit events today. Notably, `memory_write`, `memory_deprecate`, and `knowledge_write` do not record audit events — reconstruct memory/knowledge history via `memory_history` / `knowledge_history` instead.
+Not all write paths emit audit events today. Notably, `memory_write`,
+`memory_deprecate`, and `knowledge_write` do not record audit events —
+reconstruct memory/knowledge history via `memory_history` / `knowledge_history`
+instead. (Follow-up: `CW-20260419-0040` will land these emits using the
+helpers above.)
 
 ## Envelope shape
 

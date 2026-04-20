@@ -108,18 +108,11 @@ func (s *Server) handlePromoteRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote.request.created",
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       requestID,
-		RecordID:  reqRec.RecordID,
-		Revision:  reqRec.Revision,
-		Metadata: json.RawMessage(fmt.Sprintf(
+	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequestCreated, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
+		json.RawMessage(fmt.Sprintf(
 			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
 			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
-		)),
-	})
+		)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"request_id": requestID,
@@ -206,15 +199,8 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote.request.approved",
-		Actor:     actor,
-		Namespace: reqNamespace,
-		Key:       req.RequestID,
-		RecordID:  updRec.RecordID,
-		Revision:  updRec.Revision,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, req.RequestID, approvalID)),
-	})
+	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequestApproved, actor, reqNamespace, req.RequestID, updRec.Revision, updRec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, req.RequestID, approvalID)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"approval_id": approvalID,
@@ -310,18 +296,11 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 		Payload:   appliedPayload,
 	})
 
-	_ = s.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote",
-		Actor:     actor,
-		Namespace: pr.TargetNamespace,
-		Key:       pr.TargetKey,
-		RecordID:  newRec.RecordID,
-		Revision:  newRec.Revision,
-		Metadata: json.RawMessage(fmt.Sprintf(
+	_ = s.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
+		json.RawMessage(fmt.Sprintf(
 			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
 			req.RequestID, pa.ApprovalID, newRec.RecordID,
-		)),
-	})
+		)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":   newRec.RecordID,

@@ -376,15 +376,7 @@ func (a *Adapter) handleWrite(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return toolError("write_failed", err.Error()), nil
 	}
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "write",
-		Actor:     actor,
-		Namespace: ns,
-		Key:       key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(`{"source":"mcp"}`),
-	})
+	_ = a.Store.EmitWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID, json.RawMessage(`{"source":"mcp"}`))
 
 	return toolJSON(map[string]any{
 		"record_id": rec.RecordID,
@@ -446,14 +438,8 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 		return toolError("promote_failed", err.Error()), nil
 	}
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote.request",
-		Actor:     actor,
-		Namespace: srcNS,
-		Key:       srcKey,
-		RecordID:  srcHead.RecordID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"target_namespace":%q,"source":"mcp"}`, requestID, tgtNS)),
-	})
+	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, srcNS, srcKey, srcHead.Revision, srcHead.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"target_namespace":%q,"source":"mcp"}`, requestID, tgtNS)))
 
 	return toolJSON(map[string]any{
 		"request_id": requestID,
@@ -551,22 +537,18 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 	pr.ApprovalID = approvalID
 	pr.ApprovedBy = actor
 	updPayload, _ := json.Marshal(pr)
-	if _, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
+	updRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
 		Actor:     actor,
 		Payload:   updPayload,
-	}); err != nil {
+	})
+	if err != nil {
 		return toolError("approve_failed", err.Error()), nil
 	}
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote.approve",
-		Actor:     actor,
-		Namespace: reqNamespace,
-		Key:       requestID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"approval_id":%q,"source":"mcp"}`, approvalID)),
-	})
+	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"approval_id":%q,"source":"mcp"}`, approvalID)))
 
 	return toolJSON(map[string]any{
 		"approval_id": approvalID,
@@ -619,15 +601,8 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 		Payload:   appliedPayload,
 	})
 
-	_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote",
-		Actor:     actor,
-		Namespace: pr.TargetNamespace,
-		Key:       pr.TargetKey,
-		RecordID:  newRec.RecordID,
-		Revision:  newRec.Revision,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"source":"mcp"}`, requestID)),
-	})
+	_ = a.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"source":"mcp"}`, requestID)))
 
 	return toolJSON(map[string]any{
 		"record_id":        newRec.RecordID,

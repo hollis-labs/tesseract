@@ -221,13 +221,8 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		Sources:          sources,
 	}
 
-	_ = s.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "packet",
-		Actor:     packetActor(r),
-		Namespace: strings.Join(req.Selector.Namespaces, ","),
-		Key:       reqID,
-		Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"items_returned":%d}`, reqID, manifest.ItemsReturned)),
-	})
+	_ = s.Store.EmitPacket(ctx, packetActor(r), strings.Join(req.Selector.Namespaces, ","), reqID,
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"items_returned":%d}`, reqID, manifest.ItemsReturned)))
 
 	if items == nil {
 		items = []PacketItem{}

@@ -368,15 +368,7 @@ func (c *CLI) runPut(ctx context.Context, args []string) int {
 	if err != nil {
 		return c.fail(err.Error())
 	}
-	_ = c.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "write",
-		Actor:     *actor,
-		Namespace: *namespace,
-		Key:       *key,
-		Revision:  rec.Revision,
-		RecordID:  rec.RecordID,
-		Metadata:  json.RawMessage(`{"source":"cli"}`),
-	})
+	_ = c.Store.EmitWrite(ctx, *actor, *namespace, *key, rec.Revision, rec.RecordID, json.RawMessage(`{"source":"cli"}`))
 	return c.writeJSON(rec)
 }
 
@@ -682,14 +674,7 @@ func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 		Payload:   appliedPayload,
 	})
 
-	_ = c.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-		EventType: "promote",
-		Actor:     *actor,
-		Namespace: pr.TargetNamespace,
-		Key:       pr.TargetKey,
-		RecordID:  newRec.RecordID,
-		Revision:  newRec.Revision,
-	})
+	_ = c.Store.EmitPromote(ctx, contextstore.EventPromote, *actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID, nil)
 
 	_, _ = fmt.Fprintf(c.Stdout, "Promotion applied.\n")
 	_, _ = fmt.Fprintf(c.Stdout, "  Record ID:   %s\n", newRec.RecordID)
@@ -1465,11 +1450,7 @@ func (c *CLI) runMaintenanceTrim(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprintf(c.Stdout, "Nothing to trim in %s (0 records matched retention policy)\n", *namespace)
 	} else {
 		_, _ = fmt.Fprintf(c.Stdout, "Trimmed %d records from %s\n", trimmed, *namespace)
-		_ = c.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-			EventType: "maintenance.trim",
-			Actor:     "cli",
-			Namespace: *namespace,
-		})
+		_ = c.Store.EmitMaintenance(ctx, contextstore.EventMaintenanceTrim, "cli", *namespace, nil)
 	}
 	return 0
 }
@@ -1498,11 +1479,7 @@ func (c *CLI) runMaintenanceCompact(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprintf(c.Stdout, "Nothing to compact in %s (0 excess revisions found)\n", *namespace)
 	} else {
 		_, _ = fmt.Fprintf(c.Stdout, "Compacted %d revisions from %s\n", compacted, *namespace)
-		_ = c.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-			EventType: "maintenance.compact",
-			Actor:     "cli",
-			Namespace: *namespace,
-		})
+		_ = c.Store.EmitMaintenance(ctx, contextstore.EventMaintenanceCompact, "cli", *namespace, nil)
 	}
 	return 0
 }

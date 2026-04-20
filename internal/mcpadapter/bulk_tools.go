@@ -240,15 +240,8 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		written++
 
 		// Audit.
-		_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-			EventType: "bulk_ingest",
-			Actor:     actor,
-			Namespace: item.Namespace,
-			Key:       item.Key,
-			Revision:  rec.Revision,
-			RecordID:  rec.RecordID,
-			Metadata:  json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q,"batch_index":%d}`, item.RecordType, status, i)),
-		})
+		_ = a.Store.EmitBulkIngest(ctx, actor, item.Namespace, item.Key, rec.Revision, rec.RecordID,
+			json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q,"batch_index":%d}`, item.RecordType, status, i)))
 
 		// Embed if requested.
 		if embed && a.EmbeddingProvider != nil {
@@ -392,15 +385,8 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 			}
 		}
 
-		_ = a.Store.RecordAuditEvent(ctx, contextstore.AuditEvent{
-			EventType: "chunked_ingest",
-			Actor:     actor,
-			Namespace: ns,
-			Key:       key,
-			Revision:  rec.Revision,
-			RecordID:  rec.RecordID,
-			Metadata:  json.RawMessage(fmt.Sprintf(`{"chunk_index":%d,"total_chunks":%d,"source":%q}`, chunk.Index, chunk.TotalCount, keyPrefix)),
-		})
+		_ = a.Store.EmitChunkedIngest(ctx, actor, ns, key, rec.Revision, rec.RecordID,
+			json.RawMessage(fmt.Sprintf(`{"chunk_index":%d,"total_chunks":%d,"source":%q}`, chunk.Index, chunk.TotalCount, keyPrefix)))
 
 		results = append(results, res)
 	}
