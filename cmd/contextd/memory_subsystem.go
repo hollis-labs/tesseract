@@ -70,6 +70,7 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		conduitCfg.Dedup.SimilarityThreshold,
 		queueAdapter,
 	)
+	memStore.SetAuditSink(store)
 
 	worker := queue.NewWorker(q, queue.WorkerOpts{
 		Queues:     []string{"conduit"},
