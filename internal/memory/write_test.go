@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/vanta-conduit/domains"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
@@ -212,5 +213,65 @@ func TestOnlyDeprecationPathMutatesRevisionStatus(t *testing.T) {
 	}
 	if matches[0] != "write.go" {
 		t.Fatalf("expected the mutation to live in write.go, found it in %s", matches[0])
+	}
+}
+
+// newTestStoreWithAudit builds a memory.Store wired to its contextstore as
+// the audit sink, and returns both so tests can assert on emitted events.
+func newTestStoreWithAudit(t *testing.T) *contextstore.Store {
+	t.Helper()
+	dir := t.TempDir()
+	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("contextstore.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+// TestWriteRevisionEmitsAuditEvent verifies that memory.WriteRevision emits a
+// memory.write audit event when an AuditSink is configured.
+func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/alice/memory",
+		MemoryKey:  "notes.today",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "sess-1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "hello"},
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	ev := events[0]
+	if ev.EventType != contextstore.EventMemoryWrite {
+		t.Errorf("event_type: got %q, want %q", ev.EventType, contextstore.EventMemoryWrite)
+	}
+	if ev.RecordID != rev.RevisionID {
+		t.Errorf("record_id: got %q, want %q", ev.RecordID, rev.RevisionID)
+	}
+	if ev.Actor != "test-agent" {
+		t.Errorf("actor: got %q, want %q", ev.Actor, "test-agent")
+	}
+	if ev.Namespace != "user/alice/memory" {
+		t.Errorf("namespace: got %q, want %q", ev.Namespace, "user/alice/memory")
+	}
+	if ev.Key != "notes.today" {
+		t.Errorf("key: got %q, want %q", ev.Key, "notes.today")
 	}
 }
