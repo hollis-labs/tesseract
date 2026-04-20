@@ -77,6 +77,6 @@ Each returned event carries:
 
 ## Common queries
 
-- "What wrote into `user/chrispian/memory` recently?" — set `namespace: user/chrispian/memory`, page with `cursor`. Note: `memory_write` does not audit, so this surfaces context writes only.
+- "What wrote into `user/chrispian/memory` recently?" — set `namespace: user/chrispian/memory`, page with `cursor`. Filter `event_type: memory.write` (or `memory.supersede` / `memory.deprecate` / `memory.promote`) to narrow to memory-domain mutations.
 - "What promotions are pending?" — prefer `context_promote_list` (domain-aware); `context_audit` gives the raw event stream.
 - "When was revision X applied?" — filter `event_type: promote` and walk until `record_id` or `revision` matches; there is no direct revision index.
