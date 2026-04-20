@@ -142,3 +142,43 @@ func TestGetHistory_MultipleRevisions(t *testing.T) {
 		}
 	}
 }
+
+// TestKnowledgeWriteEmitsKnowledgeWriteEvent verifies that knowledge.Write
+// (routing through memory.WriteRevision with Domain=Knowledge) emits a
+// knowledge.write audit event when the memory store has an audit sink wired.
+func TestKnowledgeWriteEmitsKnowledgeWriteEvent(t *testing.T) {
+	root := t.TempDir()
+	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: root})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+	ks := knowledge.New(ms)
+
+	_, err = ks.Write(context.Background(), knowledge.WriteInput{
+		Namespace: "user/alice/knowledge",
+		Key:       "pkg/react",
+		Kind:      "package",
+		Source:    "npm",
+		Pointer:   memory.Pointer{Scheme: "https", Locator: "https://www.npmjs.com/package/react"},
+		Summary:   "React UI library",
+		Author:    memory.Author{AgentID: "indexer"},
+		SessionID: "s1",
+	})
+	if err != nil {
+		t.Fatalf("knowledge.Write: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	if events[0].EventType != contextstore.EventKnowledgeWrite {
+		t.Errorf("event_type: got %q, want %q", events[0].EventType, contextstore.EventKnowledgeWrite)
+	}
+}
