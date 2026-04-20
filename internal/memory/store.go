@@ -16,6 +16,7 @@ type Store struct {
 	embeddingModel string
 	dedupThreshold float64
 	queue          JobQueue
+	auditSink      AuditSink // nil = audit emits are no-ops
 
 	// rerankers is guarded by rerankersMu so RegisterReranker may be
 	// called concurrently with Recall. The typical pattern is to register
@@ -42,3 +43,9 @@ func NewStore(db *sql.DB, embedder provider.Embedder, embeddingModel string, ded
 // DB returns the underlying *sql.DB. Used by tests that need direct DB access
 // (e.g., to backdate timestamps for decay testing).
 func (s *Store) DB() *sql.DB { return s.db }
+
+// SetAuditSink wires an AuditSink into the Store. Call this once at
+// construction time if audit emit is desired; passing nil (or not calling
+// at all) disables audit emit, which is the default. Tests generally do
+// not call this.
+func (s *Store) SetAuditSink(sink AuditSink) { s.auditSink = sink }
