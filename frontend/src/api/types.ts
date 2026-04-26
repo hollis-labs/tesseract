@@ -17,7 +17,7 @@ export interface Record {
 export interface Selector {
   namespaces?: string[];
   keys?: string[];
-  revision_scope?: 'head' | 'all';
+  revision_scope?: "head" | "all";
   order?: string[];
   limit?: number;
   tags_any?: string[];
@@ -52,7 +52,7 @@ export interface PacketRequest {
   max_items?: number;
   max_bytes?: number;
   max_tokens_estimate?: number;
-  payload_mode?: 'full' | 'head_only';
+  payload_mode?: "full" | "head_only";
 }
 
 export interface PacketResponse {
@@ -257,6 +257,40 @@ export interface MetricsResponse {
     requests: number;
     errors: number;
   };
+}
+
+// ── Recall types ────────────────────────────────────────────────────
+
+export interface RecallBriefItem {
+  revision_id: string;
+  memory_id: string;
+  domain: string;
+  namespace: string;
+  memory_key?: string;
+  tags: string[];
+  confidence: number;
+  summary: string;
+  created_at: string;
+}
+
+export interface LookupFacets {
+  domains?: { [k: string]: number };
+  kinds?: { [k: string]: number };
+  sources?: { [k: string]: number };
+}
+
+export interface RecallMeta {
+  namespace: string;
+  limit: number;
+  returned: number;
+  format: "brief" | "full";
+}
+
+export interface RecallResponse {
+  // brief = RecallBriefItem[], full = opaque RecallResult[] passed through.
+  results: RecallBriefItem[] | unknown[];
+  facets: LookupFacets;
+  meta: RecallMeta;
 }
 
 // ── Broker types ────────────────────────────────────────────────────
