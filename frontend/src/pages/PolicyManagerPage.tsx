@@ -106,6 +106,14 @@ function PolicyList() {
 
         {namespaces.length > 0 && namespaces.map(ns => {
           const policy = policies.get(ns);
+          // Server may return a NamespacePolicy with the nested .policy field
+          // null/missing; the TS type marks it required but the runtime value
+          // doesn't always honor that. Treat absent as empty so the UI degrades
+          // to "—" rows instead of black-screening the whole route.
+          const p = policy?.policy ?? {};
+          const extraKeys = Object.keys(p).filter(
+            k => !['tier', 'retention', 'max_revisions', 'max_bytes_per_key', 'allowed_ops'].includes(k),
+          );
           const isExpanded = expanded === ns;
           return (
             <div key={ns} style={{ borderBottom: '1px solid rgba(var(--border) / 0.5)' }}>
@@ -127,11 +135,11 @@ function PolicyList() {
                 <span style={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>{ns}</span>
                 {policy && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
-                    {policy.policy.tier && (
-                      <span className="hud-badge-info" style={{ fontSize: '0.65rem' }}>{policy.policy.tier}</span>
+                    {p.tier && (
+                      <span className="hud-badge-info" style={{ fontSize: '0.65rem' }}>{p.tier}</span>
                     )}
-                    {policy.policy.retention && (
-                      <span style={{ fontSize: '0.7rem', color: 'rgb(var(--muted))' }}>{policy.policy.retention}</span>
+                    {p.retention && (
+                      <span style={{ fontSize: '0.7rem', color: 'rgb(var(--muted))' }}>{p.retention}</span>
                     )}
                   </span>
                 )}
@@ -151,28 +159,28 @@ function PolicyList() {
                       </div>
                       <div>
                         <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Tier</div>
-                        <div style={{ fontSize: '0.8rem' }}>{policy.policy.tier ?? '—'}</div>
+                        <div style={{ fontSize: '0.8rem' }}>{p.tier ?? '—'}</div>
                       </div>
                       <div>
                         <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Retention</div>
-                        <div style={{ fontSize: '0.8rem' }}>{policy.policy.retention ?? '—'}</div>
+                        <div style={{ fontSize: '0.8rem' }}>{p.retention ?? '—'}</div>
                       </div>
                       <div>
                         <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Max Revisions</div>
-                        <div style={{ fontSize: '0.8rem' }}>{policy.policy.max_revisions ?? '—'}</div>
+                        <div style={{ fontSize: '0.8rem' }}>{p.max_revisions ?? '—'}</div>
                       </div>
                       <div>
                         <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Max Bytes/Key</div>
-                        <div style={{ fontSize: '0.8rem' }}>{policy.policy.max_bytes_per_key ? formatBytes(policy.policy.max_bytes_per_key) : '—'}</div>
+                        <div style={{ fontSize: '0.8rem' }}>{p.max_bytes_per_key ? formatBytes(p.max_bytes_per_key) : '—'}</div>
                       </div>
                       <div>
                         <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Allowed Ops</div>
-                        <div style={{ fontSize: '0.8rem' }}>{policy.policy.allowed_ops?.join(', ') ?? 'all'}</div>
+                        <div style={{ fontSize: '0.8rem' }}>{p.allowed_ops?.join(', ') ?? 'all'}</div>
                       </div>
-                      {Object.keys(policy.policy).filter(k => !['tier', 'retention', 'max_revisions', 'max_bytes_per_key', 'allowed_ops'].includes(k)).length > 0 && (
+                      {extraKeys.length > 0 && (
                         <div className="form-field-full" style={{ gridColumn: '1 / -1' }}>
                           <div className="hud-label" style={{ marginBottom: '0.25rem' }}>Full Policy</div>
-                          <JsonViewer data={policy.policy} maxHeight="150px" />
+                          <JsonViewer data={p} maxHeight="150px" />
                         </div>
                       )}
                     </div>
