@@ -309,6 +309,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleKnowledgeGetHistory(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/conduit/lookup":
 		s.handleConduitLookup(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/recall":
+		s.handleRecall(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
 	}
