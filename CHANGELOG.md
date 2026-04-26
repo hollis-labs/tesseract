@@ -8,6 +8,17 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-04-26
+
+Frontend operator surfaces: Memory & Knowledge browser, Search & Research
+(v1 curated), Memory / Knowledge detail page, Recall improvements
+(facet drill-down, URL state, clickable tags, recent namespaces),
+Audit Timeline overhaul (memory/knowledge event types, click-through to
+detail page, cursor-paginated load-more, day grouping, client-side actor
+filter). Plus the foundation: `GET /v1/namespaces/list` backend endpoint,
+knowledge `key` → `memory_key` parameter normalisation, and a tsc baseline
+fix that re-enables `make frontend` / `npm run build`.
+
 ### Changed
 
 - **Breaking (local-only):** Knowledge HTTP + MCP read endpoints renamed
@@ -20,6 +31,59 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
   - MCP tool `knowledge_history` — required arg `key` → `memory_key`
   Error messages updated. No other callers in the portfolio depend on
   the old name; safe to break pre-public-release.
+- **Audit & Ops page** — restructured into a timeline. Event-type filter
+  now exposes the v0.5.1 memory / knowledge events grouped by domain
+  (memory, knowledge, context, promote-MCP, promote-HTTP, maintenance).
+  Rows for memory/knowledge events click through to the appropriate
+  detail page; context events go to the existing record detail. Cursor
+  pagination ("Load older events") + day grouping + client-side actor
+  filter.
+- **Recall page** — facet domain chips are now clickable to filter the
+  result list. Form state mirrored into `#recall?…` URL hash so views
+  are bookmarkable / shareable.
+- **Search & Research page** — thread, named presets, and recent
+  namespaces persisted to localStorage. Tag chips on result cards in
+  the Answer tab are clickable (add to filter).
+- **Memory & Knowledge browser** — new "Load counts" bulk action
+  (concurrent recall for every visible namespace) and inline
+  Register-namespace form for fast bootstrap.
+- **`npm run build` works again** — fixed pre-existing
+  `exactOptionalPropertyTypes` strict-mode errors across PromotePage,
+  RecordDetailPage, ViewBuilderPage, WriteRecordPage, BrokerPage,
+  AuthTokensPage, PolicyManagerPage, PacketBuilderPage,
+  CompareRevisionsPage, KeyHistoryPage, NamespaceDetailPage. The
+  canonical `make frontend` target builds cleanly again.
+
+### Added
+
+- **HTTP route: `GET /v1/namespaces/list`** — list all registered
+  namespaces with optional `?prefix=` (string-prefix match) and
+  `?limit=` (default 200, max 1000). Returns `{items, count, truncated}`.
+  Backs the new Memory & Knowledge Browser frontend tree view; mirrors
+  the existing MCP `context_namespaces_list` tool.
+- **Frontend page: Memory & Knowledge Browser** — tree view of registered
+  namespaces grouped by tier prefix (`user/`, `app/`); domain tabs filter
+  memory vs knowledge; lazy-load keys per namespace via `/v1/recall`;
+  drill-through to the new memory/knowledge detail page.
+- **Frontend page: Search & Research (v1 curated)** — question textarea
+  over `POST /v1/conduit/lookup` with status / domain / tag / confidence
+  filters. Tabbed result view: **Answer** (cards grouped by domain) and
+  **Sources** (raw revisions for citation). Session-local thread of past
+  Q&As. v2 LLM-backed synthesis is comment-tracked in source — will use
+  the portfolio go-modelsdev library for cost / token / latency
+  telemetry.
+- **Frontend page: Memory / Knowledge Revision Detail** — single
+  component handles both `domain="memory"` and `"knowledge"` via prop;
+  identity bar (status, confidence, author, tags, timestamps); four
+  tabs (Summary / Payload / History / Raw). Wired as click-through
+  destination for Recall, Memory & Knowledge Browser, Search & Research,
+  and the Audit Timeline.
+- **Frontend page: Recall (improved)** — operator surface over
+  `GET /v1/recall` (shipped in 0.5.1). Tag chips clickable (add to
+  filter); recent-namespaces dropdown via localStorage; click-through
+  routed by `item.domain` to the memory/knowledge detail page (fixed
+  the "head not found" regression that hit when the click previously
+  went to the context-domain record-detail handler).
 
 ## [0.5.1] — 2026-04-26
 
@@ -223,7 +287,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...v0.4.0
