@@ -36,6 +36,43 @@ interface Props {
 
 const STATUS_FILTERS: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
 
+const THREAD_STORAGE_KEY = "conduit.searchResearch.thread";
+const PRESETS_STORAGE_KEY = "conduit.searchResearch.presets";
+const RECENT_NS_STORAGE_KEY = "conduit.searchResearch.recentNamespaces";
+const THREAD_MAX = 20;
+const RECENT_NS_MAX = 8;
+
+interface SavedPreset {
+  name: string;
+  question: string;
+  namespacesField: string;
+  tagsField: string;
+  domain: DomainFilter;
+  statuses: MemoryStatus[];
+  confidenceMin: string;
+  limit: string;
+}
+
+function safeReadJSON<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeWriteJSON(key: string, value: unknown): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage unavailable / quota — ignore.
+  }
+}
+
 export function SearchResearchPage({ onOpenItem }: Props) {
   const [question, setQuestion] = useState("");
   const [namespacesField, setNamespacesField] = useState("");
@@ -44,10 +81,19 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   const [statusSet, setStatusSet] = useState<Set<MemoryStatus>>(new Set(["canonical", "reviewed"]));
   const [confidenceMin, setConfidenceMin] = useState("0.5");
   const [limit, setLimit] = useState("20");
-  const [thread, setThread] = useState<ThreadEntry[]>([]);
+  const [thread, setThread] = useState<ThreadEntry[]>(() =>
+    safeReadJSON<ThreadEntry[]>(THREAD_STORAGE_KEY, []),
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("answer");
   const [loading, setLoading] = useState(false);
+  const [presets, setPresets] = useState<SavedPreset[]>(() =>
+    safeReadJSON<SavedPreset[]>(PRESETS_STORAGE_KEY, []),
+  );
+  const [recentNamespaces, setRecentNamespaces] = useState<string[]>(() =>
+    safeReadJSON<string[]>(RECENT_NS_STORAGE_KEY, []),
+  );
+  const [presetName, setPresetName] = useState("");
 
   // Default namespace seed: pull all registered namespaces once so the user
   // can blanket-search without typing. They can override with the field.
@@ -57,6 +103,20 @@ export function SearchResearchPage({ onOpenItem }: Props) {
       .then((res) => setDefaultNamespaces(res.items.map((n) => n.namespace)))
       .catch(() => setDefaultNamespaces([]));
   }, []);
+
+  // Persist thread on change so reloads don't lose context. Trimmed to
+  // THREAD_MAX entries (newest first) to keep storage bounded.
+  useEffect(() => {
+    safeWriteJSON(THREAD_STORAGE_KEY, thread.slice(0, THREAD_MAX));
+  }, [thread]);
+
+  // Persist presets + recent namespaces.
+  useEffect(() => {
+    safeWriteJSON(PRESETS_STORAGE_KEY, presets);
+  }, [presets]);
+  useEffect(() => {
+    safeWriteJSON(RECENT_NS_STORAGE_KEY, recentNamespaces);
+  }, [recentNamespaces]);
 
   const active = thread.find((e) => e.id === activeId) ?? null;
 
@@ -108,6 +168,12 @@ export function SearchResearchPage({ onOpenItem }: Props) {
 
       const res = await conduitLookup(req);
       setThread((prev) => prev.map((e) => (e.id === id ? { ...e, response: res } : e)));
+      // Update recent namespaces from the actual queried set (explicit > default).
+      const used = explicitNs.length > 0 ? explicitNs : namespaces.slice(0, 3);
+      setRecentNamespaces((prev) => {
+        const next = [...used.filter((n) => !prev.includes(n)), ...prev].slice(0, RECENT_NS_MAX);
+        return next;
+      });
       toast.success(`Returned ${res.results.length} result${res.results.length === 1 ? "" : "s"}`);
       setTab("answer");
       setQuestion("");
@@ -185,11 +251,50 @@ export function SearchResearchPage({ onOpenItem }: Props) {
               <input
                 id="search-namespaces"
                 className="hud-input"
+                list="search-namespaces-recents"
                 placeholder="user/jane/memory, user/jane/knowledge/projects"
                 value={namespacesField}
                 onChange={(e) => setNamespacesField(e.target.value)}
                 style={{ width: "100%" }}
               />
+              <datalist id="search-namespaces-recents">
+                {recentNamespaces.map((ns) => (
+                  <option key={ns} value={ns} label="recent" />
+                ))}
+              </datalist>
+              {recentNamespaces.length > 0 && (
+                <div
+                  style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.3rem" }}
+                >
+                  {recentNamespaces.slice(0, 5).map((ns) => (
+                    <button
+                      key={ns}
+                      type="button"
+                      onClick={() => {
+                        const existing = namespacesField
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        if (existing.includes(ns)) return;
+                        setNamespacesField([...existing, ns].join(", "));
+                      }}
+                      title={`Add ${ns} to namespaces`}
+                      style={{
+                        padding: "0.1rem 0.4rem",
+                        background: "rgba(var(--panel2) / 0.6)",
+                        border: "1px solid rgb(var(--border))",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.6rem",
+                        fontFamily: "var(--font-mono)",
+                        color: "rgb(var(--muted))",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {ns}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="form-field" style={{ marginTop: "0.5rem" }}>
@@ -313,6 +418,116 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                 {thread.length > 0 ? "Ask follow-up" : "Ask"}
               </span>
             </button>
+
+            {/* Presets — save current filter set, load by name. */}
+            <div
+              style={{
+                marginTop: "0.75rem",
+                borderTop: "1px solid rgb(var(--border))",
+                paddingTop: "0.5rem",
+              }}
+            >
+              <div className="hud-label" style={{ marginBottom: "0.3rem", fontSize: "0.7rem" }}>
+                Presets
+              </div>
+              <div style={{ display: "flex", gap: "0.3rem", marginBottom: "0.4rem" }}>
+                <input
+                  className="hud-input"
+                  placeholder="preset name..."
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  style={{ flex: 1, fontSize: "0.75rem" }}
+                />
+                <button
+                  type="button"
+                  className="hud-button-ghost"
+                  disabled={!presetName.trim() || !question.trim()}
+                  onClick={() => {
+                    const name = presetName.trim();
+                    if (!name) return;
+                    const preset: SavedPreset = {
+                      name,
+                      question: question.trim(),
+                      namespacesField,
+                      tagsField,
+                      domain,
+                      statuses: Array.from(statusSet),
+                      confidenceMin,
+                      limit,
+                    };
+                    setPresets((prev) =>
+                      [preset, ...prev.filter((p) => p.name !== name)].slice(0, 20),
+                    );
+                    setPresetName("");
+                    toast.success(`Saved preset "${name}"`);
+                  }}
+                  style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
+                  title="Save current question + filters as a named preset"
+                >
+                  Save
+                </button>
+              </div>
+              {presets.length === 0 && (
+                <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
+                  No saved presets yet. Save a question + filter combo to reuse.
+                </div>
+              )}
+              {presets.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                  {presets.map((p) => (
+                    <div
+                      key={p.name}
+                      style={{ display: "flex", gap: "0.2rem", alignItems: "center" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuestion(p.question);
+                          setNamespacesField(p.namespacesField);
+                          setTagsField(p.tagsField);
+                          setDomain(p.domain);
+                          setStatusSet(new Set(p.statuses));
+                          setConfidenceMin(p.confidenceMin);
+                          setLimit(p.limit);
+                          toast.success(`Loaded preset "${p.name}"`);
+                        }}
+                        style={{
+                          flex: 1,
+                          textAlign: "left",
+                          padding: "0.2rem 0.4rem",
+                          background: "transparent",
+                          border: "1px solid rgb(var(--border))",
+                          borderRadius: "var(--radius-sm)",
+                          color: "rgb(var(--text))",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.7rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPresets((prev) => prev.filter((x) => x.name !== p.name));
+                          toast.success(`Removed preset "${p.name}"`);
+                        }}
+                        title="Delete preset"
+                        style={{
+                          padding: "0.1rem 0.3rem",
+                          background: "transparent",
+                          border: "none",
+                          color: "rgb(var(--muted))",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {thread.length > 0 && (
@@ -613,8 +828,20 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                 >
                                   <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
                                     {r.Revision.tags.slice(0, 5).map((t) => (
-                                      <span
+                                      <button
+                                        type="button"
                                         key={t}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const existing = tagsField
+                                            .split(",")
+                                            .map((x) => x.trim())
+                                            .filter(Boolean);
+                                          if (existing.includes(t)) return;
+                                          setTagsField([...existing, t].join(", "));
+                                          toast.success(`Added tag: ${t}`);
+                                        }}
+                                        title={`Add tag "${t}" to filter and re-ask`}
                                         style={{
                                           padding: "0.05rem 0.3rem",
                                           background: "rgba(var(--panel2) / 0.6)",
@@ -626,10 +853,11 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                           display: "inline-flex",
                                           alignItems: "center",
                                           gap: "0.15rem",
+                                          cursor: "pointer",
                                         }}
                                       >
                                         <Tag size={8} /> {t}
-                                      </span>
+                                      </button>
                                     ))}
                                   </div>
                                   <span

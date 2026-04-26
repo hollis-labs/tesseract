@@ -3,13 +3,16 @@ import {
   ChevronRight,
   FileText,
   FolderOpen,
+  ListChecks,
+  PenSquare,
   RefreshCw,
   Search,
   Tag,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listNamespaces, recall } from "../api/client";
+import { listNamespaces, recall, registerNamespace } from "../api/client";
 import type { NamespaceListItem, RecallBriefItem } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
@@ -43,6 +46,19 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [keysByNamespace, setKeysByNamespace] = useState<Record<string, RecallBriefItem[]>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
+
+  // Eager record counts (separate from expansion). Populated by the "Load
+  // counts" button — fires recall in parallel for each visible namespace.
+  // Stored in same cache as keysByNamespace so an eager-loaded namespace can
+  // be expanded for free.
+  const [loadingAllCounts, setLoadingAllCounts] = useState(false);
+
+  // Register-namespace inline form state.
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [regNs, setRegNs] = useState("");
+  const [regOwnerType, setRegOwnerType] = useState("user");
+  const [regOwnerId, setRegOwnerId] = useState("");
+  const [regSubmitting, setRegSubmitting] = useState(false);
 
   const loadNamespaces = useCallback(() => {
     setLoadingNs(true);
@@ -121,11 +137,95 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
     return items ? items.length : undefined;
   };
 
+  // Load record counts for every namespace currently in `filtered` (in
+  // parallel). Skips namespaces already cached. Bounds concurrency to 8 to
+  // avoid hammering the daemon.
+  const loadAllCounts = async () => {
+    setLoadingAllCounts(true);
+    try {
+      const targets = filtered.filter((n) => !keysByNamespace[n.namespace]);
+      const concurrency = 8;
+      let cursor = 0;
+      const next: Record<string, RecallBriefItem[]> = {};
+      const errors: string[] = [];
+      const worker = async () => {
+        while (cursor < targets.length) {
+          const i = cursor++;
+          const t = targets[i];
+          if (!t) continue;
+          try {
+            const res = await recall({ namespace: t.namespace, limit: 500, format: "brief" });
+            next[t.namespace] = (res.results as RecallBriefItem[]) ?? [];
+          } catch (err) {
+            errors.push(`${t.namespace}: ${err instanceof Error ? err.message : String(err)}`);
+            next[t.namespace] = [];
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      setKeysByNamespace((prev) => ({ ...prev, ...next }));
+      if (errors.length === 0) {
+        toast.success(
+          `Loaded counts for ${targets.length} namespace${targets.length === 1 ? "" : "s"}`,
+        );
+      } else {
+        toast.error(`${errors.length}/${targets.length} count loads failed`);
+      }
+    } finally {
+      setLoadingAllCounts(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    const ns = regNs.trim();
+    const ownerId = regOwnerId.trim();
+    if (!ns || !ownerId) {
+      toast.error("Namespace and owner_id are required");
+      return;
+    }
+    setRegSubmitting(true);
+    try {
+      await registerNamespace(ns, regOwnerType, ownerId, {});
+      toast.success(`Registered ${ns}`);
+      setRegNs("");
+      setRegOwnerId("");
+      setRegisterOpen(false);
+      loadNamespaces();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Register failed: ${msg}`);
+    } finally {
+      setRegSubmitting(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Memory &amp; Knowledge Browser</h2>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: "flex", gap: "0.3rem" }}>
+          <button
+            type="button"
+            className="hud-button-ghost"
+            onClick={() => setRegisterOpen((v) => !v)}
+            title="Register a new namespace"
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+              {registerOpen ? <X size={11} /> : <PenSquare size={11} />}
+              {registerOpen ? "Cancel" : "Register"}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="hud-button-ghost"
+            onClick={loadAllCounts}
+            disabled={loadingAllCounts || filtered.length === 0}
+            title="Load record counts for every visible namespace (parallel recall)"
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+              {loadingAllCounts ? <Spinner size={11} /> : <ListChecks size={11} />} Load counts
+            </span>
+          </button>
           <button
             type="button"
             className="hud-button-ghost"
@@ -138,6 +238,80 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Inline register-namespace form. Minimal: namespace + owner. Policy
+          fields are deferred to PolicyManagerPage to keep this surface light. */}
+      {registerOpen && (
+        <div
+          className="hud-panel"
+          style={{
+            padding: "0.75rem",
+            marginBottom: "0.75rem",
+            borderColor: "rgba(var(--primary) / 0.4)",
+          }}
+        >
+          <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr auto" }}>
+            <div className="form-field">
+              <label className="hud-label" htmlFor="reg-ns">
+                Namespace
+              </label>
+              <input
+                id="reg-ns"
+                className="hud-input"
+                placeholder="user/<actor>/memory or user/<actor>/knowledge/<scope>"
+                value={regNs}
+                onChange={(e) => setRegNs(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div className="form-field">
+              <label className="hud-label" htmlFor="reg-owner-type">
+                Owner Type
+              </label>
+              <select
+                id="reg-owner-type"
+                className="hud-input"
+                value={regOwnerType}
+                onChange={(e) => setRegOwnerType(e.target.value)}
+                style={{ width: "100%" }}
+              >
+                <option value="user">user</option>
+                <option value="app">app</option>
+                <option value="system">system</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label className="hud-label" htmlFor="reg-owner-id">
+                Owner ID
+              </label>
+              <input
+                id="reg-owner-id"
+                className="hud-input"
+                placeholder="chrispian / hadron / ..."
+                value={regOwnerId}
+                onChange={(e) => setRegOwnerId(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div className="form-field" style={{ alignSelf: "end" }}>
+              <button
+                type="button"
+                className="hud-button-primary"
+                onClick={handleRegister}
+                disabled={regSubmitting || !regNs.trim() || !regOwnerId.trim()}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                  {regSubmitting ? <Spinner size={11} /> : <PenSquare size={11} />} Register
+                </span>
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", marginTop: "0.3rem" }}>
+            Registers with default (empty) policy. Use Policy Manager to set tier, retention,
+            allowed_ops.
+          </div>
+        </div>
+      )}
 
       {/* Domain tabs + search */}
       <div

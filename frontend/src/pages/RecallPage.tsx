@@ -53,11 +53,64 @@ interface Props {
   onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
 }
 
+// Read recall parameters out of the URL hash so a recall page is shareable.
+// Format: #recall?namespace=…&tags=…&limit=…&format=…&domain=…
+function readHashParams(): {
+  namespace?: string;
+  tags?: string;
+  limit?: string;
+  format?: "brief" | "full";
+  domain?: "memory" | "knowledge";
+} {
+  if (typeof window === "undefined") return {};
+  const hash = window.location.hash;
+  const idx = hash.indexOf("?");
+  if (idx < 0) return {};
+  const params = new URLSearchParams(hash.slice(idx + 1));
+  const out: ReturnType<typeof readHashParams> = {};
+  const ns = params.get("namespace");
+  if (ns) out.namespace = ns;
+  const t = params.get("tags");
+  if (t) out.tags = t;
+  const l = params.get("limit");
+  if (l) out.limit = l;
+  const f = params.get("format");
+  if (f === "brief" || f === "full") out.format = f;
+  const d = params.get("domain");
+  if (d === "memory" || d === "knowledge") out.domain = d;
+  return out;
+}
+
+function writeHashParams(p: {
+  namespace: string;
+  tags: string;
+  limit: string;
+  format: string;
+  domain: string;
+}): void {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams();
+  if (p.namespace) params.set("namespace", p.namespace);
+  if (p.tags) params.set("tags", p.tags);
+  if (p.limit && p.limit !== "15") params.set("limit", p.limit);
+  if (p.format && p.format !== "brief") params.set("format", p.format);
+  if (p.domain) params.set("domain", p.domain);
+  const qs = params.toString();
+  const newHash = qs ? `#recall?${qs}` : "#recall";
+  if (window.location.hash !== newHash) {
+    history.replaceState(null, "", newHash);
+  }
+}
+
 export function RecallPage({ onOpenItem }: Props) {
-  const [namespace, setNamespace] = useState("");
-  const [tags, setTags] = useState("");
-  const [limit, setLimit] = useState("15");
-  const [format, setFormat] = useState<"brief" | "full">("brief");
+  const initial = readHashParams();
+  const [namespace, setNamespace] = useState(initial.namespace ?? "");
+  const [tags, setTags] = useState(initial.tags ?? "");
+  const [limit, setLimit] = useState(initial.limit ?? "15");
+  const [format, setFormat] = useState<"brief" | "full">(initial.format ?? "brief");
+  const [domainFilter, setDomainFilter] = useState<"memory" | "knowledge" | "">(
+    initial.domain ?? "",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<RecallResponse | null>(null);
@@ -66,6 +119,12 @@ export function RecallPage({ onOpenItem }: Props) {
   useEffect(() => {
     setRecentNamespaces(loadRecentNamespaces());
   }, []);
+
+  // Mirror current form state into the URL hash so the page is bookmarkable
+  // and shareable. Skipped while loading to avoid intermediate-state churn.
+  useEffect(() => {
+    writeHashParams({ namespace, tags, limit, format, domain: domainFilter });
+  }, [namespace, tags, limit, format, domainFilter]);
 
   const handleRecall = async () => {
     const ns = namespace.trim();
@@ -108,8 +167,15 @@ export function RecallPage({ onOpenItem }: Props) {
     if (e.key === "Enter") handleRecall();
   };
 
-  const briefItems: RecallBriefItem[] =
+  // When the user clicks a domain facet chip we filter the brief result list
+  // client-side. The /v1/recall API's domains arg is a tag-style filter on the
+  // memory ranker; doing it client-side keeps the round-trip out of the loop
+  // and lets the user toggle freely without re-fetching.
+  const allBriefItems: RecallBriefItem[] =
     format === "brief" && response ? (response.results as RecallBriefItem[]) : [];
+  const briefItems: RecallBriefItem[] = domainFilter
+    ? allBriefItems.filter((item) => item.domain === domainFilter)
+    : allBriefItems;
 
   const facetEntries = response ? Object.entries(response.facets.domains ?? {}) : [];
 
@@ -263,23 +329,55 @@ export function RecallPage({ onOpenItem }: Props) {
               </div>
               {facetEntries.length > 0 && (
                 <div
-                  style={{ display: "flex", gap: "0.4rem", marginTop: "0.5rem", flexWrap: "wrap" }}
+                  style={{
+                    display: "flex",
+                    gap: "0.4rem",
+                    marginTop: "0.5rem",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
                 >
-                  {facetEntries.map(([domain, count]) => (
-                    <span
-                      key={domain}
-                      style={{
-                        padding: "0.15rem 0.5rem",
-                        background: "rgba(var(--primary) / 0.08)",
-                        border: "1px solid rgba(var(--primary) / 0.3)",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.7rem",
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    >
-                      {domain} · {count}
+                  {facetEntries.map(([domain, count]) => {
+                    const isActive = domainFilter === domain;
+                    const isFilterable = domain === "memory" || domain === "knowledge";
+                    return (
+                      <button
+                        type="button"
+                        key={domain}
+                        onClick={() => {
+                          if (!isFilterable) return;
+                          setDomainFilter(isActive ? "" : (domain as "memory" | "knowledge"));
+                        }}
+                        disabled={!isFilterable}
+                        title={
+                          isFilterable
+                            ? isActive
+                              ? `Clear ${domain} filter`
+                              : `Filter to ${domain} only`
+                            : undefined
+                        }
+                        style={{
+                          padding: "0.15rem 0.5rem",
+                          background: isActive
+                            ? "rgb(var(--primary))"
+                            : "rgba(var(--primary) / 0.08)",
+                          border: "1px solid rgba(var(--primary) / 0.3)",
+                          borderRadius: "var(--radius-sm)",
+                          fontSize: "0.7rem",
+                          fontFamily: "var(--font-mono)",
+                          color: isActive ? "rgb(var(--bg))" : "inherit",
+                          cursor: isFilterable ? "pointer" : "default",
+                        }}
+                      >
+                        {domain} · {count}
+                      </button>
+                    );
+                  })}
+                  {domainFilter && (
+                    <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
+                      showing {briefItems.length} / {allBriefItems.length} (filtered)
                     </span>
-                  ))}
+                  )}
                 </div>
               )}
             </div>

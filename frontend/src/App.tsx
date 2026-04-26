@@ -230,7 +230,17 @@ export default function App() {
           )}
           {page === "promote" && <PromotePage onBack={() => setPage("writeRecord")} />}
           {page === "policyManager" && <PolicyManagerPage />}
-          {page === "audit" && <AuditPage />}
+          {page === "audit" && (
+            <AuditPage
+              onOpenItem={(domain, ns, key) => {
+                if (domain === "context") {
+                  navigate("recordDetail", { namespace: ns, key });
+                } else {
+                  navigate("memoryDetail", { domain, namespace: ns, key });
+                }
+              }}
+            />
+          )}
           {page === "authTokens" && <AuthTokensPage />}
           {page === "consistency" && <ConsistencyPage />}
           {page === "maintenance" && <MaintenancePage />}
