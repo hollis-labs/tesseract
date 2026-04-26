@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { Play, Calculator, Save, Upload, Trash2, FileText } from 'lucide-react';
-import { toast } from 'sonner';
-import { evaluateView, estimate } from '../api/client';
-import { Spinner } from '../components/ui/Spinner';
-import { EmptyState } from '../components/ui/EmptyState';
-import type { Selector, Record, EvaluationMeta, EstimateResponse } from '../api/types';
+import { Calculator, FileText, Play, Save, Trash2, Upload } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { estimate, evaluateView } from "../api/client";
+import type { EstimateResponse, EvaluationMeta, Record, Selector } from "../api/types";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Spinner } from "../components/ui/Spinner";
 
 interface Props {
   onOpenRecord?: (namespace: string, key: string) => void;
@@ -15,11 +15,11 @@ interface Preset {
   selector: Selector;
 }
 
-const STORAGE_KEY = 'conduit:viewbuilder:presets';
+const STORAGE_KEY = "conduit:viewbuilder:presets";
 
 function loadPresets(): Preset[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
   } catch {
     return [];
   }
@@ -31,12 +31,12 @@ function savePresets(presets: Preset[]) {
 
 export function ViewBuilderPage({ onOpenRecord }: Props) {
   // Selector form state
-  const [namespaces, setNamespaces] = useState('');
-  const [keys, setKeys] = useState('');
-  const [revisionScope, setRevisionScope] = useState<'head' | 'all'>('head');
-  const [order, setOrder] = useState('namespace,key,revision');
-  const [limit, setLimit] = useState('50');
-  const [tagsAny, setTagsAny] = useState('');
+  const [namespaces, setNamespaces] = useState("");
+  const [keys, setKeys] = useState("");
+  const [revisionScope, setRevisionScope] = useState<"head" | "all">("head");
+  const [order, setOrder] = useState("namespace,key,revision");
+  const [limit, setLimit] = useState("50");
+  const [tagsAny, setTagsAny] = useState("");
 
   // Results
   const [results, setResults] = useState<Record[] | null>(null);
@@ -48,16 +48,39 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
 
   // Presets
   const [presets, setPresetsState] = useState<Preset[]>(loadPresets);
-  const [presetName, setPresetName] = useState('');
+  const [presetName, setPresetName] = useState("");
 
-  const buildSelector = (): Selector => ({
-    namespaces: namespaces.trim() ? namespaces.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-    keys: keys.trim() ? keys.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-    revision_scope: revisionScope,
-    order: order.trim() ? order.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-    limit: parseInt(limit) || 50,
-    tags_any: tagsAny.trim() ? tagsAny.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-  });
+  const buildSelector = (): Selector => {
+    const sel: Selector = {
+      revision_scope: revisionScope,
+      limit: parseInt(limit) || 50,
+    };
+    const ns = namespaces.trim();
+    if (ns)
+      sel.namespaces = ns
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const k = keys.trim();
+    if (k)
+      sel.keys = k
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const o = order.trim();
+    if (o)
+      sel.order = o
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const t = tagsAny.trim();
+    if (t)
+      sel.tags_any = t
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    return sel;
+  };
 
   const handleEstimate = async () => {
     setEstimating(true);
@@ -90,26 +113,29 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
   const handleSavePreset = () => {
     const name = presetName.trim();
     if (!name) return;
-    const updated = [...presets.filter(p => p.name !== name), { name, selector: buildSelector() }];
+    const updated = [
+      ...presets.filter((p) => p.name !== name),
+      { name, selector: buildSelector() },
+    ];
     setPresetsState(updated);
     savePresets(updated);
-    setPresetName('');
+    setPresetName("");
     toast.success(`Preset "${name}" saved`);
   };
 
   const handleLoadPreset = (preset: Preset) => {
     const s = preset.selector;
-    setNamespaces(s.namespaces?.join(', ') ?? '');
-    setKeys(s.keys?.join(', ') ?? '');
-    setRevisionScope(s.revision_scope ?? 'head');
-    setOrder(s.order?.join(', ') ?? 'namespace,key,revision');
+    setNamespaces(s.namespaces?.join(", ") ?? "");
+    setKeys(s.keys?.join(", ") ?? "");
+    setRevisionScope(s.revision_scope ?? "head");
+    setOrder(s.order?.join(", ") ?? "namespace,key,revision");
     setLimit(String(s.limit ?? 50));
-    setTagsAny(s.tags_any?.join(', ') ?? '');
+    setTagsAny(s.tags_any?.join(", ") ?? "");
     toast.success(`Loaded preset "${preset.name}"`);
   };
 
   const handleDeletePreset = (name: string) => {
-    const updated = presets.filter(p => p.name !== name);
+    const updated = presets.filter((p) => p.name !== name);
     setPresetsState(updated);
     savePresets(updated);
   };
@@ -120,10 +146,10 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
         <h2 className="page-title">View Builder</h2>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1rem' }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: "1rem" }}>
         {/* Main form */}
         <div>
-          <div className="hud-panel" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
+          <div className="hud-panel" style={{ padding: "1rem", marginBottom: "0.75rem" }}>
             <div className="form-grid">
               <div className="form-field form-field-full">
                 <label className="hud-label">Namespaces (comma-separated globs)</label>
@@ -131,8 +157,8 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   className="hud-input"
                   placeholder="user/memory/*, app/test/*"
                   value={namespaces}
-                  onChange={e => setNamespaces(e.target.value)}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setNamespaces(e.target.value)}
+                  style={{ width: "100%" }}
                 />
               </div>
 
@@ -142,8 +168,8 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   className="hud-input"
                   placeholder="status, config, preferences"
                   value={keys}
-                  onChange={e => setKeys(e.target.value)}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setKeys(e.target.value)}
+                  style={{ width: "100%" }}
                 />
               </div>
 
@@ -152,8 +178,8 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                 <select
                   className="hud-input"
                   value={revisionScope}
-                  onChange={e => setRevisionScope(e.target.value as 'head' | 'all')}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setRevisionScope(e.target.value as "head" | "all")}
+                  style={{ width: "100%" }}
                 >
                   <option value="head">head (latest only)</option>
                   <option value="all">all revisions</option>
@@ -168,8 +194,8 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   min={1}
                   max={1000}
                   value={limit}
-                  onChange={e => setLimit(e.target.value)}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setLimit(e.target.value)}
+                  style={{ width: "100%" }}
                 />
               </div>
 
@@ -179,8 +205,8 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   className="hud-input"
                   placeholder="namespace,key,revision"
                   value={order}
-                  onChange={e => setOrder(e.target.value)}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setOrder(e.target.value)}
+                  style={{ width: "100%" }}
                 />
               </div>
 
@@ -190,22 +216,22 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   className="hud-input"
                   placeholder="tag1, tag2"
                   value={tagsAny}
-                  onChange={e => setTagsAny(e.target.value)}
-                  style={{ width: '100%' }}
+                  onChange={(e) => setTagsAny(e.target.value)}
+                  style={{ width: "100%" }}
                 />
               </div>
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
               <button className="hud-button" onClick={handleEstimate} disabled={estimating}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
                   {estimating ? <Spinner size={12} /> : <Calculator size={13} />}
                   Estimate
                 </span>
               </button>
               <button className="hud-button-primary" onClick={handleEvaluate} disabled={loading}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
                   {loading ? <Spinner size={12} /> : <Play size={13} />}
                   Evaluate
                 </span>
@@ -215,7 +241,7 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
 
           {/* Estimate result */}
           {estimateResult && (
-            <div className="stats-grid" style={{ marginBottom: '0.75rem' }}>
+            <div className="stats-grid" style={{ marginBottom: "0.75rem" }}>
               <div className="stat-card">
                 <div className="stat-label">Records</div>
                 <div className="stat-value">{estimateResult.record_count}</div>
@@ -232,7 +258,10 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
           )}
 
           {error && (
-            <div className="hud-panel" style={{ padding: '0.75rem', color: 'rgb(var(--danger))', marginBottom: '0.75rem' }}>
+            <div
+              className="hud-panel"
+              style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
+            >
               {error}
             </div>
           )}
@@ -241,17 +270,21 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
           {results && (
             <div className="hud-panel">
               {evalMeta && (
-                <div style={{
-                  padding: '0.5rem 0.75rem',
-                  borderBottom: '1px solid rgb(var(--border))',
-                  fontSize: '0.75rem',
-                  color: 'rgb(var(--muted))',
-                  display: 'flex',
-                  gap: '1rem',
-                }}>
+                <div
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    borderBottom: "1px solid rgb(var(--border))",
+                    fontSize: "0.75rem",
+                    color: "rgb(var(--muted))",
+                    display: "flex",
+                    gap: "1rem",
+                  }}
+                >
                   <span>Matched: {evalMeta.matched_count}</span>
                   <span>Scope: {evalMeta.normalized_scope}</span>
-                  {evalMeta.truncated && <span style={{ color: 'rgb(var(--warn))' }}>Truncated</span>}
+                  {evalMeta.truncated && (
+                    <span style={{ color: "rgb(var(--warn))" }}>Truncated</span>
+                  )}
                 </div>
               )}
 
@@ -275,18 +308,21 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                       <tr
                         key={`${r.namespace}-${r.key}-${r.revision}-${i}`}
                         onClick={() => onOpenRecord?.(r.namespace, r.key)}
-                        style={{ cursor: onOpenRecord ? 'pointer' : 'default' }}
+                        style={{ cursor: onOpenRecord ? "pointer" : "default" }}
                       >
-                        <td style={{ fontSize: '0.8rem' }}>{r.namespace}</td>
+                        <td style={{ fontSize: "0.8rem" }}>{r.namespace}</td>
                         <td>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <FileText size={12} style={{ color: 'rgb(var(--primary))', flexShrink: 0 }} />
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                            <FileText
+                              size={12}
+                              style={{ color: "rgb(var(--primary))", flexShrink: 0 }}
+                            />
                             {r.key}
                           </span>
                         </td>
-                        <td style={{ color: 'rgb(var(--muted))' }}>r{r.revision}</td>
-                        <td style={{ color: 'rgb(var(--muted))' }}>{r.actor}</td>
-                        <td style={{ color: 'rgb(var(--muted))', fontSize: '0.8rem' }}>
+                        <td style={{ color: "rgb(var(--muted))" }}>r{r.revision}</td>
+                        <td style={{ color: "rgb(var(--muted))" }}>{r.actor}</td>
+                        <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
                           {new Date(r.created_at).toLocaleString()}
                         </td>
                       </tr>
@@ -300,16 +336,20 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
 
         {/* Presets sidebar */}
         <div>
-          <div className="hud-panel" style={{ padding: '0.75rem' }}>
-            <div className="hud-label" style={{ marginBottom: '0.5rem' }}>Save Preset</div>
-            <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <div className="hud-panel" style={{ padding: "0.75rem" }}>
+            <div className="hud-label" style={{ marginBottom: "0.5rem" }}>
+              Save Preset
+            </div>
+            <div style={{ display: "flex", gap: "0.3rem" }}>
               <input
                 className="hud-input"
                 placeholder="Preset name"
                 value={presetName}
-                onChange={e => setPresetName(e.target.value)}
-                style={{ flex: 1, fontSize: '0.8rem' }}
-                onKeyDown={e => { if (e.key === 'Enter') handleSavePreset(); }}
+                onChange={(e) => setPresetName(e.target.value)}
+                style={{ flex: 1, fontSize: "0.8rem" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSavePreset();
+                }}
               />
               <button
                 className="hud-button-ghost"
@@ -323,46 +363,48 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
           </div>
 
           {presets.length > 0 && (
-            <div className="hud-panel" style={{ padding: '0.75rem', marginTop: '0.5rem' }}>
-              <div className="hud-label" style={{ marginBottom: '0.5rem' }}>Saved Presets</div>
-              {presets.map(p => (
+            <div className="hud-panel" style={{ padding: "0.75rem", marginTop: "0.5rem" }}>
+              <div className="hud-label" style={{ marginBottom: "0.5rem" }}>
+                Saved Presets
+              </div>
+              {presets.map((p) => (
                 <div
                   key={p.name}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    padding: '0.3rem 0',
-                    borderBottom: '1px solid rgba(var(--border) / 0.5)',
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    padding: "0.3rem 0",
+                    borderBottom: "1px solid rgba(var(--border) / 0.5)",
                   }}
                 >
                   <button
                     style={{
                       flex: 1,
-                      background: 'none',
-                      border: 'none',
-                      color: 'rgb(var(--text))',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.8rem',
-                      textAlign: 'left',
-                      padding: '0.2rem 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
+                      background: "none",
+                      border: "none",
+                      color: "rgb(var(--text))",
+                      cursor: "pointer",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.8rem",
+                      textAlign: "left",
+                      padding: "0.2rem 0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
                     }}
                     onClick={() => handleLoadPreset(p)}
                   >
-                    <Upload size={11} style={{ color: 'rgb(var(--muted))' }} />
+                    <Upload size={11} style={{ color: "rgb(var(--muted))" }} />
                     {p.name}
                   </button>
                   <button
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'rgb(var(--muted))',
-                      cursor: 'pointer',
-                      padding: '2px',
+                      background: "none",
+                      border: "none",
+                      color: "rgb(var(--muted))",
+                      cursor: "pointer",
+                      padding: "2px",
                     }}
                     onClick={() => handleDeletePreset(p.name)}
                     title="Delete preset"
