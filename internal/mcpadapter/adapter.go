@@ -41,7 +41,7 @@ func New(store *contextstore.Store, token string) *Adapter {
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
 		"context-memory-service",
-		"0.5.0",
+		"0.5.1",
 		server.WithToolCapabilities(true),
 	)
 	a.RegisterAllTools(s)

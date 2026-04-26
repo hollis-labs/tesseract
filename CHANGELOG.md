@@ -8,6 +8,10 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-04-26
+
+Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear in `context_audit`, the audit-emit code path is consolidated through canonical `Store.Emit*` helpers, the daemon degrades gracefully when no embedding key is present, and a new `GET /v1/recall` endpoint gives scripted / agent consumers a query-param surface that mirrors `POST /v1/conduit/lookup`. Includes the audit fixes from `CW-20260419-0040` (PR #11) plus the audit-helper consolidation from `CW-20260419-0060`.
+
 ### Changed
 
 - `contextstore` now exposes canonical `Store.Emit*` helpers for every audit
@@ -30,6 +34,11 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 - `context_audit` MCP response now includes the `metadata` field per row
   when non-empty. HTTP `/v1/context/audit` already projected metadata via
   struct serialization. (`CW-20260419-0040`)
+- `contextd` no longer instantiates the OpenAI embedder when
+  `OPENAI_API_KEY` is unset. Previously the embedder was constructed
+  unconditionally and failed at every invocation; now the daemon logs a
+  warning at startup and falls back to BM25-only recall, keeping the
+  service usable in offline / no-key environments.
 
 ### Added
 
@@ -40,6 +49,14 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 - `memory.AuditSink` interface + `memory.Store.SetAuditSink(sink)` setter —
   new dependency-injection seam for domain-layer audit. `contextstore.Store`
   satisfies the interface structurally. (`CW-20260419-0040`)
+- **HTTP route: `GET /v1/recall`** — query-param-driven recall optimised
+  for scripted / agent consumption. Mirrors `POST /v1/conduit/lookup` but
+  takes `?namespace=…&tags=…&limit=…&format=brief|full`. Default `brief`
+  format returns condensed `{revision_id, memory_id, domain, namespace,
+  memory_key, tags, confidence, summary, created_at}` items; `full`
+  returns the complete `RecallResult`. Single-namespace only; respects
+  bearer-token namespace ACLs. Surfaces `similarity_unavailable` (503) and
+  `validation_error` (400) consistent with existing recall handlers.
 
 ### Not in scope (flagged)
 
@@ -193,7 +210,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.2.0...v0.3.0
