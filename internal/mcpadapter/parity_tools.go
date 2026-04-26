@@ -49,7 +49,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	if a.KnowledgeStore != nil {
 		s.AddTool(mcp.NewTool("knowledge_get",
 			mcp.WithDescription(
-				"**Fetch the current knowledge revision** for `(namespace, key)`. Peer of HTTP /v1/knowledge/current.\n"+
+				"**Fetch the current knowledge revision** for `(namespace, memory_key)`. Peer of HTTP /v1/knowledge/current.\n"+
 					"• **Kind of content:** the latest non-deprecated knowledge revision for this entry.\n"+
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** you know the key and want the current pointer + summary + body.\n"+
@@ -57,7 +57,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 					"• **Deeper:** `vanta_skills knowledge`.",
 			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace (must contain 'knowledge' segment, e.g. user/chrispian/knowledge/framework)")),
-			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers)")),
+			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers). Named memory_key for parity with memory tools — both stores share the Revision shape.")),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithDestructiveHintAnnotation(false),
@@ -67,14 +67,14 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 		s.AddTool(mcp.NewTool("knowledge_history",
 			mcp.WithDescription(
 				"**Fetch the full revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
-					"• **Kind of content:** every revision under `(namespace, key)`, including superseded.\n"+
+					"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded.\n"+
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** you need to trace how a knowledge entry evolved (e.g. pointer churn, summary rewrites).\n"+
 					"• **Don't use this for:** just the current value (`knowledge_get`).\n"+
 					"• **Deeper:** `vanta_skills revisions`.",
 			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
-			mcp.WithString("key", mcp.Required(), mcp.Description("Knowledge key")),
+			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key. Named memory_key for parity with memory tools.")),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithDestructiveHintAnnotation(false),
@@ -167,9 +167,9 @@ func (a *Adapter) handleKnowledgeGet(ctx context.Context, req mcp.CallToolReques
 		return res, nil
 	}
 	namespace := req.GetString("namespace", "")
-	key := req.GetString("key", "")
+	key := req.GetString("memory_key", "")
 	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError("validation_error", "namespace and memory_key are required"), nil
 	}
 	rev, err := a.KnowledgeStore.GetCurrent(ctx, namespace, key)
 	if err != nil {
@@ -186,9 +186,9 @@ func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRe
 		return res, nil
 	}
 	namespace := req.GetString("namespace", "")
-	key := req.GetString("key", "")
+	key := req.GetString("memory_key", "")
 	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError("validation_error", "namespace and memory_key are required"), nil
 	}
 	revs, err := a.KnowledgeStore.GetHistory(ctx, namespace, key)
 	if err != nil {

@@ -8,6 +8,19 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking (local-only):** Knowledge HTTP + MCP read endpoints renamed
+  their key parameter from `key` to `memory_key`, matching the existing
+  memory endpoints so both stores expose a single normalized identifier.
+  Affected:
+  - `GET /v1/knowledge/current` — query param `key` → `memory_key`
+  - `GET /v1/knowledge/history` — query param `key` → `memory_key`
+  - MCP tool `knowledge_get` — required arg `key` → `memory_key`
+  - MCP tool `knowledge_history` — required arg `key` → `memory_key`
+  Error messages updated. No other callers in the portfolio depend on
+  the old name; safe to break pre-public-release.
+
 ## [0.5.1] — 2026-04-26
 
 Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear in `context_audit`, the audit-emit code path is consolidated through canonical `Store.Emit*` helpers, the daemon degrades gracefully when no embedding key is present, and a new `GET /v1/recall` endpoint gives scripted / agent consumers a query-param surface that mirrors `POST /v1/conduit/lookup`. Includes the audit fixes from `CW-20260419-0040` (PR #11) plus the audit-helper consolidation from `CW-20260419-0060`.

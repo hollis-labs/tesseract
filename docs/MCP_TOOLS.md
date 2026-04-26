@@ -114,8 +114,8 @@ Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong wit
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
 | `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `vanta_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
-| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&key=` | `vanta_skills knowledge` | Current knowledge revision for (namespace, key) |
-| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&key=` | `vanta_skills revisions` | Full history for a knowledge entry |
+| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&memory_key=` | `vanta_skills knowledge` | Current knowledge revision for (namespace, memory_key) |
+| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&memory_key=` | `vanta_skills revisions` | Full history for a knowledge entry |
 
 ### Unified
 

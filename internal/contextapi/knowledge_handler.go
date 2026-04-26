@@ -77,15 +77,19 @@ func (s *Server) knowledgeStoreUnavailable(w http.ResponseWriter) bool {
 	return false
 }
 
-// handleKnowledgeGetCurrent serves GET /v1/knowledge/current?namespace=...&key=...
+// handleKnowledgeGetCurrent serves GET /v1/knowledge/current?namespace=...&memory_key=...
+//
+// Param name `memory_key` matches the equivalent /v1/memory/current handler so
+// callers can target either store with a single normalized identifier. The
+// underlying KnowledgeStore.GetCurrent call still takes the bare key string.
 func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Request) {
 	if s.knowledgeStoreUnavailable(w) {
 		return
 	}
 	namespace := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("key")
+	key := r.URL.Query().Get("memory_key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and key are required", nil)
+		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {
@@ -103,15 +107,15 @@ func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, rev)
 }
 
-// handleKnowledgeGetHistory serves GET /v1/knowledge/history?namespace=...&key=...
+// handleKnowledgeGetHistory serves GET /v1/knowledge/history?namespace=...&memory_key=...
 func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Request) {
 	if s.knowledgeStoreUnavailable(w) {
 		return
 	}
 	namespace := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("key")
+	key := r.URL.Query().Get("memory_key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and key are required", nil)
+		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {
