@@ -164,10 +164,11 @@ func createEmbedder(cfg config.Config) provider.Embedder {
 	if cfg.Embedding.Provider != "openai" {
 		return nil
 	}
-	e := provider.NewOpenAI()
-	// NewOpenAI reads OPENAI_API_KEY from env. If empty, embedding calls
-	// will fail at invocation time with "OPENAI_API_KEY not set".
-	return e
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		log.Printf("warning: embedding.provider=openai but OPENAI_API_KEY not set — embedding disabled, falling back to BM25-only recall")
+		return nil
+	}
+	return provider.NewOpenAI()
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
