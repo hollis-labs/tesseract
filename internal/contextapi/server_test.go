@@ -1459,3 +1459,82 @@ func TestBulkIngest_Empty(t *testing.T) {
 		t.Errorf("expected 400 for empty items, got %d", res.Code)
 	}
 }
+
+func TestNamespacesList(t *testing.T) {
+	srv := newTestServer(t)
+
+	for _, ns := range []string{"user/alice/memory", "user/alice/cache", "app/editor/session"} {
+		reg := performJSON(t, srv, http.MethodPost, "/v1/namespaces/register", map[string]any{
+			"namespace":  ns,
+			"owner_type": "app",
+			"owner_id":   "test",
+			"policy":     map[string]any{},
+		})
+		if reg.Code != http.StatusOK {
+			t.Fatalf("register %s status=%d body=%s", ns, reg.Code, reg.Body.String())
+		}
+	}
+
+	all := performJSON(t, srv, http.MethodGet, "/v1/namespaces/list", nil)
+	if all.Code != http.StatusOK {
+		t.Fatalf("list status=%d body=%s", all.Code, all.Body.String())
+	}
+	var allResp struct {
+		Items []struct {
+			Namespace string `json:"namespace"`
+		} `json:"items"`
+		Count     int  `json:"count"`
+		Truncated bool `json:"truncated"`
+	}
+	if err := json.Unmarshal(all.Body.Bytes(), &allResp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if allResp.Count != 3 {
+		t.Errorf("count: got %d want 3", allResp.Count)
+	}
+	if len(allResp.Items) != 3 {
+		t.Errorf("items: got %d want 3", len(allResp.Items))
+	}
+
+	prefixed := performJSON(t, srv, http.MethodGet, "/v1/namespaces/list?prefix=user/", nil)
+	if prefixed.Code != http.StatusOK {
+		t.Fatalf("prefix list status=%d body=%s", prefixed.Code, prefixed.Body.String())
+	}
+	var prefResp struct {
+		Items []struct{ Namespace string } `json:"items"`
+		Count int                          `json:"count"`
+	}
+	if err := json.Unmarshal(prefixed.Body.Bytes(), &prefResp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if prefResp.Count != 2 {
+		t.Errorf("prefix count: got %d want 2", prefResp.Count)
+	}
+
+	limited := performJSON(t, srv, http.MethodGet, "/v1/namespaces/list?limit=1", nil)
+	if limited.Code != http.StatusOK {
+		t.Fatalf("limited list status=%d body=%s", limited.Code, limited.Body.String())
+	}
+	var limResp struct {
+		Items     []struct{ Namespace string } `json:"items"`
+		Count     int                          `json:"count"`
+		Truncated bool                         `json:"truncated"`
+	}
+	if err := json.Unmarshal(limited.Body.Bytes(), &limResp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(limResp.Items) != 1 {
+		t.Errorf("limited items: got %d want 1", len(limResp.Items))
+	}
+	if limResp.Count != 3 {
+		t.Errorf("limited count (matched): got %d want 3", limResp.Count)
+	}
+	if !limResp.Truncated {
+		t.Errorf("expected truncated=true")
+	}
+
+	bad := performJSON(t, srv, http.MethodGet, "/v1/namespaces/list?limit=abc", nil)
+	if bad.Code != http.StatusBadRequest {
+		t.Errorf("bad limit: got %d want 400", bad.Code)
+	}
+}

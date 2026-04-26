@@ -170,6 +170,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleNamespaceRegister(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/list":
+		s.handleNamespacesList(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/get":
 		s.handleNamespaceGet(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/write":
@@ -587,6 +589,65 @@ func (s *Server) handleNamespaceRegister(w http.ResponseWriter, r *http.Request)
 		"owner_type": req.OwnerType,
 		"owner_id":   req.OwnerID,
 		"policy":     req.Policy,
+	})
+}
+
+func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	prefix := strings.TrimSpace(q.Get("prefix"))
+
+	const defaultLimit = 200
+	const maxLimit = 1000
+	limit := defaultLimit
+	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "validation_error", "limit must be a positive integer", nil)
+			return
+		}
+		if n > maxLimit {
+			n = maxLimit
+		}
+		limit = n
+	}
+
+	entries, err := s.Store.ListNamespacePolicies(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
+		return
+	}
+
+	type item struct {
+		Namespace string         `json:"namespace"`
+		OwnerType string         `json:"owner_type"`
+		OwnerID   string         `json:"owner_id"`
+		Policy    map[string]any `json:"policy,omitempty"`
+		UpdatedAt string         `json:"updated_at,omitempty"`
+	}
+
+	items := make([]item, 0, len(entries))
+	matched := 0
+	for _, entry := range entries {
+		if prefix != "" && !strings.HasPrefix(entry.Namespace, prefix) {
+			continue
+		}
+		matched++
+		if len(items) >= limit {
+			continue
+		}
+		items = append(items, item{
+			Namespace: entry.Namespace,
+			OwnerType: entry.OwnerType,
+			OwnerID:   entry.OwnerID,
+			Policy:    entry.Policy,
+			UpdatedAt: entry.UpdatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     items,
+		"count":     matched,
+		"truncated": matched > len(items),
 	})
 }
 
