@@ -4,11 +4,16 @@ import type {
   AuthToken,
   BrokerPlanResponse,
   CompactResponse,
+  ConduitLookupRequest,
+  ConduitLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
   HealthStatus,
+  KnowledgeRevision,
+  MemoryRevision,
   MetricsResponse,
+  NamespaceListResponse,
   NamespacePolicy,
   PacketResponse,
   RecallBriefItem,
@@ -455,6 +460,105 @@ export const demo = {
         format: params.format ?? "brief",
       },
     };
+  },
+
+  listNamespaces(prefix?: string): NamespaceListResponse {
+    const all: { namespace: string; owner_type: string; owner_id: string }[] = [
+      { namespace: "user/jane/memory", owner_type: "user", owner_id: "jane" },
+      { namespace: "user/jane/cache", owner_type: "user", owner_id: "jane" },
+      { namespace: "user/jane/pins", owner_type: "user", owner_id: "jane" },
+      { namespace: "user/jane/knowledge/projects", owner_type: "user", owner_id: "jane" },
+      { namespace: "user/jane/knowledge/portfolio", owner_type: "user", owner_id: "jane" },
+      { namespace: "app/editor/session", owner_type: "app", owner_id: "editor" },
+      { namespace: "app/test/session/sess-001", owner_type: "app", owner_id: "test" },
+      { namespace: "app/prod/conduit", owner_type: "app", owner_id: "deploy" },
+    ];
+    const filtered = prefix ? all.filter((n) => n.namespace.startsWith(prefix)) : all;
+    return {
+      items: filtered.map((n) => ({ ...n, updated_at: ago(48) })),
+      count: filtered.length,
+      truncated: false,
+    };
+  },
+
+  getMemoryCurrent(namespace: string, memoryKey: string): MemoryRevision {
+    return {
+      revision_id: "01KPRRZ332MDP106D0F8H057ZQ",
+      memory_id: "01KPRRZ331PJYGHSWX5FCB65XM",
+      domain: "memory",
+      namespace,
+      memory_key: memoryKey,
+      status: "canonical",
+      created_at: ago(24),
+      author: { agent_id: "demo-agent", agent_version: "0.1.0" },
+      trigger: "explicit",
+      session_id: "session-demo",
+      origin: "project",
+      confidence: 0.92,
+      tags: ["demo", "memory", memoryKey.split("_")[0] ?? "general"],
+      payload: {
+        summary: `Demo memory revision for ${memoryKey}.`,
+        body: `Body content for the demo revision keyed at \`${memoryKey}\` in namespace \`${namespace}\`. In production this would carry the canonical body of the memory.`,
+      },
+    };
+  },
+
+  getMemoryHistory(namespace: string, memoryKey: string): MemoryRevision[] {
+    return [3, 2, 1].map((n, i) => ({
+      revision_id: `01KPRRZ332MDP106D0F8H057Z${n}`,
+      memory_id: "01KPRRZ331PJYGHSWX5FCB65XM",
+      domain: "memory",
+      namespace,
+      memory_key: memoryKey,
+      status: i === 0 ? "canonical" : "deprecated",
+      created_at: ago(i * 24 + 1),
+      author: { agent_id: "demo-agent", agent_version: "0.1.0" },
+      confidence: 0.95 - i * 0.05,
+      tags: ["demo"],
+      payload: { summary: `Revision ${n} of ${memoryKey}` },
+    }));
+  },
+
+  getKnowledgeCurrent(namespace: string, memoryKey: string): KnowledgeRevision {
+    const rev = this.getMemoryCurrent(namespace, memoryKey);
+    return { ...rev, domain: "knowledge", facets: { kind: "doc", source: "filesystem" } };
+  },
+
+  getKnowledgeHistory(namespace: string, memoryKey: string): KnowledgeRevision[] {
+    return this.getMemoryHistory(namespace, memoryKey).map((r) => ({
+      ...r,
+      domain: "knowledge",
+      facets: { kind: "doc", source: "filesystem" },
+    }));
+  },
+
+  conduitLookup(req: ConduitLookupRequest): ConduitLookupResponse {
+    const limit = req.limit ?? 15;
+    const items = MOCK_RECORDS.slice(0, limit).map((r, i) => ({
+      Revision: {
+        revision_id: `01DEMO${i.toString().padStart(2, "0")}`,
+        memory_id: r.record_id,
+        domain: r.namespace.includes("/knowledge") ? ("knowledge" as const) : ("memory" as const),
+        namespace: r.namespace,
+        memory_key: r.key,
+        status: "canonical" as const,
+        created_at: r.created_at,
+        author: { agent_id: r.actor.replace(":", "_") },
+        confidence: 0.9 - i * 0.05,
+        tags: ["demo", req.query ?? "lookup"],
+        payload: {
+          summary: `Demo lookup hit ${i + 1} for "${req.query ?? "(no query)"}"`,
+          body:
+            typeof r.payload === "object" ? JSON.stringify(r.payload, null, 2) : String(r.payload),
+        },
+      },
+      Score: 0.9 - i * 0.05,
+    }));
+    const facets: { domains: { [k: string]: number } } = { domains: {} };
+    for (const it of items) {
+      facets.domains[it.Revision.domain] = (facets.domains[it.Revision.domain] ?? 0) + 1;
+    }
+    return { facets, results: items };
   },
 
   promoteRequest(): unknown {

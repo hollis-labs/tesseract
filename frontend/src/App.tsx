@@ -17,12 +17,15 @@ import { ExplorerPage } from "./pages/ExplorerPage";
 import { HelpPage } from "./pages/HelpPage";
 import { KeyHistoryPage } from "./pages/KeyHistoryPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
+import { MemoryDetailPage } from "./pages/MemoryDetailPage";
+import { MemoryKnowledgeBrowserPage } from "./pages/MemoryKnowledgeBrowserPage";
 import { NamespaceDetailPage } from "./pages/NamespaceDetailPage";
 import { PacketBuilderPage } from "./pages/PacketBuilderPage";
 import { PolicyManagerPage } from "./pages/PolicyManagerPage";
 import { PromotePage } from "./pages/PromotePage";
 import { RecallPage } from "./pages/RecallPage";
 import { RecordDetailPage } from "./pages/RecordDetailPage";
+import { SearchResearchPage } from "./pages/SearchResearchPage";
 import { ViewBuilderPage } from "./pages/ViewBuilderPage";
 import { WriteRecordPage } from "./pages/WriteRecordPage";
 
@@ -30,6 +33,9 @@ const PAGE_TITLES: Record<NavPage, string> = {
   dashboard: "Dashboard",
   explorer: "Context Explorer",
   recall: "Recall",
+  memoryKnowledgeBrowser: "Memory & Knowledge Browser",
+  memoryDetail: "Memory / Knowledge Revision",
+  searchResearch: "Search & Research",
   namespaceDetail: "Namespace Detail",
   recordDetail: "Record Detail",
   keyHistory: "Key History",
@@ -53,6 +59,8 @@ interface NavContext {
   key?: string;
   revisionA?: number;
   revisionB?: number;
+  // For memory/knowledge detail navigation: which domain handler to use.
+  domain?: "memory" | "knowledge";
 }
 
 export default function App() {
@@ -95,6 +103,9 @@ export default function App() {
         } else if (page === "promote") {
           setPage("writeRecord");
           e.preventDefault();
+        } else if (page === "memoryDetail") {
+          setPage("memoryKnowledgeBrowser");
+          e.preventDefault();
         }
       }
 
@@ -132,7 +143,31 @@ export default function App() {
           )}
           {page === "recall" && (
             <RecallPage
-              onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
+            />
+          )}
+          {page === "memoryKnowledgeBrowser" && (
+            <MemoryKnowledgeBrowserPage
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
+            />
+          )}
+          {page === "memoryDetail" && ctx.namespace && ctx.key && ctx.domain && (
+            <MemoryDetailPage
+              domain={ctx.domain}
+              namespace={ctx.namespace}
+              memoryKey={ctx.key}
+              onBack={() => setPage("memoryKnowledgeBrowser")}
+            />
+          )}
+          {page === "searchResearch" && (
+            <SearchResearchPage
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
             />
           )}
           {page === "namespaceDetail" && ctx.namespace && (

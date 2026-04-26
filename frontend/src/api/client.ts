@@ -6,11 +6,16 @@ import type {
   BrokerPlanResponse,
   CompactRequest,
   CompactResponse,
+  ConduitLookupRequest,
+  ConduitLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
   HealthStatus,
+  KnowledgeRevision,
+  MemoryRevision,
   MetricsResponse,
+  NamespaceListResponse,
   NamespacePolicy,
   PacketRequest,
   PacketResponse,
@@ -197,6 +202,68 @@ export async function registerNamespace(
       owner_id: ownerId,
       policy,
     }),
+  });
+}
+
+export async function listNamespaces(params?: {
+  prefix?: string;
+  limit?: number;
+}): Promise<NamespaceListResponse> {
+  if (isDemoMode()) return demo.listNamespaces(params?.prefix);
+  const q = new URLSearchParams();
+  if (params?.prefix) q.set("prefix", params.prefix);
+  if (params?.limit) q.set("limit", String(params.limit));
+  const qs = q.toString() ? `?${q.toString()}` : "";
+  return apiFetch<NamespaceListResponse>(`/v1/namespaces/list${qs}`);
+}
+
+// ── Memory ──────────────────────────────────────────────────────────
+
+export async function getMemoryCurrent(
+  namespace: string,
+  memoryKey: string,
+): Promise<MemoryRevision> {
+  if (isDemoMode()) return demo.getMemoryCurrent(namespace, memoryKey);
+  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  return apiFetch<MemoryRevision>(`/v1/memory/current?${q.toString()}`);
+}
+
+export async function getMemoryHistory(
+  namespace: string,
+  memoryKey: string,
+): Promise<MemoryRevision[]> {
+  if (isDemoMode()) return demo.getMemoryHistory(namespace, memoryKey);
+  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  return apiFetch<MemoryRevision[]>(`/v1/memory/history?${q.toString()}`);
+}
+
+// ── Knowledge ───────────────────────────────────────────────────────
+
+export async function getKnowledgeCurrent(
+  namespace: string,
+  memoryKey: string,
+): Promise<KnowledgeRevision> {
+  if (isDemoMode()) return demo.getKnowledgeCurrent(namespace, memoryKey);
+  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  return apiFetch<KnowledgeRevision>(`/v1/knowledge/current?${q.toString()}`);
+}
+
+export async function getKnowledgeHistory(
+  namespace: string,
+  memoryKey: string,
+): Promise<KnowledgeRevision[]> {
+  if (isDemoMode()) return demo.getKnowledgeHistory(namespace, memoryKey);
+  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  return apiFetch<KnowledgeRevision[]>(`/v1/knowledge/history?${q.toString()}`);
+}
+
+// ── Conduit lookup (unified search) ─────────────────────────────────
+
+export async function conduitLookup(req: ConduitLookupRequest): Promise<ConduitLookupResponse> {
+  if (isDemoMode()) return demo.conduitLookup(req);
+  return apiFetch<ConduitLookupResponse>("/v1/conduit/lookup", {
+    method: "POST",
+    body: JSON.stringify(req),
   });
 }
 

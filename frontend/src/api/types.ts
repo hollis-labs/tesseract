@@ -293,6 +293,99 @@ export interface RecallResponse {
   meta: RecallMeta;
 }
 
+// ── Memory / Knowledge revision types ───────────────────────────────
+
+export type MemoryStatus = "draft" | "reviewed" | "canonical" | "deprecated";
+
+export interface MemoryAuthor {
+  agent_id: string;
+  agent_version?: string;
+}
+
+export interface MemoryPayload {
+  summary: string;
+  body?: string;
+}
+
+export interface MemoryFacets {
+  kind?: string;
+  source?: string;
+  pointer?: { scheme: string; locator: string; resolved_at?: string };
+  [k: string]: unknown;
+}
+
+// MemoryRevision and KnowledgeRevision share the same on-wire shape; the
+// `domain` discriminator says which store the revision lives in.
+export interface MemoryRevision {
+  revision_id: string;
+  memory_id: string;
+  domain: "memory" | "knowledge";
+  namespace: string;
+  memory_key?: string;
+  status: MemoryStatus;
+  supersedes?: string;
+  created_at: string;
+  author: MemoryAuthor;
+  trigger?: string;
+  session_id?: string;
+  origin?: string;
+  confidence: number;
+  tags: string[];
+  ttl_seconds?: number;
+  expires_at?: string;
+  payload: MemoryPayload;
+  facets?: MemoryFacets;
+  embedding_model?: string;
+  dedup_match?: string;
+}
+
+export type KnowledgeRevision = MemoryRevision;
+
+// ── Namespaces list types ───────────────────────────────────────────
+
+export interface NamespaceListItem {
+  namespace: string;
+  owner_type: string;
+  owner_id: string;
+  policy?: { [k: string]: unknown };
+  updated_at?: string;
+}
+
+export interface NamespaceListResponse {
+  items: NamespaceListItem[];
+  count: number;
+  truncated: boolean;
+}
+
+// ── Conduit lookup (unified search) types ───────────────────────────
+
+export interface ConduitLookupRequest {
+  namespaces: string[];
+  query?: string;
+  ranking?: "activation" | "chronological" | "similarity" | "relevance";
+  limit?: number;
+  domains?: ("memory" | "knowledge")[];
+  facet_kinds?: string[];
+  facet_sources?: string[];
+  origins?: string[];
+  statuses?: MemoryStatus[];
+  tags?: string[];
+  confidence_min?: number;
+  since?: string;
+  until?: string;
+}
+
+export interface ConduitLookupResultItem {
+  Revision: MemoryRevision;
+  Score?: number;
+  State?: unknown;
+}
+
+export interface ConduitLookupResponse {
+  facets: LookupFacets;
+  results: ConduitLookupResultItem[];
+}
+
 // ── Broker types ────────────────────────────────────────────────────
 
 export interface BrokerPlanRequest {

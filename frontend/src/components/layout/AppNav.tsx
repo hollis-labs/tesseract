@@ -1,10 +1,12 @@
 import {
   Brain,
+  Database,
   HeartPulse,
   HelpCircle,
   Key,
   Layers,
   LayoutDashboard,
+  Lightbulb,
   Package,
   PenSquare,
   ScrollText,
@@ -18,6 +20,9 @@ export type NavPage =
   | "dashboard"
   | "explorer"
   | "recall"
+  | "memoryKnowledgeBrowser"
+  | "memoryDetail"
+  | "searchResearch"
   | "namespaceDetail"
   | "recordDetail"
   | "keyHistory"
@@ -50,7 +55,9 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Explore",
     items: [
       { page: "explorer", label: "Context Explorer", icon: <Search size={15} /> },
+      { page: "memoryKnowledgeBrowser", label: "Memory & Knowledge", icon: <Database size={15} /> },
       { page: "recall", label: "Recall", icon: <Telescope size={15} /> },
+      { page: "searchResearch", label: "Search & Research", icon: <Lightbulb size={15} /> },
       { page: "viewBuilder", label: "View Builder", icon: <Layers size={15} /> },
       { page: "packetBuilder", label: "Packet Builder", icon: <Package size={15} /> },
       { page: "writeRecord", label: "Write & Promote", icon: <PenSquare size={15} /> },
@@ -82,6 +89,7 @@ const PAGE_PARENT: Partial<globalThis.Record<NavPage, NavPage>> = {
   keyHistory: "explorer",
   compareRevisions: "explorer",
   promote: "writeRecord",
+  memoryDetail: "memoryKnowledgeBrowser",
 };
 
 interface Props {

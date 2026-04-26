@@ -1,5 +1,5 @@
 import { Tag, Telescope } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { recall } from "../api/client";
 import type { RecallBriefItem, RecallResponse } from "../api/types";
@@ -20,11 +20,40 @@ const NAMESPACE_SUGGESTIONS = [
   "app/<id>/draft",
 ];
 
-interface Props {
-  onOpenRecord?: (namespace: string, key: string) => void;
+const RECENT_NAMESPACES_KEY = "conduit.recall.recentNamespaces";
+const RECENT_NAMESPACES_MAX = 8;
+
+function loadRecentNamespaces(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_NAMESPACES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
-export function RecallPage({ onOpenRecord }: Props) {
+function pushRecentNamespace(ns: string): string[] {
+  const current = loadRecentNamespaces();
+  const next = [ns, ...current.filter((n) => n !== ns)].slice(0, RECENT_NAMESPACES_MAX);
+  try {
+    window.localStorage.setItem(RECENT_NAMESPACES_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage may be unavailable; ignore.
+  }
+  return next;
+}
+
+interface Props {
+  // Routes a recall result to the correct detail page based on its domain.
+  // Memory results need MemoryDetailPage (uses /v1/memory/current); knowledge
+  // results need KnowledgeDetailPage (uses /v1/knowledge/current).
+  onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
+}
+
+export function RecallPage({ onOpenItem }: Props) {
   const [namespace, setNamespace] = useState("");
   const [tags, setTags] = useState("");
   const [limit, setLimit] = useState("15");
@@ -32,6 +61,11 @@ export function RecallPage({ onOpenRecord }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<RecallResponse | null>(null);
+  const [recentNamespaces, setRecentNamespaces] = useState<string[]>([]);
+
+  useEffect(() => {
+    setRecentNamespaces(loadRecentNamespaces());
+  }, []);
 
   const handleRecall = async () => {
     const ns = namespace.trim();
@@ -59,6 +93,7 @@ export function RecallPage({ onOpenRecord }: Props) {
       if (Number.isFinite(parsedLimit) && parsedLimit > 0) params.limit = parsedLimit;
       const res = await recall(params);
       setResponse(res);
+      setRecentNamespaces(pushRecentNamespace(ns));
       toast.success(`Returned ${res.meta.returned} result${res.meta.returned === 1 ? "" : "s"}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -108,13 +143,16 @@ export function RecallPage({ onOpenRecord }: Props) {
               style={{ width: "100%" }}
             />
             <datalist id="recall-namespace-suggestions">
+              {recentNamespaces.map((ns) => (
+                <option key={`recent-${ns}`} value={ns} label="recent" />
+              ))}
               {NAMESPACE_SUGGESTIONS.map((ns) => (
-                <option key={ns} value={ns} />
+                <option key={ns} value={ns} label="template" />
               ))}
             </datalist>
             <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))", marginTop: "0.2rem" }}>
-              Single namespace only. Suggestions are templates — replace `&lt;actor&gt;` /
-              `&lt;id&gt;` with real values.
+              Single namespace only. Recent picks appear first; templates use `&lt;actor&gt;` /
+              `&lt;id&gt;` placeholders to replace.
             </div>
           </div>
 
@@ -252,100 +290,119 @@ export function RecallPage({ onOpenRecord }: Props) {
             )}
             {format === "brief" && briefItems.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {briefItems.map((item) => (
-                  <button
-                    type="button"
-                    key={item.revision_id}
-                    className="hud-panel"
-                    onClick={() =>
-                      item.memory_key && onOpenRecord?.(item.namespace, item.memory_key)
-                    }
-                    disabled={!item.memory_key || !onOpenRecord}
-                    style={{
-                      padding: "0.6rem 0.75rem",
-                      textAlign: "left",
-                      cursor: item.memory_key && onOpenRecord ? "pointer" : "default",
-                      background: "transparent",
-                      color: "inherit",
-                      width: "100%",
-                    }}
-                  >
-                    <div
+                {briefItems.map((item) => {
+                  const domain = (item.domain === "knowledge" ? "knowledge" : "memory") as
+                    | "memory"
+                    | "knowledge";
+                  const canOpen = !!item.memory_key && !!onOpenItem;
+                  return (
+                    <button
+                      type="button"
+                      key={item.revision_id}
+                      className="hud-panel"
+                      onClick={() =>
+                        item.memory_key && onOpenItem?.(domain, item.namespace, item.memory_key)
+                      }
+                      disabled={!canOpen}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "0.5rem",
-                        alignItems: "baseline",
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "left",
+                        cursor: canOpen ? "pointer" : "default",
+                        background: "transparent",
+                        color: "inherit",
+                        width: "100%",
                       }}
                     >
                       <div
                         style={{
-                          fontSize: "0.85rem",
-                          fontFamily: "var(--font-mono)",
-                          color: "rgb(var(--primary))",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "0.5rem",
+                          alignItems: "baseline",
                         }}
                       >
-                        {item.memory_key ?? (
-                          <span style={{ color: "rgb(var(--muted))" }}>(no key)</span>
-                        )}
+                        <div
+                          style={{
+                            fontSize: "0.85rem",
+                            fontFamily: "var(--font-mono)",
+                            color: "rgb(var(--primary))",
+                          }}
+                        >
+                          {item.memory_key ?? (
+                            <span style={{ color: "rgb(var(--muted))" }}>(no key)</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
+                          {item.domain} · conf {item.confidence.toFixed(2)}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-                        {item.domain} · conf {item.confidence.toFixed(2)}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: "0.8rem", marginTop: "0.3rem", lineHeight: 1.4 }}>
-                      {item.summary || (
-                        <span style={{ color: "rgb(var(--muted))" }}>(no summary)</span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginTop: "0.4rem",
-                        gap: "0.5rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
-                        {item.tags.slice(0, 6).map((t) => (
-                          <span
-                            key={t}
-                            style={{
-                              padding: "0.1rem 0.4rem",
-                              background: "rgba(var(--panel2) / 0.6)",
-                              border: "1px solid rgb(var(--border))",
-                              borderRadius: "var(--radius-sm)",
-                              fontSize: "0.65rem",
-                              fontFamily: "var(--font-mono)",
-                              color: "rgb(var(--muted))",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.2rem",
-                            }}
-                          >
-                            <Tag size={9} /> {t}
-                          </span>
-                        ))}
-                        {item.tags.length > 6 && (
-                          <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                            +{item.tags.length - 6}
-                          </span>
+                      <div style={{ fontSize: "0.8rem", marginTop: "0.3rem", lineHeight: 1.4 }}>
+                        {item.summary || (
+                          <span style={{ color: "rgb(var(--muted))" }}>(no summary)</span>
                         )}
                       </div>
                       <div
                         style={{
-                          fontSize: "0.65rem",
-                          color: "rgb(var(--muted))",
-                          fontFamily: "var(--font-mono)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginTop: "0.4rem",
+                          gap: "0.5rem",
+                          flexWrap: "wrap",
                         }}
                       >
-                        {item.created_at}
+                        <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+                          {item.tags.slice(0, 6).map((t) => (
+                            <button
+                              type="button"
+                              key={t}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const existing = tags
+                                  .split(",")
+                                  .map((x) => x.trim())
+                                  .filter(Boolean);
+                                if (existing.includes(t)) return;
+                                setTags([...existing, t].join(", "));
+                                toast.success(`Added tag: ${t}`);
+                              }}
+                              style={{
+                                padding: "0.1rem 0.4rem",
+                                background: "rgba(var(--panel2) / 0.6)",
+                                border: "1px solid rgb(var(--border))",
+                                borderRadius: "var(--radius-sm)",
+                                fontSize: "0.65rem",
+                                fontFamily: "var(--font-mono)",
+                                color: "rgb(var(--muted))",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.2rem",
+                                cursor: "pointer",
+                              }}
+                              title={`Add tag "${t}" to filter`}
+                            >
+                              <Tag size={9} /> {t}
+                            </button>
+                          ))}
+                          {item.tags.length > 6 && (
+                            <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
+                              +{item.tags.length - 6}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.65rem",
+                            color: "rgb(var(--muted))",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        >
+                          {item.created_at}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
