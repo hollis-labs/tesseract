@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Brain,
   Database,
   HeartPulse,
@@ -30,7 +31,9 @@ export type NavPage =
   | "viewBuilder"
   | "packetBuilder"
   | "writeRecord"
+  | "memoryReview"
   | "memoryWrite"
+  | "knowledgeWrite"
   | "promote"
   | "policyManager"
   | "audit"
@@ -53,30 +56,42 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: "Explore",
+    title: "Memory & Knowledge",
+    items: [
+      { page: "memoryKnowledgeBrowser", label: "Memory & Knowledge", icon: <Database size={15} /> },
+      { page: "memoryReview", label: "Review Queue", icon: <Brain size={15} /> },
+      { page: "memoryWrite", label: "Memory Write", icon: <PenSquare size={15} /> },
+      { page: "knowledgeWrite", label: "Knowledge Write", icon: <BookOpen size={15} /> },
+    ],
+  },
+  {
+    title: "Context",
     items: [
       { page: "explorer", label: "Context Explorer", icon: <Search size={15} /> },
-      { page: "memoryKnowledgeBrowser", label: "Memory & Knowledge", icon: <Database size={15} /> },
+      { page: "writeRecord", label: "Context Write", icon: <PenSquare size={15} /> },
+    ],
+  },
+  {
+    title: "Search & Recall",
+    items: [
       { page: "recall", label: "Recall", icon: <Telescope size={15} /> },
       { page: "searchResearch", label: "Search & Research", icon: <Lightbulb size={15} /> },
       { page: "viewBuilder", label: "View Builder", icon: <Layers size={15} /> },
       { page: "packetBuilder", label: "Packet Builder", icon: <Package size={15} /> },
-      { page: "writeRecord", label: "Write & Promote", icon: <PenSquare size={15} /> },
-      { page: "memoryWrite", label: "Memory Write", icon: <Brain size={15} /> },
-      { page: "broker", label: "Broker", icon: <Brain size={15} /> },
     ],
   },
   {
-    title: "Governance",
+    title: "Access & Ops",
     items: [
       { page: "policyManager", label: "Policy Manager", icon: <Shield size={15} /> },
+      { page: "broker", label: "Broker", icon: <Brain size={15} /> },
+      { page: "authTokens", label: "Auth & Tokens", icon: <Key size={15} /> },
       { page: "audit", label: "Audit & Ops", icon: <ScrollText size={15} /> },
     ],
   },
   {
     title: "System",
     items: [
-      { page: "authTokens", label: "Auth & Tokens", icon: <Key size={15} /> },
       { page: "consistency", label: "Consistency", icon: <HeartPulse size={15} /> },
       { page: "maintenance", label: "Maintenance", icon: <Wrench size={15} /> },
       { page: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },

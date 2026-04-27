@@ -146,10 +146,47 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
         <h2 className="page-title">View Builder</h2>
       </div>
 
+      <div
+        className="hud-panel"
+        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
+      >
+        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Build a reusable record list.</div>
+        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          Use this page to define and test selectors. It answers “what records match these rules?”
+          and lets you save those rules as browser-local presets.
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: "1rem" }}>
         {/* Main form */}
         <div>
           <div className="hud-panel" style={{ padding: "1rem", marginBottom: "0.75rem" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "0.75rem",
+                marginBottom: "0.9rem",
+                padding: "0.75rem",
+                background: "rgba(var(--panel2) / 0.7)",
+                border: "1px solid rgba(var(--border) / 0.8)",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              <div>
+                <div className="hud-label" style={{ marginBottom: "0.2rem" }}>When To Use It</div>
+                <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+                  For browsing and validating selectors before you package or automate anything.
+                </div>
+              </div>
+              <div>
+                <div className="hud-label" style={{ marginBottom: "0.2rem" }}>Estimate vs Evaluate</div>
+                <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+                  `Estimate` gives size. `Evaluate` shows the actual matching records.
+                </div>
+              </div>
+            </div>
+
             <div className="form-grid">
               <div className="form-field form-field-full">
                 <label className="hud-label">Namespaces (comma-separated globs)</label>
@@ -220,6 +257,11 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                   style={{ width: "100%" }}
                 />
               </div>
+            </div>
+
+            <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
+              This page defines the candidate set. If you need a bounded payload for an agent or
+              prompt, move from here into Packet Builder.
             </div>
 
             {/* Actions */}

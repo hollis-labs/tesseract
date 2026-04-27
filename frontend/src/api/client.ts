@@ -13,6 +13,7 @@ import type {
   EstimateResponse,
   HealthStatus,
   KnowledgeRevision,
+  KnowledgeWriteRequest,
   MemoryDeprecateRequest,
   MemoryDeprecateResponse,
   MemoryPromoteRequest,
@@ -269,6 +270,14 @@ export async function getKnowledgeHistory(
   if (isDemoMode()) return demo.getKnowledgeHistory(namespace, memoryKey);
   const q = new URLSearchParams({ namespace, memory_key: memoryKey });
   return apiFetch<KnowledgeRevision[]>(`/v1/knowledge/history?${q.toString()}`);
+}
+
+export async function knowledgeWrite(req: KnowledgeWriteRequest): Promise<KnowledgeRevision> {
+  if (isDemoMode()) return demo.knowledgeWrite(req);
+  return apiFetch<KnowledgeRevision>("/v1/knowledge/write", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
 }
 
 // ── Memory write / promote / deprecate ──────────────────────────────
