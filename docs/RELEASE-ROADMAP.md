@@ -1,9 +1,13 @@
 # Vanta Conduit Release Roadmap
 
-Status: tracking doc — captured 2026-04-04
+Status: tracking doc — refreshed 2026-04-27
 Purpose: decompose the "Vanta Conduit 1.0 release" effort into independent workstreams
 with clear ordering and hand-off boundaries. Each track gets its own design spec
 and implementation plan — this file only tracks what the tracks *are* and why.
+
+This document is the high-level release view only. Older sprint artifacts and
+pre-migration "Cortex" planning docs are historical context, not the current
+execution board. Clockwork is the source of truth for active work.
 
 ## Product framing
 
@@ -62,8 +66,10 @@ Depends on: D (can't stabilize an API around a moving domain).
 
 ### F. Dual-mode packaging
 CLI release binary + desktop GUI shell. The `frontend/` directory exists but
-`docs/PRODUCT_FEATURE_BRIEF.md` notes the GUI is not yet a full product surface.
-Decide: what ships at 1.0, what's staged. Build + release pipeline for both.
+the GUI/operator surface is now real: dashboard, review queue, memory/context/
+knowledge write flows, search/recall tools, and operator/policy screens all
+exist. The remaining work is packaging, release hardening, and deciding what
+ships as the supported 1.0 surface. Build + release pipeline for both.
 
 Depends on: D, E (packaging stable surfaces, not moving ones).
 
@@ -75,21 +81,21 @@ Mentat, Sigil — all have `app/<name>` namespaces registered today).
 Depends on: D, E, F.
 
 ### H. Shared AI provider Go module *(new — prerequisite for D's embedding subsystem)*
-Extract Nanite's multi-provider AI code into a standalone Go module shared by
-Nanite, Cortex, Hadron, Engine, and future apps. Covers both LLM calls and
+Extract multi-provider AI code into a standalone Go module shared by Nanite,
+Vanta Conduit, Hadron, Engine, and future apps. Covers both LLM calls and
 embedding calls. Handles capability differences (not every provider embeds).
 At launch: Anthropic, OpenAI-compatible, Ollama, and CLI agent adapters
 (Claude/Codex/Copilot/Gemini) where applicable.
 
 **Why shared:** Every app touching AI has the same provider problem. Solving
-it once in a versioned module eliminates drift and triples the value of each
-bug fix. Nanite already has working code — this is mostly an extraction, not
-greenfield design.
+it once in a versioned module eliminates drift and multiplies the value of each
+bug fix. The shared repo now exists as `hollis-labs/go-providers` and is under
+active development; Vanta already consumes it locally.
 
 Blocks: D's embedding subsystem.
 
 ### I. Shared queue Go module *(new — prerequisite for D's auto-embed)*
-New standalone Go module implementing a Laravel-inspired job queue: jobs with
+Standalone Go module implementing a Laravel-inspired job queue: jobs with
 serializable payloads, workers, retry/backoff, failed-jobs table, dispatchable
 interface, pluggable drivers. At 1.0: in-process workers with SQLite-backed
 persistence. Post-1.0: additional drivers (DB, Redis, etc.).
@@ -99,7 +105,10 @@ auto-embed and backfill are the first consumers; every future "do this
 reliably in the background" need across the portfolio benefits.
 
 **Why Laravel-style:** Well-understood pattern, proven in production, the user
-is already fluent in its mental model. No invention needed.
+is already fluent in its mental model. No invention needed. The shared repo now
+exists as `hollis-labs/go-queue` and is already a working beta module; the
+remaining Vanta-specific question is adoption/integration timing, not whether
+the queue module itself exists.
 
 Blocks: D's auto-embed and backfill paths.
 
@@ -151,8 +160,14 @@ collapses cleanly.
     blocked on I. Stub `NoopQueue` in place; swap is mechanical.
 - [ ] E. Embedded-runtime API surface — **partially complete**; `conduit.Open()`
   with functional options provides the library init pattern. Full API surface TBD.
-- [ ] F. Dual-mode packaging — blocked on E
+- [ ] F. Dual-mode packaging — **partially complete**; the frontend/operator
+  surface is shipped, and the repo-local build now produces the expected
+  embedded frontend plus `./contextd` artifact. Remaining work is packaging,
+  release hardening, and support-boundary decisions.
 - [ ] G. Release readiness — blocked on E, F
-- [ ] H. Shared AI provider module — **in progress**; `pkg/provider` extracted in
-  Nanite, Conduit consuming via replace directive. Standalone repo extraction pending.
-- [ ] I. Shared queue module — not started; blocks D-deferred auto-embed
+- [ ] H. Shared AI provider module — **in progress**; active shared repo
+  `hollis-labs/go-providers`, with Vanta already consuming it locally.
+- [ ] I. Shared queue module — **module exists and is active** as
+  `hollis-labs/go-queue`; Vanta adoption for auto-embed/backfill is still
+  pending and should be tracked as an integration decision, not as greenfield
+  queue work.
