@@ -8,6 +8,45 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-04-26
+
+LLM-backed answer synthesis for the Search & Research surface, plus
+operator forms for memory write / promote / deprecate, audit timeline
+filters (actor + since/until), and an API naming-convention pass that
+consolidates `invalid_request` → `validation_error`.
+
+### Added
+
+- **HTTP route: `POST /v1/synthesis/ask`** — fans curated memory + knowledge
+  recall into an LLM completion via go-providers, returns the synthesised
+  answer + numbered cited sources + per-call telemetry (provider, model,
+  latency, tokens when available, cost via go-modelsdev catalog lookup).
+  Returns 503 `synthesis_unavailable` when no provider is configured.
+- **Config: `synthesis.*`** in `~/.conduit/config.yaml` —
+  `provider`, `model`, `system_prompt`, `max_tokens`, `temperature`.
+  Provider names: `openai`, `anthropic`, `gemini`, `mistral`. API key
+  is read from the conventional env var (e.g. `ANTHROPIC_API_KEY`).
+- **Dependency:** `go-modelsdev` (replace → `../go-modelsdev`) — used for
+  model pricing lookups in the synthesis cost report.
+- **Memory write / promote / deprecate UI** (`MemoryWritePage`) — a single
+  operator surface with three tabs over the existing `/v1/memory/*` routes.
+  Symmetric to the context-domain WriteRecord + Promote pages.
+- **Search & Research: Synthesis tab** — third tab alongside Answer / Sources.
+  Click "Synthesize" to call the new LLM endpoint; result cached on the
+  thread entry so revisiting the question doesn't re-spend tokens. Telemetry
+  footer shows provider/model/latency/tokens/cost.
+
+### Changed
+
+- **Audit filter: `actor` + `since` + `until`** added to `/v1/context/audit`.
+  Backed by SQL substring (`actor LIKE %?%`) and lexical comparison on the
+  TEXT `created_at` column. Frontend AuditPage now uses server-side actor
+  filter (was client-side workaround) and gains datetime-local pickers for
+  `since` / `until`.
+- **Error code consolidation:** all `invalid_request` HTTP error codes
+  (33 callsites) renamed to `validation_error` to match the dominant
+  pattern (105 callsites). No tests depended on the old literal.
+
 ## [0.5.2] — 2026-04-26
 
 Frontend operator surfaces: Memory & Knowledge browser, Search & Research
@@ -287,7 +326,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...v0.5.0
