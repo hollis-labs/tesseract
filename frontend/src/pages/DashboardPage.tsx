@@ -58,7 +58,7 @@ export function DashboardPage({ health, onNavigate }: Props) {
   const { data: metricsData, error: metricsError } = usePoll<MetricsResponse>(metricsFetcher, 20_000);
 
   const reviewCountsFetcher = useCallback(async () => {
-    const namespaces = (await listNamespaces({ limit: 1000 })).items.map((item) => item.namespace);
+    const namespaces = namespaceData?.items.map((item) => item.namespace) ?? [];
     if (namespaces.length === 0) {
       return { lowConfidence: 0, reviewed: 0, pendingReview: 0 };
     }
@@ -78,7 +78,7 @@ export function DashboardPage({ health, onNavigate }: Props) {
       if (item.Revision.status === "draft" || item.Revision.status === "reviewed") pendingReview++;
     }
     return { lowConfidence, reviewed, pendingReview };
-  }, []);
+  }, [namespaceData]);
   const { data: reviewCounts } = usePoll(reviewCountsFetcher, 20_000);
 
   const recentEvents = auditData?.items ?? [];

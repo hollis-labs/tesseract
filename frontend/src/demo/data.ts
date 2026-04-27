@@ -547,7 +547,7 @@ export const demo = {
       memory_id: `01DEMOKNOW${Date.now()}`,
       domain: "knowledge",
       namespace: req.namespace,
-      memory_key: req.key ?? "",
+      ...(req.key ? { memory_key: req.key } : {}),
       status: "canonical",
       created_at: new Date().toISOString(),
       author: req.author,

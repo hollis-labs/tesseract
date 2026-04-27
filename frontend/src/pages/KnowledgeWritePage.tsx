@@ -37,6 +37,7 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
     pointerLocator.trim() &&
     summary.trim() &&
     authorAgentId.trim() &&
+    sessionId.trim() &&
     !submitting;
 
   const handleSubmit = async () => {
@@ -55,11 +56,11 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
         },
         summary: summary.trim(),
         author: { agent_id: authorAgentId.trim() },
+        session_id: sessionId.trim(),
       };
       if (key.trim()) req.key = key.trim();
       if (body.trim()) req.body = body.trim();
       if (authorVersion.trim()) req.author.agent_version = authorVersion.trim();
-      if (sessionId.trim()) req.session_id = sessionId.trim();
       if (supersedes.trim()) req.supersedes = supersedes.trim();
       if (tagsField.trim()) {
         req.tags = tagsField
@@ -235,7 +236,7 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
           </div>
           <div className="form-field">
             <label className="hud-label" htmlFor="kw-session-id">
-              Session ID
+              Session ID <span style={{ color: "rgb(var(--danger))" }}>*</span>
             </label>
             <input id="kw-session-id" className="hud-input" value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ width: "100%" }} />
           </div>

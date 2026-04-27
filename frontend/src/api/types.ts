@@ -356,7 +356,7 @@ export interface KnowledgeWriteRequest {
   summary: string;
   body?: string;
   author: MemoryAuthor;
-  session_id?: string;
+  session_id: string;
   tags?: string[];
   ttl_seconds?: number;
   confidence?: number;

@@ -132,7 +132,7 @@ export default function App() {
   // Navigation helpers
   const navigate = useCallback((target: NavPage, update?: Partial<NavContext>) => {
     setPage(target);
-    if (update) setCtx((prev) => ({ ...prev, ...update }));
+    setCtx(update ?? {});
   }, []);
 
   const handleNav = useCallback((target: NavPage) => {
@@ -307,7 +307,7 @@ export default function App() {
               onOpenItem={(d, ns, key) =>
                 navigate("memoryDetail", { domain: d, namespace: ns, key })
               }
-              onOpenWrite={() => setPage("memoryWrite")}
+              onOpenWrite={() => navigate("memoryWrite")}
               initialPreset={ctx.reviewPreset}
             />
           )}
@@ -316,7 +316,7 @@ export default function App() {
               onOpenItem={(d, ns, key) =>
                 navigate("memoryDetail", { domain: d, namespace: ns, key })
               }
-              onOpenReview={() => setPage("memoryReview")}
+              onOpenReview={() => navigate("memoryReview")}
             />
           )}
           {page === "knowledgeWrite" && (
