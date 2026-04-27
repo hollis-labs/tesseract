@@ -99,6 +99,11 @@ export function AuditPage({ onOpenItem }: Props) {
   const [eventType, setEventType] = useState("");
   const [nsFilter, setNsFilter] = useState("");
   const [actorFilter, setActorFilter] = useState("");
+  // since/until are RFC3339; the form takes datetime-local (no timezone)
+  // and we append "Z" before sending so the backend parses cleanly. Empty
+  // means unbounded.
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [limit, setLimit] = useState("50");
   const [groupByDay, setGroupByDay] = useState(true);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -110,17 +115,23 @@ export function AuditPage({ onOpenItem }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
 
+  // Convert form datetime-local strings (no tz) into RFC3339 by appending Z.
+  // Empty means unbounded.
+  const sinceISO = since ? `${since}:00Z` : "";
+  const untilISO = until ? `${until}:59Z` : "";
+
   // When filters change, drop the older-events buffer — the cursor is no
-  // longer meaningful against the new filter set.
+  // longer meaningful against the new filter set. Actor + time bounds are
+  // server-side now, so they belong in this key too.
   const lastFilterKey = useRef("");
   useEffect(() => {
-    const key = `${eventType}|${nsFilter}|${limit}`;
+    const key = `${eventType}|${nsFilter}|${actorFilter}|${sinceISO}|${untilISO}|${limit}`;
     if (lastFilterKey.current !== key) {
       lastFilterKey.current = key;
       setOlderEvents([]);
       setNextCursor(null);
     }
-  }, [eventType, nsFilter, limit]);
+  }, [eventType, nsFilter, actorFilter, sinceISO, untilISO, limit]);
 
   const loadFirstPage = useCallback(async () => {
     const params: Parameters<typeof getAuditEvents>[0] = {
@@ -129,10 +140,14 @@ export function AuditPage({ onOpenItem }: Props) {
     if (eventType) params.event_type = eventType;
     const ns = nsFilter.trim();
     if (ns) params.namespace = ns;
+    const a = actorFilter.trim();
+    if (a) params.actor = a;
+    if (sinceISO) params.since = sinceISO;
+    if (untilISO) params.until = untilISO;
     const res = await getAuditEvents(params);
     setNextCursor(res.next_cursor);
     return res;
-  }, [eventType, nsFilter, limit]);
+  }, [eventType, nsFilter, actorFilter, sinceISO, untilISO, limit]);
 
   // Lightweight fetcher with manual refresh + 10s auto-refresh.
   const [firstPage, setFirstPage] = useState<AuditEvent[]>([]);
@@ -169,6 +184,10 @@ export function AuditPage({ onOpenItem }: Props) {
       if (eventType) params.event_type = eventType;
       const ns = nsFilter.trim();
       if (ns) params.namespace = ns;
+      const a = actorFilter.trim();
+      if (a) params.actor = a;
+      if (sinceISO) params.since = sinceISO;
+      if (untilISO) params.until = untilISO;
       const res = await getAuditEvents(params);
       setOlderEvents((prev) => [...prev, ...res.items]);
       setNextCursor(res.next_cursor);
@@ -180,13 +199,9 @@ export function AuditPage({ onOpenItem }: Props) {
     }
   };
 
-  // Combine first page + older buffer; apply client-side actor filter.
-  const events = useMemo(() => {
-    const all = [...firstPage, ...olderEvents];
-    const a = actorFilter.trim().toLowerCase();
-    if (!a) return all;
-    return all.filter((e) => e.actor.toLowerCase().includes(a));
-  }, [firstPage, olderEvents, actorFilter]);
+  // First page + older buffer combined. Actor / since / until are now
+  // server-side filters on /v1/context/audit, so no client-side trimming.
+  const events = useMemo(() => [...firstPage, ...olderEvents], [firstPage, olderEvents]);
 
   // Group by day for the timeline view. When grouping is off, render flat.
   const grouped = useMemo(() => {
@@ -214,7 +229,6 @@ export function AuditPage({ onOpenItem }: Props) {
   };
 
   const totalShown = events.length;
-  const totalLoadedRaw = firstPage.length + olderEvents.length;
 
   return (
     <div>
@@ -270,7 +284,7 @@ export function AuditPage({ onOpenItem }: Props) {
           </div>
           <div className="form-field">
             <label className="hud-label" htmlFor="audit-actor">
-              Actor <span style={{ color: "rgb(var(--muted))" }}>(local filter)</span>
+              Actor <span style={{ color: "rgb(var(--muted))" }}>(substring)</span>
             </label>
             <input
               id="audit-actor"
@@ -297,6 +311,34 @@ export function AuditPage({ onOpenItem }: Props) {
             />
           </div>
         </div>
+        <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", marginTop: "0.5rem" }}>
+          <div className="form-field">
+            <label className="hud-label" htmlFor="audit-since">
+              Since <span style={{ color: "rgb(var(--muted))" }}>(local time)</span>
+            </label>
+            <input
+              id="audit-since"
+              className="hud-input"
+              type="datetime-local"
+              value={since}
+              onChange={(e) => setSince(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+          <div className="form-field">
+            <label className="hud-label" htmlFor="audit-until">
+              Until <span style={{ color: "rgb(var(--muted))" }}>(local time)</span>
+            </label>
+            <input
+              id="audit-until"
+              className="hud-input"
+              type="datetime-local"
+              value={until}
+              onChange={(e) => setUntil(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
         <div style={{ marginTop: "0.5rem", display: "flex", gap: "1rem", alignItems: "center" }}>
           <label
             style={{
@@ -317,7 +359,6 @@ export function AuditPage({ onOpenItem }: Props) {
           </label>
           <span style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
             {totalShown} shown
-            {actorFilter && totalShown !== totalLoadedRaw && ` · ${totalLoadedRaw} loaded`}
             {nextCursor && ` · more available`}
           </span>
         </div>

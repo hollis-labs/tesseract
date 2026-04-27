@@ -13,7 +13,11 @@ import type {
   EstimateResponse,
   HealthStatus,
   KnowledgeRevision,
+  MemoryDeprecateRequest,
+  MemoryDeprecateResponse,
+  MemoryPromoteRequest,
   MemoryRevision,
+  MemoryWriteRequest,
   MetricsResponse,
   NamespaceListResponse,
   NamespacePolicy,
@@ -23,6 +27,8 @@ import type {
   PromoteApprovePayload,
   PromoteRequestPayload,
   RecallResponse,
+  SynthesisAskRequest,
+  SynthesisAskResponse,
   Record,
   Selector,
   TokenCreateRequest,
@@ -162,6 +168,11 @@ export async function getAuditEvents(params?: {
   cursor?: number;
   namespace?: string;
   event_type?: string;
+  actor?: string;
+  // RFC3339 inclusive lower / upper bounds on created_at. Backend rejects
+  // non-RFC3339 strings.
+  since?: string;
+  until?: string;
 }): Promise<AuditResponse> {
   if (isDemoMode()) return demo.getAuditEvents(params?.limit);
   const q = new URLSearchParams();
@@ -169,6 +180,9 @@ export async function getAuditEvents(params?: {
   if (params?.cursor) q.set("cursor", String(params.cursor));
   if (params?.namespace) q.set("namespace", params.namespace);
   if (params?.event_type) q.set("event_type", params.event_type);
+  if (params?.actor) q.set("actor", params.actor);
+  if (params?.since) q.set("since", params.since);
+  if (params?.until) q.set("until", params.until);
   const qs = q.toString() ? `?${q}` : "";
   return apiFetch<AuditResponse>(`/v1/context/audit${qs}`);
 }
@@ -255,6 +269,42 @@ export async function getKnowledgeHistory(
   if (isDemoMode()) return demo.getKnowledgeHistory(namespace, memoryKey);
   const q = new URLSearchParams({ namespace, memory_key: memoryKey });
   return apiFetch<KnowledgeRevision[]>(`/v1/knowledge/history?${q.toString()}`);
+}
+
+// ── Memory write / promote / deprecate ──────────────────────────────
+
+export async function memoryWrite(req: MemoryWriteRequest): Promise<MemoryRevision> {
+  if (isDemoMode()) return demo.memoryWrite(req);
+  return apiFetch<MemoryRevision>("/v1/memory/write", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function memoryPromote(req: MemoryPromoteRequest): Promise<MemoryRevision> {
+  if (isDemoMode()) return demo.memoryPromote(req);
+  return apiFetch<MemoryRevision>("/v1/memory/promote", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function memoryDeprecate(req: MemoryDeprecateRequest): Promise<MemoryDeprecateResponse> {
+  if (isDemoMode()) return demo.memoryDeprecate(req);
+  return apiFetch<MemoryDeprecateResponse>("/v1/memory/deprecate", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+// ── Synthesis (LLM-backed answer) ───────────────────────────────────
+
+export async function synthesisAsk(req: SynthesisAskRequest): Promise<SynthesisAskResponse> {
+  if (isDemoMode()) return demo.synthesisAsk(req);
+  return apiFetch<SynthesisAskResponse>("/v1/synthesis/ask", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
 }
 
 // ── Conduit lookup (unified search) ─────────────────────────────────
