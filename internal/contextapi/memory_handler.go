@@ -48,7 +48,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	var req memoryWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	// This endpoint is memory-domain only. Knowledge writes must go through
@@ -111,7 +111,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 	}
 	var req memoryRecallRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	for _, ns := range req.Namespaces {
@@ -150,7 +150,7 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/v1/memory/revisions/")
 	if id == "" || strings.Contains(id, "/") {
-		writeError(w, http.StatusBadRequest, "invalid_request", "revision id required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "revision id required", nil)
 		return
 	}
 	rev, err := s.MemoryStore.GetRevisionByID(r.Context(), id)
@@ -173,7 +173,7 @@ func (s *Server) handleMemoryGetCurrent(w http.ResponseWriter, r *http.Request) 
 	ns := r.URL.Query().Get("namespace")
 	key := r.URL.Query().Get("memory_key")
 	if ns == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, ns) {
@@ -199,7 +199,7 @@ func (s *Server) handleMemoryHistory(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
 	key := r.URL.Query().Get("memory_key")
 	if ns == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, ns) {
@@ -227,11 +227,11 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 	}
 	var req memoryDeprecateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	if req.RevisionID == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "revision_id is required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "revision_id is required", nil)
 		return
 	}
 	if err := s.MemoryStore.Deprecate(r.Context(), req.RevisionID); err != nil {
@@ -262,7 +262,7 @@ func (s *Server) handleMemoryPromote(w http.ResponseWriter, r *http.Request) {
 	}
 	var req memoryPromoteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.SourceNamespace) {

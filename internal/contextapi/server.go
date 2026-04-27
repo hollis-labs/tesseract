@@ -15,12 +15,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
 	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	feotel "github.com/hollis-labs/go-otel"
+	"github.com/hollis-labs/go-modelsdev/modelsdev"
+	"github.com/hollis-labs/go-providers/provider"
 )
 
 type contextKey int
@@ -109,6 +112,18 @@ type Server struct {
 	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/contextd to
 	// knowledge.New(MemoryStore).
 	KnowledgeStore *knowledge.Store
+	// SynthesisProvider is the go-providers Provider used by /v1/synthesis/ask.
+	// When nil, the synthesis route returns 503 service_unavailable. Wired by
+	// cmd/contextd from config.Synthesis settings.
+	SynthesisProvider provider.Provider
+	// SynthesisConfig carries the model id, system prompt, max output tokens,
+	// and temperature used for synthesis calls. Honoured only when
+	// SynthesisProvider is non-nil.
+	SynthesisConfig config.SynthesisConfig
+	// ModelsDev is the cached client used to look up per-model pricing for
+	// synthesis cost reporting. May be nil — when absent, cost fields are
+	// returned as null.
+	ModelsDev *modelsdev.Client
 	// LogWriter is the destination for structured request logs when enabled.
 	LogWriter  io.Writer
 	startupErr error
@@ -313,6 +328,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleConduitLookup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/recall":
 		s.handleRecall(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/synthesis/ask":
+		s.handleSynthesisAsk(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
 	}
@@ -417,7 +434,7 @@ type issueTokenRequest struct {
 func (s *Server) handleIssueToken(w http.ResponseWriter, r *http.Request) {
 	var req issueTokenRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	var ttl time.Duration
@@ -454,7 +471,7 @@ type tokenCreateRequest struct {
 func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 	var req tokenCreateRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.Name) == "" {
@@ -540,7 +557,7 @@ type tokenRevokeRequest struct {
 func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	var req tokenRevokeRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.ID) == "" {
@@ -567,7 +584,7 @@ func (s *Server) handleNamespaceRegister(w http.ResponseWriter, r *http.Request)
 	}
 	var req namespaceRegisterRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	entry := contextstore.NamespacePolicyEntry{
@@ -691,7 +708,7 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	var req writeRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.Namespace) {
@@ -747,7 +764,7 @@ type promoteRequest struct {
 func (s *Server) handlePromote(w http.ResponseWriter, r *http.Request) {
 	var req promoteRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if err := s.Policy.CanPromote(req.Actor, req.ToNamespace); err != nil {
@@ -871,12 +888,39 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	eventType := strings.TrimSpace(r.URL.Query().Get("event_type"))
+	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
+	since := strings.TrimSpace(r.URL.Query().Get("since"))
+	until := strings.TrimSpace(r.URL.Query().Get("until"))
+
+	// Validate timestamp shapes when provided. We don't store nanosecond
+	// precision in audit_events.created_at but RFC3339 / RFC3339Nano both
+	// sort lexically; rejecting anything else avoids silently passing
+	// non-comparable strings down to the SQL layer.
+	if since != "" {
+		if _, err := time.Parse(time.RFC3339, since); err != nil {
+			if _, err2 := time.Parse(time.RFC3339Nano, since); err2 != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", "since must be RFC3339 (e.g. 2026-04-26T00:00:00Z)", nil)
+				return
+			}
+		}
+	}
+	if until != "" {
+		if _, err := time.Parse(time.RFC3339, until); err != nil {
+			if _, err2 := time.Parse(time.RFC3339Nano, until); err2 != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", "until must be RFC3339 (e.g. 2026-04-26T23:59:59Z)", nil)
+				return
+			}
+		}
+	}
 
 	events, nextCursor, err := s.Store.QueryAuditEvents(r.Context(), contextstore.AuditQuery{
 		Limit:     limit,
 		Cursor:    cursor,
 		Namespace: namespace,
 		EventType: eventType,
+		Actor:     actor,
+		Since:     since,
+		Until:     until,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
@@ -907,7 +951,7 @@ type viewRequest struct {
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	var req viewRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	result, err := s.Store.Evaluate(r.Context(), req.Selector, req.IncludePayload, req.Limit)
@@ -1126,7 +1170,7 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	}
 	var req maintenanceTrimRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.NamespacePattern) == "" {
@@ -1170,7 +1214,7 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 	}
 	var req maintenanceCompactRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.NamespacePattern) == "" {

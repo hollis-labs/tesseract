@@ -94,7 +94,7 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 
@@ -245,7 +245,7 @@ type EstimateResponse struct {
 func (s *Server) handleEstimate(w http.ResponseWriter, r *http.Request) {
 	var req EstimateRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	result, err := s.Store.Estimate(r.Context(), req.Selector)

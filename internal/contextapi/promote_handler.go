@@ -36,7 +36,7 @@ func (s *Server) handlePromoteRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	var req promoteRequestReq
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.SourceNamespace) {
@@ -134,7 +134,7 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	var req promoteApproveReq
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if req.RequestID == "" {
@@ -222,7 +222,7 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 	}
 	var req promoteApplyReq
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if req.RequestID == "" {

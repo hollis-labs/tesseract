@@ -34,7 +34,7 @@ func (s *Server) handleTypedWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	var req TypedWriteRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.Namespace) {
@@ -125,7 +125,7 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 	}
 	var req StatusPromoteRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if req.Namespace == "" || req.Key == "" {
@@ -201,7 +201,7 @@ func (s *Server) handleStatusDeprecate(w http.ResponseWriter, r *http.Request) {
 	}
 	var req StatusDeprecateRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if req.Namespace == "" || req.Key == "" {
@@ -257,7 +257,7 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 		IncludePayload bool     `json:"include_payload"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.ViewID) == "" {
@@ -419,7 +419,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 	}
 	var req BulkIngestRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if len(req.Items) == 0 {
@@ -601,7 +601,7 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 		MaxTokens  int      `json:"max_tokens,omitempty"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	if strings.TrimSpace(req.ViewID) == "" {

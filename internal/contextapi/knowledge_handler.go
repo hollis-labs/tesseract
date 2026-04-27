@@ -34,7 +34,7 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	var req knowledgeWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.Namespace) {
@@ -89,7 +89,7 @@ func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Reques
 	namespace := r.URL.Query().Get("namespace")
 	key := r.URL.Query().Get("memory_key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {
@@ -115,7 +115,7 @@ func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Reques
 	namespace := r.URL.Query().Get("namespace")
 	key := r.URL.Query().Get("memory_key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {

@@ -101,7 +101,7 @@ func extractKeywords(text string, n int) []string {
 func (s *Server) handleContextPlan(w http.ResponseWriter, r *http.Request) {
 	var req ContextPlanRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
 	intent := strings.TrimSpace(strings.ToLower(req.Intent))

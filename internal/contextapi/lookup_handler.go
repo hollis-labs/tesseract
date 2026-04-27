@@ -52,7 +52,7 @@ func (s *Server) handleConduitLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	var req conduitLookupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON: "+err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
 	}
 	for _, ns := range req.Namespaces {
