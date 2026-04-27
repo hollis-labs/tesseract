@@ -341,6 +341,43 @@ export interface MemoryRevision {
 
 export type KnowledgeRevision = MemoryRevision;
 
+// ── Memory write / promote / deprecate request types ────────────────
+
+export interface MemoryWriteRequest {
+  namespace: string;
+  memory_key?: string;
+  supersedes?: string;
+  status?: MemoryStatus;
+  author: MemoryAuthor;
+  trigger?: string;
+  session_id?: string;
+  origin?: string;
+  confidence?: number;
+  tags?: string[];
+  ttl_seconds?: number;
+  payload: MemoryPayload;
+  facets?: MemoryFacets;
+  dedup?: string;
+  dedup_threshold?: number;
+}
+
+export interface MemoryPromoteRequest {
+  source_namespace: string;
+  source_memory_id: string;
+  target_namespace: string;
+  actor_agent_id: string;
+  actor_version?: string;
+}
+
+export interface MemoryDeprecateRequest {
+  revision_id: string;
+}
+
+export interface MemoryDeprecateResponse {
+  status: string;
+  revision_id: string;
+}
+
 // ── Namespaces list types ───────────────────────────────────────────
 
 export interface NamespaceListItem {
@@ -384,6 +421,53 @@ export interface ConduitLookupResultItem {
 export interface ConduitLookupResponse {
   facets: LookupFacets;
   results: ConduitLookupResultItem[];
+}
+
+// ── Synthesis (LLM-backed answer) types ─────────────────────────────
+
+export interface SynthesisAskRequest {
+  question: string;
+  namespaces: string[];
+  tags?: string[];
+  limit?: number;
+  domains?: ("memory" | "knowledge")[];
+  statuses?: MemoryStatus[];
+  confidence_min?: number;
+  // Pin a specific model for one call. Omit to use the server default.
+  model?: string;
+}
+
+export interface SynthesisSource {
+  n: number;
+  revision_id: string;
+  memory_id: string;
+  domain: "memory" | "knowledge";
+  namespace: string;
+  memory_key?: string;
+  summary: string;
+  confidence: number;
+  score?: number;
+}
+
+export interface SynthesisCost {
+  input_usd: number;
+  output_usd: number;
+  total_usd: number;
+}
+
+export interface SynthesisUsage {
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  latency_ms: number;
+  cost?: SynthesisCost;
+}
+
+export interface SynthesisAskResponse {
+  answer: string;
+  sources: SynthesisSource[];
+  usage: SynthesisUsage;
 }
 
 // ── Broker types ────────────────────────────────────────────────────

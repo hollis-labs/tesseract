@@ -11,13 +11,19 @@ import type {
   EstimateResponse,
   HealthStatus,
   KnowledgeRevision,
+  MemoryDeprecateRequest,
+  MemoryDeprecateResponse,
+  MemoryPromoteRequest,
   MemoryRevision,
+  MemoryWriteRequest,
   MetricsResponse,
   NamespaceListResponse,
   NamespacePolicy,
   PacketResponse,
   RecallBriefItem,
   RecallResponse,
+  SynthesisAskRequest,
+  SynthesisAskResponse,
   Record,
   TokenCreateResponse,
   TrimResponse,
@@ -530,6 +536,67 @@ export const demo = {
       domain: "knowledge",
       facets: { kind: "doc", source: "filesystem" },
     }));
+  },
+
+  memoryWrite(req: MemoryWriteRequest): MemoryRevision {
+    return {
+      revision_id: `01DEMO_W${Date.now()}`,
+      memory_id: `01DEMOMEM${Date.now()}`,
+      domain: "memory",
+      namespace: req.namespace,
+      memory_key: req.memory_key ?? "",
+      status: req.status ?? "canonical",
+      created_at: new Date().toISOString(),
+      author: req.author,
+      confidence: req.confidence ?? 0.9,
+      tags: req.tags ?? [],
+      payload: req.payload,
+    };
+  },
+
+  memoryPromote(req: MemoryPromoteRequest): MemoryRevision {
+    return {
+      revision_id: `01DEMO_P${Date.now()}`,
+      memory_id: req.source_memory_id,
+      domain: "memory",
+      namespace: req.target_namespace,
+      memory_key: "promoted_demo",
+      status: "canonical",
+      created_at: new Date().toISOString(),
+      author: { agent_id: req.actor_agent_id, agent_version: req.actor_version ?? "" },
+      confidence: 0.95,
+      tags: ["demo", "promoted"],
+      payload: { summary: `Promoted from ${req.source_namespace}` },
+    };
+  },
+
+  memoryDeprecate(req: MemoryDeprecateRequest): MemoryDeprecateResponse {
+    return { status: "deprecated", revision_id: req.revision_id };
+  },
+
+  synthesisAsk(req: SynthesisAskRequest): SynthesisAskResponse {
+    return {
+      answer: `Demo synthesis for: "${req.question}". This is a stub answer that would normally cite [1] and [2] from the sources.`,
+      sources: MOCK_RECORDS.slice(0, 2).map((r, i) => ({
+        n: i + 1,
+        revision_id: `01DEMOSYN${i}`,
+        memory_id: r.record_id,
+        domain: "memory" as const,
+        namespace: r.namespace,
+        memory_key: r.key,
+        summary: `Demo source ${i + 1} for synthesis`,
+        confidence: 0.9 - i * 0.05,
+        score: 0.9 - i * 0.05,
+      })),
+      usage: {
+        provider: "demo",
+        model: "demo-model-v1",
+        input_tokens: 256,
+        output_tokens: 64,
+        latency_ms: 850,
+        cost: { input_usd: 0.001, output_usd: 0.0008, total_usd: 0.0018 },
+      },
+    };
   },
 
   conduitLookup(req: ConduitLookupRequest): ConduitLookupResponse {

@@ -30,6 +30,7 @@ export type NavPage =
   | "viewBuilder"
   | "packetBuilder"
   | "writeRecord"
+  | "memoryWrite"
   | "promote"
   | "policyManager"
   | "audit"
@@ -61,6 +62,7 @@ const NAV_SECTIONS: NavSection[] = [
       { page: "viewBuilder", label: "View Builder", icon: <Layers size={15} /> },
       { page: "packetBuilder", label: "Packet Builder", icon: <Package size={15} /> },
       { page: "writeRecord", label: "Write & Promote", icon: <PenSquare size={15} /> },
+      { page: "memoryWrite", label: "Memory Write", icon: <Brain size={15} /> },
       { page: "broker", label: "Broker", icon: <Brain size={15} /> },
     ],
   },

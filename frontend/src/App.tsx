@@ -19,6 +19,7 @@ import { KeyHistoryPage } from "./pages/KeyHistoryPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { MemoryDetailPage } from "./pages/MemoryDetailPage";
 import { MemoryKnowledgeBrowserPage } from "./pages/MemoryKnowledgeBrowserPage";
+import { MemoryWritePage } from "./pages/MemoryWritePage";
 import { NamespaceDetailPage } from "./pages/NamespaceDetailPage";
 import { PacketBuilderPage } from "./pages/PacketBuilderPage";
 import { PolicyManagerPage } from "./pages/PolicyManagerPage";
@@ -43,6 +44,7 @@ const PAGE_TITLES: Record<NavPage, string> = {
   viewBuilder: "View Builder",
   packetBuilder: "Packet Builder",
   writeRecord: "Write Record",
+  memoryWrite: "Memory Write",
   promote: "Promote",
   policyManager: "Policy Manager",
   audit: "Audit & Ops",
@@ -226,6 +228,13 @@ export default function App() {
             <WriteRecordPage
               onWritten={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
               onOpenPromote={() => setPage("promote")}
+            />
+          )}
+          {page === "memoryWrite" && (
+            <MemoryWritePage
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
             />
           )}
           {page === "promote" && <PromotePage onBack={() => setPage("writeRecord")} />}
