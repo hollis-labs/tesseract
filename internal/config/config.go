@@ -10,6 +10,20 @@ import (
 type Config struct {
 	Embedding EmbeddingConfig `yaml:"embedding"`
 	Dedup     DedupConfig     `yaml:"dedup"`
+	Synthesis SynthesisConfig `yaml:"synthesis"`
+}
+
+// SynthesisConfig configures the LLM-backed answer synthesis path
+// (POST /v1/synthesis/ask). When Provider is empty the synthesis route
+// returns 503 service_unavailable. Provider credential is read by the
+// go-providers adapter from its conventional env var (ANTHROPIC_API_KEY,
+// OPENAI_API_KEY, etc).
+type SynthesisConfig struct {
+	Provider     string  `yaml:"provider"`
+	Model        string  `yaml:"model"`
+	SystemPrompt string  `yaml:"system_prompt,omitempty"`
+	MaxTokens    int     `yaml:"max_tokens,omitempty"`
+	Temperature  float64 `yaml:"temperature,omitempty"`
 }
 
 // EmbeddingConfig configures the embedding provider and model.
@@ -60,6 +74,28 @@ func Load(path string) (Config, error) {
 	if cfg.Dedup.SimilarityThreshold == 0 {
 		cfg.Dedup.SimilarityThreshold = Defaults().Dedup.SimilarityThreshold
 	}
+	if cfg.Synthesis.Provider != "" {
+		if cfg.Synthesis.MaxTokens == 0 {
+			cfg.Synthesis.MaxTokens = 1024
+		}
+		if cfg.Synthesis.SystemPrompt == "" {
+			cfg.Synthesis.SystemPrompt = DefaultSynthesisSystemPrompt
+		}
+	}
 
 	return cfg, nil
 }
+
+// DefaultSynthesisSystemPrompt is used when Synthesis.SystemPrompt is empty.
+// It instructs the model to answer using ONLY the supplied source revisions
+// and to cite by [n] markers that the frontend can resolve back to the
+// numbered Sources list.
+const DefaultSynthesisSystemPrompt = `You are an answer-synthesis assistant for a personal memory + knowledge store.
+
+You will be given a question and a numbered list of source revisions. Each source has a namespace, key, summary, and (optionally) body.
+
+Rules:
+- Answer ONLY using the supplied sources. Do not invent facts.
+- Cite each claim with [n] where n is the source number.
+- If the sources don't answer the question, say so directly — do not pad.
+- Keep the answer focused and scannable: short paragraphs or a tight list.`

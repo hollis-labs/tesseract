@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hollis-labs/go-modelsdev/modelsdev"
 	"github.com/hollis-labs/go-providers/provider"
 	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
@@ -160,6 +161,57 @@ func parseMCPArgs(args []string) (string, error) {
 // is unsupported or the required API key is missing. Provider-specific
 // credential handling is delegated to the provider constructor (e.g.,
 // NewOpenAI reads OPENAI_API_KEY from the environment).
+// createSynthesisProvider builds the go-providers Provider used by
+// /v1/synthesis/ask. Returns nil (and the route degrades to 503) when:
+//   - no synthesis.provider is configured
+//   - the provider name is unsupported
+//   - the provider's API key env var is empty
+//
+// Mirrors the createEmbedder shape: silent nil on missing creds, log on
+// the fallback so operators see why the feature is off.
+func createSynthesisProvider(cfg config.Config, stderr *os.File) provider.Provider {
+	name := strings.ToLower(strings.TrimSpace(cfg.Synthesis.Provider))
+	if name == "" {
+		return nil
+	}
+	envFor := map[string]string{
+		"openai":    "OPENAI_API_KEY",
+		"anthropic": "ANTHROPIC_API_KEY",
+		"gemini":    "GOOGLE_API_KEY",
+		"mistral":   "MISTRAL_API_KEY",
+	}
+	if env, ok := envFor[name]; ok && os.Getenv(env) == "" {
+		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " but " + env + " not set — /v1/synthesis/ask disabled\n")
+		return nil
+	}
+	switch name {
+	case "openai":
+		return provider.NewOpenAI()
+	case "anthropic":
+		return provider.NewAnthropic()
+	case "gemini":
+		return provider.NewGemini()
+	case "mistral":
+		return provider.NewMistral()
+	default:
+		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " is not supported — /v1/synthesis/ask disabled\n")
+		return nil
+	}
+}
+
+// createModelsDevClient builds the go-modelsdev cache used to look up
+// per-model pricing for synthesis cost reporting. Returns nil if the initial
+// refresh fails (the route still works, cost fields just stay null).
+func createModelsDevClient(ctx context.Context, stderr *os.File) *modelsdev.Client {
+	c := modelsdev.New()
+	if err := c.Refresh(ctx); err != nil {
+		_, _ = stderr.WriteString("warning: go-modelsdev refresh failed (" + err.Error() + ") — synthesis cost reporting disabled\n")
+		return nil
+	}
+	c.StartRefresher(ctx)
+	return c
+}
+
 func createEmbedder(cfg config.Config) provider.Embedder {
 	if cfg.Embedding.Provider != "openai" {
 		return nil
@@ -208,6 +260,14 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.EnableRequestLogging = cfg.EnableRequestLogs
 	srv.RequestLogMode = cfg.RequestLogMode
 	srv.LogWriter = stderr
+
+	// Wire LLM-backed synthesis if config + credentials are present. Failure
+	// to construct the provider is non-fatal — the route just stays 503.
+	if synth := createSynthesisProvider(conduitCfg, stderr); synth != nil {
+		srv.SynthesisProvider = synth
+		srv.SynthesisConfig = conduitCfg.Synthesis
+		srv.ModelsDev = createModelsDevClient(ctx, stderr)
+	}
 
 	if cfg.ManagedAuth {
 		ok, err := store.HasActiveAuthTokens(ctx)

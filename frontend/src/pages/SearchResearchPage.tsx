@@ -1,8 +1,13 @@
-import { Lightbulb, MessageSquare, Search, Tag, Trash2 } from "lucide-react";
+import { Lightbulb, MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { conduitLookup, listNamespaces } from "../api/client";
-import type { ConduitLookupResponse, ConduitLookupResultItem, MemoryStatus } from "../api/types";
+import { conduitLookup, listNamespaces, synthesisAsk } from "../api/client";
+import type {
+  ConduitLookupResponse,
+  ConduitLookupResultItem,
+  MemoryStatus,
+  SynthesisAskResponse,
+} from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
@@ -18,7 +23,7 @@ import { StatusBadge } from "../components/ui/StatusBadge";
 // answer + per-source attribution markers, and persists the Q/A thread to
 // memory so follow-ups can be recalled in future sessions.
 
-type Tab = "answer" | "sources";
+type Tab = "answer" | "synthesis" | "sources";
 
 type DomainFilter = "both" | "memory" | "knowledge";
 
@@ -26,6 +31,11 @@ interface ThreadEntry {
   id: string;
   question: string;
   response: ConduitLookupResponse | null;
+  // synthesis is loaded lazily when the operator opens the Synthesis tab and
+  // clicks "Synthesize". Cached on the entry so re-clicking the entry doesn't
+  // re-spend tokens.
+  synthesis?: SynthesisAskResponse | null;
+  synthesisError?: string | null;
   error: string | null;
   asked_at: string;
 }
@@ -87,6 +97,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("answer");
   const [loading, setLoading] = useState(false);
+  const [synthLoading, setSynthLoading] = useState(false);
   const [presets, setPresets] = useState<SavedPreset[]>(() =>
     safeReadJSON<SavedPreset[]>(PRESETS_STORAGE_KEY, []),
   );
@@ -189,6 +200,53 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   const handleClearThread = () => {
     setThread([]);
     setActiveId(null);
+  };
+
+  // Run the LLM synthesis for the active thread entry. Cached on the entry
+  // so jumping back to a prior question doesn't re-spend tokens.
+  const handleSynthesize = async () => {
+    if (!active || !active.response) return;
+    if (active.synthesis) return;
+    const explicitNs = namespacesField
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const namespaces = explicitNs.length > 0 ? explicitNs : defaultNamespaces;
+    if (namespaces.length === 0) {
+      toast.error("No namespaces available for synthesis.");
+      return;
+    }
+    setSynthLoading(true);
+    try {
+      const tagList = tagsField
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const parsedLimit = parseInt(limit, 10);
+      const parsedConf = parseFloat(confidenceMin);
+      const req: Parameters<typeof synthesisAsk>[0] = {
+        question: active.question,
+        namespaces,
+      };
+      if (Number.isFinite(parsedLimit) && parsedLimit > 0) req.limit = parsedLimit;
+      if (domain !== "both") req.domains = [domain];
+      if (tagList.length > 0) req.tags = tagList;
+      if (statusSet.size > 0) req.statuses = Array.from(statusSet);
+      if (Number.isFinite(parsedConf) && parsedConf > 0) req.confidence_min = parsedConf;
+      const synth = await synthesisAsk(req);
+      setThread((prev) =>
+        prev.map((e) => (e.id === active.id ? { ...e, synthesis: synth, synthesisError: null } : e)),
+      );
+      toast.success(`Synthesized via ${synth.usage.provider} / ${synth.usage.model}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setThread((prev) =>
+        prev.map((e) => (e.id === active.id ? { ...e, synthesisError: msg } : e)),
+      );
+      toast.error(`Synthesis failed: ${msg}`);
+    } finally {
+      setSynthLoading(false);
+    }
   };
 
   const toggleStatus = (s: MemoryStatus) => {
@@ -649,7 +707,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                       borderBottom: "1px solid rgb(var(--border))",
                     }}
                   >
-                    {(["answer", "sources"] as const).map((t) => (
+                    {(["answer", "synthesis", "sources"] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -875,6 +933,172 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Synthesis tab — LLM-backed answer */}
+                  {tab === "synthesis" && (
+                    <div>
+                      {!active.synthesis && !active.synthesisError && (
+                        <div
+                          className="hud-panel"
+                          style={{
+                            padding: "1rem",
+                            borderColor: "rgba(var(--primary) / 0.4)",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: "0.85rem", marginBottom: "0.75rem", color: "rgb(var(--muted))" }}>
+                            Synthesize an LLM-backed answer from the {active.response.results.length} cited
+                            source{active.response.results.length === 1 ? "" : "s"}. Cost + token
+                            telemetry resolved via go-modelsdev.
+                          </div>
+                          <button
+                            type="button"
+                            className="hud-button-primary"
+                            onClick={handleSynthesize}
+                            disabled={synthLoading}
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", justifyContent: "center" }}>
+                              {synthLoading ? <Spinner size={13} /> : <Sparkles size={13} />}
+                              Synthesize
+                            </span>
+                          </button>
+                        </div>
+                      )}
+
+                      {active.synthesisError && !active.synthesis && (
+                        <div
+                          className="hud-panel"
+                          style={{ padding: "0.75rem", color: "rgb(var(--danger))" }}
+                        >
+                          {active.synthesisError}
+                          <div style={{ marginTop: "0.4rem" }}>
+                            <button
+                              type="button"
+                              className="hud-button-ghost"
+                              onClick={handleSynthesize}
+                              disabled={synthLoading}
+                              style={{ fontSize: "0.7rem" }}
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {active.synthesis && (
+                        <div>
+                          <div
+                            className="hud-panel"
+                            style={{
+                              padding: "1rem",
+                              marginBottom: "0.5rem",
+                              borderColor: "rgba(var(--primary) / 0.4)",
+                            }}
+                          >
+                            <div
+                              className="hud-label"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                                marginBottom: "0.5rem",
+                              }}
+                            >
+                              <Sparkles size={12} /> Synthesized answer
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "0.9rem",
+                                lineHeight: 1.6,
+                                whiteSpace: "pre-wrap",
+                              }}
+                            >
+                              {active.synthesis.answer}
+                            </div>
+                          </div>
+
+                          {/* Telemetry footer */}
+                          <div
+                            className="hud-panel"
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              fontSize: "0.7rem",
+                              color: "rgb(var(--muted))",
+                              fontFamily: "var(--font-mono)",
+                              display: "flex",
+                              gap: "1rem",
+                              flexWrap: "wrap",
+                              marginBottom: "0.5rem",
+                            }}
+                          >
+                            <span>
+                              {active.synthesis.usage.provider} / {active.synthesis.usage.model}
+                            </span>
+                            <span>{active.synthesis.usage.latency_ms}ms</span>
+                            {active.synthesis.usage.input_tokens > 0 && (
+                              <span>
+                                {active.synthesis.usage.input_tokens} in / {active.synthesis.usage.output_tokens} out tokens
+                              </span>
+                            )}
+                            {active.synthesis.usage.cost && (
+                              <span>${active.synthesis.usage.cost.total_usd.toFixed(6)} total</span>
+                            )}
+                            {!active.synthesis.usage.cost && (
+                              <span style={{ color: "rgb(var(--muted))" }}>
+                                cost: unavailable (provider doesn't surface tokens on Complete)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Numbered sources used by the synthesis */}
+                          <div
+                            className="hud-label"
+                            style={{ marginTop: "0.75rem", marginBottom: "0.4rem", color: "rgb(var(--primary))" }}
+                          >
+                            Cited sources ({active.synthesis.sources.length})
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                            {active.synthesis.sources.map((src) => (
+                              <button
+                                key={src.revision_id}
+                                type="button"
+                                className="hud-panel"
+                                onClick={() =>
+                                  src.memory_key &&
+                                  onOpenItem?.(src.domain, src.namespace, src.memory_key)
+                                }
+                                disabled={!src.memory_key || !onOpenItem}
+                                style={{
+                                  padding: "0.5rem 0.75rem",
+                                  textAlign: "left",
+                                  background: "transparent",
+                                  color: "inherit",
+                                  width: "100%",
+                                  cursor: src.memory_key && onOpenItem ? "pointer" : "default",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "baseline" }}>
+                                  <div style={{ fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}>
+                                    <span style={{ color: "rgb(var(--primary))", fontWeight: 600 }}>[{src.n}]</span>{" "}
+                                    {src.memory_key ?? "(no key)"}
+                                  </div>
+                                  <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
+                                    {src.domain} · conf {src.confidence.toFixed(2)}
+                                  </div>
+                                </div>
+                                <div style={{ fontSize: "0.75rem", marginTop: "0.2rem", color: "rgb(var(--muted))" }}>
+                                  {src.summary || "(no summary)"}
+                                </div>
+                                <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)", marginTop: "0.2rem" }}>
+                                  {src.namespace}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -3,6 +3,7 @@ module github.com/hollis-labs/vanta-conduit
 go 1.26.1
 
 require (
+	github.com/hollis-labs/go-modelsdev v0.0.0-00010101000000-000000000000
 	github.com/hollis-labs/go-otel v0.0.0
 	github.com/hollis-labs/go-providers v0.0.0
 	github.com/hollis-labs/go-queue v0.0.0
@@ -21,6 +22,8 @@ replace github.com/hollis-labs/go-otel => ../framework/libs/go-otel
 replace github.com/hollis-labs/go-providers => ../framework/libs/go-providers
 
 replace github.com/hollis-labs/go-queue => ../framework/libs/go-queue
+
+replace github.com/hollis-labs/go-modelsdev => ../go-modelsdev
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
