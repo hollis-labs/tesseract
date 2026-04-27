@@ -149,22 +149,28 @@ export default function App() {
 
       if (e.key === "Escape") {
         if (page === "recordDetail") {
-          setPage("namespaceDetail");
+          navigate("namespaceDetail", ctx.namespace ? { namespace: ctx.namespace } : undefined);
           e.preventDefault();
         } else if (page === "namespaceDetail") {
-          setPage("explorer");
+          handleNav("explorer");
           e.preventDefault();
         } else if (page === "keyHistory") {
-          setPage("recordDetail");
+          navigate(
+            "recordDetail",
+            ctx.namespace && ctx.key ? { namespace: ctx.namespace, key: ctx.key } : undefined,
+          );
           e.preventDefault();
         } else if (page === "compareRevisions") {
-          setPage("keyHistory");
+          navigate(
+            "keyHistory",
+            ctx.namespace && ctx.key ? { namespace: ctx.namespace, key: ctx.key } : undefined,
+          );
           e.preventDefault();
         } else if (page === "promote") {
-          setPage("writeRecord");
+          handleNav("writeRecord");
           e.preventDefault();
         } else if (page === "memoryDetail") {
-          setPage("memoryKnowledgeBrowser");
+          handleNav("memoryKnowledgeBrowser");
           e.preventDefault();
         }
       }
@@ -174,11 +180,11 @@ export default function App() {
       }
 
       if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
-        setPage("help");
+        handleNav("help");
         e.preventDefault();
       }
     },
-    [page],
+    [ctx.key, ctx.namespace, handleNav, navigate, page],
   );
 
   useEffect(() => {
@@ -234,7 +240,7 @@ export default function App() {
               domain={ctx.domain}
               namespace={ctx.namespace}
               memoryKey={ctx.key}
-              onBack={() => setPage("memoryKnowledgeBrowser")}
+              onBack={() => handleNav("memoryKnowledgeBrowser")}
             />
           )}
           {page === "searchResearch" && (
@@ -247,7 +253,7 @@ export default function App() {
           {page === "namespaceDetail" && ctx.namespace && (
             <NamespaceDetailPage
               namespace={ctx.namespace}
-              onBack={() => setPage("explorer")}
+              onBack={() => handleNav("explorer")}
               onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
             />
           )}
@@ -255,7 +261,7 @@ export default function App() {
             <RecordDetailPage
               namespace={ctx.namespace}
               recordKey={ctx.key}
-              onBack={() => setPage("namespaceDetail")}
+              onBack={() => navigate("namespaceDetail", { namespace: ctx.namespace! })}
               onOpenHistory={(ns, key) => navigate("keyHistory", { namespace: ns, key })}
             />
           )}
@@ -264,7 +270,7 @@ export default function App() {
             <KeyHistoryPage
               namespace={ctx.namespace}
               recordKey={ctx.key}
-              onBack={() => setPage("recordDetail")}
+              onBack={() => navigate("recordDetail", { namespace: ctx.namespace!, key: ctx.key! })}
               onCompare={(ns, key, a, b) =>
                 navigate("compareRevisions", { namespace: ns, key, revisionA: a, revisionB: b })
               }
@@ -280,7 +286,7 @@ export default function App() {
                 recordKey={ctx.key}
                 revisionA={ctx.revisionA}
                 revisionB={ctx.revisionB}
-                onBack={() => setPage("keyHistory")}
+                onBack={() => navigate("keyHistory", { namespace: ctx.namespace!, key: ctx.key! })}
               />
             )}
 
@@ -299,7 +305,7 @@ export default function App() {
           {page === "writeRecord" && (
             <WriteRecordPage
               onWritten={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-              onOpenPromote={() => setPage("promote")}
+              onOpenPromote={() => navigate("promote")}
             />
           )}
           {page === "memoryReview" && (
@@ -326,7 +332,7 @@ export default function App() {
               }
             />
           )}
-          {page === "promote" && <PromotePage onBack={() => setPage("writeRecord")} />}
+          {page === "promote" && <PromotePage onBack={() => handleNav("writeRecord")} />}
           {page === "policyManager" && <PolicyManagerPage />}
           {page === "audit" && (
             <AuditPage
@@ -343,7 +349,7 @@ export default function App() {
           {page === "consistency" && <ConsistencyPage />}
           {page === "maintenance" && <MaintenancePage />}
           {page === "broker" && (
-            <BrokerPage onExecutePlan={(_plan: BrokerPlanResponse) => setPage("packetBuilder")} />
+            <BrokerPage onExecutePlan={(_plan: BrokerPlanResponse) => handleNav("packetBuilder")} />
           )}
           {page === "help" && <HelpPage />}
         </main>
