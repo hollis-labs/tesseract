@@ -120,6 +120,15 @@ type AuditQuery struct {
 	Cursor    int64
 	Namespace string
 	EventType string
+	// Actor is a case-sensitive substring filter on the actor column. Empty
+	// means no filter. Backed by SQL LIKE; small audit_events table makes
+	// the absent index acceptable.
+	Actor string
+	// Since/Until bound created_at on the inclusive lower / inclusive upper
+	// edge respectively. Empty means unbounded. Strings are compared
+	// lexically — ISO 8601 timestamps sort correctly under string compare.
+	Since string
+	Until string
 }
 
 // AuthToken stores local token lifecycle metadata.
@@ -1288,6 +1297,18 @@ WHERE 1=1`
 	if strings.TrimSpace(q.EventType) != "" {
 		query += "\n  AND event_type = ?"
 		args = append(args, strings.TrimSpace(q.EventType))
+	}
+	if a := strings.TrimSpace(q.Actor); a != "" {
+		query += "\n  AND actor LIKE ?"
+		args = append(args, "%"+a+"%")
+	}
+	if s := strings.TrimSpace(q.Since); s != "" {
+		query += "\n  AND created_at >= ?"
+		args = append(args, s)
+	}
+	if u := strings.TrimSpace(q.Until); u != "" {
+		query += "\n  AND created_at <= ?"
+		args = append(args, u)
 	}
 	query += "\nORDER BY id DESC\nLIMIT ?"
 	args = append(args, q.Limit+1)
