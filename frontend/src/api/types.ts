@@ -343,6 +343,26 @@ export type KnowledgeRevision = MemoryRevision;
 
 // ── Memory write / promote / deprecate request types ────────────────
 
+export interface KnowledgeWriteRequest {
+  namespace: string;
+  key?: string;
+  kind: string;
+  source: string;
+  pointer: {
+    scheme: string;
+    locator: string;
+    resolved_at?: string;
+  };
+  summary: string;
+  body?: string;
+  author: MemoryAuthor;
+  session_id: string;
+  tags?: string[];
+  ttl_seconds?: number;
+  confidence?: number;
+  supersedes?: string;
+}
+
 export interface MemoryWriteRequest {
   namespace: string;
   memory_key?: string;
@@ -400,6 +420,7 @@ export interface ConduitLookupRequest {
   namespaces: string[];
   query?: string;
   ranking?: "activation" | "chronological" | "similarity" | "relevance";
+  revision_scope?: "current" | "timeline";
   limit?: number;
   domains?: ("memory" | "knowledge")[];
   facet_kinds?: string[];

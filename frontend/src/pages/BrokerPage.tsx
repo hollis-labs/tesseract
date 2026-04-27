@@ -73,9 +73,46 @@ export function BrokerPage({ onExecutePlan }: Props) {
         <h2 className="page-title">Broker</h2>
       </div>
 
+      <div
+        className="hud-panel"
+        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
+      >
+        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Get a recommended retrieval plan.</div>
+        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          Broker is a planner. You describe the job, and it suggests a selector and assembly setup
+          that you can inspect before sending into Packet Builder.
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: plan ? "1fr 1fr" : "1fr", gap: "1rem" }}>
         {/* Form */}
         <div className="hud-panel" style={{ padding: "1rem" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "0.75rem",
+              marginBottom: "0.9rem",
+              padding: "0.75rem",
+              background: "rgba(var(--panel2) / 0.7)",
+              border: "1px solid rgba(var(--border) / 0.8)",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            <div>
+              <div className="hud-label" style={{ marginBottom: "0.2rem" }}>When To Use It</div>
+              <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+                When you know the intent, but want the system to propose the retrieval shape for you.
+              </div>
+            </div>
+            <div>
+              <div className="hud-label" style={{ marginBottom: "0.2rem" }}>Output</div>
+              <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+                A suggested selector plus assembly config. It does not fetch the final packet itself.
+              </div>
+            </div>
+          </div>
+
           <div
             className="hud-label"
             style={{ color: "rgb(var(--primary))", marginBottom: "0.5rem" }}
@@ -147,6 +184,16 @@ export function BrokerPage({ onExecutePlan }: Props) {
               />
             </div>
             <div className="form-field">
+              <label className="hud-label">Max Items</label>
+              <input
+                className="hud-input"
+                type="number"
+                value={maxItems}
+                onChange={(e) => setMaxItems(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div className="form-field">
               <label className="hud-label">Max Tokens</label>
               <input
                 className="hud-input"
@@ -164,6 +211,11 @@ export function BrokerPage({ onExecutePlan }: Props) {
                 {loading ? <Spinner size={13} /> : <Brain size={13} />} Generate Plan
               </span>
             </button>
+          </div>
+
+          <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
+            The result is advisory. Review the rationale, inspect the selector, and then pass it to
+            Packet Builder if you want the actual assembled output.
           </div>
         </div>
 

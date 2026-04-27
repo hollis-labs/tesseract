@@ -19,7 +19,7 @@ replace github.com/hollis-labs/mcp-helpers => ../framework/libs/go-mcp
 
 replace github.com/hollis-labs/go-otel => ../framework/libs/go-otel
 
-replace github.com/hollis-labs/go-providers => ../framework/libs/go-providers
+replace github.com/hollis-labs/go-providers => ../go-providers
 
 replace github.com/hollis-labs/go-queue => ../framework/libs/go-queue
 

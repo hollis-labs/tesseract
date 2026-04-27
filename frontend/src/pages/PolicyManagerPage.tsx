@@ -9,6 +9,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { usePoll } from "../hooks/usePoll";
 
 type Tab = "list" | "register";
+const TIER_OPTIONS = ["memory", "cache", "pins", "draft", "session"] as const;
 
 export function PolicyManagerPage() {
   const [tab, setTab] = useState<Tab>("list");
@@ -17,6 +18,17 @@ export function PolicyManagerPage() {
     <div>
       <div className="page-header">
         <h2 className="page-title">Policy Manager</h2>
+      </div>
+
+      <div
+        className="hud-panel"
+        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
+      >
+        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Register namespace ownership and guardrails.</div>
+        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          Namespaces can exist in data without a stored policy. This page is where you create or
+          update the explicit owner and policy entry for a namespace.
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -31,7 +43,7 @@ export function PolicyManagerPage() {
           onClick={() => setTab("register")}
         >
           <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <Plus size={13} /> Register Namespace
+            <Plus size={13} /> Create / Update Policy
           </span>
         </button>
       </div>
@@ -82,6 +94,19 @@ function PolicyList() {
 
   return (
     <div>
+      <div
+        className="hud-panel"
+        style={{ padding: "0.75rem", marginBottom: "0.75rem", background: "rgba(var(--panel2) / 0.7)" }}
+      >
+        <div style={{ fontSize: "0.8rem", color: "rgb(var(--text))", marginBottom: "0.25rem" }}>
+          What this list means
+        </div>
+        <div style={{ fontSize: "0.76rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          The page starts from namespaces already seen in records. `No policy` means the namespace
+          exists, but nobody has explicitly registered owner and policy metadata for it yet.
+        </div>
+      </div>
+
       <div
         style={{
           marginBottom: "0.5rem",
@@ -231,6 +256,15 @@ function PolicyList() {
                             {p.allowed_ops?.join(", ") ?? "all"}
                           </div>
                         </div>
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
+                            Enforcement Notes
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+                            Allowed ops, max bytes, and required schema keys affect live validation.
+                            Retention and max revisions are maintenance rules used by cleanup and compaction.
+                          </div>
+                        </div>
                         {extraKeys.length > 0 && (
                           <div className="form-field-full" style={{ gridColumn: "1 / -1" }}>
                             <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
@@ -264,11 +298,12 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
   const [namespace, setNamespace] = useState("");
   const [ownerType, setOwnerType] = useState("user");
   const [ownerId, setOwnerId] = useState("");
-  const [tier, setTier] = useState("standard");
+  const [tier, setTier] = useState<(typeof TIER_OPTIONS)[number] | "">("");
   const [retention, setRetention] = useState("");
   const [maxRevisions, setMaxRevisions] = useState("");
   const [maxBytesPerKey, setMaxBytesPerKey] = useState("");
   const [allowedOps, setAllowedOps] = useState("");
+  const [requiredSchemaKeys, setRequiredSchemaKeys] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -296,6 +331,12 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
           .map((s) => s.trim())
           .filter(Boolean);
       }
+      if (requiredSchemaKeys.trim()) {
+        policy["required_schema_keys"] = requiredSchemaKeys
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
       await registerNamespace(namespace.trim(), ownerType, ownerId.trim(), policy);
       toast.success(`Namespace "${namespace.trim()}" registered`);
       onRegistered();
@@ -310,6 +351,24 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
 
   return (
     <div className="hud-panel" style={{ padding: "1rem", maxWidth: 700 }}>
+      <div
+        style={{
+          marginBottom: "0.9rem",
+          padding: "0.75rem",
+          background: "rgba(var(--panel2) / 0.7)",
+          border: "1px solid rgba(var(--border) / 0.8)",
+          borderRadius: "var(--radius-sm)",
+        }}
+      >
+        <div style={{ fontSize: "0.8rem", color: "rgb(var(--text))", marginBottom: "0.25rem" }}>
+          Registering creates or updates the policy entry
+        </div>
+        <div style={{ fontSize: "0.76rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          Submit a namespace here to persist its owner and guardrails. Reusing the same namespace
+          updates the stored policy.
+        </div>
+      </div>
+
       {error && (
         <div
           style={{
@@ -358,7 +417,6 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
           >
             <option value="user">user</option>
             <option value="app">app</option>
-            <option value="system">system</option>
           </select>
         </div>
         <div className="form-field">
@@ -381,16 +439,19 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
       </div>
       <div className="form-grid">
         <div className="form-field">
-          <label className="hud-label">Tier</label>
+          <label className="hud-label">Namespace Tier</label>
           <select
             className="hud-input"
             value={tier}
-            onChange={(e) => setTier(e.target.value)}
+            onChange={(e) => setTier(e.target.value as (typeof TIER_OPTIONS)[number] | "")}
             style={{ width: "100%" }}
           >
-            <option value="standard">standard</option>
-            <option value="premium">premium</option>
-            <option value="ephemeral">ephemeral</option>
+            <option value="">infer / leave unset</option>
+            {TIER_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
         </div>
         <div className="form-field">
@@ -437,13 +498,31 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
             style={{ width: "100%" }}
           />
         </div>
+        <div className="form-field form-field-full">
+          <label className="hud-label">
+            Required Schema Keys <span style={{ color: "rgb(var(--muted))" }}>(optional)</span>
+          </label>
+          <input
+            className="hud-input"
+            placeholder="title, summary, source"
+            value={requiredSchemaKeys}
+            onChange={(e) => setRequiredSchemaKeys(e.target.value)}
+            style={{ width: "100%" }}
+          />
+        </div>
+      </div>
+
+      <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
+        Use the canonical tier names: `memory`, `cache`, `pins`, `draft`, or `session`. Allowed
+        ops and required schema keys are active guardrails. Retention and max revisions shape later
+        maintenance behavior.
       </div>
 
       <div className="form-actions">
         <button className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
           <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
             {submitting ? <Spinner size={13} /> : <Shield size={13} />}
-            Register Namespace
+            Save Namespace Policy
           </span>
         </button>
       </div>

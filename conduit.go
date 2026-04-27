@@ -6,10 +6,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
-	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-providers/provider"
+	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
@@ -65,6 +66,7 @@ type Conduit struct {
 	embeddingModel string
 	logger         func(string, ...any)
 	cancel         context.CancelFunc
+	workers        sync.WaitGroup
 }
 
 // Open creates a Conduit instance rooted at cfg.RootDir, initializing the
@@ -114,7 +116,19 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 		Interval: 1 * time.Hour,
 		Logger:   o.logger,
 	}
-	go decayJob.Run(workerCtx)
+	conduit := &Conduit{
+		store:          store,
+		memoryStore:    memStore,
+		embedder:       o.embedder,
+		embeddingModel: o.embeddingModel,
+		logger:         o.logger,
+		cancel:         cancel,
+	}
+	conduit.workers.Add(1)
+	go func() {
+		defer conduit.workers.Done()
+		decayJob.Run(workerCtx)
+	}()
 
 	if o.queue != nil {
 		w := queue.NewWorker(o.queue, queue.WorkerOpts{
@@ -124,22 +138,22 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 			OnError:    func(err error) { o.logger("queue worker error: %v", err) },
 		})
 		w.Register("embed", NewEmbedHandler(memStore, o.embeddingModel, o.logger))
-		go w.Start(workerCtx)
+		conduit.workers.Add(1)
+		go func() {
+			defer conduit.workers.Done()
+			w.Start(workerCtx)
+		}()
 	}
 
-	return &Conduit{
-		store:          store,
-		memoryStore:    memStore,
-		embedder:       o.embedder,
-		embeddingModel: o.embeddingModel,
-		logger:         o.logger,
-		cancel:         cancel,
-	}, nil
+	return conduit, nil
 }
 
 // Close stops the decay goroutine and closes the underlying store.
 func (c *Conduit) Close() error {
-	c.cancel()
+	if c.cancel != nil {
+		c.cancel()
+	}
+	c.workers.Wait()
 	return c.store.Close()
 }
 

@@ -104,7 +104,44 @@ export function PacketBuilderPage({ onOpenRecord }: Props) {
         <h2 className="page-title">Packet Builder</h2>
       </div>
 
+      <div
+        className="hud-panel"
+        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
+      >
+        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Turn a selector into a bounded packet.</div>
+        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
+          Use this after you know what records you want. Packet Builder applies item, byte, and
+          token budgets so the result is practical to hand to another system.
+        </div>
+      </div>
+
       <div className="hud-panel" style={{ padding: "1rem", marginBottom: "0.75rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "0.75rem",
+            marginBottom: "0.9rem",
+            padding: "0.75rem",
+            background: "rgba(var(--panel2) / 0.7)",
+            border: "1px solid rgba(var(--border) / 0.8)",
+            borderRadius: "var(--radius-sm)",
+          }}
+        >
+          <div>
+            <div className="hud-label" style={{ marginBottom: "0.2rem" }}>What It Does</div>
+            <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+              Starts from a selector, then trims and assembles the result to fit your budget.
+            </div>
+          </div>
+          <div>
+            <div className="hud-label" style={{ marginBottom: "0.2rem" }}>How It Relates To View Builder</div>
+            <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
+              View Builder is for inspecting the set. Packet Builder is for producing the final payload.
+            </div>
+          </div>
+        </div>
+
         {/* Selector */}
         <div className="hud-label" style={{ color: "rgb(var(--primary))", marginBottom: "0.5rem" }}>
           Selector
@@ -217,6 +254,12 @@ export function PacketBuilderPage({ onOpenRecord }: Props) {
             />
             Include pins
           </label>
+        </div>
+
+        <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
+          `Include pins` brings pinned records into the packet. `Payload mode` controls whether the
+          packet contains full payload bodies or only the record heads. `Truncated` means the final
+          result was intentionally cut to stay within budget.
         </div>
 
         {/* Actions */}

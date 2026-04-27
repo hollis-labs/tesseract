@@ -17,15 +17,23 @@ const STATUS_OPTIONS: MemoryStatus[] = ["draft", "reviewed", "canonical", "depre
 
 interface Props {
   onOpenItem?: ((domain: "memory" | "knowledge", namespace: string, key: string) => void) | undefined;
+  onOpenReview?: (() => void) | undefined;
 }
 
-export function MemoryWritePage({ onOpenItem }: Props) {
+export function MemoryWritePage({ onOpenItem, onOpenReview }: Props) {
   const [tab, setTab] = useState<Tab>("write");
 
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Memory Write</h2>
+        {onOpenReview && (
+          <div className="page-actions">
+            <button type="button" className="hud-button-ghost" onClick={onOpenReview}>
+              Review Queue
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: "0.25rem", marginBottom: "0.75rem", borderBottom: "1px solid rgb(var(--border))" }}>

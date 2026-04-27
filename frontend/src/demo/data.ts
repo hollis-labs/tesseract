@@ -11,6 +11,7 @@ import type {
   EstimateResponse,
   HealthStatus,
   KnowledgeRevision,
+  KnowledgeWriteRequest,
   MemoryDeprecateRequest,
   MemoryDeprecateResponse,
   MemoryPromoteRequest,
@@ -536,6 +537,29 @@ export const demo = {
       domain: "knowledge",
       facets: { kind: "doc", source: "filesystem" },
     }));
+  },
+
+  knowledgeWrite(req: KnowledgeWriteRequest): KnowledgeRevision {
+    const payload: KnowledgeRevision["payload"] = { summary: req.summary };
+    if (req.body) payload.body = req.body;
+    return {
+      revision_id: `01DEMO_K${Date.now()}`,
+      memory_id: `01DEMOKNOW${Date.now()}`,
+      domain: "knowledge",
+      namespace: req.namespace,
+      ...(req.key ? { memory_key: req.key } : {}),
+      status: "canonical",
+      created_at: new Date().toISOString(),
+      author: req.author,
+      confidence: req.confidence ?? 0.9,
+      tags: req.tags ?? [],
+      payload,
+      facets: {
+        kind: req.kind,
+        source: req.source,
+        pointer: req.pointer,
+      },
+    };
   },
 
   memoryWrite(req: MemoryWriteRequest): MemoryRevision {

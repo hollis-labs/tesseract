@@ -19,7 +19,9 @@ import { KeyHistoryPage } from "./pages/KeyHistoryPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { MemoryDetailPage } from "./pages/MemoryDetailPage";
 import { MemoryKnowledgeBrowserPage } from "./pages/MemoryKnowledgeBrowserPage";
+import { MemoryReviewPage } from "./pages/MemoryReviewPage";
 import { MemoryWritePage } from "./pages/MemoryWritePage";
+import { KnowledgeWritePage } from "./pages/KnowledgeWritePage";
 import { NamespaceDetailPage } from "./pages/NamespaceDetailPage";
 import { PacketBuilderPage } from "./pages/PacketBuilderPage";
 import { PolicyManagerPage } from "./pages/PolicyManagerPage";
@@ -44,7 +46,9 @@ const PAGE_TITLES: Record<NavPage, string> = {
   viewBuilder: "View Builder",
   packetBuilder: "Packet Builder",
   writeRecord: "Write Record",
+  memoryReview: "Memory Review",
   memoryWrite: "Memory Write",
+  knowledgeWrite: "Knowledge Write",
   promote: "Promote",
   policyManager: "Policy Manager",
   audit: "Audit & Ops",
@@ -63,18 +67,72 @@ interface NavContext {
   revisionB?: number;
   // For memory/knowledge detail navigation: which domain handler to use.
   domain?: "memory" | "knowledge";
+  reviewPreset?: "lowConfidence" | "reviewed" | "pendingReview";
+}
+
+function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
+  if (typeof window === "undefined") return { page: "dashboard", ctx: {} };
+  const raw = window.location.hash.replace(/^#/, "");
+  if (!raw) return { page: "dashboard", ctx: {} };
+
+  const [pagePart, queryPart = ""] = raw.split("?");
+  const pageCandidate = pagePart as NavPage;
+  if (!(pageCandidate in PAGE_TITLES)) {
+    return { page: "dashboard", ctx: {} };
+  }
+
+  const params = new URLSearchParams(queryPart);
+  const ctx: NavContext = {};
+  const namespace = params.get("namespace");
+  const key = params.get("key");
+  const domain = params.get("domain");
+  const revisionA = params.get("revisionA");
+  const revisionB = params.get("revisionB");
+  const reviewPreset = params.get("reviewPreset");
+
+  if (namespace) ctx.namespace = namespace;
+  if (key) ctx.key = key;
+  if (domain === "memory" || domain === "knowledge") ctx.domain = domain;
+  if (revisionA && Number.isFinite(Number(revisionA))) ctx.revisionA = Number(revisionA);
+  if (revisionB && Number.isFinite(Number(revisionB))) ctx.revisionB = Number(revisionB);
+  if (
+    reviewPreset === "lowConfidence" ||
+    reviewPreset === "reviewed" ||
+    reviewPreset === "pendingReview"
+  ) {
+    ctx.reviewPreset = reviewPreset;
+  }
+
+  return { page: pageCandidate, ctx };
+}
+
+function writeRouteToHash(page: NavPage, ctx: NavContext): void {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams();
+  if (ctx.namespace) params.set("namespace", ctx.namespace);
+  if (ctx.key) params.set("key", ctx.key);
+  if (ctx.domain) params.set("domain", ctx.domain);
+  if (ctx.revisionA != null) params.set("revisionA", String(ctx.revisionA));
+  if (ctx.revisionB != null) params.set("revisionB", String(ctx.revisionB));
+  if (ctx.reviewPreset) params.set("reviewPreset", ctx.reviewPreset);
+  const qs = params.toString();
+  const nextHash = qs ? `#${page}?${qs}` : `#${page}`;
+  if (window.location.hash !== nextHash) {
+    window.location.hash = nextHash;
+  }
 }
 
 export default function App() {
-  const [page, setPage] = useState<NavPage>("dashboard");
-  const [ctx, setCtx] = useState<NavContext>({});
+  const initialRoute = readRouteFromHash();
+  const [page, setPage] = useState<NavPage>(initialRoute.page);
+  const [ctx, setCtx] = useState<NavContext>(initialRoute.ctx);
 
   const { data: health } = usePoll<HealthStatus>(getHealth, 10_000);
 
   // Navigation helpers
   const navigate = useCallback((target: NavPage, update?: Partial<NavContext>) => {
     setPage(target);
-    if (update) setCtx((prev) => ({ ...prev, ...update }));
+    setCtx(update ?? {});
   }, []);
 
   const handleNav = useCallback((target: NavPage) => {
@@ -91,22 +149,28 @@ export default function App() {
 
       if (e.key === "Escape") {
         if (page === "recordDetail") {
-          setPage("namespaceDetail");
+          navigate("namespaceDetail", ctx.namespace ? { namespace: ctx.namespace } : undefined);
           e.preventDefault();
         } else if (page === "namespaceDetail") {
-          setPage("explorer");
+          handleNav("explorer");
           e.preventDefault();
         } else if (page === "keyHistory") {
-          setPage("recordDetail");
+          navigate(
+            "recordDetail",
+            ctx.namespace && ctx.key ? { namespace: ctx.namespace, key: ctx.key } : undefined,
+          );
           e.preventDefault();
         } else if (page === "compareRevisions") {
-          setPage("keyHistory");
+          navigate(
+            "keyHistory",
+            ctx.namespace && ctx.key ? { namespace: ctx.namespace, key: ctx.key } : undefined,
+          );
           e.preventDefault();
         } else if (page === "promote") {
-          setPage("writeRecord");
+          handleNav("writeRecord");
           e.preventDefault();
         } else if (page === "memoryDetail") {
-          setPage("memoryKnowledgeBrowser");
+          handleNav("memoryKnowledgeBrowser");
           e.preventDefault();
         }
       }
@@ -116,17 +180,31 @@ export default function App() {
       }
 
       if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
-        setPage("help");
+        handleNav("help");
         e.preventDefault();
       }
     },
-    [page],
+    [ctx.key, ctx.namespace, handleNav, navigate, page],
   );
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const route = readRouteFromHash();
+      setPage(route.page);
+      setCtx(route.ctx);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    writeRouteToHash(page, ctx);
+  }, [page, ctx]);
 
   return (
     <div className="app-shell">
@@ -162,7 +240,7 @@ export default function App() {
               domain={ctx.domain}
               namespace={ctx.namespace}
               memoryKey={ctx.key}
-              onBack={() => setPage("memoryKnowledgeBrowser")}
+              onBack={() => handleNav("memoryKnowledgeBrowser")}
             />
           )}
           {page === "searchResearch" && (
@@ -175,7 +253,7 @@ export default function App() {
           {page === "namespaceDetail" && ctx.namespace && (
             <NamespaceDetailPage
               namespace={ctx.namespace}
-              onBack={() => setPage("explorer")}
+              onBack={() => handleNav("explorer")}
               onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
             />
           )}
@@ -183,7 +261,7 @@ export default function App() {
             <RecordDetailPage
               namespace={ctx.namespace}
               recordKey={ctx.key}
-              onBack={() => setPage("namespaceDetail")}
+              onBack={() => navigate("namespaceDetail", { namespace: ctx.namespace! })}
               onOpenHistory={(ns, key) => navigate("keyHistory", { namespace: ns, key })}
             />
           )}
@@ -192,7 +270,7 @@ export default function App() {
             <KeyHistoryPage
               namespace={ctx.namespace}
               recordKey={ctx.key}
-              onBack={() => setPage("recordDetail")}
+              onBack={() => navigate("recordDetail", { namespace: ctx.namespace!, key: ctx.key! })}
               onCompare={(ns, key, a, b) =>
                 navigate("compareRevisions", { namespace: ns, key, revisionA: a, revisionB: b })
               }
@@ -208,12 +286,12 @@ export default function App() {
                 recordKey={ctx.key}
                 revisionA={ctx.revisionA}
                 revisionB={ctx.revisionB}
-                onBack={() => setPage("keyHistory")}
+                onBack={() => navigate("keyHistory", { namespace: ctx.namespace!, key: ctx.key! })}
               />
             )}
 
           {/* ── Dashboard ──────────────────────────── */}
-          {page === "dashboard" && <DashboardPage health={health} onNavigate={handleNav} />}
+          {page === "dashboard" && <DashboardPage health={health} onNavigate={navigate} />}
           {page === "viewBuilder" && (
             <ViewBuilderPage
               onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
@@ -227,7 +305,16 @@ export default function App() {
           {page === "writeRecord" && (
             <WriteRecordPage
               onWritten={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-              onOpenPromote={() => setPage("promote")}
+              onOpenPromote={() => navigate("promote")}
+            />
+          )}
+          {page === "memoryReview" && (
+            <MemoryReviewPage
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
+              onOpenWrite={() => navigate("memoryWrite")}
+              initialPreset={ctx.reviewPreset}
             />
           )}
           {page === "memoryWrite" && (
@@ -235,9 +322,17 @@ export default function App() {
               onOpenItem={(d, ns, key) =>
                 navigate("memoryDetail", { domain: d, namespace: ns, key })
               }
+              onOpenReview={() => navigate("memoryReview")}
             />
           )}
-          {page === "promote" && <PromotePage onBack={() => setPage("writeRecord")} />}
+          {page === "knowledgeWrite" && (
+            <KnowledgeWritePage
+              onOpenItem={(d, ns, key) =>
+                navigate("memoryDetail", { domain: d, namespace: ns, key })
+              }
+            />
+          )}
+          {page === "promote" && <PromotePage onBack={() => handleNav("writeRecord")} />}
           {page === "policyManager" && <PolicyManagerPage />}
           {page === "audit" && (
             <AuditPage
@@ -254,7 +349,7 @@ export default function App() {
           {page === "consistency" && <ConsistencyPage />}
           {page === "maintenance" && <MaintenancePage />}
           {page === "broker" && (
-            <BrokerPage onExecutePlan={(_plan: BrokerPlanResponse) => setPage("packetBuilder")} />
+            <BrokerPage onExecutePlan={(_plan: BrokerPlanResponse) => handleNav("packetBuilder")} />
           )}
           {page === "help" && <HelpPage />}
         </main>

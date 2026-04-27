@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -45,10 +46,14 @@ func (j *DecayJob) Run(ctx context.Context) {
 
 func (j *DecayJob) runOnce(ctx context.Context) {
 	if runErr := j.Store.applyActivationDecay(ctx); runErr != nil {
-		j.Logger("decay: applyActivationDecay: %v", runErr)
+		if !errors.Is(runErr, context.Canceled) {
+			j.Logger("decay: applyActivationDecay: %v", runErr)
+		}
 	}
 	if runErr := j.Store.expireTTLRevisions(ctx); runErr != nil {
-		j.Logger("decay: expireTTLRevisions: %v", runErr)
+		if !errors.Is(runErr, context.Canceled) {
+			j.Logger("decay: expireTTLRevisions: %v", runErr)
+		}
 	}
 }
 

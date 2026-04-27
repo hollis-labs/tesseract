@@ -8,27 +8,29 @@ const SHORTCUTS: { key: string; description: string }[] = [
 
 const NAV_SECTIONS = [
   {
-    title: 'Explore',
+    title: 'Search & Recall',
     items: [
-      { name: 'Context Explorer', description: 'Browse all namespaces and records. Filter by name, expand namespaces, click into records.' },
-      { name: 'View Builder', description: 'Construct selectors with namespace globs, keys, scope, and ordering. Estimate size before evaluating. Save presets to localStorage.' },
-      { name: 'Packet Builder', description: 'Budget-bounded context fetch. Set max items, tokens, bytes. View manifest summary and item payloads.' },
-      { name: 'Write & Promote', description: 'Write records with JSON validation and namespace autocomplete. Promote records through request → approve → apply workflow.' },
+      { name: 'View Builder', description: 'Build and save selectors to inspect matching records before packaging them.' },
+      { name: 'Packet Builder', description: 'Turn a selector into a bounded context packet with item, byte, and token budgets.' },
+      { name: 'Broker', description: 'Generate a recommended selector and assembly plan from a high-level intent.' },
+      { name: 'Recall / Search & Research', description: 'Search memory and knowledge directly when you want answers instead of manual selector building.' },
     ],
   },
   {
-    title: 'Governance',
+    title: 'Write & Curate',
     items: [
-      { name: 'Policy Manager', description: 'View and register namespace policies. Set tier, retention, max revisions, allowed operations.' },
-      { name: 'Audit & Ops', description: 'Filterable event log with auto-refresh. Filter by event type and namespace. Expand rows to see metadata.' },
+      { name: 'Memory Review', description: 'Triage low-confidence, reviewed, deprecated, and promotable memory items.' },
+      { name: 'Memory Write / Knowledge Write / Context Write', description: 'Write domain-specific records without hand-authoring JSON.' },
+      { name: 'Policy Manager', description: 'Create or update namespace ownership and guardrails like allowed ops, retention, and schema keys.' },
     ],
   },
   {
-    title: 'System',
+    title: 'Ops & System',
     items: [
       { name: 'Auth & Tokens', description: 'Create and manage API tokens. Set scopes and namespace globs. Token values shown once on creation.' },
       { name: 'Consistency', description: 'Scan database for consistency issues. Repair by rebuilding head pointers.' },
       { name: 'Maintenance', description: 'Trim old revisions by retention window. Compact to max revision count. Dry-run before committing.' },
+      { name: 'Audit & Ops', description: 'Review recent events and operational activity across the system.' },
       { name: 'Dashboard', description: 'System overview with health status, record counts, recent activity, and quick action links.' },
     ],
   },
