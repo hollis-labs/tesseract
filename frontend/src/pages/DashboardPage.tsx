@@ -18,7 +18,6 @@ import {
 import {
   conduitLookup,
   getAuditEvents,
-  getHealth,
   getMetrics,
   estimate,
   listNamespaces,
