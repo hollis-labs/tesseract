@@ -77,8 +77,11 @@ func TestBackupRestoreParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dst audit: %v", err)
 	}
-	if !reflect.DeepEqual(srcAudit, dstAudit) {
-		t.Fatalf("audit parity mismatch")
+	// Backup uses json.MarshalIndent which re-pretty-prints embedded
+	// RawMessage metadata, so byte-level DeepEqual would flag whitespace
+	// differences only. Compare semantic JSON values via canonicalization.
+	if !reflect.DeepEqual(canonicalizeAudit(t, srcAudit), canonicalizeAudit(t, dstAudit)) {
+		t.Fatalf("audit parity mismatch:\nsrc=%#v\ndst=%#v", srcAudit, dstAudit)
 	}
 
 	if err := dst.ValidateAuthToken(context.Background(), token); err != nil {
@@ -106,6 +109,27 @@ func TestBackupRestoreParity(t *testing.T) {
 	if err := dst.VerifyBackup(tamperedPath); err == nil {
 		t.Fatalf("expected tampered backup verification failure")
 	}
+}
+
+func canonicalizeAudit(t *testing.T, in []contextstore.AuditEvent) []contextstore.AuditEvent {
+	t.Helper()
+	out := make([]contextstore.AuditEvent, 0, len(in))
+	for _, ev := range in {
+		cloned := ev
+		if len(ev.Metadata) > 0 {
+			var v any
+			if err := json.Unmarshal(ev.Metadata, &v); err != nil {
+				t.Fatalf("unmarshal metadata: %v", err)
+			}
+			b, err := json.Marshal(v)
+			if err != nil {
+				t.Fatalf("marshal metadata: %v", err)
+			}
+			cloned.Metadata = b
+		}
+		out = append(out, cloned)
+	}
+	return out
 }
 
 func canonicalizeRecords(t *testing.T, in []contextstore.Record) []contextstore.Record {

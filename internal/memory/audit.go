@@ -25,3 +25,14 @@ type AuditSink interface {
 	EmitKnowledgeWrite(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error
 	EmitKnowledgeSupersede(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error
 }
+
+// NamespaceRegistrar lets the memory write path keep namespace_policies in
+// sync with actual data without taking a hard dependency on contextstore.
+// contextstore.Store satisfies this structurally (CW-20260428-0005).
+//
+// Injected via Store.SetNamespaceRegistrar. nil is valid — calls become
+// no-ops, which is the right default for unit tests that construct a bare
+// memory.Store.
+type NamespaceRegistrar interface {
+	EnsureNamespaceRegistered(ctx context.Context, namespace string) error
+}

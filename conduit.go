@@ -109,6 +109,13 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 
 	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
 	memStore.SetAuditSink(store)
+	memStore.SetNamespaceRegistrar(store)
+
+	// Reconcile any namespaces that have data but no policy row. Idempotent —
+	// only writes the first time a divergence is observed. CW-20260428-0005.
+	if _, err := store.ReconcileNamespaceRegistry(ctx); err != nil {
+		o.logger("namespace reconcile: %v", err)
+	}
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
