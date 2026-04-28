@@ -119,7 +119,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("context_namespaces_list",
 		mcp.WithDescription("List all registered namespaces with ownership policies. See `vanta_skills start-here` for the primitive model."),
-		mcp.WithString("prefix", mcp.Description("Filter namespaces by prefix pattern (e.g. \"user/*\", \"app/*\")")),
+		mcp.WithString("prefix", mcp.Description("Filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
 		mcp.WithNumber("limit", mcp.Description("Max namespaces to return (default 10, max 25)")),
 	), a.handleNamespacesList)
 
@@ -921,9 +921,13 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 		return toolError("internal_error", err.Error()), nil
 	}
 
+	// String-prefix filtering, matching the HTTP /v1/namespaces/list semantics.
+	// Was using globsPermit, which treats `prefix` as a glob — divergent from
+	// HTTP and surprising for callers who pass a literal path prefix like
+	// `user/chrispian/project/`. CW-20260428-0005 follow-up.
 	var items []map[string]any
 	for _, entry := range entries {
-		if prefix != "" && !globsPermit([]string{prefix}, entry.Namespace) {
+		if prefix != "" && !strings.HasPrefix(entry.Namespace, prefix) {
 			continue
 		}
 		items = append(items, map[string]any{
