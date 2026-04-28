@@ -668,7 +668,7 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 
 	// Make sure the namespace is in the policy registry before we persist
 	// data for it. Idempotent. See CW-20260428-0005.
-	if err := s.ensureNamespaceRegistered(ctx, ns, "inferred"); err != nil {
+	if _, err := s.ensureNamespaceRegistered(ctx, ns, "inferred"); err != nil {
 		return Record{}, fmt.Errorf("ensure namespace registered: %w", err)
 	}
 
@@ -2157,27 +2157,26 @@ LIMIT 1`, namespace).Scan(&entry.Namespace, &entry.OwnerType, &entry.OwnerID, &p
 // permissive write paths. Validation tightening is a separate concern
 // (CW-20260428-0005).
 func (s *Store) EnsureNamespaceRegistered(ctx context.Context, namespace string) error {
-	return s.ensureNamespaceRegistered(ctx, namespace, "inferred")
+	_, err := s.ensureNamespaceRegistered(ctx, namespace, "inferred")
+	return err
 }
 
-func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source string) error {
+// ensureNamespaceRegistered inserts a row in namespace_policies if and only if
+// one isn't already there. Returns (inserted, err): inserted is true exactly
+// when this call wrote a new row (and therefore emitted the audit event),
+// false when an existing row was preserved or a concurrent writer beat us
+// to the INSERT. INSERT OR IGNORE + RowsAffected() is the sole idempotency
+// gate — no preliminary SELECT.
+func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source string) (bool, error) {
 	ns := strings.TrimSpace(namespace)
 	if ns == "" {
-		return errors.New("namespace required")
-	}
-	var present int
-	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM namespace_policies WHERE namespace = ? LIMIT 1`, ns).Scan(&present)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return false, errors.New("namespace required")
 	}
 
 	ownerType, ownerID := DeriveNamespaceOwner(ns)
 	policyJSON, err := json.Marshal(map[string]any{"source": source})
 	if err != nil {
-		return err
+		return false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx, `
@@ -2185,12 +2184,11 @@ INSERT OR IGNORE INTO namespace_policies (namespace, owner_type, owner_id, polic
 VALUES (?, ?, ?, ?, ?)`,
 		ns, ownerType, ownerID, string(policyJSON), now)
 	if err != nil {
-		return err
+		return false, err
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		// Concurrent writer beat us to it; nothing more to do.
-		return nil
+		return false, nil
 	}
 
 	meta, err := json.Marshal(map[string]any{
@@ -2201,7 +2199,7 @@ VALUES (?, ?, ?, ?, ?)`,
 	if err == nil {
 		_ = s.EmitNamespaceRegister(ctx, "system", ns, meta)
 	}
-	return nil
+	return true, nil
 }
 
 // DeriveNamespaceOwner returns the (owner_type, owner_id) pair derived from a
@@ -2257,18 +2255,13 @@ func (s *Store) ReconcileNamespaceRegistry(ctx context.Context) (int, error) {
 
 	registered := 0
 	for ns := range seen {
-		var present int
-		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM namespace_policies WHERE namespace = ? LIMIT 1`, ns).Scan(&present)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		inserted, err := s.ensureNamespaceRegistered(ctx, ns, "inferred-backfill")
+		if err != nil {
 			return registered, err
 		}
-		if err := s.ensureNamespaceRegistered(ctx, ns, "inferred-backfill"); err != nil {
-			return registered, err
+		if inserted {
+			registered++
 		}
-		registered++
 	}
 	return registered, nil
 }

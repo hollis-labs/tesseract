@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -80,6 +79,3 @@ func TestNamespacesList_PrefixIsStringPrefixNotGlob(t *testing.T) {
 	}
 }
 
-// Statically check that contextstore.Store satisfies the namespace registrar
-// interface used elsewhere — guards against accidental signature drift.
-var _ = contextstore.NamespacePolicyEntry{}
