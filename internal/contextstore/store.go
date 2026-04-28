@@ -102,6 +102,13 @@ type ConsistencyIssue struct {
 }
 
 // AuditEvent captures structured operation metadata for observability/audit queries.
+//
+// RecordID is intentionally always present in JSON output (no omitempty),
+// even when empty. The audit-contract golden (tests/integration/fixtures/
+// audit_contract_golden.json) advertises record_id as a fixed item key, and
+// some events legitimately lack one (e.g. namespace.register, maintenance.*,
+// packet) — emitting "" rather than dropping the key keeps consumers from
+// having to special-case key presence.
 type AuditEvent struct {
 	ID        int64           `json:"id"`
 	EventType string          `json:"event_type"`
@@ -109,7 +116,7 @@ type AuditEvent struct {
 	Namespace string          `json:"namespace"`
 	Key       string          `json:"key"`
 	Revision  int64           `json:"revision"`
-	RecordID  string          `json:"record_id,omitempty"`
+	RecordID  string          `json:"record_id"`
 	CreatedAt string          `json:"created_at"`
 	Metadata  json.RawMessage `json:"metadata,omitempty"`
 }
@@ -657,6 +664,12 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	}
 	if !json.Valid(in.Payload) {
 		return Record{}, errors.New("payload must be valid JSON")
+	}
+
+	// Make sure the namespace is in the policy registry before we persist
+	// data for it. Idempotent. See CW-20260428-0005.
+	if _, err := s.ensureNamespaceRegistered(ctx, ns, "inferred"); err != nil {
+		return Record{}, fmt.Errorf("ensure namespace registered: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -2128,6 +2141,129 @@ LIMIT 1`, namespace).Scan(&entry.Namespace, &entry.OwnerType, &entry.OwnerID, &p
 		entry.Policy = policy
 	}
 	return entry, nil
+}
+
+// EnsureNamespaceRegistered makes sure namespace_policies has a row for the
+// given namespace, deriving owner metadata from the namespace shape. It is
+// idempotent — if the row already exists, it returns immediately without
+// overwriting (preserving any explicit registration). Otherwise it inserts a
+// row with policy_json={"source":"inferred"} and emits a namespace.register
+// audit event with actor="system".
+//
+// Owner derivation: <segment_0>/<segment_1>/...  →  (segment_0, segment_1)
+// when segment_0 is "user" or "app". Other shapes (single-segment namespaces,
+// non-tier prefixes, missing owner_id) register with the sentinel owner
+// (system, <namespace_itself>) — registry stays authoritative without breaking
+// permissive write paths. Validation tightening is a separate concern
+// (CW-20260428-0005).
+func (s *Store) EnsureNamespaceRegistered(ctx context.Context, namespace string) error {
+	_, err := s.ensureNamespaceRegistered(ctx, namespace, "inferred")
+	return err
+}
+
+// ensureNamespaceRegistered inserts a row in namespace_policies if and only if
+// one isn't already there. Returns (inserted, err): inserted is true exactly
+// when this call wrote a new row (and therefore emitted the audit event),
+// false when an existing row was preserved or a concurrent writer beat us
+// to the INSERT. INSERT OR IGNORE + RowsAffected() is the sole idempotency
+// gate — no preliminary SELECT.
+func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source string) (bool, error) {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return false, errors.New("namespace required")
+	}
+
+	ownerType, ownerID := DeriveNamespaceOwner(ns)
+	policyJSON, err := json.Marshal(map[string]any{"source": source})
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO namespace_policies (namespace, owner_type, owner_id, policy_json, updated_at)
+VALUES (?, ?, ?, ?, ?)`,
+		ns, ownerType, ownerID, string(policyJSON), now)
+	if err != nil {
+		return false, err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return false, nil
+	}
+
+	meta, err := json.Marshal(map[string]any{
+		"source":     source,
+		"owner_type": ownerType,
+		"owner_id":   ownerID,
+	})
+	if err == nil {
+		_ = s.EmitNamespaceRegister(ctx, "system", ns, meta)
+	}
+	return true, nil
+}
+
+// DeriveNamespaceOwner returns the (owner_type, owner_id) pair derived from a
+// namespace string. Well-formed user/* and app/* namespaces yield their tier
+// segment plus owner_id; everything else yields the sentinel (system, ns).
+// Exported for tests.
+func DeriveNamespaceOwner(namespace string) (string, string) {
+	ns := strings.TrimSpace(namespace)
+	parts := strings.Split(ns, "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "system", ns
+	}
+	tier := parts[0]
+	if tier != "user" && tier != "app" {
+		return "system", ns
+	}
+	return tier, parts[1]
+}
+
+// ReconcileNamespaceRegistry scans every distinct namespace appearing in the
+// memory_revisions and records (heads) tables and ensures a namespace_policies
+// row exists for each. Idempotent and safe to call on every startup; only
+// produces work the first time the registry diverges. Returns the number of
+// rows inserted.
+func (s *Store) ReconcileNamespaceRegistry(ctx context.Context) (int, error) {
+	seen := map[string]struct{}{}
+	collect := func(query string) error {
+		rows, err := s.db.QueryContext(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var ns string
+			if err := rows.Scan(&ns); err != nil {
+				return err
+			}
+			ns = strings.TrimSpace(ns)
+			if ns == "" {
+				continue
+			}
+			seen[ns] = struct{}{}
+		}
+		return rows.Err()
+	}
+	// memory_revisions covers memory + knowledge domains; records covers context.
+	if err := collect(`SELECT DISTINCT namespace FROM memory_revisions`); err != nil {
+		return 0, err
+	}
+	if err := collect(`SELECT DISTINCT namespace FROM records`); err != nil {
+		return 0, err
+	}
+
+	registered := 0
+	for ns := range seen {
+		inserted, err := s.ensureNamespaceRegistered(ctx, ns, "inferred-backfill")
+		if err != nil {
+			return registered, err
+		}
+		if inserted {
+			registered++
+		}
+	}
+	return registered, nil
 }
 
 // ListNamespacePolicies returns all persisted policies ordered by namespace.

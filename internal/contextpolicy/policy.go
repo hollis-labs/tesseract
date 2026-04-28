@@ -79,13 +79,19 @@ func New() *Engine {
 }
 
 // RegisterNamespace upserts owner metadata.
+//
+// owner_type "system" is accepted for sentinel registrations of namespaces
+// that don't fit the user|app tier shape (single-segment, missing owner_id,
+// or non-tier prefixes). System-owned entries are not consulted for
+// access enforcement — CanWrite / CanPromote treat them like unregistered
+// namespaces and fall through to the prefix-based default rules.
 func (e *Engine) RegisterNamespace(namespace, ownerType, ownerID string, policy map[string]any) error {
 	ns := strings.TrimSpace(namespace)
 	if ns == "" {
 		return errors.New("namespace required")
 	}
-	if ownerType != "user" && ownerType != "app" {
-		return errors.New("owner_type must be user|app")
+	if ownerType != "user" && ownerType != "app" && ownerType != "system" {
+		return errors.New("owner_type must be user|app|system")
 	}
 	if strings.TrimSpace(ownerID) == "" {
 		return errors.New("owner_id required")

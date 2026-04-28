@@ -446,8 +446,11 @@ func TestCompactionPreservesHeadsAndTrimsAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("trim audit: %v", err)
 	}
-	if trimmed != 3 {
-		t.Fatalf("expected 3 trimmed audit rows, got %d", trimmed)
+	// 5 manual write events + 1 namespace.register from the first AppendRecord
+	// (auto-register on first write to a fresh namespace, CW-20260428-0005).
+	// keep=2 trims the oldest 4.
+	if trimmed != 4 {
+		t.Fatalf("expected 4 trimmed audit rows, got %d", trimmed)
 	}
 	events, err := s.ListAuditEvents(context.Background(), 10)
 	if err != nil {

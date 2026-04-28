@@ -71,6 +71,15 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		queueAdapter,
 	)
 	memStore.SetAuditSink(store)
+	memStore.SetNamespaceRegistrar(store)
+
+	// Reconcile any namespaces that have data but no policy row. Idempotent —
+	// only writes the first time a divergence is observed. CW-20260428-0005.
+	if registered, err := store.ReconcileNamespaceRegistry(ctx); err != nil {
+		log.Printf("namespace reconcile: %v", err)
+	} else if registered > 0 {
+		log.Printf("namespace reconcile: registered %d previously-unregistered namespaces", registered)
+	}
 
 	worker := queue.NewWorker(q, queue.WorkerOpts{
 		Queues:     []string{"conduit"},

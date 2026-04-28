@@ -11,12 +11,13 @@ import (
 // contextstore.Store but owns its own read/write paths against the memory_*
 // tables.
 type Store struct {
-	db             *sql.DB
-	embedder       provider.Embedder
-	embeddingModel string
-	dedupThreshold float64
-	queue          JobQueue
-	auditSink      AuditSink // nil = audit emits are no-ops
+	db                 *sql.DB
+	embedder           provider.Embedder
+	embeddingModel     string
+	dedupThreshold     float64
+	queue              JobQueue
+	auditSink          AuditSink          // nil = audit emits are no-ops
+	namespaceRegistrar NamespaceRegistrar // nil = namespace auto-register is a no-op
 
 	// rerankers is guarded by rerankersMu so RegisterReranker may be
 	// called concurrently with Recall. The typical pattern is to register
@@ -49,3 +50,9 @@ func (s *Store) DB() *sql.DB { return s.db }
 // at all) disables audit emit, which is the default. Tests generally do
 // not call this.
 func (s *Store) SetAuditSink(sink AuditSink) { s.auditSink = sink }
+
+// SetNamespaceRegistrar wires a NamespaceRegistrar into the Store. Call this
+// once at construction time so memory writes auto-register their namespace
+// in the policy registry. nil (or not calling) disables auto-register, which
+// is the default for tests. See CW-20260428-0005.
+func (s *Store) SetNamespaceRegistrar(r NamespaceRegistrar) { s.namespaceRegistrar = r }

@@ -263,3 +263,18 @@ func (s *Store) EmitKnowledgeSupersede(ctx context.Context, actor, namespace, ke
 		Metadata:  metadata,
 	})
 }
+
+// EmitNamespaceRegister records a "namespace.register" audit event. Registry
+// events operate on a namespace as a whole rather than a specific record; the
+// helper synthesizes Key=namespace and Revision=1 to satisfy the store's
+// validation, mirroring the EmitMaintenance pattern.
+func (s *Store) EmitNamespaceRegister(ctx context.Context, actor, namespace string, metadata json.RawMessage) error {
+	return s.emit(ctx, AuditEvent{
+		EventType: EventNamespaceRegister,
+		Actor:     actor,
+		Namespace: namespace,
+		Key:       namespace,
+		Revision:  1,
+		Metadata:  metadata,
+	})
+}

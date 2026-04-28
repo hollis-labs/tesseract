@@ -47,4 +47,9 @@ const (
 	// Knowledge domain.
 	EventKnowledgeWrite     = "knowledge.write"
 	EventKnowledgeSupersede = "knowledge.supersede"
+
+	// Namespace registry. Emitted when a namespace_policies row is created,
+	// either by an explicit context_namespace_register call or by the
+	// auto-register / reconcile path (CW-20260428-0005).
+	EventNamespaceRegister = "namespace.register"
 )

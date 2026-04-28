@@ -49,6 +49,15 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		return Revision{}, err
 	}
 
+	// Make sure the namespace is in the policy registry before we write data
+	// for it. Idempotent — only inserts the first time the namespace is seen.
+	// See CW-20260428-0005 for the bug this closes (registry-vs-data drift).
+	if s.namespaceRegistrar != nil {
+		if err := s.namespaceRegistrar.EnsureNamespaceRegistered(ctx, in.Namespace); err != nil {
+			return Revision{}, fmt.Errorf("ensure namespace registered: %w", err)
+		}
+	}
+
 	// Semantic dedup: if requested, search for similar existing revisions.
 	// NOTE: This runs outside the transaction (before BeginTx). There is a
 	// TOCTOU window where a concurrent write could create a matching revision
