@@ -5,11 +5,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 )
 
-// Compile-time assertion: MockProvider must satisfy provider.Embedder.
-var _ provider.Embedder = (*MockProvider)(nil)
+// Compile-time assertion: MockProvider must satisfy embedcontracts.Embedder.
+var _ embedcontracts.Embedder = (*MockProvider)(nil)
 
 func TestMockProvider_Deterministic(t *testing.T) {
 	p := NewMockProvider(768)

@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 )
 
-// Compile-time assertion: MockProvider must satisfy provider.Embedder.
-var _ provider.Embedder = (*MockProvider)(nil)
+// Compile-time assertion: MockProvider must satisfy embedcontracts.Embedder.
+var _ embedcontracts.Embedder = (*MockProvider)(nil)
 
 // MockProvider generates deterministic embeddings for testing.
 // The same text always produces the same vector, enabling reproducible tests.
@@ -50,8 +50,8 @@ func deterministicVector(text string, dimensions int) []float32 {
 
 // Embed generates a deterministic embedding vector for the given text.
 // The model parameter is accepted for interface compatibility but ignored.
-func (p *MockProvider) Embed(_ context.Context, text string, _ string) (*provider.EmbeddingResult, error) {
-	return &provider.EmbeddingResult{
+func (p *MockProvider) Embed(_ context.Context, text string, _ string) (*embedcontracts.EmbeddingResult, error) {
+	return &embedcontracts.EmbeddingResult{
 		Embedding:  deterministicVector(text, p.dimensions),
 		TokenCount: len(text),
 	}, nil
@@ -59,8 +59,8 @@ func (p *MockProvider) Embed(_ context.Context, text string, _ string) (*provide
 
 // EmbedBatch generates deterministic embedding vectors for multiple texts.
 // The model parameter is accepted for interface compatibility but ignored.
-func (p *MockProvider) EmbedBatch(ctx context.Context, texts []string, model string) ([]provider.EmbeddingResult, error) {
-	results := make([]provider.EmbeddingResult, len(texts))
+func (p *MockProvider) EmbedBatch(ctx context.Context, texts []string, model string) ([]embedcontracts.EmbeddingResult, error) {
+	results := make([]embedcontracts.EmbeddingResult, len(texts))
 	for i, text := range texts {
 		r, err := p.Embed(ctx, text, model)
 		if err != nil {

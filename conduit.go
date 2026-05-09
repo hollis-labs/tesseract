@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
@@ -24,7 +24,7 @@ type Config struct {
 type Option func(*options)
 
 type options struct {
-	embedder       provider.Embedder
+	embedder       embedcontracts.Embedder
 	embeddingModel string
 	dedupThreshold float64
 	logger         func(string, ...any)
@@ -32,7 +32,7 @@ type options struct {
 }
 
 // WithEmbedder sets the embedding provider used for vector indexing.
-func WithEmbedder(e provider.Embedder) Option {
+func WithEmbedder(e embedcontracts.Embedder) Option {
 	return func(o *options) { o.embedder = e }
 }
 
@@ -62,7 +62,7 @@ func WithQueue(q queue.Queue) Option {
 type Conduit struct {
 	store          *contextstore.Store
 	memoryStore    *memory.Store
-	embedder       provider.Embedder
+	embedder       embedcontracts.Embedder
 	embeddingModel string
 	logger         func(string, ...any)
 	cancel         context.CancelFunc

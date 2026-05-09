@@ -9,7 +9,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -24,7 +24,7 @@ type Adapter struct {
 	Store             *contextstore.Store
 	Token             string // capability token for mutating ops; may be empty
 	TypeRegistry      *contexttypes.Registry
-	EmbeddingProvider provider.Embedder     // optional; nil disables context_embed/context_search
+	EmbeddingProvider embedcontracts.Embedder     // optional; nil disables context_embed/context_search
 	EmbeddingModel    string                // model name passed to EmbeddingProvider (default: "")
 	VectorIndex       embedding.VectorIndex // optional; nil uses brute-force search via Store
 	MemoryStore       *memory.Store         // optional; nil disables memory_* tools

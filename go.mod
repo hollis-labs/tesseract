@@ -3,14 +3,18 @@ module github.com/hollis-labs/vanta-conduit
 go 1.26.1
 
 require (
+	github.com/anthropics/anthropic-sdk-go v1.41.0
+	github.com/hollis-labs/go-embed-contracts v0.0.0-00010101000000-000000000000
+	github.com/hollis-labs/go-llm-contracts v0.1.0
+	github.com/hollis-labs/go-llm-types v0.1.0
 	github.com/hollis-labs/go-modelsdev v0.0.0-00010101000000-000000000000
 	github.com/hollis-labs/go-otel v0.0.0
-	github.com/hollis-labs/go-providers v0.0.0
 	github.com/hollis-labs/go-queue v0.0.0
 	github.com/hollis-labs/mcp-helpers v0.0.0
 	github.com/hollis-labs/plugin-sdk v0.3.0
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/oklog/ulid/v2 v2.1.1
+	github.com/openai/openai-go v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.48.1
 )
@@ -19,18 +23,21 @@ replace github.com/hollis-labs/mcp-helpers => ../framework/libs/go-mcp
 
 replace github.com/hollis-labs/go-otel => ../framework/libs/go-otel
 
-replace github.com/hollis-labs/go-providers => ../go-providers
-
 replace github.com/hollis-labs/go-queue => ../framework/libs/go-queue
 
 replace github.com/hollis-labs/go-modelsdev => ../go-modelsdev
 
+replace github.com/hollis-labs/go-llm-types => ../go-llm-types
+
+replace github.com/hollis-labs/go-llm-contracts => ../go-llm-contracts
+
+replace github.com/hollis-labs/go-embed-contracts => ../go-embed-contracts
+
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/creack/pty v1.1.24 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -42,6 +49,11 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260427160145-3afa6683f8b2 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -53,6 +65,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260217215200-42d3e9bedb6d // indirect

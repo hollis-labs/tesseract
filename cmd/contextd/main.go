@@ -14,9 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	"github.com/hollis-labs/go-providers/provider"
 	"github.com/hollis-labs/vanta-conduit/internal/config"
+	llmanthropic "github.com/hollis-labs/vanta-conduit/internal/llm/anthropic"
+	llmopenai "github.com/hollis-labs/vanta-conduit/internal/llm/openai"
 	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
 	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
 	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
@@ -157,19 +160,17 @@ func parseMCPArgs(args []string) (string, error) {
 	return strings.TrimSpace(*token), nil
 }
 
-// createEmbedder builds an Embedder from config. Returns nil if the provider
-// is unsupported or the required API key is missing. Provider-specific
-// credential handling is delegated to the provider constructor (e.g.,
-// NewOpenAI reads OPENAI_API_KEY from the environment).
-// createSynthesisProvider builds the go-providers Provider used by
-// /v1/synthesis/ask. Returns nil (and the route degrades to 503) when:
+// createSynthesisProvider builds the LLM Provider used by /v1/synthesis/ask.
+// Returns nil (and the route degrades to 503) when:
 //   - no synthesis.provider is configured
 //   - the provider name is unsupported
 //   - the provider's API key env var is empty
 //
-// Mirrors the createEmbedder shape: silent nil on missing creds, log on
-// the fallback so operators see why the feature is off.
-func createSynthesisProvider(cfg config.Config, stderr *os.File) provider.Provider {
+// Supported providers: openai (openai-go SDK), anthropic (anthropic-sdk-go).
+// Other vendors are not wired in this binary; consumers can inject their
+// own llmcontracts.Provider implementation by mutating srv.SynthesisProvider
+// before serve.
+func createSynthesisProvider(cfg config.Config, stderr *os.File) llmcontracts.Provider {
 	name := strings.ToLower(strings.TrimSpace(cfg.Synthesis.Provider))
 	if name == "" {
 		return nil
@@ -177,24 +178,23 @@ func createSynthesisProvider(cfg config.Config, stderr *os.File) provider.Provid
 	envFor := map[string]string{
 		"openai":    "OPENAI_API_KEY",
 		"anthropic": "ANTHROPIC_API_KEY",
-		"gemini":    "GOOGLE_API_KEY",
-		"mistral":   "MISTRAL_API_KEY",
 	}
-	if env, ok := envFor[name]; ok && os.Getenv(env) == "" {
+	env, supported := envFor[name]
+	if !supported {
+		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " is not supported — /v1/synthesis/ask disabled\n")
+		return nil
+	}
+	if os.Getenv(env) == "" {
 		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " but " + env + " not set — /v1/synthesis/ask disabled\n")
 		return nil
 	}
 	switch name {
 	case "openai":
-		return provider.NewOpenAI()
+		return llmopenai.New("")
 	case "anthropic":
-		return provider.NewAnthropic()
-	case "gemini":
-		return provider.NewGemini()
-	case "mistral":
-		return provider.NewMistral()
+		return llmanthropic.New("")
 	default:
-		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " is not supported — /v1/synthesis/ask disabled\n")
+		// Unreachable — envFor lookup above already filtered.
 		return nil
 	}
 }
@@ -212,7 +212,10 @@ func createModelsDevClient(ctx context.Context, stderr *os.File) *modelsdev.Clie
 	return c
 }
 
-func createEmbedder(cfg config.Config) provider.Embedder {
+// createEmbedder builds an embedcontracts.Embedder from config. Returns nil
+// when the configured provider is unsupported or the API key is missing.
+// Currently only "openai" is supported.
+func createEmbedder(cfg config.Config) embedcontracts.Embedder {
 	if cfg.Embedding.Provider != "openai" {
 		return nil
 	}
@@ -220,7 +223,7 @@ func createEmbedder(cfg config.Config) provider.Embedder {
 		log.Printf("warning: embedding.provider=openai but OPENAI_API_KEY not set — embedding disabled, falling back to BM25-only recall")
 		return nil
 	}
-	return provider.NewOpenAI()
+	return llmopenai.New("")
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
