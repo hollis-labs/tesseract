@@ -12,7 +12,7 @@ import (
 )
 
 func (a *Adapter) registerRAGTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("context_rag_query",
+	a.addTool(s, mcp.NewTool("context_rag_query",
 		mcp.WithDescription("RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural language query")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default: 5, max: 20)")),

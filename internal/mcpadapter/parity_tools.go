@@ -16,12 +16,12 @@ import (
 // context_estimate, views_evaluate, memory_get_revision, and (when
 // KnowledgeStore is present) knowledge_get + knowledge_history.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("context_estimate",
+	a.addTool(s, mcp.NewTool("context_estimate",
 		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),
 	), a.handleContextEstimate)
 
-	s.AddTool(mcp.NewTool("views_evaluate",
+	a.addTool(s, mcp.NewTool("views_evaluate",
 		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector")),
 		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false)")),
@@ -29,7 +29,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	), a.handleViewsEvaluate)
 
 	if a.MemoryStore != nil {
-		s.AddTool(mcp.NewTool("memory_get_revision",
+		a.addTool(s, mcp.NewTool("memory_get_revision",
 			mcp.WithDescription(
 				"**Fetch a memory revision by its revision_id.** Peer of HTTP /v1/memory/revisions/{id}.\n"+
 					"• **Kind of content:** a single revision record, including body, facets, and lineage.\n"+
@@ -47,7 +47,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	}
 
 	if a.KnowledgeStore != nil {
-		s.AddTool(mcp.NewTool("knowledge_get",
+		a.addTool(s, mcp.NewTool("knowledge_get",
 			mcp.WithDescription(
 				"**Fetch the current knowledge revision** for `(namespace, memory_key)`. Peer of HTTP /v1/knowledge/current.\n"+
 					"• **Kind of content:** the latest non-deprecated knowledge revision for this entry.\n"+
@@ -64,7 +64,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 			mcp.WithOpenWorldHintAnnotation(false),
 		), a.handleKnowledgeGet)
 
-		s.AddTool(mcp.NewTool("knowledge_history",
+		a.addTool(s, mcp.NewTool("knowledge_history",
 			mcp.WithDescription(
 				"**Fetch the full revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
 					"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded.\n"+

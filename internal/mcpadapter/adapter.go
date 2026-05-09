@@ -3,13 +3,15 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
 	"github.com/hollis-labs/vanta-conduit/internal/embedding"
 	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -24,11 +26,12 @@ type Adapter struct {
 	Store             *contextstore.Store
 	Token             string // capability token for mutating ops; may be empty
 	TypeRegistry      *contexttypes.Registry
-	EmbeddingProvider embedcontracts.Embedder     // optional; nil disables context_embed/context_search
-	EmbeddingModel    string                // model name passed to EmbeddingProvider (default: "")
-	VectorIndex       embedding.VectorIndex // optional; nil uses brute-force search via Store
-	MemoryStore       *memory.Store         // optional; nil disables memory_* tools
-	KnowledgeStore    *knowledge.Store      // optional; nil disables knowledge_* tools
+	EmbeddingProvider embedcontracts.Embedder // optional; nil disables context_embed/context_search
+	EmbeddingModel    string                  // model name passed to EmbeddingProvider (default: "")
+	VectorIndex       embedding.VectorIndex   // optional; nil uses brute-force search via Store
+	MemoryStore       *memory.Store           // optional; nil disables memory_* tools
+	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_* tools
+	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
 }
 
 // New creates an Adapter for the given store and optional capability token.
@@ -68,6 +71,21 @@ func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	}
 	a.registerParityTools(s)
 	a.registerSkillsTool(s)
+}
+
+// addTool wraps every MCP tool handler with the go-mcp-sanitize middleware,
+// which auto-cleans malformed agent tool-call XML in free-text params before
+// the handler runs. Clean calls are silent; cleaned calls emit one warn-level
+// slog line (see github.com/hollis-labs/go-mcp-sanitize).
+//
+// All registerXxx helpers must call a.addTool(s, tool, handler) instead of
+// s.AddTool(tool, handler) directly so the protection stays uniform.
+func (a *Adapter) addTool(s *server.MCPServer, t mcp.Tool, h server.ToolHandlerFunc) {
+	logger := a.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	s.AddTool(t, mcpsanitize.Middleware(logger)(h))
 }
 
 // checkScope validates the configured token and checks for the required scope.

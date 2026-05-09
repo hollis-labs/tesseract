@@ -7,12 +7,13 @@ require (
 	github.com/hollis-labs/go-embed-contracts v0.0.0-00010101000000-000000000000
 	github.com/hollis-labs/go-llm-contracts v0.1.0
 	github.com/hollis-labs/go-llm-types v0.1.0
+	github.com/hollis-labs/go-mcp-sanitize v0.1.0
 	github.com/hollis-labs/go-modelsdev v0.0.0-00010101000000-000000000000
 	github.com/hollis-labs/go-otel v0.0.0
 	github.com/hollis-labs/go-queue v0.0.0
 	github.com/hollis-labs/mcp-helpers v0.0.0
 	github.com/hollis-labs/plugin-sdk v0.3.0
-	github.com/mark3labs/mcp-go v0.44.1
+	github.com/mark3labs/mcp-go v0.47.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openai/openai-go v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -41,6 +42,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect

@@ -13,7 +13,7 @@ import (
 )
 
 func (a *Adapter) registerEmbeddingTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("context_embed",
+	a.addTool(s, mcp.NewTool("context_embed",
 		mcp.WithDescription("Generate and store an embedding for a record. Requires a configured embedding provider. Idempotent: re-embedding overwrites the previous vector. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("record_id", mcp.Required(), mcp.Description("Record ID to embed")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
@@ -21,7 +21,7 @@ func (a *Adapter) registerEmbeddingTools(s *server.MCPServer) {
 		mcp.WithString("model", mcp.Description("Embedding model (default: provider's configured model)")),
 	), a.handleEmbed)
 
-	s.AddTool(mcp.NewTool("context_search",
+	a.addTool(s, mcp.NewTool("context_search",
 		mcp.WithDescription("Semantic search across records using embeddings. Returns ranked results by cosine similarity. Requires a configured embedding provider. See `vanta_skills start-here` for the primitive model."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query text")),
 		mcp.WithNumber("limit", mcp.Description("Max results to return (default 10, max 25)")),
