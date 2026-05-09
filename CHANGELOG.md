@@ -8,6 +8,65 @@ Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for 
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-09
+
+Path B clean-break migration off `github.com/hollis-labs/go-providers`. All
+LLM contract types relocate to dedicated repos; vanta-conduit ships its own
+SDK-backed wrappers for the embedding and synthesis paths.
+
+### Breaking changes
+
+- **Dropped `github.com/hollis-labs/go-providers` dependency entirely.**
+  All `provider.*` references migrated to the canonical contract repos:
+  - `provider.Embedder` / `provider.EmbeddingResult` → `embedcontracts.{Embedder,EmbeddingResult}`
+    (`github.com/hollis-labs/go-embed-contracts`)
+  - `provider.ChatRequest` / `provider.ChatMessage` → `llmtypes.{ChatRequest,ChatMessage}`
+    (`github.com/hollis-labs/go-llm-types`)
+  - `provider.Provider` → `llmcontracts.Provider`
+    (`github.com/hollis-labs/go-llm-contracts`)
+- **`conduit.WithEmbedder` parameter type** changed from `provider.Embedder`
+  to `embedcontracts.Embedder`. Callers must update imports + types.
+- **`Server.SynthesisProvider` type** changed from `provider.Provider` to
+  `llmcontracts.Provider`. Callers wiring a custom synthesis provider must
+  switch to the new contract.
+- **Synthesis providers narrowed to `openai` + `anthropic`.** The legacy
+  `gemini` and `mistral` synthesis branches in `cmd/contextd/main.go` were
+  removed — they were configured but never used in production. Callers
+  needing other vendors should inject a custom `llmcontracts.Provider`
+  implementation by mutating `srv.SynthesisProvider` before serve.
+
+### Added
+
+- **`internal/llm/openai`** — openai-go (v1.12.0) backed wrapper that
+  implements both `embedcontracts.Embedder` and `llmcontracts.Provider`.
+  Powers `createEmbedder` (used by `setupMemorySubsystem` + `backfill`) and
+  the `synthesis.provider=openai` branch.
+- **`internal/llm/anthropic`** — anthropic-sdk-go (v1.41.0) backed wrapper
+  that implements `llmcontracts.Provider`. Powers the
+  `synthesis.provider=anthropic` branch.
+
+### Notes
+
+- `Complete` is fully implemented in both wrappers (the synthesis route
+  is non-streaming). `StreamChat` returns a "not implemented" error —
+  vanta-conduit's only chat consumer (`/v1/synthesis/ask`) is non-streaming,
+  and bringing up streaming would duplicate work happening in nanite's
+  Wave 2 wrappers. If a future caller needs streaming, fill in `StreamChat`
+  per provider or import an SDK-backed wrapper from a sibling module.
+- `Capabilities()` returns conservative fixed defaults; per-model tuning
+  is left to callers that need it.
+
+### Background
+
+go-providers v0.10.0 narrowed scope to CLI/PTY/subprocess-only; the
+embedding contract relocated to `go-embed-contracts`, the LLM contracts to
+`go-llm-contracts`, and the data types to `go-llm-types`. Per Path B
+(clean break, no transitional aliases), this release migrates all
+references in one pass.
+
+Sprint: SP-20260508-0001
+Vanta decision: `decisions.nanite.architecture.go_llm_contracts_split`
+
 ## [0.5.3] — 2026-04-26
 
 LLM-backed answer synthesis for the Search & Research surface, plus

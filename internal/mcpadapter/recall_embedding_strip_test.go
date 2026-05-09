@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -24,14 +24,14 @@ type stripTestEmbedder struct {
 	vector []float32
 }
 
-func (e *stripTestEmbedder) Embed(_ context.Context, _ string, _ string) (*provider.EmbeddingResult, error) {
-	return &provider.EmbeddingResult{Embedding: e.vector, TokenCount: 1}, nil
+func (e *stripTestEmbedder) Embed(_ context.Context, _ string, _ string) (*embedcontracts.EmbeddingResult, error) {
+	return &embedcontracts.EmbeddingResult{Embedding: e.vector, TokenCount: 1}, nil
 }
 
-func (e *stripTestEmbedder) EmbedBatch(_ context.Context, texts []string, _ string) ([]provider.EmbeddingResult, error) {
-	out := make([]provider.EmbeddingResult, len(texts))
+func (e *stripTestEmbedder) EmbedBatch(_ context.Context, texts []string, _ string) ([]embedcontracts.EmbeddingResult, error) {
+	out := make([]embedcontracts.EmbeddingResult, len(texts))
 	for i := range texts {
-		out[i] = provider.EmbeddingResult{Embedding: e.vector, TokenCount: 1}
+		out[i] = embedcontracts.EmbeddingResult{Embedding: e.vector, TokenCount: 1}
 	}
 	return out, nil
 }

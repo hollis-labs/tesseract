@@ -23,7 +23,7 @@ import (
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	feotel "github.com/hollis-labs/go-otel"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	"github.com/hollis-labs/go-providers/provider"
+	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 )
 
 type contextKey int
@@ -112,10 +112,10 @@ type Server struct {
 	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/contextd to
 	// knowledge.New(MemoryStore).
 	KnowledgeStore *knowledge.Store
-	// SynthesisProvider is the go-providers Provider used by /v1/synthesis/ask.
+	// SynthesisProvider is the LLM Provider used by /v1/synthesis/ask.
 	// When nil, the synthesis route returns 503 service_unavailable. Wired by
 	// cmd/contextd from config.Synthesis settings.
-	SynthesisProvider provider.Provider
+	SynthesisProvider llmcontracts.Provider
 	// SynthesisConfig carries the model id, system prompt, max output tokens,
 	// and temperature used for synthesis calls. Honoured only when
 	// SynthesisProvider is non-nil.

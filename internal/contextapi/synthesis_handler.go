@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	"github.com/hollis-labs/go-providers/provider"
+	llmtypes "github.com/hollis-labs/go-llm-types"
 	"github.com/hollis-labs/vanta-conduit/internal/config"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
@@ -174,10 +174,11 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	model := pickModel(s.SynthesisConfig, req.ModelOverride)
-	chatReq := provider.ChatRequest{
+	chatReq := llmtypes.ChatRequest{
 		Model:        model,
 		SystemPrompt: s.SynthesisConfig.SystemPrompt,
-		Messages: []provider.ChatMessage{
+		MaxTokens:    s.SynthesisConfig.MaxTokens,
+		Messages: []llmtypes.ChatMessage{
 			{
 				Role: "user",
 				Content: fmt.Sprintf(

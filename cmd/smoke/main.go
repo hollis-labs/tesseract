@@ -10,9 +10,9 @@ import (
 	"time"
 
 	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
-	"github.com/hollis-labs/go-providers/provider"
 
 	conduit "github.com/hollis-labs/vanta-conduit"
+	llmopenai "github.com/hollis-labs/vanta-conduit/internal/llm/openai"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 	_ "modernc.org/sqlite"
 )
@@ -36,7 +36,7 @@ func main() {
 
 	c, err := conduit.Open(ctx, conduit.Config{RootDir: root},
 		conduit.WithQueue(q),
-		conduit.WithEmbedder(provider.NewOpenAI()),
+		conduit.WithEmbedder(llmopenai.New("")),
 		conduit.WithEmbeddingModel("text-embedding-3-large"),
 	)
 	if err != nil {

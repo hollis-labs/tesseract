@@ -6,27 +6,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/go-providers/provider"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
 	"github.com/hollis-labs/vanta-conduit/internal/memory"
 )
 
-// mockEmbedder implements provider.Embedder with a fixed vector.
+// mockEmbedder implements embedcontracts.Embedder with a fixed vector.
 type mockEmbedder struct {
 	vector []float32
 }
 
-func (m *mockEmbedder) Embed(_ context.Context, _ string, _ string) (*provider.EmbeddingResult, error) {
-	return &provider.EmbeddingResult{
+func (m *mockEmbedder) Embed(_ context.Context, _ string, _ string) (*embedcontracts.EmbeddingResult, error) {
+	return &embedcontracts.EmbeddingResult{
 		Embedding:  m.vector,
 		TokenCount: 3,
 	}, nil
 }
 
-func (m *mockEmbedder) EmbedBatch(_ context.Context, texts []string, model string) ([]provider.EmbeddingResult, error) {
-	results := make([]provider.EmbeddingResult, len(texts))
+func (m *mockEmbedder) EmbedBatch(_ context.Context, texts []string, model string) ([]embedcontracts.EmbeddingResult, error) {
+	results := make([]embedcontracts.EmbeddingResult, len(texts))
 	for i := range texts {
-		results[i] = provider.EmbeddingResult{Embedding: m.vector, TokenCount: 3}
+		results[i] = embedcontracts.EmbeddingResult{Embedding: m.vector, TokenCount: 3}
 	}
 	return results, nil
 }
