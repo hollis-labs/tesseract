@@ -13,7 +13,7 @@ import (
 )
 
 func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("knowledge_write",
+	a.addTool(s, mcp.NewTool("knowledge_write",
 		mcp.WithDescription(
 			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
 				"• **Kind of content:** package / doc / note / pointer records with `kind`/`source`/`pointer` facets.\n"+

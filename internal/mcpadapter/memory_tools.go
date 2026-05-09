@@ -13,7 +13,7 @@ import (
 
 func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	// ── memory_write ─────────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_write",
+	a.addTool(s, mcp.NewTool("memory_write",
 		mcp.WithDescription(
 			"**Append an agent memory revision** under `(namespace, memory_key)`.\n"+
 				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
@@ -45,7 +45,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	), a.handleMemoryWrite)
 
 	// ── memory_get ───────────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_get",
+	a.addTool(s, mcp.NewTool("memory_get",
 		mcp.WithDescription(
 			"**Get the current (head) revision** for a keyed memory.\n"+
 				"• **Kind of content:** the latest revision under `(namespace, memory_key)`, deprecations skipped.\n"+
@@ -63,7 +63,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	), a.handleMemoryGet)
 
 	// ── memory_history ───────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_history",
+	a.addTool(s, mcp.NewTool("memory_history",
 		mcp.WithDescription(
 			"**Get the full revision history** for a keyed memory, newest-first.\n"+
 				"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded and deprecated ones.\n"+
@@ -81,7 +81,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	), a.handleMemoryHistory)
 
 	// ── memory_recall ────────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_recall",
+	a.addTool(s, mcp.NewTool("memory_recall",
 		mcp.WithDescription(
 			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
@@ -108,7 +108,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	), a.handleMemoryRecall)
 
 	// ── memory_promote ───────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_promote",
+	a.addTool(s, mcp.NewTool("memory_promote",
 		mcp.WithDescription(
 			"**Promote a session-scoped memory** to user or project scope.\n"+
 				"• **Kind of content:** a copy of the source memory revision, re-scoped to the target namespace.\n"+
@@ -129,7 +129,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	), a.handleMemoryPromote)
 
 	// ── memory_deprecate ─────────────────────────────────────────────────────
-	s.AddTool(mcp.NewTool("memory_deprecate",
+	a.addTool(s, mcp.NewTool("memory_deprecate",
 		mcp.WithDescription(
 			"**Soft-remove a memory revision** by revision ID.\n"+
 				"• **Kind of content:** a deprecation event on a specific revision. Revision stays in history.\n"+

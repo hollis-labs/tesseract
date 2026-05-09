@@ -13,7 +13,7 @@ import (
 // meta-tool. No capability token required — this is read-only orientation
 // served from an embedded filesystem.
 func (a *Adapter) registerSkillsTool(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("vanta_skills",
+	a.addTool(s, mcp.NewTool("vanta_skills",
 		mcp.WithDescription(
 			"Vanta's self-documenting skill index. Call with no args for the catalog; "+
 				"call with `name` to read a specific skill in full. Progressive discovery — "+

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -240,6 +241,10 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	adapter := mcpadapter.New(store, token)
 	adapter.MemoryStore = mem.Store
 	adapter.KnowledgeStore = knowledge.New(mem.Store)
+	// Wire a slog logger that writes to stderr so the go-mcp-sanitize warn
+	// telemetry surfaces in contextd logs without colliding with the stdout
+	// MCP protocol stream.
+	adapter.Logger = slog.New(slog.NewTextHandler(stderr, nil))
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1

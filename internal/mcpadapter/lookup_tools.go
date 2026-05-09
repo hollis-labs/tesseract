@@ -13,7 +13,7 @@ import (
 )
 
 func (a *Adapter) registerLookupTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("conduit_lookup",
+	a.addTool(s, mcp.NewTool("conduit_lookup",
 		mcp.WithDescription(
 			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
