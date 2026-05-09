@@ -33,11 +33,14 @@ var (
 )
 
 // New builds a Client. apiKey defaults to OPENAI_API_KEY when empty.
-func New(apiKey string) *Client {
+// Additional SDK options are appended after the API-key option, allowing
+// callers (notably tests) to override the base URL or HTTP client.
+func New(apiKey string, opts ...option.RequestOption) *Client {
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
-	return &Client{sdk: sdk.NewClient(option.WithAPIKey(apiKey))}
+	base := []option.RequestOption{option.WithAPIKey(apiKey)}
+	return &Client{sdk: sdk.NewClient(append(base, opts...)...)}
 }
 
 // Embed runs a single-input embedding request against the configured model.

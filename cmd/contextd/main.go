@@ -214,9 +214,10 @@ func createModelsDevClient(ctx context.Context, stderr *os.File) *modelsdev.Clie
 
 // createEmbedder builds an embedcontracts.Embedder from config. Returns nil
 // when the configured provider is unsupported or the API key is missing.
-// Currently only "openai" is supported.
+// Currently only "openai" is supported. Provider name is normalized
+// (lowercased + trimmed) to mirror createSynthesisProvider.
 func createEmbedder(cfg config.Config) embedcontracts.Embedder {
-	if cfg.Embedding.Provider != "openai" {
+	if strings.ToLower(strings.TrimSpace(cfg.Embedding.Provider)) != "openai" {
 		return nil
 	}
 	if os.Getenv("OPENAI_API_KEY") == "" {

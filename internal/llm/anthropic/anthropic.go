@@ -32,11 +32,14 @@ type Client struct {
 var _ llmcontracts.Provider = (*Client)(nil)
 
 // New builds a Client. apiKey defaults to ANTHROPIC_API_KEY when empty.
-func New(apiKey string) *Client {
+// Additional SDK options are appended after the API-key option, allowing
+// callers (notably tests) to override the base URL or HTTP client.
+func New(apiKey string, opts ...option.RequestOption) *Client {
 	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
-	return &Client{sdk: sdk.NewClient(option.WithAPIKey(apiKey))}
+	base := []option.RequestOption{option.WithAPIKey(apiKey)}
+	return &Client{sdk: sdk.NewClient(append(base, opts...)...)}
 }
 
 // Complete runs a non-streaming Messages call.

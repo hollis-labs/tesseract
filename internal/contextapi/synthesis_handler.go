@@ -177,6 +177,7 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 	chatReq := llmtypes.ChatRequest{
 		Model:        model,
 		SystemPrompt: s.SynthesisConfig.SystemPrompt,
+		MaxTokens:    s.SynthesisConfig.MaxTokens,
 		Messages: []llmtypes.ChatMessage{
 			{
 				Role: "user",
