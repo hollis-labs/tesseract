@@ -20,19 +20,19 @@ require (
 	modernc.org/sqlite v1.48.1
 )
 
-replace github.com/hollis-labs/mcp-helpers => ../framework/libs/go-mcp
+replace github.com/hollis-labs/mcp-helpers => ../../libs/go-mcp
 
-replace github.com/hollis-labs/go-otel => ../framework/libs/go-otel
+replace github.com/hollis-labs/go-otel => ../../libs/go-otel
 
-replace github.com/hollis-labs/go-queue => ../framework/libs/go-queue
+replace github.com/hollis-labs/go-queue => ../../libs/go-queue
 
-replace github.com/hollis-labs/go-modelsdev => ../go-modelsdev
+replace github.com/hollis-labs/go-modelsdev => ../../libs/go-modelsdev
 
-replace github.com/hollis-labs/go-llm-types => ../go-llm-types
+replace github.com/hollis-labs/go-llm-types => ../../libs/go-llm-types
 
-replace github.com/hollis-labs/go-llm-contracts => ../go-llm-contracts
+replace github.com/hollis-labs/go-llm-contracts => ../../libs/go-llm-contracts
 
-replace github.com/hollis-labs/go-embed-contracts => ../go-embed-contracts
+replace github.com/hollis-labs/go-embed-contracts => ../../libs/go-embed-contracts
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -66,10 +66,10 @@ require (
 	go.opentelemetry.io/otel/sdk v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260217215200-42d3e9bedb6d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260311181403-84a4fc48630c // indirect
 	google.golang.org/grpc v1.79.2 // indirect
