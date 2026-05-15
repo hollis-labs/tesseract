@@ -1,0 +1,55 @@
+project:
+  id: tesseract
+  display_name: Tesseract
+  status: active
+  purpose: |
+    Local-first context + memory service for humans and agents. Provides
+    deterministic, auditable persistence and retrieval of context records and
+    memories — append-only, namespace-scoped, and exposed over MCP, HTTP, and a
+    CLI. Built so agents query Tesseract before the filesystem or web. Formerly
+    Cortex (itself a rebrand of Seer v1); extracted from fragments-engine.
+catalog:
+  torque_project_id: null            # Engine/Torque tracks this under project_id slug "tesseract"; no PRJ-... id found in repo or catalog
+  cerberus_project_id: tesseract
+  tether_catalog_project: tesseract
+locations:
+  repo: ~/dev/hollis-labs/apps/tesseract
+  agent_os_tracking: ~/dev/agent-os/workspaces/execution/tesseract
+  state_dir: ~/.tesseract
+  catalog: null                      # no project-local catalog dir; override CONTEXTD_ROOT changes state_dir
+  artifacts: ~/.cerberus/apps/tesseract
+build:
+  authority: cerberus
+  resource: conduit-api-service
+  command: make build                # frontend npm build + `go build -o contextd ./cmd/contextd/`
+deployment:
+  type: launchd
+  service_name: com.fragments-engine.cerberus.tesseract.conduit-api-service
+  binary: ~/.cerberus/apps/tesseract/conduit-api-service/bin/conduit-api-service
+docs:
+  readme: README.md                  # NOTE: currently stale (contains Volon content) — see AGENTS.md
+  architecture: docs/ARCHITECTURE.md
+  adrs: docs/DECISIONS/
+  roadmap: docs/RELEASE-ROADMAP.md
+roadmap:
+  current_phase: 'Tesseract 1.0 — knowledge ingester ecosystem + hybrid recall'
+  pointer: null
+usage_examples:
+  - intent: Build the service binary
+    command: make build
+    note: Compiles the frontend (npm) then `go build -o contextd ./cmd/contextd/`.
+  - intent: Run the context/memory daemon locally
+    command: ./contextd serve --addr :8089
+    note: Data dir defaults to ~/.tesseract; override with CONTEXTD_ROOT.
+  - intent: Query context/memory as an agent
+    command: use mcp__vanta__* MCP tools
+    note: MCP server is registered under the name "vanta"; see docs/MCP_TOOLS.md.
+  - intent: Verify API/CLI contracts before a change lands
+    command: make validate
+    note: Runs API, error, and metrics contract suites; parity test guards the tool catalog.
+  - intent: Deploy via Cerberus
+    command: cerberus resource deploy/apply/status/logs ...
+    note: Cerberus is resource-only; do not use legacy services: config or removed MCP tools.
+scopes:
+  - tesseract.backend.main
+related_projects: [nanite, fragments-engine, hadron, torque, ion]
