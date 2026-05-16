@@ -1,6 +1,6 @@
-# Vanta Conduit — MCP Tools (agent reference)
+# Tesseract — MCP Tools (agent reference)
 
-This is the agent-facing catalog for Vanta Conduit's MCP surface. Every tool
+This is the agent-facing catalog for Tesseract's MCP surface. Every tool
 here is registered by `contextd mcp` and has an HTTP peer under
 `/v1/*` unless the row is marked **MCP-only**.
 
@@ -18,13 +18,13 @@ here is registered by `contextd mcp` and has an HTTP peer under
         "type": "stdio",
         "command": "/Users/<you>/go/bin/contextd",
         "args": ["mcp", "--token", "<hex-capability-token>"],
-        "env": { "CONTEXTD_ROOT": "/Users/<you>/.conduit" }
+        "env": { "CONTEXTD_ROOT": "/Users/<you>/.tesseract" }
       }
     }
   }
   ```
 - **Tool ID prefix:** `mcp__vanta__` (Claude side). Example: `mcp__vanta__memory_write`.
-- **Data root:** `~/.conduit/` — shared with the HTTP server run by Cerberus. Do NOT point MCP at `~/.cortex/` (legacy ghost).
+- **Data root:** `~/.tesseract/` — shared with the HTTP server run by Cerberus. Do NOT point MCP at `~/.cortex/` (legacy ghost).
 - **Capability token:** required for any tool that requires a `write`/`read`/`promote` scope. Token claims are checked per-tool.
 - **No duplicated logic:** every tool and its HTTP peer call the same store/domain function. Responses match 1:1.
 
@@ -39,7 +39,7 @@ Shipped skills (11):
 
 | Name | Type | Body covers |
 |---|---|---|
-| `start-here` | orientation | Vanta's three domains, invariants, how to use this surface. |
+| `start-here` | orientation | Tesseract's three domains, invariants, how to use this surface. |
 | `namespaces` | primitive | Canonical tier patterns, ownership, memory-domain stricter form. |
 | `facets-and-kinds` | primitive | Facet vocabulary, the `kind` convention, extension rules. |
 | `revisions` | primitive | Append-only model, supersede chains, dedup, revision IDs. |
@@ -189,7 +189,7 @@ Use `context_broker_fetch` (MCP-only convenience — plan + packet in one call):
 ```json
 mcp__vanta__context_broker_fetch {
   "intent": "boot_project",
-  "summary": "Vanta Conduit backend — batch 1 parity work",
+  "summary": "Tesseract backend — batch 1 parity work",
   "budget_items": 80,
   "budget_tokens": 8000,
   "payload_mode": "full"

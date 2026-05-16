@@ -365,7 +365,7 @@ Parity pack:
 ## Embedding smoke test (`cmd/smoke`)
 
 A one-shot program that exercises the full embedding pipeline against the
-live `~/.conduit` store: opens `conduit.Open` with an OpenAI embedder and a
+live `~/.tesseract` store: opens `conduit.Open` with an OpenAI embedder and a
 SQLite-backed queue, writes a memory revision, waits for the queue worker
 to populate `embedding_model`/`embedding_vector`, then runs a
 `RankingSimilarity` recall to confirm end-to-end correctness.

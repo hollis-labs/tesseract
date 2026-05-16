@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contexttypes"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

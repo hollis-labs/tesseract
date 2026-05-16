@@ -143,7 +143,7 @@ export function DashboardPage({ health, onNavigate }: Props) {
               </span>
             </div>
             <div style={{ fontSize: "1.2rem", marginBottom: "0.4rem", color: "rgb(var(--text))" }}>
-              Conduit status: {primaryStatus}
+              Tesseract status: {primaryStatus}
             </div>
             <div style={{ fontSize: "0.82rem", color: "rgb(var(--muted))", lineHeight: 1.55 }}>
               Landing page for operator health, recent activity, and the fastest paths into review,

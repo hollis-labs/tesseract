@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func runBackfill(ctx context.Context, store *contextstore.Store, cfg config.Config, args []string, stdout, stderr *os.File) int {

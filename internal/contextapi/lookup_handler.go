@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // conduitLookupRequest is the unified search payload across memory +
@@ -24,12 +24,12 @@ type conduitLookupRequest struct {
 	FacetKinds   []string         `json:"facet_kinds,omitempty"`
 	FacetSources []string         `json:"facet_sources,omitempty"`
 
-	Origins       []memory.Origin  `json:"origins,omitempty"`
-	Statuses      []memory.Status  `json:"statuses,omitempty"`
-	Tags          []string         `json:"tags,omitempty"`
-	ConfidenceMin float64          `json:"confidence_min,omitempty"`
-	Since         *time.Time       `json:"since,omitempty"`
-	Until         *time.Time       `json:"until,omitempty"`
+	Origins       []memory.Origin `json:"origins,omitempty"`
+	Statuses      []memory.Status `json:"statuses,omitempty"`
+	Tags          []string        `json:"tags,omitempty"`
+	ConfidenceMin float64         `json:"confidence_min,omitempty"`
+	Since         *time.Time      `json:"since,omitempty"`
+	Until         *time.Time      `json:"until,omitempty"`
 }
 
 // conduitLookupResponse wraps the recall results with a simple facet

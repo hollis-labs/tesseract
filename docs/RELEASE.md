@@ -1,6 +1,6 @@
 # Release procedure
 
-Vanta Conduit ships as a Go module + a `contextd` binary. Consumers (Nanite, Cerberus-managed services, custom integrations) pin against the module path `github.com/hollis-labs/vanta-conduit` at a tagged version. The release procedure below keeps the binary version, MCP advertised version, and `CHANGELOG.md` in lockstep.
+Tesseract ships as a Go module + a `contextd` binary. Consumers (Nanite, Cerberus-managed services, custom integrations) pin against the module path `github.com/hollis-labs/tesseract` at a tagged version. The release procedure below keeps the binary version, MCP advertised version, and `CHANGELOG.md` in lockstep.
 
 ## Versioning
 
@@ -30,7 +30,7 @@ After the release-cut PR merges to `main`:
 
 ```bash
 git checkout main && git pull
-git tag -a v<X.Y.Z> -m "vanta-conduit v<X.Y.Z>"
+git tag -a v<X.Y.Z> -m "tesseract v<X.Y.Z>"
 git push origin v<X.Y.Z>
 gh release create v<X.Y.Z> \
   --title "v<X.Y.Z>" \
@@ -43,7 +43,7 @@ The release notes pull straight from `CHANGELOG.md`. No duplication.
 
 Nanite (and any other Conduit consumer) should:
 
-- Bump the `github.com/hollis-labs/vanta-conduit` dependency in their `go.mod` to the new tag.
+- Bump the `github.com/hollis-labs/tesseract` dependency in their `go.mod` to the new tag.
 - Re-`go install ./cmd/contextd` if they bundle the standalone binary (Cerberus-managed `conduit-api`, agent stdio MCP server in `~/.claude.json`).
 - Re-read `CHANGELOG.md` for new MCP tool IDs and HTTP paths to surface in their own agent prompts / docs.
 

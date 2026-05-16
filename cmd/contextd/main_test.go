@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 func TestParseServeArgsDefaults(t *testing.T) {

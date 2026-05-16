@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/taskscli/config"
-	"github.com/hollis-labs/vanta-conduit/internal/taskscli/taskfile"
+	"github.com/hollis-labs/tesseract/internal/taskscli/config"
+	"github.com/hollis-labs/tesseract/internal/taskscli/taskfile"
 )
 
 // RunBacklog executes `volon backlog <subcommand>`.

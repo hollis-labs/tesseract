@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func newMemoryTestServer(t *testing.T) *Server {

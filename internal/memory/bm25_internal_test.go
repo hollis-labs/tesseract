@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 func newBM25TestStore(t *testing.T) (*Store, func()) {

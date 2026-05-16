@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -72,13 +72,13 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
 
 	in := knowledge.WriteInput{
-		Namespace:  req.GetString("namespace", ""),
-		Key:        req.GetString("key", ""),
-		Kind:       req.GetString("kind", ""),
-		Source:     req.GetString("source", ""),
-		Pointer:    pointer,
-		Summary:    req.GetString("summary", ""),
-		Body:       req.GetString("body", ""),
+		Namespace: req.GetString("namespace", ""),
+		Key:       req.GetString("key", ""),
+		Kind:      req.GetString("kind", ""),
+		Source:    req.GetString("source", ""),
+		Pointer:   pointer,
+		Summary:   req.GetString("summary", ""),
+		Body:      req.GetString("body", ""),
 		Author: memory.Author{
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),

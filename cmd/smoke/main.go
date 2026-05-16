@@ -11,9 +11,9 @@ import (
 
 	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
-	llmopenai "github.com/hollis-labs/vanta-conduit/internal/llm/openai"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	conduit "github.com/hollis-labs/tesseract"
+	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	_ "modernc.org/sqlite"
 )
 
@@ -21,7 +21,7 @@ func main() {
 	ctx := context.Background()
 
 	home, _ := os.UserHomeDir()
-	root := filepath.Join(home, ".conduit")
+	root := filepath.Join(home, ".tesseract")
 
 	queueDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", filepath.Join(root, "data", "queue.db"))
 	qdb, err := sql.Open("sqlite", queueDSN)
@@ -56,7 +56,7 @@ func main() {
 		Origin:     memory.OriginObservation,
 		Confidence: 0.9,
 		Tags:       []string{"smoke"},
-		Payload:    memory.Payload{Summary: "Vanta Conduit embedding smoke test.", Body: "This is a short body for embedding. The Crow (1994) is a movie."},
+		Payload:    memory.Payload{Summary: "Tesseract embedding smoke test.", Body: "This is a short body for embedding. The Crow (1994) is a movie."},
 	})
 	if err != nil {
 		log.Fatalf("WriteMemory: %v", err)

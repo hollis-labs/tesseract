@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
@@ -16,8 +16,8 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 	// Write and embed a revision.
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: ns, MemoryKey: "dedup_test",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "original memory about Go testing"},
@@ -32,12 +32,12 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 	// Write similar revision with dedup enabled.
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: ns, MemoryKey: "dedup_test",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "updated memory about Go testing"},
-		Dedup:  "semantic",
+		Dedup:   "semantic",
 	})
 	if err != nil {
 		t.Fatalf("write rev2: %v", err)
@@ -60,8 +60,8 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: ns, MemoryKey: "alpha",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "some content"},
@@ -75,12 +75,12 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: ns, MemoryKey: "beta",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "similar content"},
-		Dedup:  "semantic",
+		Dedup:   "semantic",
 	})
 	if err != nil {
 		t.Fatalf("write rev2: %v", err)
@@ -102,12 +102,12 @@ func TestWriteRevision_SemanticDedup_NoMatch(t *testing.T) {
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: "user/chrispian/memory", MemoryKey: "unique",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "totally unique"},
-		Dedup:  "semantic",
+		Dedup:   "semantic",
 	})
 	if err != nil {
 		t.Fatalf("write: %v", err)
@@ -124,8 +124,8 @@ func TestWriteRevision_NoDedup_Default(t *testing.T) {
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: "user/chrispian/memory", MemoryKey: "no_dedup",
-		Status: memory.StatusDraft,
-		Author: memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Status:  memory.StatusDraft,
+		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		Origin: memory.OriginUser, Confidence: 0.9, Tags: []string{},
 		Payload: memory.Payload{Summary: "no dedup"},

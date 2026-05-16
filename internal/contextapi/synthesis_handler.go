@@ -19,21 +19,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/go-modelsdev/modelsdev"
 	llmtypes "github.com/hollis-labs/go-llm-types"
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/go-modelsdev/modelsdev"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // synthesisAskRequest is the wire-shape for /v1/synthesis/ask.
 type synthesisAskRequest struct {
-	Question      string           `json:"question"`
-	Namespaces    []string         `json:"namespaces,omitempty"`
-	Tags          []string         `json:"tags,omitempty"`
-	Limit         int              `json:"limit,omitempty"`
-	Domains       []string         `json:"domains,omitempty"` // ["memory","knowledge"]
-	Statuses      []memory.Status  `json:"statuses,omitempty"`
-	ConfidenceMin float64          `json:"confidence_min,omitempty"`
+	Question      string          `json:"question"`
+	Namespaces    []string        `json:"namespaces,omitempty"`
+	Tags          []string        `json:"tags,omitempty"`
+	Limit         int             `json:"limit,omitempty"`
+	Domains       []string        `json:"domains,omitempty"` // ["memory","knowledge"]
+	Statuses      []memory.Status `json:"statuses,omitempty"`
+	ConfidenceMin float64         `json:"confidence_min,omitempty"`
 	// ModelOverride lets a caller pin a specific model for one call. Empty
 	// uses the server's configured default.
 	ModelOverride string `json:"model,omitempty"`

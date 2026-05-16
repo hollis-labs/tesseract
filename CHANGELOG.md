@@ -1,12 +1,19 @@
 # Changelog
 
-All notable changes to Vanta Conduit are recorded here.
+All notable changes to Tesseract are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Pre-1.0: minor bumps for additive surface, patch bumps for fixes — breaking changes can land in any minor.
 
-Consumers (Nanite, Cerberus, custom Conduit clients) should watch this file for new MCP tools, HTTP routes, store-method additions, and configuration changes. Each release notes the user-visible MCP tool IDs and `/v1/*` routes that landed.
+Consumers (Nanite, Cerberus, custom Tesseract clients) should watch this file for new MCP tools, HTTP routes, store-method additions, and configuration changes. Each release notes the user-visible MCP tool IDs and `/v1/*` routes that landed.
 
 ## [Unreleased]
+
+## [0.7.0] — 2026-05-15
+
+### Changed
+
+- Renamed the project from Vanta Conduit to Tesseract. The Go module path is now `github.com/hollis-labs/tesseract`; the local state root is now `~/.tesseract` with `~/.conduit` preserved as a compatibility symlink. A Go module-path change is effectively a new module — consumers must update their import paths and move to `v0.7.0` in lockstep.
+- Pinned `go.mod` dependency references to published versions so the module is consumable from GitHub: `go-otel v0.1.0`, `go-queue v0.1.0`, `go-embed-contracts v0.1.1`, `go-modelsdev v0.2.0`, and the renamed `go-mcp v0.1.0` (previously the dead `mcp-helpers` module path). These were placeholder `v0.0.0` requires resolvable only via local `replace` directives.
 
 ## [0.6.0] — 2026-05-09
 
@@ -383,15 +390,15 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 ## [0.0.1] — 2026-04-08
 
-Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/vanta-conduit`. No formal release notes — this tag exists primarily to anchor `git describe` output.
+Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.3...HEAD
-[0.5.3]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.2...v0.5.3
-[0.5.2]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/hollis-labs/vanta-conduit/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/hollis-labs/vanta-conduit/compare/v0.0.1...v0.1.0
-[0.0.1]: https://github.com/hollis-labs/vanta-conduit/releases/tag/v0.0.1
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/hollis-labs/tesseract/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/hollis-labs/tesseract/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/hollis-labs/tesseract/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/hollis-labs/tesseract/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/hollis-labs/tesseract/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/hollis-labs/tesseract/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/hollis-labs/tesseract/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/hollis-labs/tesseract/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/hollis-labs/tesseract/releases/tag/v0.0.1

@@ -496,7 +496,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/hollis-labs/vanta-conduit/internal/mcpadapter/skills"
+	"github.com/hollis-labs/tesseract/internal/mcpadapter/skills"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -1750,8 +1750,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

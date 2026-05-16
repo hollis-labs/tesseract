@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 func TestMVPEndToEndWorkflow(t *testing.T) {

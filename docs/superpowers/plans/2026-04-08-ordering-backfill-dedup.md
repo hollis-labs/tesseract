@@ -51,7 +51,7 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestNewULID_Monotonic(t *testing.T) {
@@ -279,7 +279,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
+	"github.com/hollis-labs/tesseract/internal/config"
 )
 
 func TestLoad_FullConfig(t *testing.T) {
@@ -515,7 +515,7 @@ In `cmd/contextd/main.go`, in the `run` function, after determining `root`:
 	}
 ```
 
-Import `"github.com/hollis-labs/vanta-conduit/internal/config"`.
+Import `"github.com/hollis-labs/tesseract/internal/config"`.
 
 In `runMCP`, create the OpenAI embedder based on config and pass it to `memory.NewStore`:
 
@@ -574,9 +574,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func runBackfill(ctx context.Context, store *contextstore.Store, cfg config.Config, args []string, stdout, stderr *os.File) int {
@@ -733,7 +733,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {

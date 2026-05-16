@@ -78,4 +78,3 @@ func TestNamespacesList_PrefixIsStringPrefixNotGlob(t *testing.T) {
 		})
 	}
 }
-

@@ -1,17 +1,17 @@
-module github.com/hollis-labs/vanta-conduit
+module github.com/hollis-labs/tesseract
 
 go 1.26.1
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.41.0
-	github.com/hollis-labs/go-embed-contracts v0.0.0-00010101000000-000000000000
+	github.com/hollis-labs/go-embed-contracts v0.1.1
 	github.com/hollis-labs/go-llm-contracts v0.1.0
 	github.com/hollis-labs/go-llm-types v0.1.0
+	github.com/hollis-labs/go-mcp v0.1.0
 	github.com/hollis-labs/go-mcp-sanitize v0.1.0
-	github.com/hollis-labs/go-modelsdev v0.0.0-00010101000000-000000000000
-	github.com/hollis-labs/go-otel v0.0.0
-	github.com/hollis-labs/go-queue v0.0.0
-	github.com/hollis-labs/mcp-helpers v0.0.0
+	github.com/hollis-labs/go-modelsdev v0.2.0
+	github.com/hollis-labs/go-otel v0.1.0
+	github.com/hollis-labs/go-queue v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.3.0
 	github.com/mark3labs/mcp-go v0.47.0
 	github.com/oklog/ulid/v2 v2.1.1
@@ -20,7 +20,7 @@ require (
 	modernc.org/sqlite v1.48.1
 )
 
-replace github.com/hollis-labs/mcp-helpers => ../../libs/go-mcp
+replace github.com/hollis-labs/go-mcp => ../../libs/go-mcp
 
 replace github.com/hollis-labs/go-otel => ../../libs/go-otel
 

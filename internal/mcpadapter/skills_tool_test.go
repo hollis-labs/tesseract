@@ -51,7 +51,7 @@ func TestVantaSkills_GetByName(t *testing.T) {
 	if !ok {
 		t.Fatalf("want TextContent, got %T", res.Content[0])
 	}
-	if !strings.Contains(tc.Text, "Vanta") {
+	if !strings.Contains(tc.Text, "Tesseract") {
 		t.Errorf("body missing expected content")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func relevanceInput(key, summary, body string) memory.WriteInput {

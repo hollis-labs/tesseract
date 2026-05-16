@@ -18,7 +18,7 @@ The simplest path. Combines planning and fetching in a single call:
 ```json
 {
   "intent": "boot_project",
-  "summary": "Vanta Conduit backend — batch 1 parity work",
+  "summary": "Tesseract backend — batch 1 parity work",
   "budget_items": 50,
   "budget_tokens": 4000,
   "payload_mode": "full"

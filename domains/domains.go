@@ -1,5 +1,5 @@
 // Package domains defines the in-tree domain discriminator and per-domain
-// policy interface for Vanta Conduit revisions. A domain selects policy
+// policy interface for Tesseract revisions. A domain selects policy
 // (namespace shape, facet requirements, default status, decay rules) while
 // reusing the shared memory_state + memory_revisions storage.
 //

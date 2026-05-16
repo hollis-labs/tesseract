@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 type knowledgeWriteRequest struct {

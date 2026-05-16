@@ -9,7 +9,7 @@ import (
 
 	queue "github.com/hollis-labs/go-queue"
 	memdriver "github.com/hollis-labs/go-queue/driver/memory"
-	"github.com/hollis-labs/vanta-conduit/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/embedding"
 )
 
 func TestOpen_MinimalConfig(t *testing.T) {

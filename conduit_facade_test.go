@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	conduit "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func openTestConduit(t *testing.T) *conduit.Conduit {

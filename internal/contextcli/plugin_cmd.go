@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hollis-labs/vanta-conduit/internal/plugin"
 	fplugin "github.com/hollis-labs/plugin-sdk"
+	"github.com/hollis-labs/tesseract/internal/plugin"
 )
 
 const pluginGitOrg = "hollis-labs"

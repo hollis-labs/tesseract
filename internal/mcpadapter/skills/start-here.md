@@ -1,13 +1,13 @@
 ---
 name: start-here
-description: Orientation for agents new to Vanta Conduit — the three domains, invariants, and how to use vanta_skills.
+description: Orientation for agents new to Tesseract — the three domains, invariants, and how to use vanta_skills.
 scope_hint: none
 related: [namespaces, memory, knowledge]
 ---
 
-# Vanta Conduit — start here
+# Tesseract — start here
 
-Vanta Conduit is a local-first, append-only context and memory service. You reach it through the `mcp__vanta__*` tool family. Everything you write is revisioned, auditable, and namespace-owned.
+Tesseract is a local-first, append-only context and memory service. You reach it through the `mcp__vanta__*` tool family. Everything you write is revisioned, auditable, and namespace-owned.
 
 ## The three domains
 

@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // evalFixture pairs a query with the revision IDs that *should* rank

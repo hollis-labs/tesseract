@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contexttypes"
 )
 
 func (c *CLI) runTypedPut(ctx context.Context, args []string) int {

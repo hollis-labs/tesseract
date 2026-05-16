@@ -16,7 +16,7 @@ export function AppHeader({ pageTitle, health }: Props) {
   return (
     <header className="app-header" role="banner">
       <a href="#main-content" className="skip-link">Skip to content</a>
-      <span className="app-header-logo" aria-label="Conduit">CONDUIT</span>
+      <span className="app-header-logo" aria-label="Tesseract">TESSERACT</span>
       <span className="app-header-subtitle">Content Memory Service</span>
       <span className="app-header-title">{pageTitle}</span>
       {isDemoMode() && (

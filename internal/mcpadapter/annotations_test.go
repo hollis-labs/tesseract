@@ -3,8 +3,8 @@ package mcpadapter
 import (
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/server"
 )
 

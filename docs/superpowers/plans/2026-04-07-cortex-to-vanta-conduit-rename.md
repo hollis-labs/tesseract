@@ -4,7 +4,7 @@
 
 **Goal:** Rename Cortex to Vanta Conduit — new standalone repo, updated module paths, all ecosystem references updated, all tests passing.
 
-**Architecture:** Clean break migration. Copy code to new `hollis-labs/vanta-conduit` repo, update Go module path from `github.com/hollis-labs/cortex` to `github.com/hollis-labs/vanta-conduit`, rename all internal "cortex/Cortex" references to "conduit/Conduit", update all external repos that reference Cortex.
+**Architecture:** Clean break migration. Copy code to new `hollis-labs/vanta-conduit` repo, update Go module path from `github.com/hollis-labs/cortex` to `github.com/hollis-labs/tesseract`, rename all internal "cortex/Cortex" references to "conduit/Conduit", update all external repos that reference Cortex.
 
 **Tech Stack:** Go 1.26.1, SQLite, MCP (mcp-go), shared libs (go-providers, go-plugin, mcp-helpers, otel)
 
@@ -65,14 +65,14 @@ module github.com/hollis-labs/cortex
 ```
 to:
 ```
-module github.com/hollis-labs/vanta-conduit
+module github.com/hollis-labs/tesseract
 ```
 
 - [ ] **Step 2: Find-and-replace the import path in all Go files**
 
 ```bash
 cd ~/Projects-apps/vanta-conduit
-find . -name '*.go' -exec sed -i '' 's|github.com/hollis-labs/cortex|github.com/hollis-labs/vanta-conduit|g' {} +
+find . -name '*.go' -exec sed -i '' 's|github.com/hollis-labs/cortex|github.com/hollis-labs/tesseract|g' {} +
 ```
 
 Verify the replacement:
@@ -162,7 +162,7 @@ grep -rn '"cortex"' --include='*.go' .
 grep -rn 'cortex\.' --include='*.go' . | grep -v 'context\.' | grep -v '/cortex/'
 ```
 
-In `cmd/contextd/main.go`, the import alias and usage will need updating. The import was `github.com/hollis-labs/cortex` (now `github.com/hollis-labs/vanta-conduit`) and code calls `cortex.Open()`, `cortex.Config{}`, etc. These become `conduit.Open()`, `conduit.Config{}`.
+In `cmd/contextd/main.go`, the import alias and usage will need updating. The import was `github.com/hollis-labs/cortex` (now `github.com/hollis-labs/tesseract`) and code calls `cortex.Open()`, `cortex.Config{}`, etc. These become `conduit.Open()`, `conduit.Config{}`.
 
 ```bash
 find . -name '*.go' -exec sed -i '' 's/cortex\.Open/conduit.Open/g; s/cortex\.Config/conduit.Config/g; s/cortex\.Option/conduit.Option/g; s/cortex\.With/conduit.With/g; s/cortex\.DB/conduit.DB/g; s/cortex\.Close/conduit.Close/g' {} +
@@ -225,7 +225,7 @@ find docs -name '*.md' -exec sed -i '' 's/Cortex/Vanta Conduit/g; s/cortex/condu
 ```
 
 Review the changes manually:
-- Some instances of "cortex" in file paths or Go import paths inside docs may need specific handling (e.g., `github.com/hollis-labs/cortex` should already be `github.com/hollis-labs/vanta-conduit` in code blocks).
+- Some instances of "cortex" in file paths or Go import paths inside docs may need specific handling (e.g., `github.com/hollis-labs/cortex` should already be `github.com/hollis-labs/tesseract` in code blocks).
 - **Important**: The sed `s/cortex/conduit/g` will NOT match Go's `context` package (different string), but verify no false positives crept in.
 - The rename spec doc itself (`cortex-to-vanta-conduit-rename.md`) intentionally references "Cortex" historically — don't blindly replace those.
 

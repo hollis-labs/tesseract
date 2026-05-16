@@ -1,7 +1,7 @@
-# Vanta Conduit Release Roadmap
+# Tesseract Release Roadmap
 
 Status: tracking doc — refreshed 2026-04-27
-Purpose: decompose the "Vanta Conduit 1.0 release" effort into independent workstreams
+Purpose: decompose the "Tesseract 1.0 release" effort into independent workstreams
 with clear ordering and hand-off boundaries. Each track gets its own design spec
 and implementation plan — this file only tracks what the tracks *are* and why.
 
@@ -11,7 +11,7 @@ execution board. Clockwork is the source of truth for active work.
 
 ## Product framing
 
-Vanta Conduit is a local-first **context + memory** service for humans and agents. It
+Tesseract is a local-first **context + memory** service for humans and agents. It
 ships in two deployment profiles:
 
 1. **MCP server mode** — standalone daemon any agent (Claude Code, other MCP
@@ -28,7 +28,7 @@ It ships in two distribution forms:
 ## Workstreams
 
 ### A. Rename + identity
-The project has been renamed from "Cortex" to "Vanta Conduit". This workstream is complete.
+The project has been renamed from "Cortex" to "Tesseract". This workstream is complete.
 
 ### B. Repository extraction
 Move Conduit out of `fragments-engine/cortex/` into a standalone repo. Own
@@ -82,7 +82,7 @@ Depends on: D, E, F.
 
 ### H. Shared AI provider Go module *(new — prerequisite for D's embedding subsystem)*
 Extract multi-provider AI code into a standalone Go module shared by Nanite,
-Vanta Conduit, Hadron, Engine, and future apps. Covers both LLM calls and
+Tesseract, Hadron, Engine, and future apps. Covers both LLM calls and
 embedding calls. Handles capability differences (not every provider embeds).
 At launch: Anthropic, OpenAI-compatible, Ollama, and CLI agent adapters
 (Claude/Codex/Copilot/Gemini) where applicable.

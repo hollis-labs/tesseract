@@ -1,5 +1,5 @@
 // Package anthropic is a thin SDK-backed wrapper that satisfies the
-// Complete/Capabilities portion of llmcontracts.Provider for vanta-conduit's
+// Complete/Capabilities portion of llmcontracts.Provider for tesseract's
 // synthesis path (POST /v1/synthesis/ask).
 //
 // StreamChat is intentionally not implemented: synthesis is non-streaming.
@@ -83,10 +83,10 @@ func (c *Client) Complete(ctx context.Context, req llmtypes.ChatRequest) (string
 	return b.String(), nil
 }
 
-// StreamChat is intentionally not implemented for vanta-conduit's
+// StreamChat is intentionally not implemented for tesseract's
 // synthesis path. See package doc.
 func (c *Client) StreamChat(_ context.Context, _ llmtypes.ChatRequest) (<-chan llmtypes.StreamEvent, error) {
-	return nil, errors.New("anthropic: StreamChat is not implemented in vanta-conduit's synthesis wrapper (Complete-only)")
+	return nil, errors.New("anthropic: StreamChat is not implemented in tesseract's synthesis wrapper (Complete-only)")
 }
 
 // Capabilities reports a fixed default capability set.

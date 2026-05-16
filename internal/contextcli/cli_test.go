@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 func newTestCLI(t *testing.T) (*CLI, *bytes.Buffer, *bytes.Buffer) {

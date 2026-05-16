@@ -7,11 +7,11 @@ import (
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
-	"github.com/hollis-labs/vanta-conduit/internal/embedding"
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

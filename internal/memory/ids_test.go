@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestNewULID_Monotonic(t *testing.T) {

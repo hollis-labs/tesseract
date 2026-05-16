@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	queue "github.com/hollis-labs/go-queue"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // embedJobPayload is the JSON structure expected in embed job payloads

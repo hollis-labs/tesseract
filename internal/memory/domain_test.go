@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // TestWriteRevision_DefaultDomainIsMemory verifies backward-compatibility:

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/embedding"
 )
 
 func openTestConduit(t *testing.T, opts ...Option) *Conduit {

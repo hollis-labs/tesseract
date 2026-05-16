@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
-	"github.com/hollis-labs/vanta-conduit/internal/embedding"
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/embedding"
 )
 
 // Ranking determines how recall results are ordered.

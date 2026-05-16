@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func newTestStore(t *testing.T) (*memory.Store, func()) {

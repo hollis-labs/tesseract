@@ -11,8 +11,8 @@ import (
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	queue "github.com/hollis-labs/go-queue"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // Config holds the top-level configuration for a Conduit instance.

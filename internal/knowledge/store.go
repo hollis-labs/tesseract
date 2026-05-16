@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // Store is a thin wrapper over *memory.Store that enforces knowledge-domain

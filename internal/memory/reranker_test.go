@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // reverseReranker returns its input in reverse order, truncated to topK.

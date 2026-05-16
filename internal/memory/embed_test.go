@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // mockEmbedder implements embedcontracts.Embedder with a fixed vector.

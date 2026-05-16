@@ -9,8 +9,8 @@
 package memory
 
 import (
-	"github.com/hollis-labs/vanta-conduit/domains"
-	internal "github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/domains"
+	internal "github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // ---- Type aliases (zero-cost re-exports) ----

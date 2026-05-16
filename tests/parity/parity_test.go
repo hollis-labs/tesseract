@@ -1,4 +1,4 @@
-// Package parity verifies that every canonical Vanta Conduit operation is
+// Package parity verifies that every canonical Tesseract operation is
 // reachable over both MCP (stdio tool) and HTTP (REST route), or is covered by
 // an explicit waiver. The test fails when a surface is added or removed
 // without updating the shared catalog — that's the durable guardrail against
@@ -19,12 +19,12 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/mcpadapter"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextapi"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/mcpadapter"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // parityOp is one row in the surface catalog. Either MCP or HTTP may be

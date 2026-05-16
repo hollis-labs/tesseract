@@ -18,7 +18,7 @@ Vanta Conduit is the context memory and RAG service for the Hollis Labs ecosyste
 
 **Code/Repo:**
 - GitHub repo: create `hollis-labs/vanta-conduit` (new repo, clean break)
-- Go module path: `github.com/hollis-labs/vanta-conduit`
+- Go module path: `github.com/hollis-labs/tesseract`
 - Rename all internal package names, imports, and code references
 - Binary/CLI name: `conduit`
 
@@ -48,7 +48,7 @@ Since nothing is publicly released and no external consumers depend on current m
 
 1. Create new `hollis-labs/vanta-conduit` GitHub repo
 2. Move code from `fragments-engine/cortex/` to the new repo
-3. Update Go module path to `github.com/hollis-labs/vanta-conduit`
+3. Update Go module path to `github.com/hollis-labs/tesseract`
 4. Rename all internal references (package names, imports, comments, configs)
 5. Update all external references across the ecosystem (Cerberus, Hadron, Nanite, agentrc, CLAUDE.md files, memory files)
 6. Update MCP server registration and tool names
@@ -60,7 +60,7 @@ Since nothing is publicly released and no external consumers depend on current m
 | Context | Usage |
 |---------|-------|
 | GitHub repo | `hollis-labs/vanta-conduit` |
-| Go module | `github.com/hollis-labs/vanta-conduit` |
+| Go module | `github.com/hollis-labs/tesseract` |
 | CLI binary | `conduit` |
 | Subdomain | `conduit.hollislabs.com` |
 | MCP tools | `mcp__conduit__*` |

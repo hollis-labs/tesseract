@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	memdriver "github.com/hollis-labs/go-queue/driver/memory"
-	internalmem "github.com/hollis-labs/vanta-conduit/internal/memory"
+	internalmem "github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestQueueAdapter(t *testing.T) {

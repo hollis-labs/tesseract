@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"time"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-queue/driver/sqlite"
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	conduit "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // memorySubsystem holds the components wired up by setupMemorySubsystem.

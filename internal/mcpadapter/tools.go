@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/mcp-helpers/budget"
+	"github.com/hollis-labs/go-mcp/budget"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

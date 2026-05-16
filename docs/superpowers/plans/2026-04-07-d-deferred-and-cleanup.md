@@ -48,7 +48,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestEmbedRevision_Success(t *testing.T) {
@@ -262,8 +262,8 @@ import (
 	"context"
 	"testing"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	conduit "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/internal/memory"
 
 	queue "github.com/hollis-labs/go-queue"
 )
@@ -338,7 +338,7 @@ import (
 	"fmt"
 
 	queue "github.com/hollis-labs/go-queue"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 type embedJobPayload struct {
@@ -583,8 +583,8 @@ import (
 	"context"
 	"testing"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	conduit "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestConduit_WriteAndRecall(t *testing.T) {

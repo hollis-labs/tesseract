@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/taskscli/config"
-	"github.com/hollis-labs/vanta-conduit/internal/taskscli/index"
-	"github.com/hollis-labs/vanta-conduit/internal/taskscli/taskfile"
+	"github.com/hollis-labs/tesseract/internal/taskscli/config"
+	"github.com/hollis-labs/tesseract/internal/taskscli/index"
+	"github.com/hollis-labs/tesseract/internal/taskscli/taskfile"
 )
 
 const dateFormat = "2006-01-02"

@@ -1,6 +1,6 @@
 # Vector Search
 
-Vanta Conduit provides semantic search over stored records via embeddings. This extends the existing deterministic namespace/key/tag-based retrieval with meaning-based ranking.
+Tesseract provides semantic search over stored records via embeddings. This extends the existing deterministic namespace/key/tag-based retrieval with meaning-based ranking.
 
 ## Architecture
 

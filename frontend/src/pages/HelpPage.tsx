@@ -127,7 +127,7 @@ export function HelpPage() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
           <div>
-            <span style={{ color: 'rgb(var(--muted))' }}>Product:</span> Vanta Conduit — Content Memory Service
+            <span style={{ color: 'rgb(var(--muted))' }}>Product:</span> Tesseract — Content Memory Service
           </div>
           <div>
             <span style={{ color: 'rgb(var(--muted))' }}>API Base:</span> <code style={{ fontFamily: 'var(--font-mono)' }}>/v1</code>

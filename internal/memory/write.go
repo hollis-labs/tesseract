@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
+	"github.com/hollis-labs/tesseract/domains"
 )
 
 // Sentinels for the memory write path.
@@ -21,22 +21,22 @@ var (
 type WriteInput struct {
 	// Domain selects the revision's policy bucket. Empty defaults to
 	// domains.Memory to preserve existing call sites.
-	Domain     domains.Domain
-	Namespace  string
-	MemoryKey  string
-	Supersedes string
-	Status     Status
-	Author     Author
-	Trigger    Trigger
-	SessionID  string
-	Origin     Origin
-	Confidence float64
-	Tags       []string
+	Domain         domains.Domain
+	Namespace      string
+	MemoryKey      string
+	Supersedes     string
+	Status         Status
+	Author         Author
+	Trigger        Trigger
+	SessionID      string
+	Origin         Origin
+	Confidence     float64
+	Tags           []string
 	TTL            time.Duration
 	Payload        Payload
 	Facets         Facets
-	Dedup          string        // "none" (default), "semantic"
-	DedupThreshold float64       // optional per-call override; 0 = use store default
+	Dedup          string  // "none" (default), "semantic"
+	DedupThreshold float64 // optional per-call override; 0 = use store default
 }
 
 // WriteRevision creates a new revision in the memory store, handling keyed,

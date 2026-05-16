@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 // handlePromoteDeprecated returns 410 Gone for the old direct-promote endpoint.
@@ -19,15 +19,15 @@ func (s *Server) handlePromoteDeprecated(w http.ResponseWriter, r *http.Request)
 // --- Request ---
 
 type promoteRequestReq struct {
-	Actor           string `json:"actor"`
-	ClientID        string `json:"client_id"`
-	SourceNamespace string `json:"source_namespace"`
-	SourceKey       string `json:"source_key"`
+	Actor            string `json:"actor"`
+	ClientID         string `json:"client_id"`
+	SourceNamespace  string `json:"source_namespace"`
+	SourceKey        string `json:"source_key"`
 	SourceRevisionID string `json:"source_revision_id"`
-	TargetNamespace string `json:"target_namespace"`
-	TargetKey       string `json:"target_key"`
-	Reason          string `json:"reason,omitempty"`
-	ProposedSummary string `json:"proposed_summary,omitempty"`
+	TargetNamespace  string `json:"target_namespace"`
+	TargetKey        string `json:"target_key"`
+	Reason           string `json:"reason,omitempty"`
+	ProposedSummary  string `json:"proposed_summary,omitempty"`
 }
 
 func (s *Server) handlePromoteRequest(w http.ResponseWriter, r *http.Request) {

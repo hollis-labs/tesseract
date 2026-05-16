@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func newKnowledgeTestServer(t *testing.T) *Server {

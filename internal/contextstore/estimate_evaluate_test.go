@@ -134,10 +134,10 @@ func TestEvaluate_LimitOverride(t *testing.T) {
 
 func TestNormalizedScope(t *testing.T) {
 	cases := map[string]string{
-		"":     "head",
-		"head": "head",
-		"all":  "all",
-		"ALL":  "all",
+		"":      "head",
+		"head":  "head",
+		"all":   "all",
+		"ALL":   "all",
 		" all ": "all",
 		"other": "head",
 	}

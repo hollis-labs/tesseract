@@ -13,8 +13,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
 // CLI implements context command handlers.
@@ -904,7 +904,7 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 			"token": token, "id": meta.TokenID, "name": meta.Label,
 			"client_id": meta.ClientID, "scopes": meta.Scopes,
 			"namespace_globs": meta.NamespaceGlobs,
-			"created_at": meta.CreatedAt, "expires_at": meta.ExpiresAt,
+			"created_at":      meta.CreatedAt, "expires_at": meta.ExpiresAt,
 		})
 	default:
 		_, _ = fmt.Fprintln(c.Stdout, "Token created. Copy this value now — it will not be shown again.")
@@ -943,7 +943,7 @@ func (c *CLI) runTokenShow(ctx context.Context, args []string) int {
 			"id": meta.TokenID, "name": meta.Label,
 			"client_id": meta.ClientID, "scopes": meta.Scopes,
 			"namespace_globs": meta.NamespaceGlobs,
-			"created_at": meta.CreatedAt, "expires_at": meta.ExpiresAt,
+			"created_at":      meta.CreatedAt, "expires_at": meta.ExpiresAt,
 			"revoked": meta.RevokedAt != "",
 		})
 	default:
@@ -1748,9 +1748,9 @@ func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
 					"limit":          *maxItems,
 				},
 				"assembly": map[string]any{
-					"include_pins": includePins,
-					"budget":       map[string]any{"max_items": *maxItems, "max_tokens_estimate": *maxTokens},
-					"shape":        map[string]any{"include_payload": true, "payload_mode": "full"},
+					"include_pins":   includePins,
+					"budget":         map[string]any{"max_items": *maxItems, "max_tokens_estimate": *maxTokens},
+					"shape":          map[string]any{"include_payload": true, "payload_mode": "full"},
 					"manifest_level": "summary",
 				},
 			},

@@ -27,7 +27,7 @@ func TestGet_ReturnsStartHereBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(start-here): %v", err)
 	}
-	if !strings.Contains(body, "Vanta") {
+	if !strings.Contains(body, "Tesseract") {
 		t.Errorf("start-here body missing expected content; got %q", body)
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/domains"
+	"github.com/hollis-labs/tesseract/domains"
 )
 
 // memoryTimeFormat is the canonical timestamp format for memory tables.

@@ -1,8 +1,8 @@
 // Package openai is a thin SDK-backed wrapper that satisfies
 // embedcontracts.Embedder and the Complete/Capabilities portion of
-// llmcontracts.Provider for vanta-conduit's embedding + synthesis paths.
+// llmcontracts.Provider for tesseract's embedding + synthesis paths.
 //
-// StreamChat is intentionally not implemented: vanta-conduit's synthesis
+// StreamChat is intentionally not implemented: tesseract's synthesis
 // route (POST /v1/synthesis/ask) is non-streaming, and embedding callers
 // use the Embedder methods. Tools or future-streaming consumers should
 // import an SDK-backed wrapper from a sibling module instead.
@@ -96,7 +96,7 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string, model string) (
 }
 
 // EmbeddingDimensions returns 0 (unknown). The OpenAI API does not expose
-// a synchronous dim lookup; vanta-conduit derives dimensions from the
+// a synchronous dim lookup; tesseract derives dimensions from the
 // first embedding response.
 func (c *Client) EmbeddingDimensions(_ string) int { return 0 }
 
@@ -133,10 +133,10 @@ func (c *Client) Complete(ctx context.Context, req llmtypes.ChatRequest) (string
 	return resp.Choices[0].Message.Content, nil
 }
 
-// StreamChat is intentionally not implemented for vanta-conduit's
+// StreamChat is intentionally not implemented for tesseract's
 // synthesis path. See package doc.
 func (c *Client) StreamChat(_ context.Context, _ llmtypes.ChatRequest) (<-chan llmtypes.StreamEvent, error) {
-	return nil, errors.New("openai: StreamChat is not implemented in vanta-conduit's synthesis wrapper (Complete-only)")
+	return nil, errors.New("openai: StreamChat is not implemented in tesseract's synthesis wrapper (Complete-only)")
 }
 
 // Capabilities reports a fixed default capability set tuned for the

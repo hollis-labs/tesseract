@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	conduit "github.com/hollis-labs/vanta-conduit"
+	conduit "github.com/hollis-labs/tesseract"
 
 	queue "github.com/hollis-labs/go-queue"
 )

@@ -15,15 +15,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/contexttypes"
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
-	feotel "github.com/hollis-labs/go-otel"
-	"github.com/hollis-labs/go-modelsdev/modelsdev"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
+	"github.com/hollis-labs/go-modelsdev/modelsdev"
+	feotel "github.com/hollis-labs/go-otel"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 type contextKey int

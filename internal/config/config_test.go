@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hollis-labs/vanta-conduit/internal/config"
+	"github.com/hollis-labs/tesseract/internal/config"
 )
 
 func TestLoad_FullConfig(t *testing.T) {

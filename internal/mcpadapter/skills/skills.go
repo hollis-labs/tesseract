@@ -1,5 +1,5 @@
 // Package skills embeds agent-facing markdown skills that document
-// Vanta Conduit primitives and features. Served over MCP via the
+// Tesseract primitives and features. Served over MCP via the
 // vanta_skills tool.
 package skills
 

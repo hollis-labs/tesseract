@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/vanta-conduit/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // TestActivationDecay_ReducesAfterTime verifies that after 14 days the activation

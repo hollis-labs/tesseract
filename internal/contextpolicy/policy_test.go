@@ -33,8 +33,8 @@ func TestRegisterGetAndValidatePayload(t *testing.T) {
 func TestTierPolicyAllowedOps(t *testing.T) {
 	e := New()
 	if err := e.RegisterNamespace("app/test/draft/x", "app", "test", map[string]any{
-		"tier":         "draft",
-		"allowed_ops":  []any{"promote.request"},
+		"tier":        "draft",
+		"allowed_ops": []any{"promote.request"},
 	}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestTierPolicyAllowedOps(t *testing.T) {
 func TestTierPolicyMaxBytes(t *testing.T) {
 	e := New()
 	if err := e.RegisterNamespace("user/cache/small", "user", "user", map[string]any{
-		"tier":             "cache",
+		"tier":              "cache",
 		"max_bytes_per_key": 100,
 	}); err != nil {
 		t.Fatalf("register: %v", err)

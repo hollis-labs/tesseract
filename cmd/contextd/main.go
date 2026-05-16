@@ -18,19 +18,19 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	"github.com/hollis-labs/vanta-conduit/internal/config"
-	llmanthropic "github.com/hollis-labs/vanta-conduit/internal/llm/anthropic"
-	llmopenai "github.com/hollis-labs/vanta-conduit/internal/llm/openai"
-	"github.com/hollis-labs/vanta-conduit/internal/contextapi"
-	"github.com/hollis-labs/vanta-conduit/internal/contextcli"
-	"github.com/hollis-labs/vanta-conduit/internal/contextpolicy"
-	"github.com/hollis-labs/vanta-conduit/internal/contextstore"
-	"github.com/hollis-labs/vanta-conduit/internal/knowledge"
-	"github.com/hollis-labs/vanta-conduit/internal/mcpadapter"
-	cplugin "github.com/hollis-labs/vanta-conduit/internal/plugin"
-	"github.com/hollis-labs/vanta-conduit/internal/webui"
 	feotel "github.com/hollis-labs/go-otel"
 	"github.com/hollis-labs/go-otel/propagation"
+	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/contextapi"
+	"github.com/hollis-labs/tesseract/internal/contextcli"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/knowledge"
+	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
+	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
+	"github.com/hollis-labs/tesseract/internal/mcpadapter"
+	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
+	"github.com/hollis-labs/tesseract/internal/webui"
 	_ "modernc.org/sqlite"
 )
 
@@ -65,7 +65,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: cannot determine home directory: " + err.Error() + "\n")
 			return 1
 		}
-		root = filepath.Join(home, ".conduit")
+		root = filepath.Join(home, ".tesseract")
 	}
 
 	conduitCfg, cfgErr := config.Load(filepath.Join(root, "config.yaml"))
@@ -229,7 +229,7 @@ func createEmbedder(cfg config.Config) embedcontracts.Embedder {
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
-	_, _ = stderr.WriteString("Vanta Conduit MCP adapter starting (stdio)\n")
+	_, _ = stderr.WriteString("Tesseract MCP adapter starting (stdio)\n")
 
 	mem, err := setupMemorySubsystem(ctx, store, stderr, root, conduitCfg)
 	if err != nil {
@@ -317,7 +317,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	mux.Handle("/", webui.Handler())
 
 	httpServer := &http.Server{Addr: cfg.Addr, Handler: propagation.HTTPMiddleware(mux)}
-	_, _ = stderr.WriteString("Vanta Conduit — Content Memory Service\n")
+	_, _ = stderr.WriteString("Tesseract — Content Memory Service\n")
 	_, _ = stderr.WriteString("  API: http://" + cfg.Addr + "/v1/\n")
 	_, _ = stderr.WriteString("  UI:  http://" + cfg.Addr + "/\n")
 	errCh := make(chan error, 1)
