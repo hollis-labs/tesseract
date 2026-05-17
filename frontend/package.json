@@ -10,20 +10,23 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hollis-labs/sysop-ui": "github:hollis-labs/sysop-ui#v0.2.0",
     "@tiptap/react": "^3.20.0",
     "@tiptap/starter-kit": "^3.20.0",
     "lucide-react": "^0.546.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "sonner": "^2.0.7",
     "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
+    "@tailwindcss/vite": "^4.0.0",
     "@tsconfig/strictest": "^2.0.8",
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "tailwindcss": "^4.0.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.8"
   }

@@ -1,3 +1,15 @@
+/* Sysop UI kit — Tailwind v4 + the canonical [data-theme] palette.
+   Imported first so the kit's @layer base/components sit *below*
+   Tesseract's own (unlayered) HUD CSS in the cascade. That keeps the
+   existing pages visually stable while only the app shell adopts the
+   kit; page content migrates in a later pass. */
+@import "tailwindcss";
+@import "@hollis-labs/sysop-ui/theme.css";
+
+/* Tailwind v4 scans the kit's built output so the utility classes baked
+   into its components (bg-panel, text-status-*, …) are generated here. */
+@source "../node_modules/@hollis-labs/sysop-ui/dist";
+
 /* ── Conduit HUD Design Tokens ──────────────────────────────────────── */
 :root {
   /* Dark monochrome base (inherited from Hadron) */
@@ -22,11 +34,10 @@
   --radius-lg: 12px;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* box-sizing + margin/padding resets now come from Tailwind's Preflight
+   (pulled in by the kit's theme.css). A universal `* { padding: 0 }` is
+   deliberately NOT redeclared here — being unlayered it would outrank
+   the kit shell components' Tailwind padding utilities. */
 
 body {
   font-family: var(--font-body);

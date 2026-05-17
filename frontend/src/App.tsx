@@ -1,11 +1,12 @@
+import { NavRail, type NavRailItem, PageHeader, ThemeSwitcher } from "@hollis-labs/sysop-ui";
+import { Activity, Boxes } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { getHealth } from "./api/client";
 import type { BrokerPlanResponse, HealthStatus } from "./api/types";
 import { AppFooter } from "./components/layout/AppFooter";
-import { AppHeader } from "./components/layout/AppHeader";
-import type { NavPage } from "./components/layout/AppNav";
-import { AppNav } from "./components/layout/AppNav";
+import { NAV_ITEMS, type NavPage, PAGE_PARENT, PAGE_TITLES } from "./components/layout/nav";
+import { isDemoMode } from "./demo/data";
 import { usePoll } from "./hooks/usePoll";
 import { AuditPage } from "./pages/AuditPage";
 import { AuthTokensPage } from "./pages/AuthTokensPage";
@@ -16,12 +17,12 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ExplorerPage } from "./pages/ExplorerPage";
 import { HelpPage } from "./pages/HelpPage";
 import { KeyHistoryPage } from "./pages/KeyHistoryPage";
+import { KnowledgeWritePage } from "./pages/KnowledgeWritePage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { MemoryDetailPage } from "./pages/MemoryDetailPage";
 import { MemoryKnowledgeBrowserPage } from "./pages/MemoryKnowledgeBrowserPage";
 import { MemoryReviewPage } from "./pages/MemoryReviewPage";
 import { MemoryWritePage } from "./pages/MemoryWritePage";
-import { KnowledgeWritePage } from "./pages/KnowledgeWritePage";
 import { NamespaceDetailPage } from "./pages/NamespaceDetailPage";
 import { PacketBuilderPage } from "./pages/PacketBuilderPage";
 import { PolicyManagerPage } from "./pages/PolicyManagerPage";
@@ -31,33 +32,6 @@ import { RecordDetailPage } from "./pages/RecordDetailPage";
 import { SearchResearchPage } from "./pages/SearchResearchPage";
 import { ViewBuilderPage } from "./pages/ViewBuilderPage";
 import { WriteRecordPage } from "./pages/WriteRecordPage";
-
-const PAGE_TITLES: Record<NavPage, string> = {
-  dashboard: "Dashboard",
-  explorer: "Context Explorer",
-  recall: "Recall",
-  memoryKnowledgeBrowser: "Memory & Knowledge Browser",
-  memoryDetail: "Memory / Knowledge Revision",
-  searchResearch: "Search & Research",
-  namespaceDetail: "Namespace Detail",
-  recordDetail: "Record Detail",
-  keyHistory: "Key History",
-  compareRevisions: "Compare Revisions",
-  viewBuilder: "View Builder",
-  packetBuilder: "Packet Builder",
-  writeRecord: "Write Record",
-  memoryReview: "Memory Review",
-  memoryWrite: "Memory Write",
-  knowledgeWrite: "Knowledge Write",
-  promote: "Promote",
-  policyManager: "Policy Manager",
-  audit: "Audit & Ops",
-  authTokens: "Auth & Tokens",
-  consistency: "Consistency",
-  maintenance: "Maintenance",
-  broker: "Broker",
-  help: "Help",
-};
 
 // Navigation context for detail pages
 interface NavContext {
@@ -206,153 +180,192 @@ export default function App() {
     writeRouteToHash(page, ctx);
   }, [page, ctx]);
 
+  // The kit `NavRail` is a flat icon rail. Detail pages highlight their
+  // parent rail item via PAGE_PARENT.
+  const activePage = PAGE_PARENT[page] ?? page;
+  const navItems: NavRailItem[] = NAV_ITEMS.map((item) => ({
+    key: item.page,
+    label: item.label,
+    icon: item.icon,
+    active: activePage === item.page,
+    onSelect: () => handleNav(item.page),
+    ...(item.footer ? { footer: true } : {}),
+  }));
+
+  const status = health?.status ?? "unknown";
+  const dotClass = status === "ready" ? "ok" : status === "degraded" ? "warn" : "idle";
+
   return (
-    <div className="app-shell">
-      <AppHeader pageTitle={PAGE_TITLES[page]} health={health} />
+    <div className="flex h-dvh w-dvw flex-col overflow-hidden bg-bg text-text">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
 
-      <div className="app-body">
-        <AppNav current={page} onNavigate={handleNav} />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <NavRail items={navItems} logo={<Boxes className="h-4 w-4" />} logoLabel="Tesseract" />
 
-        <main className="app-content" id="main-content" role="main">
-          {/* ── Sprint 2: Read paths ─────────────────── */}
-          {page === "explorer" && (
-            <ExplorerPage
-              onOpenNamespace={(ns) => navigate("namespaceDetail", { namespace: ns })}
-              onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-            />
-          )}
-          {page === "recall" && (
-            <RecallPage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-            />
-          )}
-          {page === "memoryKnowledgeBrowser" && (
-            <MemoryKnowledgeBrowserPage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-            />
-          )}
-          {page === "memoryDetail" && ctx.namespace && ctx.key && ctx.domain && (
-            <MemoryDetailPage
-              domain={ctx.domain}
-              namespace={ctx.namespace}
-              memoryKey={ctx.key}
-              onBack={() => handleNav("memoryKnowledgeBrowser")}
-            />
-          )}
-          {page === "searchResearch" && (
-            <SearchResearchPage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-            />
-          )}
-          {page === "namespaceDetail" && ctx.namespace && (
-            <NamespaceDetailPage
-              namespace={ctx.namespace}
-              onBack={() => handleNav("explorer")}
-              onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-            />
-          )}
-          {page === "recordDetail" && ctx.namespace && ctx.key && (
-            <RecordDetailPage
-              namespace={ctx.namespace}
-              recordKey={ctx.key}
-              onBack={() => navigate("namespaceDetail", { namespace: ctx.namespace! })}
-              onOpenHistory={(ns, key) => navigate("keyHistory", { namespace: ns, key })}
-            />
-          )}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <PageHeader title={PAGE_TITLES[page]}>
+            {isDemoMode() && (
+              <span className="hud-badge-warn" style={{ fontSize: "0.6rem" }}>
+                DEMO
+              </span>
+            )}
+            <span className="app-header-status">
+              <span className={`status-dot ${dotClass}`} />
+              <Activity size={13} />
+              <span>{status}</span>
+            </span>
+            <ThemeSwitcher />
+          </PageHeader>
 
-          {page === "keyHistory" && ctx.namespace && ctx.key && (
-            <KeyHistoryPage
-              namespace={ctx.namespace}
-              recordKey={ctx.key}
-              onBack={() => navigate("recordDetail", { namespace: ctx.namespace!, key: ctx.key! })}
-              onCompare={(ns, key, a, b) =>
-                navigate("compareRevisions", { namespace: ns, key, revisionA: a, revisionB: b })
-              }
-            />
-          )}
-          {page === "compareRevisions" &&
-            ctx.namespace &&
-            ctx.key &&
-            ctx.revisionA != null &&
-            ctx.revisionB != null && (
-              <CompareRevisionsPage
+          <main className="app-content min-h-0" id="main-content">
+            {/* ── Sprint 2: Read paths ─────────────────── */}
+            {page === "explorer" && (
+              <ExplorerPage
+                onOpenNamespace={(ns) => navigate("namespaceDetail", { namespace: ns })}
+                onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+              />
+            )}
+            {page === "recall" && (
+              <RecallPage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+              />
+            )}
+            {page === "memoryKnowledgeBrowser" && (
+              <MemoryKnowledgeBrowserPage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+              />
+            )}
+            {page === "memoryDetail" && ctx.namespace && ctx.key && ctx.domain && (
+              <MemoryDetailPage
+                domain={ctx.domain}
+                namespace={ctx.namespace}
+                memoryKey={ctx.key}
+                onBack={() => handleNav("memoryKnowledgeBrowser")}
+              />
+            )}
+            {page === "searchResearch" && (
+              <SearchResearchPage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+              />
+            )}
+            {page === "namespaceDetail" && ctx.namespace && (
+              <NamespaceDetailPage
+                namespace={ctx.namespace}
+                onBack={() => handleNav("explorer")}
+                onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+              />
+            )}
+            {page === "recordDetail" && ctx.namespace && ctx.key && (
+              <RecordDetailPage
                 namespace={ctx.namespace}
                 recordKey={ctx.key}
-                revisionA={ctx.revisionA}
-                revisionB={ctx.revisionB}
-                onBack={() => navigate("keyHistory", { namespace: ctx.namespace!, key: ctx.key! })}
+                onBack={() => navigate("namespaceDetail", { namespace: ctx.namespace! })}
+                onOpenHistory={(ns, key) => navigate("keyHistory", { namespace: ns, key })}
               />
             )}
 
-          {/* ── Dashboard ──────────────────────────── */}
-          {page === "dashboard" && <DashboardPage health={health} onNavigate={navigate} />}
-          {page === "viewBuilder" && (
-            <ViewBuilderPage
-              onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-            />
-          )}
-          {page === "packetBuilder" && (
-            <PacketBuilderPage
-              onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-            />
-          )}
-          {page === "writeRecord" && (
-            <WriteRecordPage
-              onWritten={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
-              onOpenPromote={() => navigate("promote")}
-            />
-          )}
-          {page === "memoryReview" && (
-            <MemoryReviewPage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-              onOpenWrite={() => navigate("memoryWrite")}
-              initialPreset={ctx.reviewPreset}
-            />
-          )}
-          {page === "memoryWrite" && (
-            <MemoryWritePage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-              onOpenReview={() => navigate("memoryReview")}
-            />
-          )}
-          {page === "knowledgeWrite" && (
-            <KnowledgeWritePage
-              onOpenItem={(d, ns, key) =>
-                navigate("memoryDetail", { domain: d, namespace: ns, key })
-              }
-            />
-          )}
-          {page === "promote" && <PromotePage onBack={() => handleNav("writeRecord")} />}
-          {page === "policyManager" && <PolicyManagerPage />}
-          {page === "audit" && (
-            <AuditPage
-              onOpenItem={(domain, ns, key) => {
-                if (domain === "context") {
-                  navigate("recordDetail", { namespace: ns, key });
-                } else {
-                  navigate("memoryDetail", { domain, namespace: ns, key });
+            {page === "keyHistory" && ctx.namespace && ctx.key && (
+              <KeyHistoryPage
+                namespace={ctx.namespace}
+                recordKey={ctx.key}
+                onBack={() =>
+                  navigate("recordDetail", { namespace: ctx.namespace!, key: ctx.key! })
                 }
-              }}
-            />
-          )}
-          {page === "authTokens" && <AuthTokensPage />}
-          {page === "consistency" && <ConsistencyPage />}
-          {page === "maintenance" && <MaintenancePage />}
-          {page === "broker" && (
-            <BrokerPage onExecutePlan={(_plan: BrokerPlanResponse) => handleNav("packetBuilder")} />
-          )}
-          {page === "help" && <HelpPage />}
-        </main>
+                onCompare={(ns, key, a, b) =>
+                  navigate("compareRevisions", { namespace: ns, key, revisionA: a, revisionB: b })
+                }
+              />
+            )}
+            {page === "compareRevisions" &&
+              ctx.namespace &&
+              ctx.key &&
+              ctx.revisionA != null &&
+              ctx.revisionB != null && (
+                <CompareRevisionsPage
+                  namespace={ctx.namespace}
+                  recordKey={ctx.key}
+                  revisionA={ctx.revisionA}
+                  revisionB={ctx.revisionB}
+                  onBack={() =>
+                    navigate("keyHistory", { namespace: ctx.namespace!, key: ctx.key! })
+                  }
+                />
+              )}
+
+            {/* ── Dashboard ──────────────────────────── */}
+            {page === "dashboard" && <DashboardPage health={health} onNavigate={navigate} />}
+            {page === "viewBuilder" && (
+              <ViewBuilderPage
+                onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+              />
+            )}
+            {page === "packetBuilder" && (
+              <PacketBuilderPage
+                onOpenRecord={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+              />
+            )}
+            {page === "writeRecord" && (
+              <WriteRecordPage
+                onWritten={(ns, key) => navigate("recordDetail", { namespace: ns, key })}
+                onOpenPromote={() => navigate("promote")}
+              />
+            )}
+            {page === "memoryReview" && (
+              <MemoryReviewPage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+                onOpenWrite={() => navigate("memoryWrite")}
+                initialPreset={ctx.reviewPreset}
+              />
+            )}
+            {page === "memoryWrite" && (
+              <MemoryWritePage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+                onOpenReview={() => navigate("memoryReview")}
+              />
+            )}
+            {page === "knowledgeWrite" && (
+              <KnowledgeWritePage
+                onOpenItem={(d, ns, key) =>
+                  navigate("memoryDetail", { domain: d, namespace: ns, key })
+                }
+              />
+            )}
+            {page === "promote" && <PromotePage onBack={() => handleNav("writeRecord")} />}
+            {page === "policyManager" && <PolicyManagerPage />}
+            {page === "audit" && (
+              <AuditPage
+                onOpenItem={(domain, ns, key) => {
+                  if (domain === "context") {
+                    navigate("recordDetail", { namespace: ns, key });
+                  } else {
+                    navigate("memoryDetail", { domain, namespace: ns, key });
+                  }
+                }}
+              />
+            )}
+            {page === "authTokens" && <AuthTokensPage />}
+            {page === "consistency" && <ConsistencyPage />}
+            {page === "maintenance" && <MaintenancePage />}
+            {page === "broker" && (
+              <BrokerPage
+                onExecutePlan={(_plan: BrokerPlanResponse) => handleNav("packetBuilder")}
+              />
+            )}
+            {page === "help" && <HelpPage />}
+          </main>
+        </div>
       </div>
 
       <AppFooter />

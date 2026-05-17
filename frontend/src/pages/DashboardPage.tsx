@@ -32,7 +32,7 @@ import type {
   MetricsResponse,
   NamespaceListResponse,
 } from "../api/types";
-import type { NavPage } from "../components/layout/AppNav";
+import type { NavPage } from "../components/layout/nav";
 
 interface Props {
   health: HealthStatus | null;
