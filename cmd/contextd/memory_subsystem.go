@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/hollis-labs/go-apppaths/paths"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-queue/driver/sqlite"
 	conduit "github.com/hollis-labs/tesseract"
@@ -42,8 +43,11 @@ func (m *memorySubsystem) Close() error {
 // Returns nil subsystem when conduit configuration cannot produce an
 // embedder AND no queue is strictly required — but we always wire the
 // queue so the embed path is consistent.
-func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, root string, conduitCfg config.Config) (*memorySubsystem, error) {
-	queueDBDir := filepath.Join(root, "data")
+func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, conduitCfg config.Config) (*memorySubsystem, error) {
+	// queue.db is STATE (the embed-job queue), so it lands under the
+	// go-apppaths StateDir alongside records/ — not under DataDir with the
+	// main DB. CW-20260517-0066.
+	queueDBDir := layout.StateDir()
 	if err := os.MkdirAll(queueDBDir, 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir queue db dir: %w", err)
 	}

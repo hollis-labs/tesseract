@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hollis-labs/go-apppaths/paths"
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
@@ -58,26 +59,32 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		defer shutdown(ctx)
 	}
 
-	root := os.Getenv("CONTEXTD_ROOT")
-	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			_, _ = stderr.WriteString("error: cannot determine home directory: " + err.Error() + "\n")
-			return 1
-		}
-		root = filepath.Join(home, ".tesseract")
+	// CONTEXTD_ROOT deprecation shim — maps the retired single-root env var
+	// onto $XDG_*_HOME before any path resolution. See contextd_root_shim.go.
+	applyContextdRootShim(stderr)
+
+	// `path` introspects the resolved layout without materializing directories
+	// or opening the store — dispatch it before layout resolution.
+	if len(args) > 0 && args[0] == "path" {
+		return runPath(stdout, stderr)
 	}
 
-	conduitCfg, cfgErr := config.Load(filepath.Join(root, "config.yaml"))
+	layout, err := config.ResolveLayout()
+	if err != nil {
+		_, _ = stderr.WriteString("error: resolve layout: " + err.Error() + "\n")
+		return 1
+	}
+
+	conduitCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
 		conduitCfg = config.Defaults()
 	}
 
 	store, err := contextstore.Open(ctx, contextstore.Config{
-		RootDir:    root,
-		RecordsDir: filepath.Join(root, "data", "records"),
-		DBPath:     filepath.Join(root, "data", "index", "context.db"),
+		RootDir:    layout.DataDir(),
+		RecordsDir: filepath.Join(layout.StateDir(), "records"),
+		DBPath:     layout.MainDB(),
 	})
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
@@ -91,7 +98,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runServe(ctx, store, stderr, cfg, root, conduitCfg)
+		return runServe(ctx, store, stderr, cfg, layout, conduitCfg)
 	}
 
 	if len(args) > 0 && args[0] == "plugin" {
@@ -104,7 +111,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runMCP(ctx, store, stderr, token, root, conduitCfg)
+		return runMCP(ctx, store, stderr, token, layout, conduitCfg)
 	}
 
 	if len(args) > 0 && args[0] == "backfill-embeddings" {
@@ -228,10 +235,10 @@ func createEmbedder(cfg config.Config) embedcontracts.Embedder {
 	return llmopenai.New("")
 }
 
-func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, root string, conduitCfg config.Config) int {
+func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, conduitCfg config.Config) int {
 	_, _ = stderr.WriteString("Tesseract MCP adapter starting (stdio)\n")
 
-	mem, err := setupMemorySubsystem(ctx, store, stderr, root, conduitCfg)
+	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, conduitCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -252,8 +259,8 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	return 0
 }
 
-func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, root string, conduitCfg config.Config) int {
-	mem, err := setupMemorySubsystem(ctx, store, stderr, root, conduitCfg)
+func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, layout paths.Layout, conduitCfg config.Config) int {
+	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, conduitCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1

@@ -8,9 +8,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/go-apppaths/paths"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
+
+// hermeticLayout isolates contextd's go-apppaths resolution into a per-test
+// temp directory by pinning all four $XDG_*_HOME roots and clearing the
+// CONTEXTD_ROOT shim input. Without this, a run()/runServe-based test would
+// resolve the real ~/.local/state/tesseract/queue.db and collide with the
+// live daemon and the per-agent MCP servers. CW-20260517-0066.
+func hermeticLayout(t *testing.T) paths.Layout {
+	t.Helper()
+	base := t.TempDir()
+	t.Setenv("CONTEXTD_ROOT", "")
+	t.Setenv("XDG_DATA_HOME", filepath.Join(base, "data"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(base, "state"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(base, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(base, "config"))
+	layout, err := config.ResolveLayout()
+	if err != nil {
+		t.Fatalf("resolve hermetic layout: %v", err)
+	}
+	return layout
+}
 
 func TestParseServeArgsDefaults(t *testing.T) {
 	cfg, err := parseServeArgs(nil)
@@ -79,9 +100,7 @@ func TestParseServeArgsMutuallyExclusiveAuthModes(t *testing.T) {
 }
 
 func TestRunServeFlagValidationPath(t *testing.T) {
-	oldRoot := os.Getenv("CONTEXTD_ROOT")
-	t.Cleanup(func() { _ = os.Setenv("CONTEXTD_ROOT", oldRoot) })
-	_ = os.Setenv("CONTEXTD_ROOT", t.TempDir())
+	hermeticLayout(t)
 
 	stdout, err := os.CreateTemp(t.TempDir(), "stdout-*.log")
 	if err != nil {
@@ -111,10 +130,7 @@ func TestRunServeFlagValidationPath(t *testing.T) {
 }
 
 func TestRunServeManagedAuthRequiresActiveToken(t *testing.T) {
-	root := t.TempDir()
-	oldRoot := os.Getenv("CONTEXTD_ROOT")
-	t.Cleanup(func() { _ = os.Setenv("CONTEXTD_ROOT", oldRoot) })
-	_ = os.Setenv("CONTEXTD_ROOT", root)
+	hermeticLayout(t)
 
 	stdout, err := os.CreateTemp(t.TempDir(), "stdout-*.log")
 	if err != nil {
@@ -144,11 +160,11 @@ func TestRunServeManagedAuthRequiresActiveToken(t *testing.T) {
 }
 
 func TestRunServeGracefulShutdownOnContextCancel(t *testing.T) {
-	root := t.TempDir()
+	layout := hermeticLayout(t)
 	s, err := contextstore.Open(context.Background(), contextstore.Config{
-		RootDir:    root,
-		RecordsDir: filepath.Join(root, "data", "records"),
-		DBPath:     filepath.Join(root, "data", "index", "context.db"),
+		RootDir:    layout.DataDir(),
+		RecordsDir: filepath.Join(layout.StateDir(), "records"),
+		DBPath:     layout.MainDB(),
 	})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -167,7 +183,7 @@ func TestRunServeGracefulShutdownOnContextCancel(t *testing.T) {
 		done <- runServe(ctx, s, stderr, serveConfig{
 			Addr:            "127.0.0.1:0",
 			ShutdownTimeout: 2 * time.Second,
-		}, t.TempDir(), config.Defaults())
+		}, layout, config.Defaults())
 	}()
 	time.Sleep(50 * time.Millisecond)
 	cancel()

@@ -10,6 +10,11 @@ ITERATION ?=
 RUN_DATE ?= $(shell date +%F)
 PROFILE ?= orchestrator
 RUNLOG_OUT ?=
+# CONTEXTD_ROOT isolates the contract-test targets onto a throwaway root.
+# Post go-apppaths migration (CW-20260517-0066) it is a deprecated one-release
+# shim — contextd maps it onto $XDG_*_HOME so the whole layout still nests
+# under it. When the shim is removed, switch these targets to setting
+# $XDG_DATA_HOME/$XDG_STATE_HOME/$XDG_CONFIG_HOME directly.
 CONTEXTD_ROOT ?= .volon/tmp/contextd
 SUITE ?= all
 

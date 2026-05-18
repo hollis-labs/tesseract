@@ -73,7 +73,9 @@ make smoke           # HTTP smoke test against a running daemon
 make e2e-local       # local end-to-end run
 ```
 
-Run the daemon (data dir defaults to `~/.tesseract`, override with `CONTEXTD_ROOT`):
+Run the daemon (paths resolve via go-apppaths / XDG — run `contextd path` to
+see the resolved data, state, and config locations; `CONTEXTD_ROOT` is a
+deprecated one-release compatibility shim):
 
 ```bash
 ./contextd serve --addr :8089
