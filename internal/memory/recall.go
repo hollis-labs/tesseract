@@ -219,22 +219,16 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		results = results[:in.Limit]
 	}
 
-	// 7. Optional per-call reranker pass runs first so the final
-	// returned set — after possible RerankerTopK truncation or reranker
-	// drops — is the one reinforced. Otherwise reinforcement would
-	// bump access_count on memories the caller never saw.
+	// 7. Optional per-call reranker pass to reorder the final result set.
+	//
+	// Recall does NOT reinforce activation/access_count: being returned by
+	// a search is the system's guess, not a deliberate read. Reinforcement
+	// happens only on the get paths (memory_get / memory_get_revision) —
+	// see reinforceMemoryIDs in activation.go.
 	results, err = s.applyReranker(ctx, in, results)
 	if err != nil {
 		return nil, err
 	}
-
-	// 8. Best-effort reinforce access for every ranking mode. Widened
-	// from activation-only (EPIC-20260414-19124, TASK-005) so dense-only
-	// or chronological queries don't bypass activation reinforcement —
-	// otherwise hot memories would stop decaying when agents switch to
-	// semantic recall. Relevance mode reinforces inside relevanceRecall
-	// and short-circuits before this point.
-	_ = s.reinforceAccess(ctx, results)
 
 	return results, nil
 }

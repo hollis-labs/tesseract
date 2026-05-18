@@ -52,6 +52,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you have a specific key and want its current value.\n"+
 				"• **Don't use this for:** revision history (`memory_history`), ranked recall (`memory_recall`), or a specific revision by ID (`memory_get_revision`).\n"+
+				"• **Side effect:** reinforces the memory's activation/access_count — a deliberate read counts as use, unlike `memory_recall`.\n"+
 				"• **Deeper:** `vanta_skills memory`.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace (e.g. user/chrispian/memory)")),
@@ -204,7 +205,8 @@ func (a *Adapter) handleMemoryGet(ctx context.Context, req mcp.CallToolRequest) 
 	namespace := req.GetString("namespace", "")
 	memoryKey := req.GetString("memory_key", "")
 
-	rev, err := a.MemoryStore.GetCurrent(ctx, namespace, memoryKey)
+	// Deliberate read: GetCurrentReinforced bumps activation/access_count.
+	rev, err := a.MemoryStore.GetCurrentReinforced(ctx, namespace, memoryKey)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			return toolError("not_found", err.Error()), nil

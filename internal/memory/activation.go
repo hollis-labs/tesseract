@@ -6,11 +6,14 @@ import (
 	"time"
 )
 
-// reinforceAccess updates activation + last_accessed_at + access_count for
-// every memory in results. Called from Recall after a successful activation-
-// ranked query. Best-effort: errors here do not fail the recall.
-func (s *Store) reinforceAccess(ctx context.Context, results []RecallResult) error {
-	if len(results) == 0 {
+// reinforceMemoryIDs is the shared activation-reinforcement primitive: it
+// bumps activation, access_count, and last_accessed_at on memory_state for
+// every memory_id in the set. Reinforcement is a "deliberate read" signal —
+// it must be driven only by the get paths (memory_get / memory_get_revision),
+// never by search/recall (which would let the system's own guesses
+// self-reinforce). Best-effort: errors here do not fail the caller's read.
+func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) error {
+	if len(memoryIDs) == 0 {
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -33,10 +36,19 @@ func (s *Store) reinforceAccess(ctx context.Context, results []RecallResult) err
 	}
 	defer func() { _ = stmt.Close() }()
 
-	for _, r := range results {
-		if _, err := stmt.ExecContext(ctx, now, r.Revision.MemoryID); err != nil {
-			return fmt.Errorf("reinforce %s: %w", r.Revision.MemoryID, err)
+	for _, id := range memoryIDs {
+		if _, err := stmt.ExecContext(ctx, now, id); err != nil {
+			return fmt.Errorf("reinforce %s: %w", id, err)
 		}
 	}
 	return tx.Commit()
+}
+
+// reinforceAccess reinforces activation + last_accessed_at + access_count for
+// a single deliberately-read memory. Best-effort: errors do not fail the read.
+func (s *Store) reinforceAccess(ctx context.Context, memoryID string) error {
+	if memoryID == "" {
+		return nil
+	}
+	return s.reinforceMemoryIDs(ctx, []string{memoryID})
 }
