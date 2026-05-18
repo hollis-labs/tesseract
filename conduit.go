@@ -17,7 +17,24 @@ import (
 
 // Config holds the top-level configuration for a Conduit instance.
 type Config struct {
+	// RootDir is the base directory of the conduit data layout. When DBPath
+	// and RecordsDir are empty, the main database and JSON record tree are
+	// derived under RootDir/data/ — the layout embedded consumers (nanite,
+	// tesseract lib v0.7.0) rely on. RootDir is always required.
 	RootDir string
+
+	// DBPath, when set, is the explicit path to the main context database,
+	// overriding the RootDir/data/index/context.db derivation.
+	//
+	// RecordsDir, when set, is the explicit JSON record tree, overriding
+	// RootDir/data/records.
+	//
+	// These let a go-apppaths-resolved caller (cmd/contextd, cmd/smoke) point
+	// the library at the XDG layout without changing default behavior for
+	// RootDir-only consumers. Added for the go-apppaths migration
+	// (CW-20260517-0066).
+	DBPath     string
+	RecordsDir string
 }
 
 // Option is a functional option for Open.
@@ -85,9 +102,15 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 	}
 
 	dataDir := filepath.Join(cfg.RootDir, "data")
-	recordsDir := filepath.Join(dataDir, "records")
-	indexDir := filepath.Join(dataDir, "index")
-	for _, dir := range []string{recordsDir, indexDir} {
+	recordsDir := cfg.RecordsDir
+	if recordsDir == "" {
+		recordsDir = filepath.Join(dataDir, "records")
+	}
+	dbPath := cfg.DBPath
+	if dbPath == "" {
+		dbPath = filepath.Join(dataDir, "index", "context.db")
+	}
+	for _, dir := range []string{recordsDir, filepath.Dir(dbPath)} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return nil, err
 		}
@@ -96,7 +119,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Conduit, error) {
 	store, err := contextstore.Open(ctx, contextstore.Config{
 		RootDir:    cfg.RootDir,
 		RecordsDir: recordsDir,
-		DBPath:     filepath.Join(indexDir, "context.db"),
+		DBPath:     dbPath,
 	})
 	if err != nil {
 		return nil, err

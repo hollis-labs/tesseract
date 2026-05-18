@@ -15,8 +15,8 @@ catalog:
 locations:
   repo: ~/dev/hollis-labs/apps/tesseract
   agent_os_tracking: ~/dev/agent-os/workspaces/execution/tesseract
-  state_dir: ~/.tesseract
-  catalog: null                      # no project-local catalog dir; override CONTEXTD_ROOT changes state_dir
+  state_dir: ~/.local/state/tesseract # go-apppaths XDG state root (queue.db, records/); main DB lives under ~/.local/share/tesseract — run `contextd path`
+  catalog: null                      # no project-local catalog dir; paths resolve via go-apppaths ($XDG_*_HOME); CONTEXTD_ROOT is a deprecated shim
   artifacts: ~/.cerberus/apps/tesseract
 build:
   authority: cerberus
@@ -40,7 +40,7 @@ usage_examples:
     note: Compiles the frontend (npm) then `go build -o contextd ./cmd/contextd/`.
   - intent: Run the context/memory daemon locally
     command: ./contextd serve --addr :8089
-    note: Data dir defaults to ~/.tesseract; override with CONTEXTD_ROOT.
+    note: Paths resolve via go-apppaths (XDG); run `contextd path` to see them. CONTEXTD_ROOT is a deprecated one-release shim.
   - intent: Query context/memory as an agent
     command: use mcp__vanta__* MCP tools
     note: MCP server is registered under the name "vanta"; see docs/MCP_TOOLS.md.

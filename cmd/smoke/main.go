@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"time"
 
 	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
 
 	conduit "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/internal/config"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	_ "modernc.org/sqlite"
@@ -20,10 +20,14 @@ import (
 func main() {
 	ctx := context.Background()
 
-	home, _ := os.UserHomeDir()
-	root := filepath.Join(home, ".tesseract")
+	// Resolve the go-apppaths layout so the smoke harness targets the same
+	// XDG locations as the contextd daemon (CW-20260517-0066).
+	layout, err := config.ResolveLayout()
+	if err != nil {
+		log.Fatalf("resolve layout: %v", err)
+	}
 
-	queueDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", filepath.Join(root, "data", "queue.db"))
+	queueDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", filepath.Join(layout.StateDir(), "queue.db"))
 	qdb, err := sql.Open("sqlite", queueDSN)
 	if err != nil {
 		log.Fatalf("open queue db: %v", err)
@@ -34,7 +38,11 @@ func main() {
 		log.Fatalf("queue driver: %v", err)
 	}
 
-	c, err := conduit.Open(ctx, conduit.Config{RootDir: root},
+	c, err := conduit.Open(ctx, conduit.Config{
+		RootDir:    layout.DataDir(),
+		DBPath:     layout.MainDB(),
+		RecordsDir: filepath.Join(layout.StateDir(), "records"),
+	},
 		conduit.WithQueue(q),
 		conduit.WithEmbedder(llmopenai.New("")),
 		conduit.WithEmbeddingModel("text-embedding-3-large"),
