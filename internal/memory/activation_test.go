@@ -7,7 +7,10 @@ import (
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-func TestReinforceAccessIncrementsActivation(t *testing.T) {
+// TestGetCurrentReinforcedIncrementsActivation verifies that a deliberate
+// read via GetCurrentReinforced (memory_get) reinforces activation,
+// access_count, and last_accessed_at.
+func TestGetCurrentReinforcedIncrementsActivation(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -18,12 +21,8 @@ func TestReinforceAccessIncrementsActivation(t *testing.T) {
 		t.Fatalf("initial activation: %v", st1.Activation)
 	}
 
-	// Trigger a recall with activation ranking. This should reinforce.
-	_, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
-		Ranking:    memory.RankingActivation,
-	})
-	if err != nil {
+	// A deliberate head read should reinforce.
+	if _, err := ms.GetCurrentReinforced(ctx, rev.Namespace, rev.MemoryKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -39,18 +38,46 @@ func TestReinforceAccessIncrementsActivation(t *testing.T) {
 	}
 }
 
+// TestGetRevisionByIDReinforcedIncrementsActivation verifies that pulling a
+// specific revision by ID (memory_get_revision) reinforces the parent memory.
+func TestGetRevisionByIDReinforcedIncrementsActivation(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
+	st1, _ := ms.GetState(ctx, rev.MemoryID)
+
+	if _, err := ms.GetRevisionByIDReinforced(ctx, rev.RevisionID); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, _ := ms.GetState(ctx, rev.MemoryID)
+	if st2.Activation <= st1.Activation {
+		t.Errorf("expected activation to increase, got %v -> %v", st1.Activation, st2.Activation)
+	}
+	if st2.AccessCount != 1 {
+		t.Errorf("expected access_count=1, got %d", st2.AccessCount)
+	}
+	if st2.LastAccessedAt == nil {
+		t.Error("expected last_accessed_at to be set")
+	}
+}
+
+// TestReinforcementDiminishingReturns verifies the diminishing-returns
+// formula keeps activation bounded under repeated deliberate reads.
 func TestReinforcementDiminishingReturns(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
 	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
 
-	// Reinforce 100 times; activation should stay below 2.5 (rough cap).
+	// Reinforce 100 times via deliberate reads; activation should stay
+	// below 2.5 (rough cap) but grow above its 1.0 starting point.
 	for i := 0; i < 100; i++ {
-		_, _ = ms.Recall(ctx, memory.RecallInput{
-			Namespaces: []string{"user/chrispian/memory"},
-			Ranking:    memory.RankingActivation,
-		})
+		if _, err := ms.GetCurrentReinforced(ctx, rev.Namespace, rev.MemoryKey); err != nil {
+			t.Fatal(err)
+		}
 	}
 	st, _ := ms.GetState(ctx, rev.MemoryID)
 	if st.Activation > 2.5 {
@@ -61,11 +88,42 @@ func TestReinforcementDiminishingReturns(t *testing.T) {
 	}
 }
 
-// TestReinforceAccessAppliesToSimilarityRanking widens the reinforcement
-// invariant beyond activation mode: dense-only queries must also count
-// as access so hot memories don't stop decaying when agents switch to
-// semantic recall (EPIC-20260414-19124, TASK-005).
-func TestReinforceAccessAppliesToSimilarityRanking(t *testing.T) {
+// TestRecallDoesNotReinforceActivation locks in the corrected design:
+// being returned by a search is the system's guess, not a deliberate
+// read, so recall must NOT touch activation/access_count/last_accessed.
+func TestRecallDoesNotReinforceActivation(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
+	before, _ := ms.GetState(ctx, rev.MemoryID)
+
+	if _, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory"},
+		Ranking:    memory.RankingActivation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	after, _ := ms.GetState(ctx, rev.MemoryID)
+	if after.Activation != before.Activation {
+		t.Errorf("recall must not change activation; before=%v after=%v",
+			before.Activation, after.Activation)
+	}
+	if after.AccessCount != before.AccessCount {
+		t.Errorf("recall must not change access_count; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+	if after.LastAccessedAt != before.LastAccessedAt {
+		t.Errorf("recall must not change last_accessed_at; before=%v after=%v",
+			before.LastAccessedAt, after.LastAccessedAt)
+	}
+}
+
+// TestSimilarityRecallDoesNotReinforceAccess confirms the no-reinforce
+// invariant holds for similarity ranking too.
+func TestSimilarityRecallDoesNotReinforceAccess(t *testing.T) {
 	ms, cleanup := newTestStoreWithEmbedder(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -95,19 +153,15 @@ func TestReinforceAccessAppliesToSimilarityRanking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get state after: %v", err)
 	}
-	if after.AccessCount <= before.AccessCount {
-		t.Errorf("similarity ranking must reinforce access; before=%d after=%d",
+	if after.AccessCount != before.AccessCount {
+		t.Errorf("similarity recall must not reinforce access; before=%d after=%d",
 			before.AccessCount, after.AccessCount)
-	}
-	if after.LastAccessedAt == nil {
-		t.Error("last_accessed_at should be set after similarity recall")
 	}
 }
 
-// TestReinforceAccessAppliesToChronologicalRanking widens the invariant
-// to chronological recall too — any caller expressing interest in a
-// memory counts as an access (TASK-005).
-func TestReinforceAccessAppliesToChronologicalRanking(t *testing.T) {
+// TestChronologicalRecallDoesNotReinforceAccess confirms the no-reinforce
+// invariant holds for chronological ranking too.
+func TestChronologicalRecallDoesNotReinforceAccess(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -133,8 +187,8 @@ func TestReinforceAccessAppliesToChronologicalRanking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get state after: %v", err)
 	}
-	if after.AccessCount <= before.AccessCount {
-		t.Errorf("chronological ranking must reinforce access; before=%d after=%d",
+	if after.AccessCount != before.AccessCount {
+		t.Errorf("chronological recall must not reinforce access; before=%d after=%d",
 			before.AccessCount, after.AccessCount)
 	}
 }

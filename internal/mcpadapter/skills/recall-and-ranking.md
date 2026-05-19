@@ -37,4 +37,6 @@ All rankings accept the same filter set:
 
 ## Access reinforcement
 
-Every recall mode reinforces access (widened from activation-only in v0.4.0). Recall counts as "use" even when ranking is chronological or similarity.
+Recall does **not** reinforce access. Being returned by a search is the system's guess, not a deliberate read — letting recall bump `activation` would let the ranker's own guesses self-reinforce into an echo chamber.
+
+Reinforcement happens only on the deliberate-read paths: `memory_get` (resolve a known key) and `memory_get_revision` (pull a specific revision by ID). Those bump `activation`, `access_count`, and `last_accessed_at`. Activation **decay** is unchanged and still runs on a schedule.

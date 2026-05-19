@@ -156,6 +156,39 @@ func (s *Store) GetCurrent(ctx context.Context, namespace, memoryKey string) (Re
 	return s.GetRevisionByID(ctx, currentRevision)
 }
 
+// GetCurrentReinforced is GetCurrent plus an activation-reinforcement bump.
+// It is the deliberate-read entry point behind the memory_get tool / the
+// /v1/memory/current route: an agent resolving a known (namespace, memory_key)
+// is a genuine "this memory mattered" signal, so it reinforces activation,
+// access_count, and last_accessed_at. Reinforcement is best-effort — a
+// failure to bump never fails the read. Internal callers that resolve the
+// head for non-agent reasons (promotion, embedding) must keep using the
+// plain GetCurrent so they don't spuriously reinforce.
+func (s *Store) GetCurrentReinforced(ctx context.Context, namespace, memoryKey string) (Revision, error) {
+	rev, err := s.GetCurrent(ctx, namespace, memoryKey)
+	if err != nil {
+		return rev, err
+	}
+	_ = s.reinforceAccess(ctx, rev.MemoryID)
+	return rev, nil
+}
+
+// GetRevisionByIDReinforced is GetRevisionByID plus an activation-reinforcement
+// bump. It backs the memory_get_revision tool / the /v1/memory/revisions/{id}
+// route. Pulling up a specific revision by ID is an explicit, deliberate
+// consultation of that memory, so it reinforces the parent memory_state the
+// same way GetCurrentReinforced does. Best-effort: a reinforcement failure
+// never fails the read. Internal callers reading a revision for non-agent
+// reasons must keep using the plain GetRevisionByID.
+func (s *Store) GetRevisionByIDReinforced(ctx context.Context, revisionID string) (Revision, error) {
+	rev, err := s.GetRevisionByID(ctx, revisionID)
+	if err != nil {
+		return rev, err
+	}
+	_ = s.reinforceAccess(ctx, rev.MemoryID)
+	return rev, nil
+}
+
 // GetHistory returns all revisions for a logical memory identified by
 // (namespace, memory_key), ordered newest-first. Returns ErrNotFound if no
 // memory exists for the given key.

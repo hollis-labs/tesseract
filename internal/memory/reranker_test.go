@@ -82,12 +82,11 @@ func TestRecall_Reranker_Reorders(t *testing.T) {
 	}
 }
 
-// TestRecall_Reranker_ReinforcesOnlyPostRerankSet asserts that when a
-// reranker truncates the result set via RerankerTopK, only the memories
-// actually returned to the caller get their access counters bumped.
-// Reinforcement must reflect what the caller saw, not the superset that
-// the reranker evaluated.
-func TestRecall_Reranker_ReinforcesOnlyPostRerankSet(t *testing.T) {
+// TestRecall_Reranker_DoesNotReinforce asserts that recall — even with a
+// reranker pass — never bumps access counters. Recall is a search, not a
+// deliberate read; reinforcement is reserved for the get paths. This also
+// confirms the reranker still truncates the result set via RerankerTopK.
+func TestRecall_Reranker_DoesNotReinforce(t *testing.T) {
 	ms, cleanup := newTestStoreNoEmbedder(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -123,9 +122,8 @@ func TestRecall_Reranker_ReinforcesOnlyPostRerankSet(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 result after top-1 rerank, got %d", len(got))
 	}
-	returnedID := got[0].Revision.MemoryID
-
-	// The returned memory should have access_count == 1; the others 0.
+	// No memory — returned or dropped — should have its access counter
+	// touched: recall does not reinforce.
 	for _, r := range revs {
 		var count int
 		if err := ms.DB().QueryRowContext(ctx,
@@ -133,15 +131,9 @@ func TestRecall_Reranker_ReinforcesOnlyPostRerankSet(t *testing.T) {
 		).Scan(&count); err != nil {
 			t.Fatalf("read access_count for %s: %v", r.MemoryID, err)
 		}
-		if r.MemoryID == returnedID {
-			if count != 1 {
-				t.Errorf("returned memory %s: access_count = %d, want 1", r.MemoryID, count)
-			}
-		} else {
-			if count != 0 {
-				t.Errorf("dropped memory %s: access_count = %d, want 0 (was not surfaced to caller)",
-					r.MemoryID, count)
-			}
+		if count != 0 {
+			t.Errorf("recall must not reinforce; memory %s: access_count = %d, want 0",
+				r.MemoryID, count)
 		}
 	}
 }

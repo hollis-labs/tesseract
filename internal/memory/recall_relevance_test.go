@@ -149,7 +149,11 @@ func TestRecall_Relevance_AppliesStatusModifier(t *testing.T) {
 	}
 }
 
-func TestRecall_Relevance_ReinforcesAccess(t *testing.T) {
+// TestRecall_Relevance_DoesNotReinforceAccess locks in the corrected
+// design: relevance recall is a search, not a deliberate read, so it
+// must not bump access_count/activation. Reinforcement is reserved for
+// the get paths (memory_get / memory_get_revision).
+func TestRecall_Relevance_DoesNotReinforceAccess(t *testing.T) {
 	ms, cleanup := newTestStoreNoEmbedder(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -182,8 +186,8 @@ func TestRecall_Relevance_ReinforcesAccess(t *testing.T) {
 	).Scan(&afterCount); err != nil {
 		t.Fatalf("read access_count after: %v", err)
 	}
-	if afterCount <= beforeCount {
-		t.Errorf("relevance ranking should reinforce access; before=%d after=%d",
+	if afterCount != beforeCount {
+		t.Errorf("relevance recall must not reinforce access; before=%d after=%d",
 			beforeCount, afterCount)
 	}
 }

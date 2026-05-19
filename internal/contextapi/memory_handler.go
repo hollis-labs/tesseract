@@ -153,7 +153,8 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "validation_error", "revision id required", nil)
 		return
 	}
-	rev, err := s.MemoryStore.GetRevisionByID(r.Context(), id)
+	// Deliberate read: reinforce the parent memory's activation.
+	rev, err := s.MemoryStore.GetRevisionByIDReinforced(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
@@ -179,7 +180,8 @@ func (s *Server) handleMemoryGetCurrent(w http.ResponseWriter, r *http.Request) 
 	if !requireNamespaceAccess(w, r, ns) {
 		return
 	}
-	rev, err := s.MemoryStore.GetCurrent(r.Context(), ns, key)
+	// Deliberate read: reinforce the resolved memory's activation.
+	rev, err := s.MemoryStore.GetCurrentReinforced(r.Context(), ns, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)

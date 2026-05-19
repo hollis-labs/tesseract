@@ -36,6 +36,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** a recall or history result referenced a revision_id and you want the full content.\n"+
 					"• **Don't use this for:** resolving by (namespace, memory_key) — use `memory_get`.\n"+
+					"• **Side effect:** reinforces the parent memory's activation/access_count — a deliberate read counts as use.\n"+
 					"• **Deeper:** `vanta_skills revisions`.",
 			),
 			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
@@ -152,7 +153,8 @@ func (a *Adapter) handleMemoryGetRevision(ctx context.Context, req mcp.CallToolR
 	if revisionID == "" {
 		return toolError("validation_error", "revision_id is required"), nil
 	}
-	rev, err := a.MemoryStore.GetRevisionByID(ctx, revisionID)
+	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
+	rev, err := a.MemoryStore.GetRevisionByIDReinforced(ctx, revisionID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			return toolError("not_found", err.Error()), nil

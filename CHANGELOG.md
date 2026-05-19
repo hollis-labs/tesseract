@@ -8,6 +8,10 @@ Consumers (Nanite, Cerberus, custom Tesseract clients) should watch this file fo
 
 ## [Unreleased]
 
+### Changed
+
+- **Activation reinforcement moved from search to deliberate reads.** `memory_recall` (every ranking mode, including relevance) no longer bumps `activation`, `access_count`, or `last_accessed_at` — being returned by a search is the ranker's guess, not a signal of importance, and reinforcing on recall created a self-reinforcing echo chamber. Reinforcement now fires only on the deliberate-read paths: `memory_get` / `GET /v1/memory/current` and `memory_get_revision` / `GET /v1/memory/revisions/{id}`. Activation **decay** is unchanged. New store methods `Store.GetCurrentReinforced` and `Store.GetRevisionByIDReinforced` back the reinforcing reads; the plain `GetCurrent` / `GetRevisionByID` stay non-reinforcing for internal callers (promotion, embedding, knowledge lookups). Consumers that depended on "recall reinforces activation" (notably Nanite) should flag this — hot-memory activation trails will now reflect deliberate reads only.
+
 ## [0.7.0] — 2026-05-15
 
 ### Changed

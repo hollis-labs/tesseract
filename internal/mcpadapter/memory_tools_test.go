@@ -127,6 +127,144 @@ func TestMemoryGet_NotFound(t *testing.T) {
 	}
 }
 
+// TestMemoryGet_ReinforcesAccess verifies that a deliberate read via the
+// memory_get tool reinforces the memory's activation and access_count.
+// Reinforcement lives on the get paths, not on recall/search.
+func TestMemoryGet_ReinforcesAccess(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+	body := writeViaHandler(t, a, map[string]any{
+		"namespace":       "user/chrispian/memory",
+		"memory_key":      "user.prefs",
+		"author_agent_id": "claude",
+		"trigger":         "explicit",
+		"session_id":      "sess-001",
+		"origin":          "user",
+		"confidence":      0.9,
+		"payload_summary": "User prefers dark mode",
+	})
+	revID, _ := body["revision_id"].(string)
+	if revID == "" {
+		t.Fatalf("expected revision_id, got %v", body)
+	}
+	memRev, err := a.MemoryStore.GetRevisionByID(context.Background(), revID)
+	if err != nil {
+		t.Fatalf("GetRevisionByID: %v", err)
+	}
+	before, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState before: %v", err)
+	}
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"namespace":  "user/chrispian/memory",
+		"memory_key": "user.prefs",
+	}
+	if _, err := a.handleMemoryGet(context.Background(), req); err != nil {
+		t.Fatalf("handleMemoryGet: %v", err)
+	}
+
+	after, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState after: %v", err)
+	}
+	if after.AccessCount != before.AccessCount+1 {
+		t.Errorf("memory_get should reinforce access; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+	if after.Activation <= before.Activation {
+		t.Errorf("memory_get should reinforce activation; before=%v after=%v",
+			before.Activation, after.Activation)
+	}
+}
+
+// TestMemoryGetRevision_ReinforcesAccess verifies that reading a specific
+// revision by ID via memory_get_revision reinforces the parent memory.
+func TestMemoryGetRevision_ReinforcesAccess(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+	body := writeViaHandler(t, a, map[string]any{
+		"namespace":       "user/chrispian/memory",
+		"memory_key":      "user.prefs",
+		"author_agent_id": "claude",
+		"trigger":         "explicit",
+		"session_id":      "sess-001",
+		"origin":          "user",
+		"confidence":      0.9,
+		"payload_summary": "User prefers dark mode",
+	})
+	revID, _ := body["revision_id"].(string)
+	if revID == "" {
+		t.Fatalf("expected revision_id, got %v", body)
+	}
+	memRev, err := a.MemoryStore.GetRevisionByID(context.Background(), revID)
+	if err != nil {
+		t.Fatalf("GetRevisionByID: %v", err)
+	}
+	before, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState before: %v", err)
+	}
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"revision_id": revID}
+	if _, err := a.handleMemoryGetRevision(context.Background(), req); err != nil {
+		t.Fatalf("handleMemoryGetRevision: %v", err)
+	}
+
+	after, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState after: %v", err)
+	}
+	if after.AccessCount != before.AccessCount+1 {
+		t.Errorf("memory_get_revision should reinforce access; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+}
+
+// TestMemoryRecall_DoesNotReinforceAccess locks in that the memory_recall
+// tool path does not bump access counters — search is the system's guess,
+// not a deliberate read.
+func TestMemoryRecall_DoesNotReinforceAccess(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+	body := writeViaHandler(t, a, map[string]any{
+		"namespace":       "user/chrispian/memory",
+		"memory_key":      "user.prefs",
+		"author_agent_id": "claude",
+		"trigger":         "explicit",
+		"session_id":      "sess-001",
+		"origin":          "user",
+		"confidence":      0.9,
+		"payload_summary": "User prefers dark mode",
+	})
+	revID, _ := body["revision_id"].(string)
+	memRev, err := a.MemoryStore.GetRevisionByID(context.Background(), revID)
+	if err != nil {
+		t.Fatalf("GetRevisionByID: %v", err)
+	}
+	before, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState before: %v", err)
+	}
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"namespaces": []any{"user/chrispian/memory"},
+		"ranking":    "activation",
+	}
+	if _, err := a.handleMemoryRecall(context.Background(), req); err != nil {
+		t.Fatalf("handleMemoryRecall: %v", err)
+	}
+
+	after, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
+	if err != nil {
+		t.Fatalf("GetState after: %v", err)
+	}
+	if after.AccessCount != before.AccessCount {
+		t.Errorf("memory_recall must not reinforce access; before=%d after=%d",
+			before.AccessCount, after.AccessCount)
+	}
+}
+
 // ── memory_history ───────────────────────────────────────────────────────────
 
 func TestMemoryHistory_TwoRevisions(t *testing.T) {
