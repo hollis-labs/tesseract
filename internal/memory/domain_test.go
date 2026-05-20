@@ -71,7 +71,7 @@ func TestWriteRevision_KnowledgeDomainRejectsMemoryNamespace(t *testing.T) {
 
 	in := sampleInput("framework.bad")
 	in.Domain = domains.Knowledge
-	in.Namespace = "user/chrispian/memory"
+	in.Namespace = "user/chrispian/memory/notes"
 
 	_, err := ms.WriteRevision(context.Background(), in)
 	if err == nil {

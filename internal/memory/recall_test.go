@@ -29,7 +29,7 @@ func TestRecall_ActivationRanking(t *testing.T) {
 	writeWithOrigin(t, ms, "act.feedback", memory.OriginFeedback)
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingActivation,
 	})
 	if err != nil {
@@ -76,7 +76,7 @@ func TestRecall_ChronologicalOrdering(t *testing.T) {
 	_ = rev1
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingChronological,
 	})
 	if err != nil {
@@ -99,8 +99,8 @@ func TestRecall_MultiNamespace(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 
-	ns1 := "user/chrispian/memory"
-	ns2 := "user/chrispian/project/conduit/memory"
+	ns1 := "user/chrispian/memory/notes"
+	ns2 := "user/chrispian/project/conduit/memory/notes"
 
 	in1 := sampleInput("multi.a")
 	in1.Namespace = ns1
@@ -125,6 +125,102 @@ func TestRecall_MultiNamespace(t *testing.T) {
 	}
 }
 
+// TestRecall_PrefixMatchesTypedSubNamespaces covers CW-20260519-0030:
+// requesting `user/{id}/memory` (the "all my memory" form) returns records
+// from every typed sub-namespace user/{id}/memory/{type}.
+func TestRecall_PrefixMatchesTypedSubNamespaces(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	// Seed across multiple type sub-namespaces under the same user-scope prefix.
+	decisions := sampleInput("d.one")
+	decisions.Namespace = "user/chrispian/memory/decisions"
+	if _, err := ms.WriteRevision(context.Background(), decisions); err != nil {
+		t.Fatalf("write decisions: %v", err)
+	}
+	followups := sampleInput("f.one")
+	followups.Namespace = "user/chrispian/memory/followups"
+	if _, err := ms.WriteRevision(context.Background(), followups); err != nil {
+		t.Fatalf("write followups: %v", err)
+	}
+	notes := sampleInput("n.one")
+	notes.Namespace = "user/chrispian/memory/notes"
+	if _, err := ms.WriteRevision(context.Background(), notes); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
+	// And one in a different scope — must NOT match the user-scope prefix.
+	other := sampleInput("p.one")
+	other.Namespace = "user/chrispian/project/conduit/memory/notes"
+	if _, err := ms.WriteRevision(context.Background(), other); err != nil {
+		t.Fatalf("write other: %v", err)
+	}
+
+	t.Run("legacy flat form matches all types", func(t *testing.T) {
+		results, err := ms.Recall(context.Background(), memory.RecallInput{
+			Namespaces: []string{"user/chrispian/memory"},
+		})
+		if err != nil {
+			t.Fatalf("Recall: %v", err)
+		}
+		if len(results) != 3 {
+			t.Fatalf("expected 3 user-scope results, got %d", len(results))
+		}
+	})
+
+	t.Run("explicit wildcard matches all types", func(t *testing.T) {
+		results, err := ms.Recall(context.Background(), memory.RecallInput{
+			Namespaces: []string{"user/chrispian/memory/*"},
+		})
+		if err != nil {
+			t.Fatalf("Recall: %v", err)
+		}
+		if len(results) != 3 {
+			t.Fatalf("expected 3 user-scope results, got %d", len(results))
+		}
+	})
+
+	t.Run("exact 4-seg still works", func(t *testing.T) {
+		results, err := ms.Recall(context.Background(), memory.RecallInput{
+			Namespaces: []string{"user/chrispian/memory/decisions"},
+		})
+		if err != nil {
+			t.Fatalf("Recall: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].Revision.Namespace != "user/chrispian/memory/decisions" {
+			t.Errorf("expected decisions namespace, got %s", results[0].Revision.Namespace)
+		}
+	})
+
+	t.Run("project legacy flat matches typed project sub-namespaces", func(t *testing.T) {
+		results, err := ms.Recall(context.Background(), memory.RecallInput{
+			Namespaces: []string{"user/chrispian/project/conduit/memory"},
+		})
+		if err != nil {
+			t.Fatalf("Recall: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 project result, got %d", len(results))
+		}
+	})
+
+	t.Run("user prefix does not bleed into project scope", func(t *testing.T) {
+		results, err := ms.Recall(context.Background(), memory.RecallInput{
+			Namespaces: []string{"user/chrispian/memory"},
+		})
+		if err != nil {
+			t.Fatalf("Recall: %v", err)
+		}
+		for _, r := range results {
+			if r.Revision.Namespace == "user/chrispian/project/conduit/memory/notes" {
+				t.Errorf("user prefix leaked into project scope: %s", r.Revision.Namespace)
+			}
+		}
+	})
+}
+
 func TestRecall_DeprecatedFilteredByDefault(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -143,7 +239,7 @@ func TestRecall_DeprecatedFilteredByDefault(t *testing.T) {
 	}
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 	})
 	if err != nil {
 		t.Fatalf("Recall: %v", err)
@@ -174,7 +270,7 @@ func TestRecall_DeprecatedIncludedWhenRequested(t *testing.T) {
 	}
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces:    []string{"user/chrispian/memory"},
+		Namespaces:    []string{"user/chrispian/memory/notes"},
 		RevisionScope: memory.RevisionScopeTimeline,
 		Filters: memory.RecallFilters{
 			Statuses: []memory.Status{memory.StatusDeprecated},
@@ -207,7 +303,7 @@ func TestRecall_TTLExpiry(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 	})
 	if err != nil {
 		t.Fatalf("Recall: %v", err)
@@ -228,7 +324,7 @@ func TestRecall_OriginFilter(t *testing.T) {
 	writeWithOrigin(t, ms, "orig.prj", memory.OriginProject)
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Filters: memory.RecallFilters{
 			Origins: []memory.Origin{memory.OriginFeedback},
 		},
@@ -261,7 +357,7 @@ func TestRecall_ConfidenceFilter(t *testing.T) {
 	}
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Filters: memory.RecallFilters{
 			ConfidenceMin: 0.8,
 		},
@@ -300,7 +396,7 @@ func TestRecall_TagAnyMatch(t *testing.T) {
 	}
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Filters: memory.RecallFilters{
 			Tags: []string{"go"},
 		},
@@ -339,7 +435,7 @@ func TestRecall_TimelineScope(t *testing.T) {
 
 	// Timeline scope should return all 3 revisions (including deprecated).
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces:    []string{"user/chrispian/memory"},
+		Namespaces:    []string{"user/chrispian/memory/notes"},
 		RevisionScope: memory.RevisionScopeTimeline,
 		Filters: memory.RecallFilters{
 			Statuses: []memory.Status{
@@ -361,7 +457,7 @@ func TestRecall_SimilarityNoEmbedder(t *testing.T) {
 	defer cleanup()
 
 	_, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingSimilarity,
 		Query:      "test query",
 	})
@@ -378,7 +474,7 @@ func TestRecall_SimilarityRequiresQuery(t *testing.T) {
 	defer cleanup()
 
 	_, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingSimilarity,
 		Query:      "",
 	})
@@ -414,7 +510,7 @@ func TestRecall_SimilarityRanking(t *testing.T) {
 
 	// Recall with similarity ranking.
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingSimilarity,
 		Query:      "test query about preferences",
 	})
@@ -459,7 +555,7 @@ func TestRecall_SimilarityFiltersUnembedded(t *testing.T) {
 	}
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingSimilarity,
 		Query:      "some query",
 	})

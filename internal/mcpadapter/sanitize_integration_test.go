@@ -37,7 +37,7 @@ func TestSanitizeMiddleware_PollutedMemoryWrite(t *testing.T) {
 		"<parameter name=\"payload_body\">" + cleanBody + "</parameter>"
 
 	args := map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "decisions.test.cw_sanitize_integration",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -100,7 +100,7 @@ func TestSanitizeMiddleware_CleanCallPassesThrough(t *testing.T) {
 	a.Logger = slog.New(slog.NewTextHandler(testWriter{t}, nil))
 
 	args := map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "test.clean_call",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",

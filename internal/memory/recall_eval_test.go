@@ -96,7 +96,7 @@ func average(vals map[string]float64) float64 {
 func seedEvalCorpus(t *testing.T, ms *memory.Store) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	ns := "user/eval/memory"
+	ns := "user/eval/memory/notes"
 
 	docs := []struct {
 		key, summary, body string
@@ -174,7 +174,7 @@ func TestRecall_HybridEval(t *testing.T) {
 	ctx := context.Background()
 
 	ids := seedEvalCorpus(t, ms)
-	fixtures := evalFixtures(ids, "user/eval/memory")
+	fixtures := evalFixtures(ids, "user/eval/memory/notes")
 
 	type metrics struct {
 		ndcg map[string]float64

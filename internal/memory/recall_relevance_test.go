@@ -20,7 +20,7 @@ func TestRecall_Relevance_RequiresQuery(t *testing.T) {
 	defer cleanup()
 
 	_, err := ms.Recall(context.Background(), memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 	})
 	if !errors.Is(err, memory.ErrInvalidInput) {
@@ -43,7 +43,7 @@ func TestRecall_Relevance_BM25OnlyWithoutEmbedder(t *testing.T) {
 	}
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "reciprocal",
 	})
@@ -90,7 +90,7 @@ func TestRecall_Relevance_FusesBothArms(t *testing.T) {
 	}
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "hybrid",
 	})
@@ -133,7 +133,7 @@ func TestRecall_Relevance_AppliesStatusModifier(t *testing.T) {
 	}
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "widget",
 	})
@@ -173,7 +173,7 @@ func TestRecall_Relevance_DoesNotReinforceAccess(t *testing.T) {
 	}
 
 	if _, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "reinforcement",
 	}); err != nil {

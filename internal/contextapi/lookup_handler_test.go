@@ -23,7 +23,7 @@ func newLookupServer(t *testing.T) *Server {
 func seedMemory(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-		Namespace:  "user/chrispian/memory",
+		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  "prefs.terse",
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger:    memory.TriggerExplicit,
@@ -61,7 +61,7 @@ func TestConduitLookup_UnifiedAcrossDomains(t *testing.T) {
 	seedKnowledge(t, srv)
 
 	body := `{
-		"namespaces":["user/chrispian/memory","user/chrispian/knowledge/framework"],
+		"namespaces":["user/chrispian/memory/notes","user/chrispian/knowledge/framework"],
 		"ranking":"chronological"
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/conduit/lookup", bytes.NewBufferString(body))
@@ -92,7 +92,7 @@ func TestConduitLookup_DomainFilter(t *testing.T) {
 	seedKnowledge(t, srv)
 
 	body := `{
-		"namespaces":["user/chrispian/memory","user/chrispian/knowledge/framework"],
+		"namespaces":["user/chrispian/memory/notes","user/chrispian/knowledge/framework"],
 		"ranking":"chronological",
 		"domains":["knowledge"]
 	}`

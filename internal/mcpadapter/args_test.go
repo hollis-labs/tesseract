@@ -27,7 +27,7 @@ func TestMemoryWrite_TagsAcceptBothForms(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a := newMemoryAdapter(t, "memory:write", "memory:read")
 			body := writeViaHandler(t, a, map[string]any{
-				"namespace":       "user/chrispian/memory",
+				"namespace":       "user/chrispian/memory/notes",
 				"memory_key":      "user.prefs." + tc.name,
 				"author_agent_id": "claude",
 				"trigger":         "explicit",
@@ -64,7 +64,7 @@ func TestMemoryWrite_TagsAcceptBothForms(t *testing.T) {
 func TestMemoryWrite_TagsInvalidShape(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write")
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs.invalid",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -86,7 +86,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 
 	// Seed one tagged + one untagged memory.
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "tagged.one",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -97,7 +97,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 		"tags":            []any{"decision"},
 	})
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "untagged.one",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -109,7 +109,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": []any{"user/chrispian/memory"},
+		"namespaces": []any{"user/chrispian/memory/notes"},
 		"tags":       []any{"decision"},
 	}
 	res, err := a.handleMemoryRecall(context.Background(), req)

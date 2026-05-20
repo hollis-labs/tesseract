@@ -51,7 +51,7 @@ func writeViaHandler(t *testing.T, a *Adapter, args map[string]any) map[string]a
 func TestMemoryWrite_Success(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -63,7 +63,7 @@ func TestMemoryWrite_Success(t *testing.T) {
 	if body["revision_id"] == nil || body["revision_id"] == "" {
 		t.Errorf("expected revision_id, got %v", body)
 	}
-	if body["namespace"] != "user/chrispian/memory" {
+	if body["namespace"] != "user/chrispian/memory/notes" {
 		t.Errorf("namespace = %v", body["namespace"])
 	}
 }
@@ -72,7 +72,7 @@ func TestMemoryWrite_MissingRequired(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write")
 	// Missing payload_summary, session_id, etc.
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"author_agent_id": "claude",
 	})
 	if body["code"] != "validation_error" {
@@ -85,7 +85,7 @@ func TestMemoryWrite_MissingRequired(t *testing.T) {
 func TestMemoryGet_AfterWrite(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -97,7 +97,7 @@ func TestMemoryGet_AfterWrite(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespace":  "user/chrispian/memory",
+		"namespace":  "user/chrispian/memory/notes",
 		"memory_key": "user.prefs",
 	}
 	res, err := a.handleMemoryGet(context.Background(), req)
@@ -114,7 +114,7 @@ func TestMemoryGet_NotFound(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:read")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespace":  "user/chrispian/memory",
+		"namespace":  "user/chrispian/memory/notes",
 		"memory_key": "nonexistent",
 	}
 	res, err := a.handleMemoryGet(context.Background(), req)
@@ -272,7 +272,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 
 	// Write first revision.
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -284,7 +284,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 
 	// Write second revision (same key, will create new revision on same memory).
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -296,7 +296,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespace":  "user/chrispian/memory",
+		"namespace":  "user/chrispian/memory/notes",
 		"memory_key": "user.prefs",
 	}
 	res, err := a.handleMemoryHistory(context.Background(), req)
@@ -324,7 +324,7 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 
 	writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -336,7 +336,7 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": `["user/chrispian/memory"]`,
+		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleMemoryRecall(context.Background(), req)
 	if err != nil {
@@ -359,7 +359,7 @@ func TestMemoryRecall_SimilarityUnavailable(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:read")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": `["user/chrispian/memory"]`,
+		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "similarity",
 		"query":      "dark mode",
 	}
@@ -380,7 +380,7 @@ func TestMemoryPromote_SessionToUser(t *testing.T) {
 
 	// Write a memory in session scope.
 	written := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/session/sess-001/memory",
+		"namespace":       "user/chrispian/session/sess-001/memory/notes",
 		"memory_key":      "insight.dark_mode",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -397,9 +397,9 @@ func TestMemoryPromote_SessionToUser(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"source_namespace": "user/chrispian/session/sess-001/memory",
+		"source_namespace": "user/chrispian/session/sess-001/memory/notes",
 		"source_memory_id": memoryID,
-		"target_namespace": "user/chrispian/memory",
+		"target_namespace": "user/chrispian/memory/notes",
 		"actor_agent_id":   "claude",
 	}
 	res, err := a.handleMemoryPromote(context.Background(), req)
@@ -410,7 +410,7 @@ func TestMemoryPromote_SessionToUser(t *testing.T) {
 	if body["revision_id"] == nil || body["revision_id"] == "" {
 		t.Errorf("expected promoted revision_id, got %v", body)
 	}
-	if body["namespace"] != "user/chrispian/memory" {
+	if body["namespace"] != "user/chrispian/memory/notes" {
 		t.Errorf("expected target namespace, got %v", body["namespace"])
 	}
 }
@@ -421,7 +421,7 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 
 	written := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -452,7 +452,7 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 	// Subsequent get should return not_found (only revision was deprecated).
 	getReq := mcp.CallToolRequest{}
 	getReq.Params.Arguments = map[string]any{
-		"namespace":  "user/chrispian/memory",
+		"namespace":  "user/chrispian/memory/notes",
 		"memory_key": "user.prefs",
 	}
 	getRes, err := a.handleMemoryGet(context.Background(), getReq)

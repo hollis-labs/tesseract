@@ -24,7 +24,7 @@ func TestConduit_WriteAndRecall(t *testing.T) {
 	defer c.Close()
 
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
-		Namespace:  "user/test/memory",
+		Namespace:  "user/test/memory/notes",
 		MemoryKey:  "facade_test",
 		Status:     memory.StatusDraft,
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -43,7 +43,7 @@ func TestConduit_WriteAndRecall(t *testing.T) {
 	}
 
 	results, err := c.RecallMemory(ctx, memory.RecallInput{
-		Namespaces: []string{"user/test/memory"},
+		Namespaces: []string{"user/test/memory/notes"},
 		Ranking:    memory.RankingActivation,
 		Limit:      10,
 	})
@@ -64,7 +64,7 @@ func TestConduit_GetCurrentAndHistory(t *testing.T) {
 	defer c.Close()
 
 	_, err := c.WriteMemory(ctx, memory.WriteInput{
-		Namespace:  "user/test/memory",
+		Namespace:  "user/test/memory/notes",
 		MemoryKey:  "history_test",
 		Status:     memory.StatusDraft,
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -79,7 +79,7 @@ func TestConduit_GetCurrentAndHistory(t *testing.T) {
 		t.Fatalf("WriteMemory: %v", err)
 	}
 
-	current, err := c.GetCurrentRevision(ctx, "user/test/memory", "history_test")
+	current, err := c.GetCurrentRevision(ctx, "user/test/memory/notes", "history_test")
 	if err != nil {
 		t.Fatalf("GetCurrentRevision: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestConduit_GetCurrentAndHistory(t *testing.T) {
 		t.Errorf("expected summary 'version 1', got %q", current.Payload.Summary)
 	}
 
-	history, err := c.GetRevisionHistory(ctx, "user/test/memory", "history_test")
+	history, err := c.GetRevisionHistory(ctx, "user/test/memory/notes", "history_test")
 	if err != nil {
 		t.Fatalf("GetRevisionHistory: %v", err)
 	}

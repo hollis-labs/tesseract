@@ -27,7 +27,7 @@ func newTestStore(t *testing.T) (*memory.Store, func()) {
 
 func sampleInput(key string) memory.WriteInput {
 	return memory.WriteInput{
-		Namespace:  "user/chrispian/memory",
+		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  key,
 		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
 		Trigger:    memory.TriggerExplicit,
@@ -238,7 +238,7 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:     domains.Memory,
-		Namespace:  "user/alice/memory",
+		Namespace:  "user/alice/memory/notes",
 		MemoryKey:  "notes.today",
 		Author:     memory.Author{AgentID: "test-agent"},
 		Trigger:    memory.TriggerManual,
@@ -268,8 +268,8 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 	if ev.Actor != "test-agent" {
 		t.Errorf("actor: got %q, want %q", ev.Actor, "test-agent")
 	}
-	if ev.Namespace != "user/alice/memory" {
-		t.Errorf("namespace: got %q, want %q", ev.Namespace, "user/alice/memory")
+	if ev.Namespace != "user/alice/memory/notes" {
+		t.Errorf("namespace: got %q, want %q", ev.Namespace, "user/alice/memory/notes")
 	}
 	if ev.Key != "notes.today" {
 		t.Errorf("key: got %q, want %q", ev.Key, "notes.today")
@@ -283,7 +283,7 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:     domains.Memory,
-		Namespace:  "user/alice/memory",
+		Namespace:  "user/alice/memory/notes",
 		MemoryKey:  "notes.today",
 		Author:     memory.Author{AgentID: "test-agent"},
 		Trigger:    memory.TriggerManual,
@@ -327,7 +327,7 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 	// Seed a session-scoped source revision.
 	srcRev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:     domains.Memory,
-		Namespace:  "user/alice/session/s1/memory",
+		Namespace:  "user/alice/session/s1/memory/notes",
 		MemoryKey:  "note.42",
 		Author:     memory.Author{AgentID: "test-agent"},
 		Trigger:    memory.TriggerManual,
@@ -341,9 +341,9 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 	}
 
 	_, err = ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/alice/session/s1/memory",
+		SourceNamespace: "user/alice/session/s1/memory/notes",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/alice/memory",
+		TargetNamespace: "user/alice/memory/notes",
 		ActorAgentID:    "promoter",
 	})
 	if err != nil {

@@ -11,7 +11,7 @@ import (
 // sessionInput returns a WriteInput rooted in a session-scoped namespace.
 func sessionInput(key string) memory.WriteInput {
 	return memory.WriteInput{
-		Namespace:  "user/chrispian/session/sess123/memory",
+		Namespace:  "user/chrispian/session/sess123/memory/notes",
 		MemoryKey:  key,
 		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
 		Trigger:    memory.TriggerExplicit,
@@ -37,9 +37,9 @@ func TestPromote_SessionToUser(t *testing.T) {
 	}
 
 	promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/chrispian/session/sess123/memory",
+		SourceNamespace: "user/chrispian/session/sess123/memory/notes",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/memory",
+		TargetNamespace: "user/chrispian/memory/notes",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})
@@ -47,8 +47,8 @@ func TestPromote_SessionToUser(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	if promoted.Namespace != "user/chrispian/memory" {
-		t.Fatalf("expected namespace=%s, got %s", "user/chrispian/memory", promoted.Namespace)
+	if promoted.Namespace != "user/chrispian/memory/notes" {
+		t.Fatalf("expected namespace=%s, got %s", "user/chrispian/memory/notes", promoted.Namespace)
 	}
 	if promoted.Trigger != memory.TriggerPromotion {
 		t.Fatalf("expected trigger=promotion, got %s", promoted.Trigger)
@@ -71,9 +71,9 @@ func TestPromote_SessionToProject(t *testing.T) {
 	}
 
 	promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/chrispian/session/sess123/memory",
+		SourceNamespace: "user/chrispian/session/sess123/memory/notes",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/project/conduit/memory",
+		TargetNamespace: "user/chrispian/project/conduit/memory/notes",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})
@@ -81,7 +81,7 @@ func TestPromote_SessionToProject(t *testing.T) {
 		t.Fatalf("Promote: %v", err)
 	}
 
-	if promoted.Namespace != "user/chrispian/project/conduit/memory" {
+	if promoted.Namespace != "user/chrispian/project/conduit/memory/notes" {
 		t.Fatalf("expected project namespace, got %s", promoted.Namespace)
 	}
 	if promoted.Trigger != memory.TriggerPromotion {
@@ -106,9 +106,9 @@ func TestPromote_SupersedesExistingKey(t *testing.T) {
 	}
 
 	promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/chrispian/session/sess123/memory",
+		SourceNamespace: "user/chrispian/session/sess123/memory/notes",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/memory",
+		TargetNamespace: "user/chrispian/memory/notes",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})
@@ -133,9 +133,9 @@ func TestPromote_KeylessMemory(t *testing.T) {
 	}
 
 	promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/chrispian/session/sess123/memory",
+		SourceNamespace: "user/chrispian/session/sess123/memory/notes",
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/memory",
+		TargetNamespace: "user/chrispian/memory/notes",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})
@@ -172,7 +172,7 @@ func TestDeprecate_UpdatesCurrentRevision(t *testing.T) {
 	}
 
 	// GetCurrent should now return rev1 (the previous non-deprecated revision).
-	current, err := ms.GetCurrent(context.Background(), "user/chrispian/memory", "prefs.output_style")
+	current, err := ms.GetCurrent(context.Background(), "user/chrispian/memory/notes", "prefs.output_style")
 	if err != nil {
 		t.Fatalf("GetCurrent after deprecate: %v", err)
 	}
@@ -198,6 +198,60 @@ func TestDeprecate_Idempotent(t *testing.T) {
 	}
 }
 
+// TestPromote_PreservesType verifies CW-20260519-0031: promoting a typed
+// session memory lands in the same {type} under the target scope, and
+// cross-type promotion is rejected as a scope-change-with-reclassification
+// (a different operation).
+func TestPromote_PreservesType(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	// Seed a session-scoped 'decisions' memory.
+	in := sampleInput("decisions.session.one")
+	in.Namespace = "user/chrispian/session/sess-decisions/memory/decisions"
+	srcRev, err := ms.WriteRevision(context.Background(), in)
+	if err != nil {
+		t.Fatalf("seed decisions: %v", err)
+	}
+
+	t.Run("matching type promotes", func(t *testing.T) {
+		promoted, err := ms.Promote(context.Background(), memory.PromoteInput{
+			SourceNamespace: "user/chrispian/session/sess-decisions/memory/decisions",
+			SourceMemoryID:  srcRev.MemoryID,
+			TargetNamespace: "user/chrispian/memory/decisions",
+			ActorAgentID:    "test-agent",
+		})
+		if err != nil {
+			t.Fatalf("Promote: %v", err)
+		}
+		if promoted.Namespace != "user/chrispian/memory/decisions" {
+			t.Errorf("namespace = %s, want user/chrispian/memory/decisions", promoted.Namespace)
+		}
+	})
+
+	t.Run("cross-type promotion rejected", func(t *testing.T) {
+		// Seed another session decisions memory to avoid reusing the just-deprecated source.
+		in2 := sampleInput("decisions.session.two")
+		in2.Namespace = "user/chrispian/session/sess-decisions/memory/decisions"
+		srcRev2, err := ms.WriteRevision(context.Background(), in2)
+		if err != nil {
+			t.Fatalf("seed decisions 2: %v", err)
+		}
+		_, err = ms.Promote(context.Background(), memory.PromoteInput{
+			SourceNamespace: "user/chrispian/session/sess-decisions/memory/decisions",
+			SourceMemoryID:  srcRev2.MemoryID,
+			TargetNamespace: "user/chrispian/memory/notes", // type mismatch
+			ActorAgentID:    "test-agent",
+		})
+		if err == nil {
+			t.Fatal("expected error for cross-type promotion, got nil")
+		}
+		if !errors.Is(err, memory.ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+}
+
 func TestPromote_RejectsNonSessionSource(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -209,9 +263,9 @@ func TestPromote_RejectsNonSessionSource(t *testing.T) {
 	}
 
 	_, err = ms.Promote(context.Background(), memory.PromoteInput{
-		SourceNamespace: "user/chrispian/memory", // user scope, not session
+		SourceNamespace: "user/chrispian/memory/notes", // user scope, not session
 		SourceMemoryID:  srcRev.MemoryID,
-		TargetNamespace: "user/chrispian/project/conduit/memory",
+		TargetNamespace: "user/chrispian/project/conduit/memory/notes",
 		ActorAgentID:    "test-agent",
 		ActorVersion:    "1.0",
 	})

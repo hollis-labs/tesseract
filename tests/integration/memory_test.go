@@ -28,8 +28,8 @@ func TestMemoryEndToEnd(t *testing.T) {
 	defer cleanup()
 
 	const (
-		userNS    = "user/chrispian/memory"
-		sessionNS = "user/chrispian/session/manual:test01/memory"
+		userNS    = "user/chrispian/memory/notes"
+		sessionNS = "user/chrispian/session/manual:test01/memory/notes"
 		memKey    = "prefs.output_style"
 		agentID   = "test-agent"
 		sessionID = "manual:test01"

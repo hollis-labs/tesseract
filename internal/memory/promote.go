@@ -38,6 +38,16 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		return Revision{}, fmt.Errorf("%w: target namespace must be user or project scope, got scope %d", ErrInvalidInput, tgtNS.Scope)
 	}
 
+	// Promote preserves the namespace {type} segment across scopes
+	// (CW-20260519-0031). A session memory of type `decisions` can only be
+	// promoted into the same `decisions` sub-namespace under user/project
+	// scope. Cross-type promotion would be a semantically different
+	// operation (re-classification), not a scope change.
+	if srcNS.Type != tgtNS.Type {
+		return Revision{}, fmt.Errorf("%w: type segment must match across scopes; source type %q, target type %q",
+			ErrInvalidInput, srcNS.Type, tgtNS.Type)
+	}
+
 	// Load source memory state and current revision.
 	state, err := s.GetState(ctx, in.SourceMemoryID)
 	if err != nil {

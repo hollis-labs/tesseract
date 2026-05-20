@@ -135,7 +135,7 @@ Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong wit
 
 ```json
 mcp__vanta__memory_write {
-  "namespace": "user/chrispian/memory",
+  "namespace": "user/chrispian/memory/feedback",
   "memory_key": "boot-prompt-preference",
   "author_agent_id": "claude-code",
   "trigger": "explicit",

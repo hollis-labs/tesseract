@@ -142,7 +142,7 @@ func TestSimilarityRecallDoesNotReinforceAccess(t *testing.T) {
 	}
 
 	if _, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingSimilarity,
 		Query:      "test query",
 	}); err != nil {
@@ -177,7 +177,7 @@ func TestChronologicalRecallDoesNotReinforceAccess(t *testing.T) {
 	}
 
 	if _, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingChronological,
 	}); err != nil {
 		t.Fatalf("Recall chronological: %v", err)

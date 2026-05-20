@@ -21,7 +21,7 @@ func newBM25TestStore(t *testing.T) (*Store, func()) {
 
 func bm25SampleInput(key, summary, body string) WriteInput {
 	return WriteInput{
-		Namespace:  "user/chrispian/memory",
+		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  key,
 		Author:     Author{AgentID: "test-agent", AgentVersion: "1.0"},
 		Trigger:    TriggerExplicit,
@@ -56,7 +56,7 @@ func TestFetchBM25Candidates_RanksByKeyword(t *testing.T) {
 	}
 
 	got, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Query:      "FTS5",
 		Filters:    RecallFilters{Statuses: []Status{StatusDraft, StatusReviewed, StatusCanonical}},
 	}, 10)
@@ -82,13 +82,13 @@ func TestFetchBM25Candidates_RespectsNamespaceFilter(t *testing.T) {
 	}
 
 	in2 := bm25SampleInput("ns.b", "distinctive keyword xylophone", "")
-	in2.Namespace = "user/chrispian/project/other/memory"
+	in2.Namespace = "user/chrispian/project/other/memory/notes"
 	if _, err := ms.WriteRevision(ctx, in2); err != nil {
 		t.Fatalf("write ns2: %v", err)
 	}
 
 	got, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Query:      "xylophone",
 		Filters:    RecallFilters{Statuses: []Status{StatusDraft, StatusReviewed, StatusCanonical}},
 	}, 10)
@@ -98,7 +98,7 @@ func TestFetchBM25Candidates_RespectsNamespaceFilter(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected exactly 1 match in namespace filter, got %d", len(got))
 	}
-	if got[0].Namespace != "user/chrispian/memory" {
+	if got[0].Namespace != "user/chrispian/memory/notes" {
 		t.Errorf("expected filtered namespace, got %s", got[0].Namespace)
 	}
 }
@@ -123,7 +123,7 @@ func TestFetchBM25Candidates_FilterStatusAtQueryTime(t *testing.T) {
 	// Timeline scope with default status filter should return only rev2
 	// — rev1 is now deprecated and filtered out at query time.
 	got, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces:    []string{"user/chrispian/memory"},
+		Namespaces:    []string{"user/chrispian/memory/notes"},
 		RevisionScope: RevisionScopeTimeline,
 		Query:         "quantum",
 		Filters:       RecallFilters{Statuses: []Status{StatusDraft, StatusReviewed, StatusCanonical}},
@@ -142,7 +142,7 @@ func TestFetchBM25Candidates_FilterStatusAtQueryTime(t *testing.T) {
 	// both rev1 (deprecated) and rev2 — proves the FTS index still holds
 	// rev1's content (status filter is query-time, not index-time).
 	got2, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces:    []string{"user/chrispian/memory"},
+		Namespaces:    []string{"user/chrispian/memory/notes"},
 		RevisionScope: RevisionScopeTimeline,
 		Query:         "quantum",
 		Filters: RecallFilters{
@@ -167,7 +167,7 @@ func TestFetchBM25Candidates_EmptyQueryReturnsNil(t *testing.T) {
 	}
 
 	got, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Query:      "   ",
 	}, 10)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestFetchBM25Candidates_LimitsToN(t *testing.T) {
 	}
 
 	got, err := ms.fetchBM25Candidates(ctx, RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Query:      "hyperbole",
 		Filters:    RecallFilters{Statuses: []Status{StatusDraft, StatusReviewed, StatusCanonical}},
 	}, 3)

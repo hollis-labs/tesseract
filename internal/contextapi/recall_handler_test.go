@@ -72,7 +72,7 @@ func TestRecall_MissingNamespaceReturns400(t *testing.T) {
 func TestRecall_NoStoreReturns503(t *testing.T) {
 	srv := newRecallServer(t)
 	srv.MemoryStore = nil
-	req := httptest.NewRequest(http.MethodGet, "/v1/recall?namespace=user/chrispian/memory", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/recall?namespace=user/chrispian/memory/notes", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusServiceUnavailable {
@@ -83,7 +83,7 @@ func TestRecall_NoStoreReturns503(t *testing.T) {
 // TestRecall_InvalidLimitReturns400 ensures non-integer limit is rejected.
 func TestRecall_InvalidLimitReturns400(t *testing.T) {
 	srv := newRecallServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/v1/recall?namespace=user/chrispian/memory&limit=abc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/recall?namespace=user/chrispian/memory/notes&limit=abc", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -94,11 +94,11 @@ func TestRecall_InvalidLimitReturns400(t *testing.T) {
 // TestRecall_BriefFormat verifies format=brief returns condensed items.
 func TestRecall_BriefFormat(t *testing.T) {
 	srv := newRecallServer(t)
-	seedMemoryWithTags(t, srv, "user/chrispian/memory", "prefs.terse", "terse output preferred",
+	seedMemoryWithTags(t, srv, "user/chrispian/memory/notes", "prefs.terse", "terse output preferred",
 		[]string{"scope:nanite.backend.main"})
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/recall?namespace=user/chrispian/memory&format=brief&limit=15", nil)
+		"/v1/recall?namespace=user/chrispian/memory/notes&format=brief&limit=15", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -112,7 +112,7 @@ func TestRecall_BriefFormat(t *testing.T) {
 	if resp.Meta.Format != "brief" {
 		t.Errorf("meta.format = %q, want brief", resp.Meta.Format)
 	}
-	if resp.Meta.Namespace != "user/chrispian/memory" {
+	if resp.Meta.Namespace != "user/chrispian/memory/notes" {
 		t.Errorf("meta.namespace = %q", resp.Meta.Namespace)
 	}
 	if resp.Meta.Returned != 1 {
@@ -137,11 +137,11 @@ func TestRecall_BriefFormat(t *testing.T) {
 // TestRecall_FullFormat verifies format=full returns complete RecallResult.
 func TestRecall_FullFormat(t *testing.T) {
 	srv := newRecallServer(t)
-	seedMemoryWithTags(t, srv, "user/chrispian/memory", "prefs.full", "full output",
+	seedMemoryWithTags(t, srv, "user/chrispian/memory/notes", "prefs.full", "full output",
 		[]string{"scope:nanite.backend.main"})
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/recall?namespace=user/chrispian/memory&format=full&limit=5", nil)
+		"/v1/recall?namespace=user/chrispian/memory/notes&format=full&limit=5", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -164,12 +164,12 @@ func TestRecall_FullFormat(t *testing.T) {
 // records only (OR semantics, consistent with memory.RecallFilters.Tags).
 func TestRecall_TagFilter(t *testing.T) {
 	srv := newRecallServer(t)
-	seedMemoryWithTags(t, srv, "user/chrispian/memory", "prefs.a", "tagged item",
+	seedMemoryWithTags(t, srv, "user/chrispian/memory/notes", "prefs.a", "tagged item",
 		[]string{"scope:nanite.backend.main"})
-	seedMemoryWithTags(t, srv, "user/chrispian/memory", "prefs.b", "untagged item", nil)
+	seedMemoryWithTags(t, srv, "user/chrispian/memory/notes", "prefs.b", "untagged item", nil)
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/recall?namespace=user/chrispian/memory&tags=scope:nanite.backend.main&limit=10", nil)
+		"/v1/recall?namespace=user/chrispian/memory/notes&tags=scope:nanite.backend.main&limit=10", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -229,11 +229,11 @@ func TestRecall_LimitApplied(t *testing.T) {
 	// Seed 5 items.
 	keys := []string{"k1", "k2", "k3", "k4", "k5"}
 	for _, k := range keys {
-		seedMemoryWithTags(t, srv, "user/chrispian/memory", "prefs."+k, "item "+k, nil)
+		seedMemoryWithTags(t, srv, "user/chrispian/memory/notes", "prefs."+k, "item "+k, nil)
 	}
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/recall?namespace=user/chrispian/memory&limit=3", nil)
+		"/v1/recall?namespace=user/chrispian/memory/notes&limit=3", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {

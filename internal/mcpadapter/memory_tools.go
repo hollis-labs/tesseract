@@ -21,7 +21,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Don't use this for:** pointer-to-external-content (`knowledge_write`) or generic revisioned records (`context_write`).\n"+
 				"• **Deeper:** `vanta_skills memory` for patterns; `vanta_skills namespaces` for namespace rules.",
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace (e.g. user/chrispian/memory)")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style)")),
 		mcp.WithString("supersedes", mcp.Description("Revision ID this revision supersedes (e.g. 01HX...)")),
 		mcp.WithString("status", mcp.Description("Status: draft|reviewed|canonical (default: draft)")),
@@ -54,7 +54,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Side effect:** reinforces the memory's activation/access_count — a deliberate read counts as use, unlike `memory_recall`.\n"+
 				"• **Deeper:** `vanta_skills memory`.",
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace (e.g. user/chrispian/memory)")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
@@ -90,7 +90,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Don't use this for:** cross-domain search — `conduit_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+
 				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills memory` for patterns.",
 		),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings (e.g. [\"user/chrispian/memory\"])")),
+		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of memory namespace strings. Use typed form user/{id}/memory/{type} (e.g. [\"user/chrispian/memory/decisions\"]) or the legacy/prefix form user/{id}/memory (e.g. [\"user/chrispian/memory\"]) to span every typed sub-namespace under that scope. Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("revision_scope", mcp.Description("current or timeline (default: current)")),
 		mcp.WithString("ranking", mcp.Description("activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)")),
 		mcp.WithString("query", mcp.Description("Semantic query string (required for similarity or relevance ranking)")),
@@ -117,9 +117,9 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote_*` three-stage workflow.\n"+
 				"• **Deeper:** `vanta_skills promotion`.",
 		),
-		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace (e.g. user/chrispian/session/2026-04-19:backend/memory)")),
+		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace user/{id}/session/{sid}/memory/{type} (e.g. user/chrispian/session/2026-04-19:backend/memory/decisions)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),
-		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project namespace (e.g. user/chrispian/memory)")),
+		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project memory namespace; the {type} segment MUST match the source (e.g. user/chrispian/memory/decisions)")),
 		mcp.WithString("actor_agent_id", mcp.Required(), mcp.Description("Agent ID performing the promotion")),
 		mcp.WithString("actor_version", mcp.Description("Agent version string")),
 		mcp.WithReadOnlyHintAnnotation(false),

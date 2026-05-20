@@ -48,7 +48,7 @@ func TestRecall_Reranker_Reorders(t *testing.T) {
 	ms.RegisterReranker("reverse", reverseReranker)
 
 	baseline, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "reranker",
 	})
@@ -60,7 +60,7 @@ func TestRecall_Reranker_Reorders(t *testing.T) {
 	}
 
 	reranked, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "reranker",
 		Reranker:   "reverse",
@@ -110,7 +110,7 @@ func TestRecall_Reranker_DoesNotReinforce(t *testing.T) {
 	ms.RegisterReranker("top1", top1)
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces:   []string{"user/chrispian/memory"},
+		Namespaces:   []string{"user/chrispian/memory/notes"},
 		Ranking:      memory.RankingRelevance,
 		Query:        "keyword",
 		Reranker:     "top1",
@@ -165,7 +165,7 @@ func TestRecall_Reranker_PreservesInputSet(t *testing.T) {
 	// Baseline order without reranker — establishes the "original order"
 	// the dropped items should fall back to.
 	baseline, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "preserve",
 	})
@@ -177,7 +177,7 @@ func TestRecall_Reranker_PreservesInputSet(t *testing.T) {
 	}
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "preserve",
 		Reranker:   "drop-rest",
@@ -229,7 +229,7 @@ func TestRecall_Reranker_DedupesOutput(t *testing.T) {
 	ms.RegisterReranker("doubler", doubler)
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "dedupe",
 		Reranker:   "doubler",
@@ -271,7 +271,7 @@ func TestRecall_Reranker_RespectsExplicitTopK(t *testing.T) {
 	ms.RegisterReranker("picky", picky)
 
 	got, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces:   []string{"user/chrispian/memory"},
+		Namespaces:   []string{"user/chrispian/memory/notes"},
 		Ranking:      memory.RankingRelevance,
 		Query:        "cap",
 		Reranker:     "picky",
@@ -312,7 +312,7 @@ func TestRecall_Reranker_ConcurrentRegistration(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_, _ = ms.Recall(ctx, memory.RecallInput{
-				Namespaces: []string{"user/chrispian/memory"},
+				Namespaces: []string{"user/chrispian/memory/notes"},
 				Ranking:    memory.RankingRelevance,
 				Query:      "race",
 			})
@@ -332,7 +332,7 @@ func TestRecall_Reranker_NotRegistered(t *testing.T) {
 	}
 
 	_, err := ms.Recall(ctx, memory.RecallInput{
-		Namespaces: []string{"user/chrispian/memory"},
+		Namespaces: []string{"user/chrispian/memory/notes"},
 		Ranking:    memory.RankingRelevance,
 		Query:      "any",
 		Reranker:   "does-not-exist",

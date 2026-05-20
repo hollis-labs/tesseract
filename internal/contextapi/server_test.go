@@ -1463,7 +1463,7 @@ func TestBulkIngest_Empty(t *testing.T) {
 func TestNamespacesList(t *testing.T) {
 	srv := newTestServer(t)
 
-	for _, ns := range []string{"user/alice/memory", "user/alice/cache", "app/editor/session"} {
+	for _, ns := range []string{"user/alice/memory/notes", "user/alice/cache", "app/editor/session"} {
 		reg := performJSON(t, srv, http.MethodPost, "/v1/namespaces/register", map[string]any{
 			"namespace":  ns,
 			"owner_type": "app",

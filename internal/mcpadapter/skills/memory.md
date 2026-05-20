@@ -20,13 +20,13 @@ The memory domain is for **agent-authored content you'll want to recall later**:
 
 - **External content you're referencing.** Use knowledge (`knowledge_write`) - the pointer-first model preserves provenance.
 - **Generic state records.** Use `context_write` - memory has specific lifecycle semantics (activation, promotion, dedup) you don't need for plain records.
-- **Ephemeral session scratch.** Write to session-scoped memory (`user/{id}/session/{sid}/memory`) when you want promotion later; use app context records (`app/{id}/session/*`) when you just want ephemeral scratch.
+- **Ephemeral session scratch.** Write to session-scoped memory (`user/{id}/session/{sid}/memory/{type}`) when you want promotion later; use app context records (`app/{id}/session/*`) when you just want ephemeral scratch.
 
 ## Required fields on memory_write
 
 From the `memory_write` MCP declaration:
 
-- `namespace` (required) - must parse via the memory shape: `user/{id}/memory`, `user/{id}/project/{pid}/memory`, or `user/{id}/session/{sid}/memory`.
+- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `references`. Use `notes` as the default catch-all when no stronger type fits. See `vanta_skills namespaces` for the per-type meaning.
 - `author_agent_id` (required)
 - `trigger` (required) - one of `explicit`, `post_compact`, `per_turn`, `promotion`, `manual`.
 - `session_id` (required)
@@ -55,4 +55,4 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 
 ## Promotion
 
-Session-scoped memories can be promoted to user or project scope via `memory_promote` (the shortcut). The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `vanta_skills promotion`.
+Session-scoped memories can be promoted to user or project scope via `memory_promote` (the shortcut). Source and target must carry the same `{type}` segment — promote is a scope change, not a re-classification. The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `vanta_skills promotion`.

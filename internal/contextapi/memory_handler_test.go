@@ -30,7 +30,7 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 	srv := newMemoryTestServer(t)
 
 	body := `{
-		"namespace":"user/chrispian/memory",
+		"namespace":"user/chrispian/memory/notes",
 		"memory_key":"prefs.output_style",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -70,7 +70,7 @@ func TestMemoryWrite_NoStoreReturns503(t *testing.T) {
 	srv := NewServer(cs, contextpolicy.New())
 	// No MemoryStore wired.
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(`{"namespace":"user/x/memory"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(`{"namespace":"user/x/memory/notes"}`))
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 
@@ -92,7 +92,7 @@ func TestMemoryHistory_RoundtripViaHTTP(t *testing.T) {
 		}
 	}
 	base := `{
-		"namespace":"user/chrispian/memory",
+		"namespace":"user/chrispian/memory/notes",
 		"memory_key":"prefs.history_test",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -106,7 +106,7 @@ func TestMemoryHistory_RoundtripViaHTTP(t *testing.T) {
 		write(bytesFormat(base, i))
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/memory/history?namespace=user/chrispian/memory&memory_key=prefs.history_test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/memory/history?namespace=user/chrispian/memory/notes&memory_key=prefs.history_test", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 

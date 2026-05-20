@@ -21,7 +21,7 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
 				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills facets-and-kinds` for facet filters.",
 		),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings (e.g. [\"user/chrispian/memory\",\"user/chrispian/knowledge\"])")),
+		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
 		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation)")),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),

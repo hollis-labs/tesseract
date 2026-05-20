@@ -20,10 +20,9 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 	var where []string
 	var args []interface{}
 
-	where = append(where, "r.namespace IN ("+placeholders(len(in.Namespaces))+")")
-	for _, ns := range in.Namespaces {
-		args = append(args, ns)
-	}
+	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces)
+	where = append(where, nsFrag)
+	args = append(args, nsArgs...)
 
 	if len(in.Filters.Statuses) > 0 {
 		where = append(where, "r.status IN ("+placeholders(len(in.Filters.Statuses))+")")

@@ -89,7 +89,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 	a := newEmbeddingAdapter(t, vec, "memory:write", "memory:read")
 
 	writeAndEmbed(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -101,7 +101,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": `["user/chrispian/memory"]`,
+		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleMemoryRecall(context.Background(), req)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
 	a := newEmbeddingAdapter(t, vec, "memory:write", "memory:read")
 
 	writeAndEmbed(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -146,7 +146,7 @@ func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": `["user/chrispian/memory"]`,
+		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleConduitLookup(context.Background(), req)
 	if err != nil {
@@ -174,7 +174,7 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 	a := newEmbeddingAdapter(t, vec, "memory:write", "memory:read")
 
 	writeAndEmbed(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -186,7 +186,7 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": `["user/chrispian/memory"]`,
+		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "similarity",
 		"query":      "dark mode preference",
 	}

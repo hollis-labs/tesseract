@@ -24,7 +24,7 @@ func TestRevisionJSON_OmitsEmbeddingVector(t *testing.T) {
 	rev := memory.Revision{
 		RevisionID:      "rev-1",
 		MemoryID:        "mem-1",
-		Namespace:       "user/test/memory",
+		Namespace:       "user/test/memory/notes",
 		EmbeddingModel:  "text-embedding-3-large",
 		EmbeddingVector: vec,
 	}

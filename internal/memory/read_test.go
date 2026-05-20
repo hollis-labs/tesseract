@@ -26,7 +26,7 @@ func TestGetCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cur, err := ms.GetCurrent(ctx, "user/chrispian/memory", "user.preferences.verbosity")
+	cur, err := ms.GetCurrent(ctx, "user/chrispian/memory/notes", "user.preferences.verbosity")
 	if err != nil {
 		t.Fatalf("GetCurrent: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestGetCurrent(t *testing.T) {
 func TestGetCurrentNotFound(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
-	_, err := ms.GetCurrent(context.Background(), "user/chrispian/memory", "nothing.here")
+	_, err := ms.GetCurrent(context.Background(), "user/chrispian/memory/notes", "nothing.here")
 	if !errors.Is(err, memory.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -64,7 +64,7 @@ func TestGetHistoryReturnsAllRevisionsNewestFirst(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 	}
 
-	revs, err := ms.GetHistory(ctx, "user/chrispian/memory", "user.preferences.verbosity")
+	revs, err := ms.GetHistory(ctx, "user/chrispian/memory/notes", "user.preferences.verbosity")
 	if err != nil {
 		t.Fatal(err)
 	}

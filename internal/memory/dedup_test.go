@@ -11,7 +11,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 	ms, cleanup := newTestStoreWithEmbedder(t)
 	defer cleanup()
 	ctx := context.Background()
-	ns := "user/chrispian/memory"
+	ns := "user/chrispian/memory/notes"
 
 	// Write and embed a revision.
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
@@ -56,7 +56,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 	ms, cleanup := newTestStoreWithEmbedder(t)
 	defer cleanup()
 	ctx := context.Background()
-	ns := "user/chrispian/memory"
+	ns := "user/chrispian/memory/notes"
 
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Namespace: ns, MemoryKey: "alpha",
@@ -101,7 +101,7 @@ func TestWriteRevision_SemanticDedup_NoMatch(t *testing.T) {
 	ctx := context.Background()
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Namespace: "user/chrispian/memory", MemoryKey: "unique",
+		Namespace: "user/chrispian/memory/notes", MemoryKey: "unique",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
@@ -123,7 +123,7 @@ func TestWriteRevision_NoDedup_Default(t *testing.T) {
 	ctx := context.Background()
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Namespace: "user/chrispian/memory", MemoryKey: "no_dedup",
+		Namespace: "user/chrispian/memory/notes", MemoryKey: "no_dedup",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
