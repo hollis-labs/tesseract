@@ -75,6 +75,14 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 
+	// `migrate-namespaces` is a one-shot data operation. It opens the DB
+	// file directly (potentially a copy) and intentionally bypasses
+	// contextstore.Open so it doesn't materialize workspace layout state
+	// on a temp copy.
+	if len(args) > 0 && args[0] == "migrate-namespaces" {
+		return runMigrateNamespaces(ctx, layout.MainDB(), args[1:], stdout, stderr)
+	}
+
 	conduitCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
