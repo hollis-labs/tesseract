@@ -2,7 +2,6 @@ package mcpadapter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -50,11 +49,9 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 		return res, nil
 	}
 
-	var tags []string
-	if raw := req.GetString("tags", ""); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &tags); err != nil {
-			return toolError("validation_error", "tags must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
+	tags, _, err := parseStringArrayArg(req, "tags")
+	if err != nil {
+		return toolError("validation_error", "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
 	pointer := memory.Pointer{

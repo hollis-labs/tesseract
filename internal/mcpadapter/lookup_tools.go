@@ -2,7 +2,6 @@ package mcpadapter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -49,13 +48,9 @@ func (a *Adapter) handleConduitLookup(ctx context.Context, req mcp.CallToolReque
 	}
 
 	unmarshalStrings := func(field string) ([]string, *mcp.CallToolResult) {
-		raw := req.GetString(field, "")
-		if raw == "" {
-			return nil, nil
-		}
-		var out []string
-		if err := json.Unmarshal([]byte(raw), &out); err != nil {
-			return nil, toolError("validation_error", field+" must be a JSON array of strings")
+		out, _, err := parseStringArrayArg(req, field)
+		if err != nil {
+			return nil, toolError("validation_error", field+" "+err.Error())
 		}
 		return out, nil
 	}

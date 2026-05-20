@@ -7,7 +7,7 @@ require (
 	github.com/hollis-labs/go-apppaths v0.1.0
 	github.com/hollis-labs/go-embed-contracts v0.1.1
 	github.com/hollis-labs/go-llm-contracts v0.1.0
-	github.com/hollis-labs/go-llm-types v0.1.0
+	github.com/hollis-labs/go-llm-types v0.3.0
 	github.com/hollis-labs/go-mcp v0.1.0
 	github.com/hollis-labs/go-mcp-sanitize v0.1.0
 	github.com/hollis-labs/go-modelsdev v0.2.0

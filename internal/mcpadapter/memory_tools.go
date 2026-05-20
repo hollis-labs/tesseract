@@ -2,7 +2,6 @@ package mcpadapter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -154,12 +153,10 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 		return res, nil
 	}
 
-	// Parse tags from JSON array string.
-	var tags []string
-	if raw := req.GetString("tags", ""); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &tags); err != nil {
-			return toolError("validation_error", "tags must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
+	// Parse tags — accept both native JSON array and JSON-encoded string.
+	tags, _, err := parseStringArrayArg(req, "tags")
+	if err != nil {
+		return toolError("validation_error", "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
@@ -239,42 +236,33 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		return res, nil
 	}
 
-	// Parse namespaces JSON array.
-	var namespaces []string
-	if raw := req.GetString("namespaces", ""); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &namespaces); err != nil {
-			return toolError("validation_error", "namespaces must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
+	// Parse namespaces — accept both native array and stringified.
+	namespaces, _, err := parseStringArrayArg(req, "namespaces")
+	if err != nil {
+		return toolError("validation_error", "namespaces "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
-	// Parse optional filter arrays.
+	originStrs, _, err := parseStringArrayArg(req, "origins")
+	if err != nil {
+		return toolError("validation_error", "origins "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
 	var origins []memory.Origin
-	if raw := req.GetString("origins", ""); raw != "" {
-		var strs []string
-		if err := json.Unmarshal([]byte(raw), &strs); err != nil {
-			return toolError("validation_error", "origins must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
-		for _, s := range strs {
-			origins = append(origins, memory.Origin(s))
-		}
+	for _, s := range originStrs {
+		origins = append(origins, memory.Origin(s))
 	}
 
+	statusStrs, _, err := parseStringArrayArg(req, "statuses")
+	if err != nil {
+		return toolError("validation_error", "statuses "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
 	var statuses []memory.Status
-	if raw := req.GetString("statuses", ""); raw != "" {
-		var strs []string
-		if err := json.Unmarshal([]byte(raw), &strs); err != nil {
-			return toolError("validation_error", "statuses must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
-		for _, s := range strs {
-			statuses = append(statuses, memory.Status(s))
-		}
+	for _, s := range statusStrs {
+		statuses = append(statuses, memory.Status(s))
 	}
 
-	var tags []string
-	if raw := req.GetString("tags", ""); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &tags); err != nil {
-			return toolError("validation_error", "tags must be a JSON array of strings"), nil //nolint:nilerr // MCP tool pattern
-		}
+	tags, _, err := parseStringArrayArg(req, "tags")
+	if err != nil {
+		return toolError("validation_error", "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
 	var since *time.Time
