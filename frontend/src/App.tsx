@@ -8,6 +8,7 @@ import { AppFooter } from "./components/layout/AppFooter";
 import { NAV_ITEMS, type NavPage, PAGE_PARENT, PAGE_TITLES } from "./components/layout/nav";
 import { isDemoMode } from "./demo/data";
 import { usePoll } from "./hooks/usePoll";
+import { AdminPage } from "./pages/AdminPage";
 import { AuditPage } from "./pages/AuditPage";
 import { AuthTokensPage } from "./pages/AuthTokensPage";
 import { BrokerPage } from "./pages/BrokerPage";
@@ -47,10 +48,14 @@ interface NavContext {
 function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
   if (typeof window === "undefined") return { page: "dashboard", ctx: {} };
   const raw = window.location.hash.replace(/^#/, "");
-  if (!raw) return { page: "dashboard", ctx: {} };
+  if (!raw) {
+    const pathname = window.location.pathname.replace(/\/+$/, "");
+    if (pathname === "/admin") return { page: "admin", ctx: {} };
+    return { page: "dashboard", ctx: {} };
+  }
 
-  const [pagePart, queryPart = ""] = raw.split("?");
-  const pageCandidate = pagePart as NavPage;
+  const [pagePart = "", queryPart = ""] = raw.split("?");
+  const pageCandidate = pagePart.replace(/^\//, "") as NavPage;
   if (!(pageCandidate in PAGE_TITLES)) {
     return { page: "dashboard", ctx: {} };
   }
@@ -82,6 +87,12 @@ function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
 
 function writeRouteToHash(page: NavPage, ctx: NavContext): void {
   if (typeof window === "undefined") return;
+  if (page === "admin" && Object.keys(ctx).length === 0) {
+    if (window.location.pathname !== "/admin" || window.location.hash) {
+      window.history.pushState(null, "", "/admin");
+    }
+    return;
+  }
   const params = new URLSearchParams();
   if (ctx.namespace) params.set("namespace", ctx.namespace);
   if (ctx.key) params.set("key", ctx.key);
@@ -91,6 +102,9 @@ function writeRouteToHash(page: NavPage, ctx: NavContext): void {
   if (ctx.reviewPreset) params.set("reviewPreset", ctx.reviewPreset);
   const qs = params.toString();
   const nextHash = qs ? `#${page}?${qs}` : `#${page}`;
+  if (window.location.pathname === "/admin") {
+    window.history.pushState(null, "", "/");
+  }
   if (window.location.hash !== nextHash) {
     window.location.hash = nextHash;
   }
@@ -174,6 +188,16 @@ export default function App() {
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const route = readRouteFromHash();
+      setPage(route.page);
+      setCtx(route.ctx);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   useEffect(() => {
@@ -363,6 +387,7 @@ export default function App() {
                 onExecutePlan={(_plan: BrokerPlanResponse) => handleNav("packetBuilder")}
               />
             )}
+            {page === "admin" && <AdminPage />}
             {page === "help" && <HelpPage />}
           </main>
         </div>

@@ -7,14 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/hollis-labs/go-apppaths/paths"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
 	feotel "github.com/hollis-labs/go-otel"
@@ -104,6 +108,16 @@ type Server struct {
 	EnableRequestLogging bool
 	// RequestLogMode controls query logging detail: redacted|full.
 	RequestLogMode string
+	// Layout is the resolved go-apppaths layout for admin/setup introspection.
+	Layout paths.Layout
+	// ConfigFile is the loaded config.yaml path for admin/setup introspection.
+	ConfigFile string
+	// QueueDBPath is the memory embedding queue DB path.
+	QueueDBPath string
+	// QueueDB is the open SQLite queue database used for admin queue health.
+	QueueDB *sql.DB
+	// RuntimeConfig is the loaded Tesseract config, merged with defaults.
+	RuntimeConfig config.Config
 	// TypeRegistry manages context types and views. May be nil (defaults will be used).
 	TypeRegistry *contexttypes.Registry
 	// MemoryStore backs the /v1/memory/* and /v1/knowledge/* routes. When
@@ -217,6 +231,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHistory(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/health/readiness":
 		s.handleReadiness(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/setup":
+		s.handleAdminSetup(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/queue":
+		s.handleAdminQueue(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/storage":
+		s.handleAdminStorage(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/audit":
 		s.handleAudit(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/views/evaluate":
@@ -940,6 +960,492 @@ func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+type adminPathInfo struct {
+	Label    string `json:"label"`
+	Path     string `json:"path"`
+	Exists   bool   `json:"exists"`
+	Kind     string `json:"kind"`
+	Writable bool   `json:"writable"`
+}
+
+type adminSetupResponse struct {
+	App     string           `json:"app"`
+	Paths   []adminPathInfo  `json:"paths"`
+	Auth    adminAuthInfo    `json:"auth"`
+	Runtime adminRuntimeInfo `json:"runtime"`
+	Config  adminConfigInfo  `json:"config"`
+}
+
+type adminAuthInfo struct {
+	Mode string `json:"mode"`
+}
+
+type adminRuntimeInfo struct {
+	MetricsEnabled        bool   `json:"metrics_enabled"`
+	RequestLoggingEnabled bool   `json:"request_logging_enabled"`
+	RequestLogMode        string `json:"request_log_mode"`
+	MemoryStoreEnabled    bool   `json:"memory_store_enabled"`
+	KnowledgeStoreEnabled bool   `json:"knowledge_store_enabled"`
+	SynthesisEnabled      bool   `json:"synthesis_enabled"`
+}
+
+type adminConfigInfo struct {
+	EmbeddingProvider        string  `json:"embedding_provider"`
+	EmbeddingModel           string  `json:"embedding_model"`
+	DedupSimilarityThreshold float64 `json:"dedup_similarity_threshold"`
+	SynthesisProvider        string  `json:"synthesis_provider"`
+	SynthesisModel           string  `json:"synthesis_model"`
+	SynthesisMaxTokens       int     `json:"synthesis_max_tokens"`
+	SynthesisTemperature     float64 `json:"synthesis_temperature"`
+	SynthesisSystemPromptSet bool    `json:"synthesis_system_prompt_set"`
+}
+
+type adminQueueResponse struct {
+	Enabled       bool                 `json:"enabled"`
+	Queue         string               `json:"queue"`
+	Path          string               `json:"path"`
+	Worker        adminQueueWorkerInfo `json:"worker"`
+	Total         int64                `json:"total"`
+	Available     int64                `json:"available"`
+	Delayed       int64                `json:"delayed"`
+	Reserved      int64                `json:"reserved"`
+	Failed        int64                `json:"failed"`
+	OldestCreated string               `json:"oldest_created_at,omitempty"`
+	NextAvailable string               `json:"next_available_at,omitempty"`
+	ActiveByType  []adminQueueTypeInfo `json:"active_by_type"`
+	GeneratedAt   string               `json:"generated_at"`
+}
+
+type adminQueueWorkerInfo struct {
+	Configured   bool   `json:"configured"`
+	Concurrency  int    `json:"concurrency"`
+	MaxTries     int    `json:"max_tries"`
+	RetryAfter   string `json:"retry_after"`
+	PollInterval string `json:"poll_interval"`
+}
+
+type adminQueueTypeInfo struct {
+	Type  string `json:"type"`
+	Count int64  `json:"count"`
+}
+
+type adminStorageResponse struct {
+	GeneratedAt     string                     `json:"generated_at"`
+	TotalBytes      int64                      `json:"total_bytes"`
+	Paths           []adminStoragePathInfo     `json:"paths"`
+	Records         adminStorageRecordInfo     `json:"records"`
+	NamespacePolicy adminNamespacePolicyInfo   `json:"namespace_policy"`
+	TopNamespaces   []adminNamespaceRecordInfo `json:"top_namespaces"`
+}
+
+type adminStoragePathInfo struct {
+	Label  string `json:"label"`
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	Kind   string `json:"kind"`
+	Bytes  int64  `json:"bytes"`
+	Error  string `json:"error,omitempty"`
+}
+
+type adminStorageRecordInfo struct {
+	Revisions int64  `json:"revisions"`
+	Heads     int64  `json:"heads"`
+	Expired   int64  `json:"expired"`
+	Oldest    string `json:"oldest_created_at,omitempty"`
+	Newest    string `json:"newest_created_at,omitempty"`
+}
+
+type adminNamespacePolicyInfo struct {
+	Namespaces          int `json:"namespaces"`
+	WithRetention       int `json:"with_retention"`
+	WithMaxRevisions    int `json:"with_max_revisions"`
+	WithMaxBytesPerKey  int `json:"with_max_bytes_per_key"`
+	WithoutPolicyLimits int `json:"without_policy_limits"`
+}
+
+type adminNamespaceRecordInfo struct {
+	Namespace string `json:"namespace"`
+	Revisions int64  `json:"revisions"`
+	Keys      int64  `json:"keys"`
+	Oldest    string `json:"oldest_created_at,omitempty"`
+	Newest    string `json:"newest_created_at,omitempty"`
+}
+
+func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
+	cfg := s.RuntimeConfig
+	if cfg.Embedding.Model == "" {
+		cfg = config.Defaults()
+	}
+
+	layout := s.Layout
+	configFile := s.ConfigFile
+	if configFile == "" && layout.ConfigDir() != "" {
+		configFile = filepath.Join(layout.ConfigDir(), "config.yaml")
+	}
+	queueDBPath := s.QueueDBPath
+	if queueDBPath == "" && layout.StateDir() != "" {
+		queueDBPath = filepath.Join(layout.StateDir(), "queue.db")
+	}
+
+	paths := make([]adminPathInfo, 0, 8)
+	if layout.DataDir() != "" {
+		paths = append(paths,
+			adminPath("data", layout.DataDir()),
+			adminPath("state", layout.StateDir()),
+			adminPath("cache", layout.CacheDir()),
+			adminPath("config", layout.ConfigDir()),
+			adminPath("workspace", layout.Workspace().Dir),
+			adminPath("main-db", layout.MainDB()),
+		)
+	}
+	if configFile != "" {
+		paths = append(paths, adminPath("config-file", configFile))
+	}
+	if queueDBPath != "" {
+		paths = append(paths, adminPath("queue-db", queueDBPath))
+	}
+	if report, err := s.Store.Readiness(r.Context()); err == nil {
+		paths = append(paths, adminPath("records", report.RecordsDir))
+		if layout.MainDB() == "" && report.DBPath != "" {
+			paths = append(paths, adminPath("main-db", report.DBPath))
+		}
+	}
+
+	authMode := "open"
+	switch {
+	case s.ManagedAuth:
+		authMode = "managed"
+	case strings.TrimSpace(s.AuthToken) != "":
+		authMode = "static-token"
+	}
+	requestLogMode := s.RequestLogMode
+	if requestLogMode == "" {
+		requestLogMode = "redacted"
+	}
+
+	writeJSON(w, http.StatusOK, adminSetupResponse{
+		App:   config.AppName,
+		Paths: paths,
+		Auth:  adminAuthInfo{Mode: authMode},
+		Runtime: adminRuntimeInfo{
+			MetricsEnabled:        s.EnableMetrics,
+			RequestLoggingEnabled: s.EnableRequestLogging,
+			RequestLogMode:        requestLogMode,
+			MemoryStoreEnabled:    s.MemoryStore != nil,
+			KnowledgeStoreEnabled: s.KnowledgeStore != nil,
+			SynthesisEnabled:      s.SynthesisProvider != nil,
+		},
+		Config: adminConfigInfo{
+			EmbeddingProvider:        cfg.Embedding.Provider,
+			EmbeddingModel:           cfg.Embedding.Model,
+			DedupSimilarityThreshold: cfg.Dedup.SimilarityThreshold,
+			SynthesisProvider:        cfg.Synthesis.Provider,
+			SynthesisModel:           cfg.Synthesis.Model,
+			SynthesisMaxTokens:       cfg.Synthesis.MaxTokens,
+			SynthesisTemperature:     cfg.Synthesis.Temperature,
+			SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
+		},
+	})
+}
+
+func (s *Server) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
+	const queueName = "conduit"
+	resp := adminQueueResponse{
+		Enabled: s.QueueDB != nil,
+		Queue:   queueName,
+		Path:    s.QueueDBPath,
+		Worker: adminQueueWorkerInfo{
+			Configured:   s.QueueDB != nil && s.MemoryStore != nil,
+			Concurrency:  1,
+			MaxTries:     3,
+			RetryAfter:   (30 * time.Second).String(),
+			PollInterval: (3 * time.Second).String(),
+		},
+		ActiveByType: []adminQueueTypeInfo{},
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+	}
+	if s.QueueDB == nil {
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	now := time.Now().Unix()
+	var err error
+	if resp.Total, err = adminQueueCount(r.Context(), s.QueueDB, "SELECT COUNT(*) FROM jobs WHERE queue = ?", queueName); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	if resp.Available, err = adminQueueCount(r.Context(), s.QueueDB, "SELECT COUNT(*) FROM jobs WHERE queue = ? AND reserved_at IS NULL AND available_at <= ?", queueName, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	if resp.Delayed, err = adminQueueCount(r.Context(), s.QueueDB, "SELECT COUNT(*) FROM jobs WHERE queue = ? AND reserved_at IS NULL AND available_at > ?", queueName, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	if resp.Reserved, err = adminQueueCount(r.Context(), s.QueueDB, "SELECT COUNT(*) FROM jobs WHERE queue = ? AND reserved_at IS NOT NULL", queueName); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	if resp.Failed, err = adminQueueCount(r.Context(), s.QueueDB, "SELECT COUNT(*) FROM failed_jobs WHERE queue = ?", queueName); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	resp.OldestCreated, err = adminQueueTime(r.Context(), s.QueueDB, "SELECT MIN(created_at) FROM jobs WHERE queue = ?", queueName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	resp.NextAvailable, err = adminQueueTime(r.Context(), s.QueueDB, "SELECT MIN(available_at) FROM jobs WHERE queue = ? AND reserved_at IS NULL", queueName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	resp.ActiveByType, err = adminQueueActiveByType(r.Context(), s.QueueDB, queueName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_stats_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
+	report, err := s.Store.Readiness(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_stats_failed", err.Error(), nil)
+		return
+	}
+
+	paths := []adminStoragePathInfo{
+		adminStoragePath("main-db", report.DBPath),
+		adminStoragePath("records", report.RecordsDir),
+	}
+	if s.QueueDBPath != "" {
+		paths = append(paths, adminStoragePath("queue-db", s.QueueDBPath))
+	}
+	if s.ConfigFile != "" {
+		paths = append(paths, adminStoragePath("config-file", s.ConfigFile))
+	}
+
+	var total int64
+	for _, pathInfo := range paths {
+		total += pathInfo.Bytes
+	}
+	recordInfo, err := s.adminStorageRecordInfo(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_stats_failed", err.Error(), nil)
+		return
+	}
+	policyInfo, err := s.adminNamespacePolicyInfo(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_stats_failed", err.Error(), nil)
+		return
+	}
+	topNamespaces, err := s.adminTopNamespaces(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_stats_failed", err.Error(), nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, adminStorageResponse{
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
+		TotalBytes:      total,
+		Paths:           paths,
+		Records:         recordInfo,
+		NamespacePolicy: policyInfo,
+		TopNamespaces:   topNamespaces,
+	})
+}
+
+func adminStoragePath(label, p string) adminStoragePathInfo {
+	info := adminStoragePathInfo{Label: label, Path: p}
+	if p == "" {
+		info.Kind = "missing"
+		return info
+	}
+	stat, err := os.Stat(p)
+	if err != nil {
+		info.Kind = "missing"
+		if !errors.Is(err, os.ErrNotExist) {
+			info.Error = err.Error()
+		}
+		return info
+	}
+	info.Exists = true
+	if stat.IsDir() {
+		info.Kind = "dir"
+		size, walkErr := adminDirSize(p)
+		info.Bytes = size
+		if walkErr != nil {
+			info.Error = walkErr.Error()
+		}
+		return info
+	}
+	info.Kind = "file"
+	info.Bytes = stat.Size()
+	return info
+}
+
+func adminDirSize(root string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
+}
+
+func (s *Server) adminStorageRecordInfo(ctx context.Context) (adminStorageRecordInfo, error) {
+	var info adminStorageRecordInfo
+	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM records`).Scan(&info.Revisions); err != nil {
+		return info, err
+	}
+	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM heads`).Scan(&info.Heads); err != nil {
+		return info, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM records WHERE ttl != '' AND ttl < ?`, now).Scan(&info.Expired); err != nil {
+		return info, err
+	}
+	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(MIN(created_at), ''), COALESCE(MAX(created_at), '') FROM records`).Scan(&info.Oldest, &info.Newest); err != nil {
+		return info, err
+	}
+	return info, nil
+}
+
+func (s *Server) adminNamespacePolicyInfo(ctx context.Context) (adminNamespacePolicyInfo, error) {
+	entries, err := s.Store.ListNamespacePolicies(ctx)
+	if err != nil {
+		return adminNamespacePolicyInfo{}, err
+	}
+	info := adminNamespacePolicyInfo{Namespaces: len(entries)}
+	for _, entry := range entries {
+		hasLimit := false
+		if _, ok := entry.Policy["retention"]; ok {
+			info.WithRetention++
+			hasLimit = true
+		}
+		if _, ok := entry.Policy["max_revisions"]; ok {
+			info.WithMaxRevisions++
+			hasLimit = true
+		}
+		if _, ok := entry.Policy["max_bytes_per_key"]; ok {
+			info.WithMaxBytesPerKey++
+			hasLimit = true
+		}
+		if !hasLimit {
+			info.WithoutPolicyLimits++
+		}
+	}
+	return info, nil
+}
+
+func (s *Server) adminTopNamespaces(ctx context.Context) ([]adminNamespaceRecordInfo, error) {
+	rows, err := s.Store.DB().QueryContext(ctx, `
+		SELECT namespace, COUNT(*) AS revisions, COUNT(DISTINCT key_name) AS keys,
+		       COALESCE(MIN(created_at), ''), COALESCE(MAX(created_at), '')
+		  FROM records
+		 GROUP BY namespace
+		 ORDER BY revisions DESC, namespace ASC
+		 LIMIT 10
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []adminNamespaceRecordInfo{}
+	for rows.Next() {
+		var item adminNamespaceRecordInfo
+		if err := rows.Scan(&item.Namespace, &item.Revisions, &item.Keys, &item.Oldest, &item.Newest); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func adminQueueCount(ctx context.Context, db *sql.DB, query string, args ...any) (int64, error) {
+	var count int64
+	if err := db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func adminQueueTime(ctx context.Context, db *sql.DB, query string, args ...any) (string, error) {
+	var value sql.NullInt64
+	if err := db.QueryRowContext(ctx, query, args...).Scan(&value); err != nil {
+		return "", err
+	}
+	if !value.Valid || value.Int64 <= 0 {
+		return "", nil
+	}
+	return time.Unix(value.Int64, 0).UTC().Format(time.RFC3339), nil
+}
+
+func adminQueueActiveByType(ctx context.Context, db *sql.DB, queueName string) ([]adminQueueTypeInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT type, COUNT(*)
+		  FROM jobs
+		 WHERE queue = ?
+		 GROUP BY type
+		 ORDER BY COUNT(*) DESC, type ASC
+		 LIMIT 10
+	`, queueName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	types := []adminQueueTypeInfo{}
+	for rows.Next() {
+		var item adminQueueTypeInfo
+		if err := rows.Scan(&item.Type, &item.Count); err != nil {
+			return nil, err
+		}
+		types = append(types, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return types, nil
+}
+
+func adminPath(label, p string) adminPathInfo {
+	info := adminPathInfo{Label: label, Path: p, Kind: "missing"}
+	if p == "" {
+		return info
+	}
+	stat, err := os.Stat(p)
+	if err == nil {
+		info.Exists = true
+		if stat.IsDir() {
+			info.Kind = "dir"
+			info.Writable = stat.Mode().Perm()&0o200 != 0
+		} else {
+			info.Kind = "file"
+			info.Writable = stat.Mode().Perm()&0o200 != 0
+		}
+		return info
+	}
+	parent := filepath.Dir(p)
+	if parentStat, parentErr := os.Stat(parent); parentErr == nil && parentStat.IsDir() {
+		info.Writable = parentStat.Mode().Perm()&0o200 != 0
+	}
+	return info
 }
 
 type viewRequest struct {

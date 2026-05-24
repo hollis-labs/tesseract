@@ -13,6 +13,7 @@ import {
   PenSquare,
   ScrollText,
   Search,
+  ServerCog,
   Shield,
   Telescope,
   Workflow,
@@ -44,6 +45,7 @@ export type NavPage =
   | "consistency"
   | "maintenance"
   | "broker"
+  | "admin"
   | "help";
 
 /** Display titles for every routable page, shown in the kit `PageHeader`. */
@@ -71,6 +73,7 @@ export const PAGE_TITLES: Record<NavPage, string> = {
   consistency: "Consistency",
   maintenance: "Maintenance",
   broker: "Broker",
+  admin: "Admin",
   help: "Help",
 };
 
@@ -112,6 +115,7 @@ export const NAV_ITEMS: NavItem[] = [
   { page: "audit", label: "Audit & Ops", icon: <ScrollText className={ICON} /> },
   { page: "consistency", label: "Consistency", icon: <HeartPulse className={ICON} /> },
   { page: "maintenance", label: "Maintenance", icon: <Wrench className={ICON} /> },
+  { page: "admin", label: "Admin", icon: <ServerCog className={ICON} /> },
   { page: "dashboard", label: "Dashboard", icon: <LayoutDashboard className={ICON} /> },
   { page: "help", label: "Help", icon: <HelpCircle className={ICON} />, footer: true },
 ];

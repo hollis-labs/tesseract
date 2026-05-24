@@ -125,7 +125,7 @@ function WriteForm({
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 800 }}>
+    <div className="hud-panel" style={{ padding: "1rem" }}>
       {error && (
         <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
           {error}
@@ -282,7 +282,7 @@ function PromoteForm({
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 800 }}>
+    <div className="hud-panel" style={{ padding: "1rem" }}>
       {error && (
         <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
           {error}
@@ -391,7 +391,7 @@ function DeprecateForm() {
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 600 }}>
+    <div className="hud-panel" style={{ padding: "1rem" }}>
       {error && (
         <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
           {error}

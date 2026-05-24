@@ -1,5 +1,8 @@
 import { demo, isDemoMode } from "../demo/data";
 import type {
+  AdminQueueResponse,
+  AdminSetupResponse,
+  AdminStorageResponse,
   AuditResponse,
   AuthToken,
   BrokerPlanRequest,
@@ -28,14 +31,15 @@ import type {
   PromoteApprovePayload,
   PromoteRequestPayload,
   RecallResponse,
-  SynthesisAskRequest,
-  SynthesisAskResponse,
   Record,
   Selector,
+  SynthesisAskRequest,
+  SynthesisAskResponse,
   TokenCreateRequest,
   TokenCreateResponse,
   TrimRequest,
   TrimResponse,
+  TTLCleanupResponse,
   ViewResponse,
   WriteRequest,
   WriteResponse,
@@ -72,6 +76,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export async function getHealth(): Promise<HealthStatus> {
   if (isDemoMode()) return demo.getHealth();
   return apiFetch<HealthStatus>("/v1/health/readiness");
+}
+
+export async function getAdminSetup(): Promise<AdminSetupResponse> {
+  if (isDemoMode()) return demo.getAdminSetup();
+  return apiFetch<AdminSetupResponse>("/v1/admin/setup");
+}
+
+export async function getAdminQueue(): Promise<AdminQueueResponse> {
+  if (isDemoMode()) return demo.getAdminQueue();
+  return apiFetch<AdminQueueResponse>("/v1/admin/queue");
+}
+
+export async function getAdminStorage(): Promise<AdminStorageResponse> {
+  if (isDemoMode()) return demo.getAdminStorage();
+  return apiFetch<AdminStorageResponse>("/v1/admin/storage");
 }
 
 // ── Views ───────────────────────────────────────────────────────────
@@ -298,7 +317,9 @@ export async function memoryPromote(req: MemoryPromoteRequest): Promise<MemoryRe
   });
 }
 
-export async function memoryDeprecate(req: MemoryDeprecateRequest): Promise<MemoryDeprecateResponse> {
+export async function memoryDeprecate(
+  req: MemoryDeprecateRequest,
+): Promise<MemoryDeprecateResponse> {
   if (isDemoMode()) return demo.memoryDeprecate(req);
   return apiFetch<MemoryDeprecateResponse>("/v1/memory/deprecate", {
     method: "POST",
@@ -378,6 +399,13 @@ export async function compactRecords(req: CompactRequest): Promise<CompactRespon
   return apiFetch<CompactResponse>("/v1/maintenance/compact", {
     method: "POST",
     body: JSON.stringify(req),
+  });
+}
+
+export async function cleanupExpiredTTL(): Promise<TTLCleanupResponse> {
+  if (isDemoMode()) return demo.cleanupExpiredTTL();
+  return apiFetch<TTLCleanupResponse>("/v1/maintenance/ttl-cleanup", {
+    method: "POST",
   });
 }
 

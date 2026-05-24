@@ -3,6 +3,7 @@ package contextapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -483,6 +484,228 @@ func TestReadinessEndpoint(t *testing.T) {
 	}
 	if !report.Healthy || report.Status != "healthy" {
 		t.Fatalf("expected healthy readiness")
+	}
+}
+
+func TestAdminSetupEndpoint(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.EnableMetrics = true
+	srv.EnableRequestLogging = true
+	srv.RequestLogMode = "redacted"
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	srv.QueueDBPath = filepath.Join(root, "queue.db")
+
+	res := performJSON(t, srv, http.MethodGet, "/v1/admin/setup", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("admin setup status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		App  string `json:"app"`
+		Auth struct {
+			Mode string `json:"mode"`
+		} `json:"auth"`
+		Runtime struct {
+			MetricsEnabled        bool   `json:"metrics_enabled"`
+			RequestLoggingEnabled bool   `json:"request_logging_enabled"`
+			RequestLogMode        string `json:"request_log_mode"`
+		} `json:"runtime"`
+		Config struct {
+			EmbeddingModel           string  `json:"embedding_model"`
+			DedupSimilarityThreshold float64 `json:"dedup_similarity_threshold"`
+		} `json:"config"`
+		Paths []struct {
+			Label  string `json:"label"`
+			Path   string `json:"path"`
+			Exists bool   `json:"exists"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal admin setup: %v", err)
+	}
+	if payload.App != "tesseract" {
+		t.Fatalf("app: got %q", payload.App)
+	}
+	if payload.Auth.Mode != "open" {
+		t.Fatalf("auth mode: got %q", payload.Auth.Mode)
+	}
+	if !payload.Runtime.MetricsEnabled || !payload.Runtime.RequestLoggingEnabled || payload.Runtime.RequestLogMode != "redacted" {
+		t.Fatalf("runtime: %+v", payload.Runtime)
+	}
+	if payload.Config.EmbeddingModel == "" || payload.Config.DedupSimilarityThreshold == 0 {
+		t.Fatalf("config defaults not reported: %+v", payload.Config)
+	}
+	labels := map[string]bool{}
+	for _, p := range payload.Paths {
+		labels[p.Label] = p.Exists
+	}
+	if _, ok := labels["records"]; !ok {
+		t.Fatalf("expected records path in %+v", payload.Paths)
+	}
+	if _, ok := labels["main-db"]; !ok {
+		t.Fatalf("expected main-db path in %+v", payload.Paths)
+	}
+	if _, ok := labels["config-file"]; !ok {
+		t.Fatalf("expected config-file path in %+v", payload.Paths)
+	}
+}
+
+func TestAdminQueueEndpoint(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	queueDBPath := filepath.Join(root, "queue.db")
+	db, err := sql.Open("sqlite", queueDBPath)
+	if err != nil {
+		t.Fatalf("open queue db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue TEXT NOT NULL DEFAULT 'default',
+    type TEXT NOT NULL,
+    payload BLOB,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_tries INTEGER NOT NULL DEFAULT 0,
+    reserved_at INTEGER,
+    available_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE failed_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload BLOB,
+    error TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    failed_at INTEGER NOT NULL
+);`); err != nil {
+		t.Fatalf("create queue schema: %v", err)
+	}
+	now := time.Now().Unix()
+	if _, err := db.Exec(`
+INSERT INTO jobs (queue, type, attempts, max_tries, reserved_at, available_at, created_at)
+VALUES
+  ('conduit', 'embed', 0, 3, NULL, ?, ?),
+  ('conduit', 'embed', 1, 3, NULL, ?, ?),
+  ('conduit', 'embed', 1, 3, ?, ?, ?),
+  ('other', 'embed', 0, 3, NULL, ?, ?);
+INSERT INTO failed_jobs (queue, type, payload, error, attempts, failed_at)
+VALUES ('conduit', 'embed', NULL, 'boom', 3, ?);`,
+		now-10, now-100,
+		now+300, now-50,
+		now-5, now-5, now-80,
+		now-10, now-20,
+		now-1,
+	); err != nil {
+		t.Fatalf("seed queue: %v", err)
+	}
+	srv.QueueDBPath = queueDBPath
+	srv.QueueDB = db
+
+	res := performJSON(t, srv, http.MethodGet, "/v1/admin/queue", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("admin queue status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		Enabled    bool `json:"enabled"`
+		Total      int  `json:"total"`
+		Available  int  `json:"available"`
+		Delayed    int  `json:"delayed"`
+		Reserved   int  `json:"reserved"`
+		Failed     int  `json:"failed"`
+		ActiveType []struct {
+			Type  string `json:"type"`
+			Count int    `json:"count"`
+		} `json:"active_by_type"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal admin queue: %v", err)
+	}
+	if !payload.Enabled || payload.Total != 3 || payload.Available != 1 || payload.Delayed != 1 || payload.Reserved != 1 || payload.Failed != 1 {
+		t.Fatalf("unexpected queue payload: %+v", payload)
+	}
+	if len(payload.ActiveType) != 1 || payload.ActiveType[0].Type != "embed" || payload.ActiveType[0].Count != 3 {
+		t.Fatalf("unexpected active types: %+v", payload.ActiveType)
+	}
+}
+
+func TestAdminStorageEndpoint(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.QueueDBPath = filepath.Join(root, "queue.db")
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	if err := os.WriteFile(srv.ConfigFile, []byte("embedding:\n  provider: mock\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.WriteFile(srv.QueueDBPath, []byte("queue"), 0o644); err != nil {
+		t.Fatalf("write queue db: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := srv.Store.AppendRecord(context.Background(), contextstore.AppendInput{
+			Namespace: "app/admin/storage",
+			Key:       "summary",
+			Actor:     "app:admin",
+			Payload:   json.RawMessage(`{"v":1}`),
+		}); err != nil {
+			t.Fatalf("append record %d: %v", i, err)
+		}
+	}
+	if err := srv.Store.UpsertNamespacePolicy(context.Background(), contextstore.NamespacePolicyEntry{
+		Namespace: "app/admin/storage",
+		OwnerType: "app",
+		OwnerID:   "admin",
+		Policy: map[string]any{
+			"retention":     "720h",
+			"max_revisions": float64(10),
+		},
+	}); err != nil {
+		t.Fatalf("upsert namespace policy: %v", err)
+	}
+
+	res := performJSON(t, srv, http.MethodGet, "/v1/admin/storage", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("admin storage status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		TotalBytes int `json:"total_bytes"`
+		Records    struct {
+			Revisions int `json:"revisions"`
+			Heads     int `json:"heads"`
+		} `json:"records"`
+		NamespacePolicy struct {
+			Namespaces       int `json:"namespaces"`
+			WithRetention    int `json:"with_retention"`
+			WithMaxRevisions int `json:"with_max_revisions"`
+		} `json:"namespace_policy"`
+		TopNamespaces []struct {
+			Namespace string `json:"namespace"`
+			Revisions int    `json:"revisions"`
+			Keys      int    `json:"keys"`
+		} `json:"top_namespaces"`
+		Paths []struct {
+			Label  string `json:"label"`
+			Exists bool   `json:"exists"`
+			Bytes  int    `json:"bytes"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal admin storage: %v", err)
+	}
+	if payload.TotalBytes <= 0 || payload.Records.Revisions != 2 || payload.Records.Heads != 1 {
+		t.Fatalf("unexpected storage payload: %+v", payload)
+	}
+	if payload.NamespacePolicy.Namespaces == 0 || payload.NamespacePolicy.WithRetention == 0 || payload.NamespacePolicy.WithMaxRevisions == 0 {
+		t.Fatalf("unexpected namespace policy payload: %+v", payload.NamespacePolicy)
+	}
+	if len(payload.TopNamespaces) == 0 || payload.TopNamespaces[0].Namespace != "app/admin/storage" || payload.TopNamespaces[0].Revisions != 2 || payload.TopNamespaces[0].Keys != 1 {
+		t.Fatalf("unexpected top namespaces: %+v", payload.TopNamespaces)
+	}
+	labels := map[string]bool{}
+	for _, path := range payload.Paths {
+		labels[path.Label] = path.Exists && path.Bytes > 0
+	}
+	for _, label := range []string{"main-db", "records", "queue-db", "config-file"} {
+		if !labels[label] {
+			t.Fatalf("expected non-empty %s path in %+v", label, payload.Paths)
+		}
 	}
 }
 

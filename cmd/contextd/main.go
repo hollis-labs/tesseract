@@ -284,6 +284,11 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.EnableRequestLogging = cfg.EnableRequestLogs
 	srv.RequestLogMode = cfg.RequestLogMode
 	srv.LogWriter = stderr
+	srv.Layout = layout
+	srv.ConfigFile = filepath.Join(layout.ConfigDir(), "config.yaml")
+	srv.QueueDBPath = mem.QueueDBPath
+	srv.QueueDB = mem.queueDB
+	srv.RuntimeConfig = conduitCfg
 
 	// Wire LLM-backed synthesis if config + credentials are present. Failure
 	// to construct the provider is non-fatal — the route just stays 503.

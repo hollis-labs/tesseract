@@ -1,4 +1,7 @@
 import type {
+  AdminQueueResponse,
+  AdminSetupResponse,
+  AdminStorageResponse,
   AuditEvent,
   AuditResponse,
   AuthToken,
@@ -23,11 +26,12 @@ import type {
   PacketResponse,
   RecallBriefItem,
   RecallResponse,
+  Record,
   SynthesisAskRequest,
   SynthesisAskResponse,
-  Record,
   TokenCreateResponse,
   TrimResponse,
+  TTLCleanupResponse,
   ViewResponse,
   WriteResponse,
 } from "../api/types";
@@ -133,6 +137,17 @@ const MOCK_RECORDS: Record[] = [
     created_at: ago(72),
     payload: { port: 8080, metrics: true, auth_mode: "token", max_payload_kb: 512 },
   },
+];
+
+const DEMO_NAMESPACES: { namespace: string; owner_type: string; owner_id: string }[] = [
+  { namespace: "user/jane/memory", owner_type: "user", owner_id: "jane" },
+  { namespace: "user/jane/cache", owner_type: "user", owner_id: "jane" },
+  { namespace: "user/jane/pins", owner_type: "user", owner_id: "jane" },
+  { namespace: "user/jane/knowledge/projects", owner_type: "user", owner_id: "jane" },
+  { namespace: "user/jane/knowledge/portfolio", owner_type: "user", owner_id: "jane" },
+  { namespace: "app/editor/session", owner_type: "app", owner_id: "editor" },
+  { namespace: "app/test/session/sess-001", owner_type: "app", owner_id: "test" },
+  { namespace: "app/prod/conduit", owner_type: "app", owner_id: "deploy" },
 ];
 
 // ── Mock audit events ────────────────────────────────────────────────
@@ -250,11 +265,149 @@ const MOCK_TOKENS: AuthToken[] = [
 export const demo = {
   getHealth(): HealthStatus {
     return {
-      status: "ok",
+      healthy: true,
+      status: "healthy",
       db_path: "/tmp/conduit-demo.db",
+      records_dir: "/tmp/conduit-demo-records",
+      records_dir_exists: true,
       schema_version: 4,
       record_count: MOCK_RECORDS.length,
       consistency_issues: 0,
+      generated_at: now.toISOString(),
+    };
+  },
+
+  getAdminSetup(): AdminSetupResponse {
+    return {
+      app: "tesseract",
+      paths: [
+        { label: "data", path: "/demo/data", exists: true, kind: "dir", writable: true },
+        { label: "state", path: "/demo/state", exists: true, kind: "dir", writable: true },
+        { label: "cache", path: "/demo/cache", exists: true, kind: "dir", writable: true },
+        { label: "config", path: "/demo/config", exists: true, kind: "dir", writable: true },
+        {
+          label: "config-file",
+          path: "/demo/config/config.yaml",
+          exists: false,
+          kind: "missing",
+          writable: true,
+        },
+        {
+          label: "main-db",
+          path: "/demo/state/context.db",
+          exists: true,
+          kind: "file",
+          writable: true,
+        },
+        {
+          label: "records",
+          path: "/demo/state/records",
+          exists: true,
+          kind: "dir",
+          writable: true,
+        },
+        {
+          label: "queue-db",
+          path: "/demo/state/queue.db",
+          exists: true,
+          kind: "file",
+          writable: true,
+        },
+      ],
+      auth: { mode: "open" },
+      runtime: {
+        metrics_enabled: true,
+        request_logging_enabled: false,
+        request_log_mode: "redacted",
+        memory_store_enabled: true,
+        knowledge_store_enabled: true,
+        synthesis_enabled: false,
+      },
+      config: {
+        embedding_provider: "openai",
+        embedding_model: "text-embedding-3-large",
+        dedup_similarity_threshold: 0.85,
+        synthesis_provider: "",
+        synthesis_model: "",
+        synthesis_max_tokens: 0,
+        synthesis_temperature: 0,
+        synthesis_system_prompt_set: false,
+      },
+    };
+  },
+
+  getAdminQueue(): AdminQueueResponse {
+    return {
+      enabled: true,
+      queue: "conduit",
+      path: "/demo/state/queue.db",
+      worker: {
+        configured: true,
+        concurrency: 1,
+        max_tries: 3,
+        retry_after: "30s",
+        poll_interval: "3s",
+      },
+      total: 3,
+      available: 1,
+      delayed: 1,
+      reserved: 1,
+      failed: 0,
+      oldest_created_at: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+      next_available_at: new Date(now.getTime() + 2 * 60 * 1000).toISOString(),
+      active_by_type: [{ type: "embed", count: 3 }],
+      generated_at: now.toISOString(),
+    };
+  },
+
+  getAdminStorage(): AdminStorageResponse {
+    return {
+      generated_at: now.toISOString(),
+      total_bytes: 4_718_592,
+      paths: [
+        {
+          label: "main-db",
+          path: "/demo/state/context.db",
+          exists: true,
+          kind: "file",
+          bytes: 2_097_152,
+        },
+        {
+          label: "records",
+          path: "/demo/state/records",
+          exists: true,
+          kind: "dir",
+          bytes: 1_572_864,
+        },
+        {
+          label: "queue-db",
+          path: "/demo/state/queue.db",
+          exists: true,
+          kind: "file",
+          bytes: 1_048_576,
+        },
+      ],
+      records: {
+        revisions: MOCK_RECORDS.length,
+        heads: MOCK_RECORDS.length,
+        expired: 0,
+        oldest_created_at: MOCK_RECORDS[MOCK_RECORDS.length - 1]?.created_at ?? now.toISOString(),
+        newest_created_at: MOCK_RECORDS[0]?.created_at ?? now.toISOString(),
+      },
+      namespace_policy: {
+        namespaces: DEMO_NAMESPACES.length,
+        with_retention: 2,
+        with_max_revisions: 2,
+        with_max_bytes_per_key: 0,
+        without_policy_limits: Math.max(0, DEMO_NAMESPACES.length - 2),
+      },
+      top_namespaces: DEMO_NAMESPACES.slice(0, 5).map((item, index) => ({
+        namespace: item.namespace,
+        revisions: 8 - index,
+        keys: 3,
+        oldest_created_at: new Date(now.getTime() - (index + 2) * 60 * 60 * 1000).toISOString(),
+        newest_created_at: new Date(now.getTime() - index * 10 * 60 * 1000).toISOString(),
+      })),
     };
   },
 
@@ -404,6 +557,10 @@ export const demo = {
     return { compacted: dryRun ? 8 : 8, namespace_pattern: "*", duration_ms: 32, dry_run: dryRun };
   },
 
+  cleanupExpiredTTL(): TTLCleanupResponse {
+    return { cleaned: 3 };
+  },
+
   buildPacket(): PacketResponse {
     return {
       items: MOCK_RECORDS.slice(0, 4),
@@ -470,17 +627,9 @@ export const demo = {
   },
 
   listNamespaces(prefix?: string): NamespaceListResponse {
-    const all: { namespace: string; owner_type: string; owner_id: string }[] = [
-      { namespace: "user/jane/memory", owner_type: "user", owner_id: "jane" },
-      { namespace: "user/jane/cache", owner_type: "user", owner_id: "jane" },
-      { namespace: "user/jane/pins", owner_type: "user", owner_id: "jane" },
-      { namespace: "user/jane/knowledge/projects", owner_type: "user", owner_id: "jane" },
-      { namespace: "user/jane/knowledge/portfolio", owner_type: "user", owner_id: "jane" },
-      { namespace: "app/editor/session", owner_type: "app", owner_id: "editor" },
-      { namespace: "app/test/session/sess-001", owner_type: "app", owner_id: "test" },
-      { namespace: "app/prod/conduit", owner_type: "app", owner_id: "deploy" },
-    ];
-    const filtered = prefix ? all.filter((n) => n.namespace.startsWith(prefix)) : all;
+    const filtered = prefix
+      ? DEMO_NAMESPACES.filter((n) => n.namespace.startsWith(prefix))
+      : DEMO_NAMESPACES;
     return {
       items: filtered.map((n) => ({ ...n, updated_at: ago(48) })),
       count: filtered.length,

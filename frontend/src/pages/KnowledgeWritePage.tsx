@@ -91,7 +91,7 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
         <h2 className="page-title">Knowledge Write</h2>
       </div>
 
-      <div className="hud-panel" style={{ padding: "1rem", maxWidth: 860 }}>
+      <div className="hud-panel" style={{ padding: "1rem" }}>
         {error && (
           <div
             style={{

@@ -21,9 +21,10 @@ import (
 // memorySubsystem holds the components wired up by setupMemorySubsystem.
 // Callers must invoke Close when shutting down to release the queue DB.
 type memorySubsystem struct {
-	Store   *memory.Store
-	Queue   queue.Queue
-	queueDB *sql.DB
+	Store       *memory.Store
+	Queue       queue.Queue
+	QueueDBPath string
+	queueDB     *sql.DB
 }
 
 // Close releases the queue DB handle. Safe to call multiple times.
@@ -109,5 +110,5 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 	}
 	go decayJob.Run(ctx)
 
-	return &memorySubsystem{Store: memStore, Queue: q, queueDB: queueDB}, nil
+	return &memorySubsystem{Store: memStore, Queue: q, QueueDBPath: queueDBPath, queueDB: queueDB}, nil
 }

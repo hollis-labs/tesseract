@@ -96,10 +96,115 @@ export interface AuditResponse {
 
 export interface HealthStatus {
   status: string;
+  healthy?: boolean;
   db_path: string;
+  records_dir?: string;
+  records_dir_exists?: boolean;
   schema_version: number;
-  record_count: number;
+  record_count?: number;
   consistency_issues: number;
+  generated_at?: string;
+}
+
+// ── Admin setup types ───────────────────────────────────────────────
+
+export interface AdminPathInfo {
+  label: string;
+  path: string;
+  exists: boolean;
+  kind: string;
+  writable: boolean;
+}
+
+export interface AdminSetupResponse {
+  app: string;
+  paths: AdminPathInfo[];
+  auth: {
+    mode: string;
+  };
+  runtime: {
+    metrics_enabled: boolean;
+    request_logging_enabled: boolean;
+    request_log_mode: string;
+    memory_store_enabled: boolean;
+    knowledge_store_enabled: boolean;
+    synthesis_enabled: boolean;
+  };
+  config: {
+    embedding_provider: string;
+    embedding_model: string;
+    dedup_similarity_threshold: number;
+    synthesis_provider: string;
+    synthesis_model: string;
+    synthesis_max_tokens: number;
+    synthesis_temperature: number;
+    synthesis_system_prompt_set: boolean;
+  };
+}
+
+export interface AdminQueueTypeInfo {
+  type: string;
+  count: number;
+}
+
+export interface AdminQueueResponse {
+  enabled: boolean;
+  queue: string;
+  path: string;
+  worker: {
+    configured: boolean;
+    concurrency: number;
+    max_tries: number;
+    retry_after: string;
+    poll_interval: string;
+  };
+  total: number;
+  available: number;
+  delayed: number;
+  reserved: number;
+  failed: number;
+  oldest_created_at?: string;
+  next_available_at?: string;
+  active_by_type: AdminQueueTypeInfo[];
+  generated_at: string;
+}
+
+export interface AdminStoragePathInfo {
+  label: string;
+  path: string;
+  exists: boolean;
+  kind: string;
+  bytes: number;
+  error?: string;
+}
+
+export interface AdminStorageNamespaceInfo {
+  namespace: string;
+  revisions: number;
+  keys: number;
+  oldest_created_at?: string;
+  newest_created_at?: string;
+}
+
+export interface AdminStorageResponse {
+  generated_at: string;
+  total_bytes: number;
+  paths: AdminStoragePathInfo[];
+  records: {
+    revisions: number;
+    heads: number;
+    expired: number;
+    oldest_created_at?: string;
+    newest_created_at?: string;
+  };
+  namespace_policy: {
+    namespaces: number;
+    with_retention: number;
+    with_max_revisions: number;
+    with_max_bytes_per_key: number;
+    without_policy_limits: number;
+  };
+  top_namespaces: AdminStorageNamespaceInfo[];
 }
 
 // ── Promote types ───────────────────────────────────────────────────
@@ -239,6 +344,10 @@ export interface CompactResponse {
   dry_run: boolean;
 }
 
+export interface TTLCleanupResponse {
+  cleaned: number;
+}
+
 // ── Metrics types ───────────────────────────────────────────────────
 
 export interface RouteMetric {
@@ -246,8 +355,10 @@ export interface RouteMetric {
   path: string;
   requests: number;
   errors: number;
+  latency_ns_total?: number;
   latency_ns_avg: number;
   status_counts: { [status: string]: number };
+  recent_request_ids?: string[];
 }
 
 export interface MetricsResponse {
