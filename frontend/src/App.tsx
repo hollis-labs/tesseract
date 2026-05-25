@@ -164,7 +164,7 @@ export default function App() {
       }
 
       if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
-        window.dispatchEvent(new CustomEvent("conduit:refresh"));
+        window.dispatchEvent(new CustomEvent("tesseract:refresh"));
       }
 
       if (e.key === "?" && !e.metaKey && !e.ctrlKey) {

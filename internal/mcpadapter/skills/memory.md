@@ -26,7 +26,7 @@ The memory domain is for **agent-authored content you'll want to recall later**:
 
 From the `memory_write` MCP declaration:
 
-- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `references`. Use `notes` as the default catch-all when no stronger type fits. See `vanta_skills namespaces` for the per-type meaning.
+- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `references`. Use `notes` as the default catch-all when no stronger type fits. See `tesseract_skills namespaces` for the per-type meaning.
 - `author_agent_id` (required)
 - `trigger` (required) - one of `explicit`, `post_compact`, `per_turn`, `promotion`, `manual`.
 - `session_id` (required)
@@ -39,7 +39,7 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 ## Core flow
 
 1. **Write** - `memory_write`.
-2. **Recall** - `memory_recall`. Default ranking is `relevance` (RRF) when `query` is set, otherwise `activation`. Other modes: `chronological`, `similarity`. See `vanta_skills recall-and-ranking`.
+2. **Recall** - `memory_recall`. Default ranking is `relevance` (RRF) when `query` is set, otherwise `activation`. Other modes: `chronological`, `similarity`. See `tesseract_skills recall-and-ranking`.
 3. **Get head** - `memory_get` returns the current (non-deprecated) revision for `(namespace, memory_key)`.
 4. **Get revision** - `memory_get_revision` fetches by `revision_id`.
 5. **Get history** - `memory_history` returns the full revision chain for a keyed memory, newest first.
@@ -55,4 +55,4 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 
 ## Promotion
 
-Session-scoped memories can be promoted to user or project scope via `memory_promote` (the shortcut). Source and target must carry the same `{type}` segment — promote is a scope change, not a re-classification. The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `vanta_skills promotion`.
+Session-scoped memories can be promoted to user or project scope via `memory_promote` (the shortcut). Source and target must carry the same `{type}` segment — promote is a scope change, not a re-classification. The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `tesseract_skills promotion`.

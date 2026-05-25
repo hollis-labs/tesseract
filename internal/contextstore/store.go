@@ -550,7 +550,7 @@ CREATE TABLE IF NOT EXISTS memory_revisions (
 			// Knowledge facets: kind, source, pointer{scheme, locator,
 			// resolved_at}. Nullable on memory_revisions — only populated for
 			// the knowledge domain. Flat columns chosen over a side table for
-			// filter/facet histogram performance in conduit_lookup.
+			// filter/facet histogram performance in tesseract_lookup.
 			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN facet_kind TEXT NULL`); err != nil {
 				return err
 			}

@@ -29,14 +29,7 @@
     "smoke-invalid-token",
     "make-contract-cli-list",
     "make-contract-cli-run",
-    "bootstrap-sync",
-    "bootstrap-sync-no-log",
-    "bootstrap-sync-idempotent",
-    "make-bootstrap-report",
-    "make-bootstrap-sync",
-    "make-bootstrap-sync-alias",
     "make-smoke-invalid-token",
-    "runlog-helper",
     "contract-suite-commands-format",
     "contract-suite-commands-unique",
     "contract-suite-commands-prefix",
@@ -44,7 +37,6 @@
     "contract-suite-commands-suffix",
     "contract-suite-commands-token-count",
     "contract-suite-commands-non-empty",
-    "fixture-lint-script",
-    "agents-boot-check"
+    "fixture-lint-script"
   ]
 }

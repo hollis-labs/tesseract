@@ -278,3 +278,16 @@ func (s *Store) EmitNamespaceRegister(ctx context.Context, actor, namespace stri
 		Metadata:  metadata,
 	})
 }
+
+// EmitNamespaceUpdate records a "namespace.update" audit event for mutations to
+// an existing namespace policy row.
+func (s *Store) EmitNamespaceUpdate(ctx context.Context, actor, namespace string, metadata json.RawMessage) error {
+	return s.emit(ctx, AuditEvent{
+		EventType: EventNamespaceUpdate,
+		Actor:     actor,
+		Namespace: namespace,
+		Key:       namespace,
+		Revision:  1,
+		Metadata:  metadata,
+	})
+}

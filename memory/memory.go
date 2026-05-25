@@ -1,10 +1,10 @@
-// Package memory re-exports the Conduit memory subsystem types for use by
+// Package memory re-exports the Tesseract memory subsystem types for use by
 // external consumers. The implementation lives in internal/memory; this
 // package provides the public API surface.
 //
 // External consumers should use the exported types, constants, errors, and
-// helpers in this package as the public memory API surface. The Conduit
-// facade (conduit.Open()) returns *internal/memory.Store types; those are
+// helpers in this package as the public memory API surface. The Tesseract
+// facade (tesseract.Open()) returns *internal/memory.Store types; those are
 // assignable to memory.Store via the Store alias below.
 package memory
 

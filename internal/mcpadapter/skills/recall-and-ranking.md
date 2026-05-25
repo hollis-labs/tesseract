@@ -7,7 +7,7 @@ related: [memory, revisions]
 
 # Recall and ranking
 
-`memory_recall` and `conduit_lookup` share one ranking surface. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`.
+`memory_recall` and `tesseract_lookup` share one ranking surface. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`.
 
 ## Four modes
 
@@ -33,7 +33,7 @@ All rankings accept the same filter set:
 - `origins`, `statuses`, `tags` (JSON arrays)
 - `confidence_min` (0-1)
 - `since` / `until` (RFC3339 bounds)
-- `facet_kinds` / `facet_sources` (knowledge-aware, via `conduit_lookup`)
+- `facet_kinds` / `facet_sources` (knowledge-aware, via `tesseract_lookup`)
 
 ## Access reinforcement
 

@@ -1,6 +1,6 @@
 # Release procedure
 
-Tesseract ships as a Go module + a `contextd` binary. Consumers (Nanite, Cerberus-managed services, custom integrations) pin against the module path `github.com/hollis-labs/tesseract` at a tagged version. The release procedure below keeps the binary version, MCP advertised version, and `CHANGELOG.md` in lockstep.
+Tesseract ships as a Go module and a `contextd` binary. The release procedure below keeps the git tag, `CHANGELOG.md`, and MCP-advertised version in lockstep.
 
 ## Versioning
 
@@ -10,7 +10,7 @@ Pre-1.0 semver:
 - **Patch** (`0.x.y` → `0.x.(y+1)`) — fixes only. No new public surface.
 - Breaking changes — allowed in any minor pre-1.0; call them out in `### Changed` with a migration note.
 
-The MCP server advertises its version via `server.NewMCPServer("context-memory-service", "<X.Y.Z>", …)` in `internal/mcpadapter/adapter.go`. Keep this in lockstep with the released git tag.
+The MCP server advertises its name and version via `server.NewMCPServer("tesseract", "<X.Y.Z>", …)` in `internal/mcpadapter/adapter.go`. Keep this in lockstep with the released git tag.
 
 ## Per-PR checklist
 
@@ -21,7 +21,7 @@ Every PR that lands user-visible surface (new tool, route, store method, config 
    - The `## [Unreleased]` heading to `## [X.Y.Z] — YYYY-MM-DD` and start a fresh empty `## [Unreleased]` above it.
    - The `MCPServer` version string in `internal/mcpadapter/adapter.go`.
    - The compare links at the bottom of `CHANGELOG.md`.
-3. Pass `go vet ./... && go test ./... && golangci-lint run`.
+3. Pass `go test ./...`.
 4. Pass the parity test (`go test ./tests/parity/`) — this fails if a new MCP tool or HTTP route is missing from `surfaceCatalog`.
 
 ## Cutting a tagged release
@@ -39,12 +39,12 @@ gh release create v<X.Y.Z> \
 
 The release notes pull straight from `CHANGELOG.md`. No duplication.
 
-## Consumer impact
+## Upgrade notes
 
-Nanite (and any other Conduit consumer) should:
+Consumers of Tesseract should:
 
 - Bump the `github.com/hollis-labs/tesseract` dependency in their `go.mod` to the new tag.
-- Re-`go install ./cmd/contextd` if they bundle the standalone binary (Cerberus-managed `conduit-api`, agent stdio MCP server in `~/.claude.json`).
-- Re-read `CHANGELOG.md` for new MCP tool IDs and HTTP paths to surface in their own agent prompts / docs.
+- Rebuild or reinstall `contextd` if they ship the standalone binary.
+- Re-read `CHANGELOG.md` for new MCP tool IDs, HTTP paths, and config changes.
 
-Hot-reloading without a `contextd` rebuild is not supported — the MCP stdio server and the Cerberus-managed HTTP server share one binary, and any new tool/route is compiled in.
+Hot-reloading without a `contextd` rebuild is not supported — the MCP stdio server and the HTTP server share one binary, and any new tool or route is compiled in.

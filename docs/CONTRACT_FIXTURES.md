@@ -30,32 +30,18 @@ This index lists fixture files and their associated validation command.
 | `tests/integration/fixtures/make_contract_cli_list_contract_golden.json` | `make contract-cli-list` output marker contract | `go test ./tests/integration -run MakeContractCLIListContract` |
 | `tests/integration/fixtures/make_contract_cli_run_contract_golden.json` | `make contract-cli-run SUITE=<name>` output marker contract | `go test ./tests/integration -run MakeContractCLIRunContract` |
 | `tests/integration/fixtures/make_contract_commands_contract_golden.json` | `make contract-commands` suite-ordering wrapper contract | `go test ./tests/integration -run MakeContractCommandsContract` |
-| `tests/integration/fixtures/make_bootstrap_report_contract_golden.json` | `make bootstrap-report` alias output marker contract | `go test ./tests/integration -run MakeBootstrapReportContract` |
-| `tests/integration/fixtures/make_bootstrap_sync_contract_golden.json` | `make bootstrap-sync-report/apply` output + apply contract | `go test ./tests/integration -run MakeBootstrapSyncContract` |
-| `tests/integration/fixtures/make_bootstrap_sync_alias_contract_golden.json` | `make bootstrap-sync` alias output + apply contract | `go test ./tests/integration -run MakeBootstrapSyncAliasContract` |
 | `tests/integration/fixtures/contract_suite_commands_contract_golden.json` | `scripts/contract-suite-commands.sh` output ordering contract | `go test ./tests/integration -run ContractSuiteCommandsScript` |
 | `tests/integration/fixtures/contract_suite_registry_parity_golden.json` | CLI suite registry and script catalog parity contract | `go test ./tests/integration -run ContractSuiteRegistryParity` |
 | `tests/integration/fixtures/smoke_invalid_token_contract_golden.json` | Smoke invalid-token marker sequence contract | `go test ./tests/integration -run SmokeInvalidTokenContract` |
 | `tests/integration/fixtures/make_smoke_invalid_token_contract_golden.json` | `make smoke-invalid-token` output marker contract | `go test ./tests/integration -run MakeSmokeInvalidTokenContract` |
-| `tests/integration/fixtures/runlog_helper_contract_golden.json` | Run-log helper output skeleton contract | `go test ./tests/integration -run RunlogHelperContract` |
-| `tests/integration/fixtures/bootstrap_sync_contract_golden.json` | `scripts/bootstrap-sync.sh` report/apply contract | `go test ./tests/integration -run BootstrapSyncScript` |
-| `tests/integration/fixtures/bootstrap_sync_no_log_contract_golden.json` | `scripts/bootstrap-sync.sh` no-log report/apply contract | `go test ./tests/integration -run BootstrapSyncNoLogContract` |
-| `tests/integration/fixtures/bootstrap_sync_idempotent_contract_golden.json` | `scripts/bootstrap-sync.sh --apply` idempotence contract | `go test ./tests/integration -run BootstrapSyncIdempotentContract` |
-| `tests/integration/fixtures/agents_boot_check_contract_golden.json` | AGENTS boot drift check success-output contract | `go test ./tests/integration -run AgentsBootCheckContract` |
 
-## Bootstrap And Make Fixture Index
+## Make Fixture Index
 
 | Fixture | Source suite | Refresh command |
 |---|---|---|
 | `tests/integration/fixtures/make_contract_cli_list_contract_golden.json` | `make contract-cli-list` | `go test ./tests/integration -run MakeContractCLIListContract` |
 | `tests/integration/fixtures/make_contract_cli_run_contract_golden.json` | `make contract-cli-run SUITE=<name>` | `go test ./tests/integration -run MakeContractCLIRunContract` |
 | `tests/integration/fixtures/make_contract_commands_contract_golden.json` | `make contract-commands` | `go test ./tests/integration -run MakeContractCommandsContract` |
-| `tests/integration/fixtures/make_bootstrap_report_contract_golden.json` | `make bootstrap-report` | `go test ./tests/integration -run MakeBootstrapReportContract` |
-| `tests/integration/fixtures/make_bootstrap_sync_contract_golden.json` | `make bootstrap-sync-report` / `make bootstrap-sync-apply` | `go test ./tests/integration -run MakeBootstrapSyncContract` |
-| `tests/integration/fixtures/make_bootstrap_sync_alias_contract_golden.json` | `make bootstrap-sync` | `go test ./tests/integration -run MakeBootstrapSyncAliasContract` |
-| `tests/integration/fixtures/bootstrap_sync_contract_golden.json` | `scripts/bootstrap-sync.sh` | `go test ./tests/integration -run BootstrapSyncScript` |
-| `tests/integration/fixtures/bootstrap_sync_no_log_contract_golden.json` | `scripts/bootstrap-sync.sh` (empty `.agentrc/logs`) | `go test ./tests/integration -run BootstrapSyncNoLogContract` |
-| `tests/integration/fixtures/bootstrap_sync_idempotent_contract_golden.json` | `scripts/bootstrap-sync.sh --apply` repeatability | `go test ./tests/integration -run BootstrapSyncIdempotentContract` |
 
 ## Suite Ordering Policy
 
@@ -79,7 +65,6 @@ Update checklist:
 - `api` / `api-*`: HTTP API response and error envelope contracts.
 - `cli-*`: direct CLI output/error contracts that do not require make wrappers.
 - `make-*`: make-target wrapper contracts that validate command aliases and marker passthrough.
-- `bootstrap-*`: bootstrap sync script behavior variants (`report`, `no-log`, `idempotent`).
 - `smoke-*`: end-to-end smoke checks and auth guard regressions.
 - `*-script`: script-level contracts that validate helper script behavior directly.
 
@@ -174,9 +159,6 @@ See also: `docs/DEV.md#contract-quick-run-pack`.
   - `go test ./tests/integration -run MakeContractCLIListContract`
   - `go test ./tests/integration -run MakeContractCLIRunContract`
   - `go test ./tests/integration -run MakeContractCommandsContract`
-  - `go test ./tests/integration -run MakeBootstrapReportContract`
-  - `go test ./tests/integration -run MakeBootstrapSyncContract`
-  - `go test ./tests/integration -run MakeBootstrapSyncAliasContract`
 - Script command stability:
   - `go test ./tests/integration -run ContractSuiteCommandsScript`
   - `go test ./tests/integration -run ContractSuiteRegistryParity`
@@ -198,7 +180,6 @@ See also: `docs/DEV.md#contract-quick-run-pack`.
   - `go test ./tests/integration -run ContractRunExecuteInvalidOutputErrorContract`
   - `go test ./tests/integration -run ContractRunInvalidOutputErrorContract`
   - `go test ./tests/integration -run ContractRunUnknownSuiteErrorContract`
-  - `go test ./tests/integration -run RunlogHelperContract`
   - `go test ./tests/integration -run ContractSuiteCommandsFormatContract`
   - `go test ./tests/integration -run ContractSuiteCommandsUniqueContract`
   - `go test ./tests/integration -run ContractSuiteCommandsPrefixContract`
@@ -207,10 +188,6 @@ See also: `docs/DEV.md#contract-quick-run-pack`.
   - `go test ./tests/integration -run ContractSuiteCommandsTokenCountContract`
   - `go test ./tests/integration -run ContractSuiteCommandsNonEmptyContract`
   - `go test ./tests/integration -run ContractFixtureLintScript`
-  - `go test ./tests/integration -run BootstrapSyncScript`
-  - `go test ./tests/integration -run BootstrapSyncNoLogContract`
-  - `go test ./tests/integration -run BootstrapSyncIdempotentContract`
-  - `go test ./tests/integration -run AgentsBootCheckContract`
 - Lint-script contract (manifest override behavior):
   - `go test ./tests/integration -run ContractFixtureLintScript`
 

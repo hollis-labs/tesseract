@@ -7,7 +7,7 @@ related: [memory, knowledge, audit]
 
 # Revisions
 
-Every write in Vanta creates a new revision. The service never mutates existing records in place.
+Every write in Tesseract creates a new revision. The service never mutates existing records in place.
 
 ## Revision identity
 

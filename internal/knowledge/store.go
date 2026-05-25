@@ -1,7 +1,7 @@
 // Package knowledge implements the Knowledge domain on top of the shared
 // memory revision store. Knowledge entries are pointer-first references to
 // external content (packages, docs, notes) — the original source remains
-// authoritative; Conduit holds a summary + optional body and structured
+// authoritative; Tesseract holds a summary + optional body and structured
 // facets for search.
 package knowledge
 

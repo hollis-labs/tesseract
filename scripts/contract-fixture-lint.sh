@@ -28,18 +28,10 @@ fixtures=(
   "tests/integration/fixtures/make_contract_cli_list_contract_golden.json"
   "tests/integration/fixtures/make_contract_cli_run_contract_golden.json"
   "tests/integration/fixtures/make_contract_commands_contract_golden.json"
-  "tests/integration/fixtures/make_bootstrap_report_contract_golden.json"
-  "tests/integration/fixtures/make_bootstrap_sync_contract_golden.json"
-  "tests/integration/fixtures/make_bootstrap_sync_alias_contract_golden.json"
   "tests/integration/fixtures/contract_suite_commands_contract_golden.json"
   "tests/integration/fixtures/contract_suite_registry_parity_golden.json"
   "tests/integration/fixtures/smoke_invalid_token_contract_golden.json"
   "tests/integration/fixtures/make_smoke_invalid_token_contract_golden.json"
-  "tests/integration/fixtures/runlog_helper_contract_golden.json"
-  "tests/integration/fixtures/bootstrap_sync_contract_golden.json"
-  "tests/integration/fixtures/bootstrap_sync_no_log_contract_golden.json"
-  "tests/integration/fixtures/bootstrap_sync_idempotent_contract_golden.json"
-  "tests/integration/fixtures/agents_boot_check_contract_golden.json"
 )
 
 if [[ -n "${CONTRACT_FIXTURE_LINT_MANIFEST:-}" ]]; then

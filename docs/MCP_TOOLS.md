@@ -10,11 +10,11 @@ here is registered by `contextd mcp` and has an HTTP peer under
 
 ## Quick facts
 
-- **Transport:** stdio (launched by Claude/Cerberus/custom host). Configure in `~/.claude.json`:
+- **Transport:** stdio (launched by Claude Code or another MCP host). Configure in your MCP client:
   ```json
   {
     "mcpServers": {
-      "vanta": {
+      "tesseract": {
         "type": "stdio",
         "command": "/Users/<you>/go/bin/contextd",
         "args": ["mcp", "--token", "<hex-capability-token>"],
@@ -23,17 +23,17 @@ here is registered by `contextd mcp` and has an HTTP peer under
     }
   }
   ```
-- **Tool ID prefix:** `mcp__vanta__` (Claude side). Example: `mcp__vanta__memory_write`.
-- **Data root:** `~/.tesseract/` — shared with the HTTP server run by Cerberus. Do NOT point MCP at `~/.cortex/` (legacy ghost).
+- **Tool ID prefix:** `mcp__tesseract__` (Claude side). Example: `mcp__tesseract__memory_write`.
+- **Data root:** `~/.tesseract/` by default, shared with the HTTP server unless you override the config paths.
 - **Capability token:** required for any tool that requires a `write`/`read`/`promote` scope. Token claims are checked per-tool.
 - **No duplicated logic:** every tool and its HTTP peer call the same store/domain function. Responses match 1:1.
 
-## Agent-facing skills (vanta_skills)
+## Agent-facing skills (tesseract_skills)
 
-Every agent hitting this surface should start with `vanta_skills start-here`. The tool is a single progressive-discovery entry point:
+Every agent hitting this surface should start with `tesseract_skills start-here`. The tool is a single progressive-discovery entry point:
 
-- `vanta_skills` with no args → returns the skill index (name + description + scope hint).
-- `vanta_skills` with `name=<skill-name>` → returns the full markdown body of one skill.
+- `tesseract_skills` with no args → returns the skill index (name + description + scope hint).
+- `tesseract_skills` with `name=<skill-name>` → returns the full markdown body of one skill.
 
 Shipped skills (11):
 
@@ -51,14 +51,14 @@ Shipped skills (11):
 | `context-packet` | feature | Boot workflows, broker plan/fetch, budget tuning. |
 | `audit` | feature | Querying the audit log. |
 
-Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong with consumers (agent-ops, Nanite, Engine) and are authored in consumer repos — Vanta ships primitives + reference docs only.
+Workflow-specific skills for downstream apps belong in those app repos. Tesseract ships primitives and reference docs only.
 
 ## Domains
 
 - **Context** — generic revisioned key-value records. Thirty-ish tools for read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity rankings).
 - **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
-- **Unified** — `conduit_lookup` searches memory + knowledge together.
+- **Unified** — `tesseract_lookup` searches memory + knowledge together.
 
 ## Tool catalog
 
@@ -101,40 +101,40 @@ Consumer-facing workflow skills (e.g. "how to track issues in Vanta") belong wit
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `memory_write` | `memory:write` | `POST /v1/memory/write` | `vanta_skills memory` | New revision (optional semantic dedup) |
-| `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | `vanta_skills memory` | Current revision for a keyed memory |
-| `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | `vanta_skills revisions` | Revision history, newest-first |
-| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `vanta_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity / relevance) |
-| `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `vanta_skills revisions` | Single revision by id |
-| `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `vanta_skills promotion` | Promote session → user / project |
-| `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `vanta_skills revisions` | Deprecate a revision by id |
+| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup) |
+| `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | `tesseract_skills memory` | Current revision for a keyed memory |
+| `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | `tesseract_skills revisions` | Revision history, newest-first |
+| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity / relevance) |
+| `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id |
+| `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `tesseract_skills promotion` | Promote session → user / project |
+| `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id |
 
 ### Knowledge
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `vanta_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
-| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&memory_key=` | `vanta_skills knowledge` | Current knowledge revision for (namespace, memory_key) |
-| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&memory_key=` | `vanta_skills revisions` | Full history for a knowledge entry |
+| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
+| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&memory_key=` | `tesseract_skills knowledge` | Current knowledge revision for (namespace, memory_key) |
+| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&memory_key=` | `tesseract_skills revisions` | Full history for a knowledge entry |
 
 ### Unified
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `conduit_lookup` | `memory:read` | `POST /v1/conduit/lookup` | `vanta_skills recall-and-ranking` | Search memory + knowledge together |
+| `tesseract_lookup` | `memory:read` | `POST /v1/tesseract/lookup` | `tesseract_skills recall-and-ranking` | Search memory + knowledge together |
 
 ### Meta
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `vanta_skills` | — | — (MCP-only meta-tool) | self-documenting | Call with no args for the index; with `name` for the full skill body |
+| `tesseract_skills` | — | — (MCP-only meta-tool) | self-documenting | Call with no args for the index; with `name` for the full skill body |
 
 ## Playbooks
 
 ### 1. Write a memory
 
 ```json
-mcp__vanta__memory_write {
+mcp__tesseract__memory_write {
   "namespace": "user/chrispian/memory/feedback",
   "memory_key": "boot-prompt-preference",
   "author_agent_id": "claude-code",
@@ -155,15 +155,15 @@ Returns the created `memory.Revision`. Semantic dedup: same-key matches auto-sup
 ### 2. Write a knowledge entry
 
 ```json
-mcp__vanta__knowledge_write {
+mcp__tesseract__knowledge_write {
   "namespace": "user/chrispian/knowledge/framework",
   "key": "framework.go-providers",
   "kind": "package",
   "source": "filesystem",
   "pointer_scheme": "file",
   "pointer_locator": "/Users/chrispian/Projects-apps/framework/libs/go-providers",
-  "summary": "go-providers: multi-provider AI adapter (Anthropic, OpenAI, Ollama, …) used by Conduit + others.",
-  "body": "Exports provider.Embedder and provider.Completer. Replace-directive in consumer go.mod.",
+  "summary": "go-providers: multi-provider AI adapter (Anthropic, OpenAI, Ollama, …) used by Tesseract + others.",
+  "body": "Exports provider.Embedder and provider.Completer.",
   "author_agent_id": "indexer",
   "session_id": "indexer:2026-04-15"
 }
@@ -174,7 +174,7 @@ Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are req
 ### 3. Look up anything by topic
 
 ```json
-mcp__vanta__conduit_lookup {
+mcp__tesseract__tesseract_lookup {
   "query": "hybrid relevance recall ranking",
   "limit": 20
 }
@@ -187,7 +187,7 @@ Searches memory + knowledge. Returns ranked results with a uniform shape so the 
 Use `context_broker_fetch` (MCP-only convenience — plan + packet in one call):
 
 ```json
-mcp__vanta__context_broker_fetch {
+mcp__tesseract__context_broker_fetch {
   "intent": "boot_project",
   "summary": "Tesseract backend — batch 1 parity work",
   "budget_items": 80,
@@ -201,10 +201,10 @@ Or split the phases manually with `context_broker_plan` + `context_packet`.
 ### 5. Resolve a revision id
 
 ```json
-mcp__vanta__memory_get_revision { "revision_id": "01HXYZ…" }
+mcp__tesseract__memory_get_revision { "revision_id": "01HXYZ…" }
 ```
 
-Useful when a `memory_recall` hit references a revision you want to inspect in full (`conduit_lookup` results surface revision ids too).
+Useful when a `memory_recall` hit references a revision you want to inspect in full (`tesseract_lookup` results surface revision ids too).
 
 ## Scopes
 
@@ -218,7 +218,6 @@ Capability tokens carry scope claims; tools check `checkScope(ctx, "<scope>")` b
 
 ## Related
 
-- `.agentrc/boot-prompt.md` — session-boot context (links here).
 - `README.md` — project top-level (links here).
 - `docs/SPECS/MCP.md` / `docs/SPECS/API.md` — protocol specs.
 - `tests/parity/parity_test.go` — drift guardrail; every MCP tool + HTTP route must appear in its catalog.

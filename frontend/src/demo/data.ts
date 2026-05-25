@@ -7,8 +7,8 @@ import type {
   AuthToken,
   BrokerPlanResponse,
   CompactResponse,
-  ConduitLookupRequest,
-  ConduitLookupResponse,
+  TesseractLookupRequest,
+  TesseractLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
@@ -112,7 +112,7 @@ const MOCK_RECORDS: Record[] = [
     actor: "user:jane",
     checksum: "sha256:pqr678",
     created_at: ago(24),
-    payload: { project: "conduit", branch: "feature/gui-sprint" },
+    payload: { project: "tesseract", branch: "feature/gui-sprint" },
   },
   {
     record_id: "rec_007",
@@ -129,7 +129,7 @@ const MOCK_RECORDS: Record[] = [
   },
   {
     record_id: "rec_008",
-    namespace: "app/prod/conduit",
+    namespace: "app/prod/tesseract",
     key: "config",
     revision: 2,
     actor: "system:deploy",
@@ -147,7 +147,7 @@ const DEMO_NAMESPACES: { namespace: string; owner_type: string; owner_id: string
   { namespace: "user/jane/knowledge/portfolio", owner_type: "user", owner_id: "jane" },
   { namespace: "app/editor/session", owner_type: "app", owner_id: "editor" },
   { namespace: "app/test/session/sess-001", owner_type: "app", owner_id: "test" },
-  { namespace: "app/prod/conduit", owner_type: "app", owner_id: "deploy" },
+  { namespace: "app/prod/tesseract", owner_type: "app", owner_id: "deploy" },
 ];
 
 // ── Mock audit events ────────────────────────────────────────────────
@@ -217,7 +217,7 @@ const MOCK_AUDIT: AuditEvent[] = [
     id: 95,
     event_type: "write",
     actor: "system:deploy",
-    namespace: "app/prod/conduit",
+    namespace: "app/prod/tesseract",
     key: "config",
     revision: 2,
     record_id: "rec_008",
@@ -267,8 +267,8 @@ export const demo = {
     return {
       healthy: true,
       status: "healthy",
-      db_path: "/tmp/conduit-demo.db",
-      records_dir: "/tmp/conduit-demo-records",
+      db_path: "/tmp/tesseract-demo.db",
+      records_dir: "/tmp/tesseract-demo-records",
       records_dir_exists: true,
       schema_version: 4,
       record_count: MOCK_RECORDS.length,
@@ -339,7 +339,7 @@ export const demo = {
   getAdminQueue(): AdminQueueResponse {
     return {
       enabled: true,
-      queue: "conduit",
+      queue: "tesseract",
       path: "/demo/state/queue.db",
       worker: {
         configured: true,
@@ -772,7 +772,7 @@ export const demo = {
     };
   },
 
-  conduitLookup(req: ConduitLookupRequest): ConduitLookupResponse {
+  tesseractLookup(req: TesseractLookupRequest): TesseractLookupResponse {
     const limit = req.limit ?? 15;
     const items = MOCK_RECORDS.slice(0, limit).map((r, i) => ({
       Revision: {

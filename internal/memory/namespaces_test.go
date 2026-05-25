@@ -26,7 +26,7 @@ func TestParseNamespace(t *testing.T) {
 		{"user feedback", "user/chrispian/memory/feedback", memory.ScopeUser, "chrispian", "", "", "feedback", false},
 
 		// ── valid 6-seg project scope ─────────────────────────────────────────
-		{"project decisions", "user/chrispian/project/conduit/memory/decisions", memory.ScopeProject, "chrispian", "conduit", "", "decisions", false},
+		{"project decisions", "user/chrispian/project/tesseract/memory/decisions", memory.ScopeProject, "chrispian", "tesseract", "", "decisions", false},
 		{"project notes", "user/chrispian/project/tesseract/memory/notes", memory.ScopeProject, "chrispian", "tesseract", "", "notes", false},
 
 		// ── valid 6-seg session scope ─────────────────────────────────────────
@@ -35,14 +35,14 @@ func TestParseNamespace(t *testing.T) {
 
 		// ── shape rejections ─────────────────────────────────────────────────
 		{"legacy flat user shape rejected", "user/chrispian/memory", memory.ScopeUnknown, "", "", "", "", true},
-		{"legacy flat project shape rejected", "user/chrispian/project/conduit/memory", memory.ScopeUnknown, "", "", "", "", true},
+		{"legacy flat project shape rejected", "user/chrispian/project/tesseract/memory", memory.ScopeUnknown, "", "", "", "", true},
 		{"legacy flat session shape rejected", "user/chrispian/session/abc/memory", memory.ScopeUnknown, "", "", "", "", true},
 		{"trailing slash rejected", "user/chrispian/memory/decisions/", memory.ScopeUnknown, "", "", "", "", true},
 		{"missing memory segment", "user/chrispian", memory.ScopeUnknown, "", "", "", "", true},
 		{"unknown scope segment", "user/chrispian/foo/bar/memory/decisions", memory.ScopeUnknown, "", "", "", "", true},
 		{"empty user_id", "user//memory/decisions", memory.ScopeUnknown, "", "", "", "", true},
 		{"wrong root", "app/nanite/memory/decisions", memory.ScopeUnknown, "", "", "", "", true},
-		{"5-seg shape rejected", "user/chrispian/project/conduit/memory", memory.ScopeUnknown, "", "", "", "", true},
+		{"5-seg shape rejected", "user/chrispian/project/tesseract/memory", memory.ScopeUnknown, "", "", "", "", true},
 		{"3-seg shape rejected", "user/chrispian/memory", memory.ScopeUnknown, "", "", "", "", true},
 
 		// ── type validation ──────────────────────────────────────────────────
@@ -94,7 +94,7 @@ func TestNamespacePrefix(t *testing.T) {
 		want   string
 	}{
 		{"user/chrispian/memory/decisions", "user/chrispian/memory"},
-		{"user/chrispian/project/conduit/memory/notes", "user/chrispian/project/conduit/memory"},
+		{"user/chrispian/project/tesseract/memory/notes", "user/chrispian/project/tesseract/memory"},
 		{"user/chrispian/session/sess-1/memory/feedback", "user/chrispian/session/sess-1/memory"},
 	}
 	for _, tc := range cases {

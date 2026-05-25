@@ -31,14 +31,7 @@ cli-contract-run-unknown-suite	go test ./tests/integration -run ContractRunUnkno
 smoke-invalid-token	go test ./tests/integration -run SmokeInvalidTokenContract -count=1
 make-contract-cli-list	go test ./tests/integration -run MakeContractCLIListContract -count=1
 make-contract-cli-run	go test ./tests/integration -run MakeContractCLIRunContract -count=1
-bootstrap-sync	go test ./tests/integration -run BootstrapSyncScript -count=1
-bootstrap-sync-no-log	go test ./tests/integration -run BootstrapSyncNoLogContract -count=1
-bootstrap-sync-idempotent	go test ./tests/integration -run BootstrapSyncIdempotentContract -count=1
-make-bootstrap-report	go test ./tests/integration -run MakeBootstrapReportContract -count=1
-make-bootstrap-sync	go test ./tests/integration -run MakeBootstrapSyncContract -count=1
-make-bootstrap-sync-alias	go test ./tests/integration -run MakeBootstrapSyncAliasContract -count=1
 make-smoke-invalid-token	go test ./tests/integration -run MakeSmokeInvalidTokenContract -count=1
-runlog-helper	go test ./tests/integration -run RunlogHelperContract -count=1
 contract-suite-commands-format	go test ./tests/integration -run ContractSuiteCommandsFormatContract -count=1
 contract-suite-commands-unique	go test ./tests/integration -run ContractSuiteCommandsUniqueContract -count=1
 contract-suite-commands-prefix	go test ./tests/integration -run ContractSuiteCommandsPrefixContract -count=1
@@ -47,5 +40,4 @@ contract-suite-commands-suffix	go test ./tests/integration -run ContractSuiteCom
 contract-suite-commands-token-count	go test ./tests/integration -run ContractSuiteCommandsTokenCountContract -count=1
 contract-suite-commands-non-empty	go test ./tests/integration -run ContractSuiteCommandsNonEmptyContract -count=1
 fixture-lint-script	go test ./tests/integration -run ContractFixtureLintScript -count=1
-agents-boot-check	go test ./tests/integration -run AgentsBootCheckContract -count=1
 CMDS

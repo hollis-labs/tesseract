@@ -1,0 +1,11 @@
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+
+dedup:
+  similarity_threshold: 0.85
+
+synthesis:
+  provider: openai
+  model: gpt-4.1-mini
+  max_tokens: 1024

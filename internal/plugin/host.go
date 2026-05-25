@@ -10,7 +10,7 @@ import (
 	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
-// Host implements the fplugin.Host interface for Conduit.
+// Host implements the fplugin.Host interface for Tesseract.
 // It provides the runtime environment and services for plugins.
 type Host struct {
 	mu           sync.RWMutex
@@ -27,7 +27,7 @@ type Host struct {
 	ctxCancel    context.CancelFunc
 }
 
-// NewHost creates a new plugin host for Conduit.
+// NewHost creates a new plugin host for Tesseract.
 func NewHost(router *http.ServeMux, logger fplugin.Logger) *Host {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Host{
@@ -71,8 +71,8 @@ func (h *Host) GetPlugin(id string) (fplugin.Plugin, bool) {
 }
 
 // RegisterCRUDHandler registers a CRUD handler for a resource type.
-// Conduit has an HTTP server so CRUD handlers are registered but not wired to routes
-// since Conduit uses its own API server pattern.
+// Tesseract has an HTTP server so CRUD handlers are registered but not wired to routes
+// since Tesseract uses its own API server pattern.
 func (h *Host) RegisterCRUDHandler(resourceType string, handler fplugin.CRUDHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -95,9 +95,9 @@ func (h *Host) RegisterEventHook(eventTypes []string, hook fplugin.EventHook) er
 	return nil
 }
 
-// RegisterUIComponent is a no-op for Conduit (headless service).
+// RegisterUIComponent is a no-op for Tesseract (headless service).
 func (h *Host) RegisterUIComponent(component fplugin.UIComponent) error {
-	h.logger.Warn("RegisterUIComponent called but Conduit has no frontend — ignoring", "id", component.ID)
+	h.logger.Warn("RegisterUIComponent called but Tesseract has no frontend — ignoring", "id", component.ID)
 	return nil
 }
 
@@ -249,29 +249,29 @@ func (h *Host) ListPlugins() []fplugin.Plugin {
 	return plugins
 }
 
-// RegisterConnector implements the Host interface. Not supported by Conduit host.
+// RegisterConnector implements the Host interface. Not supported by Tesseract host.
 func (h *Host) RegisterConnector(name string, connector fplugin.Connector) error {
-	return fmt.Errorf("RegisterConnector not supported by Conduit host")
+	return fmt.Errorf("RegisterConnector not supported by Tesseract host")
 }
 
-// RegisterProvider implements the Host interface. Not supported by Conduit host.
+// RegisterProvider implements the Host interface. Not supported by Tesseract host.
 func (h *Host) RegisterProvider(name string, provider interface{}) error {
-	return fmt.Errorf("RegisterProvider not supported by Conduit host")
+	return fmt.Errorf("RegisterProvider not supported by Tesseract host")
 }
 
-// RegisterCLIAdapter implements the Host interface. Not supported by Conduit host.
+// RegisterCLIAdapter implements the Host interface. Not supported by Tesseract host.
 func (h *Host) RegisterCLIAdapter(name string, adapter interface{}) error {
-	return fmt.Errorf("RegisterCLIAdapter not supported by Conduit host")
+	return fmt.Errorf("RegisterCLIAdapter not supported by Tesseract host")
 }
 
-// SetConfig implements the Host interface. Not supported by Conduit host.
+// SetConfig implements the Host interface. Not supported by Tesseract host.
 func (h *Host) SetConfig(key string, value string) error {
-	return fmt.Errorf("SetConfig not supported by Conduit host")
+	return fmt.Errorf("SetConfig not supported by Tesseract host")
 }
 
-// RegisterConfigSchema implements the Host interface. Not supported by Conduit host.
+// RegisterConfigSchema implements the Host interface. Not supported by Tesseract host.
 func (h *Host) RegisterConfigSchema(fields []fplugin.ConfigFieldDef) error {
-	return fmt.Errorf("RegisterConfigSchema not supported by Conduit host")
+	return fmt.Errorf("RegisterConfigSchema not supported by Tesseract host")
 }
 
 // Shutdown gracefully shuts down the plugin host and all loaded plugins.

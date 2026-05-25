@@ -12,6 +12,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +30,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contexttypes"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"gopkg.in/yaml.v3"
 )
 
 type contextKey int
@@ -199,6 +202,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleNamespaceRegister(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/namespaces/preview":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminNamespacePreview(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/namespaces/update":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminNamespaceUpdate(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/namespaces/history":
+		s.handleAdminNamespaceHistory(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/list":
 		s.handleNamespacesList(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/get":
@@ -233,8 +248,44 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleReadiness(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/setup":
 		s.handleAdminSetup(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/settings":
+		s.handleAdminSettings(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/settings/preview":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminSettingsPreview(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/settings/apply":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminSettingsApply(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/config/backups":
+		s.handleAdminConfigBackups(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/config/backup":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminConfigBackup(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/config/restore":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminConfigRestore(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/queue":
 		s.handleAdminQueue(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/queue/failures":
+		s.handleAdminQueueFailures(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/queue/retry-failed":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminQueueRetryFailed(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/queue/backfill":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleAdminQueueBackfill(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/storage":
 		s.handleAdminStorage(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/audit":
@@ -344,8 +395,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleKnowledgeGetCurrent(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/knowledge/history":
 		s.handleKnowledgeGetHistory(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/conduit/lookup":
-		s.handleConduitLookup(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/tesseract/lookup":
+		s.handleTesseractLookup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/recall":
 		s.handleRecall(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/synthesis/ask":
@@ -598,6 +649,19 @@ type namespaceRegisterRequest struct {
 	Policy    map[string]any `json:"policy"`
 }
 
+type adminNamespacePreviewResponse struct {
+	Entry         contextstore.NamespacePolicyEntry `json:"entry"`
+	Exists        bool                              `json:"exists"`
+	ChangedFields []string                          `json:"changed_fields"`
+	Warnings      []string                          `json:"warnings"`
+}
+
+type adminNamespaceHistoryResponse struct {
+	Namespace string                    `json:"namespace"`
+	Items     []contextstore.AuditEvent `json:"items"`
+	Count     int                       `json:"count"`
+}
+
 func (s *Server) handleNamespaceRegister(w http.ResponseWriter, r *http.Request) {
 	if !requireScope(w, r, "namespace.register") {
 		return
@@ -626,6 +690,99 @@ func (s *Server) handleNamespaceRegister(w http.ResponseWriter, r *http.Request)
 		"owner_type": req.OwnerType,
 		"owner_id":   req.OwnerID,
 		"policy":     req.Policy,
+	})
+}
+
+func (s *Server) handleAdminNamespacePreview(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "namespace.register") {
+		return
+	}
+	resp, status, code, message := s.buildAdminNamespacePreview(r.Context(), r)
+	if code != "" {
+		writeError(w, status, code, message, nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAdminNamespaceUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "namespace.register") {
+		return
+	}
+	resp, status, code, message := s.buildAdminNamespacePreview(r.Context(), r)
+	if code != "" {
+		writeError(w, status, code, message, nil)
+		return
+	}
+	entry := resp.Entry
+	if err := s.Store.UpsertNamespacePolicy(r.Context(), entry); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error(), nil)
+		return
+	}
+	if err := s.Policy.RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	meta, _ := json.Marshal(map[string]any{
+		"owner_type":     entry.OwnerType,
+		"owner_id":       entry.OwnerID,
+		"policy":         entry.Policy,
+		"changed_fields": resp.ChangedFields,
+		"exists_before":  resp.Exists,
+	})
+	if resp.Exists {
+		_ = s.Store.EmitNamespaceUpdate(r.Context(), "system", entry.Namespace, meta)
+	} else {
+		_ = s.Store.EmitNamespaceRegister(r.Context(), "system", entry.Namespace, meta)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entry":          entry,
+		"exists":         resp.Exists,
+		"changed_fields": resp.ChangedFields,
+		"warnings":       resp.Warnings,
+	})
+}
+
+func (s *Server) handleAdminNamespaceHistory(w http.ResponseWriter, r *http.Request) {
+	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
+	if namespace == "" {
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace is required", nil)
+		return
+	}
+	limit := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "validation_error", "limit must be a positive integer", nil)
+			return
+		}
+		if n > 100 {
+			n = 100
+		}
+		limit = n
+	}
+	events, err := s.Store.ListAuditEvents(r.Context(), 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
+		return
+	}
+	items := make([]contextstore.AuditEvent, 0, limit)
+	for _, event := range events {
+		if event.Namespace != namespace {
+			continue
+		}
+		if event.EventType != contextstore.EventNamespaceRegister && event.EventType != contextstore.EventNamespaceUpdate {
+			continue
+		}
+		items = append(items, event)
+		if len(items) >= limit {
+			break
+		}
+	}
+	writeJSON(w, http.StatusOK, adminNamespaceHistoryResponse{
+		Namespace: namespace,
+		Items:     items,
+		Count:     len(items),
 	})
 }
 
@@ -978,6 +1135,16 @@ type adminSetupResponse struct {
 	Config  adminConfigInfo  `json:"config"`
 }
 
+type adminSettingsResponse struct {
+	App        string                   `json:"app"`
+	ConfigFile string                   `json:"config_file"`
+	Paths      []adminPathInfo          `json:"paths"`
+	Auth       adminAuthInfo            `json:"auth"`
+	Runtime    adminSettingsRuntimeInfo `json:"runtime"`
+	Config     adminSettingsConfigInfo  `json:"config"`
+	Providers  adminSettingsProviders   `json:"providers"`
+}
+
 type adminAuthInfo struct {
 	Mode string `json:"mode"`
 }
@@ -1000,6 +1167,94 @@ type adminConfigInfo struct {
 	SynthesisMaxTokens       int     `json:"synthesis_max_tokens"`
 	SynthesisTemperature     float64 `json:"synthesis_temperature"`
 	SynthesisSystemPromptSet bool    `json:"synthesis_system_prompt_set"`
+}
+
+type adminSettingsRuntimeInfo struct {
+	MetricsEnabled        bool   `json:"metrics_enabled"`
+	RequestLoggingEnabled bool   `json:"request_logging_enabled"`
+	RequestLogMode        string `json:"request_log_mode"`
+	MemoryStoreEnabled    bool   `json:"memory_store_enabled"`
+	KnowledgeStoreEnabled bool   `json:"knowledge_store_enabled"`
+	SynthesisEnabled      bool   `json:"synthesis_enabled"`
+	QueueEnabled          bool   `json:"queue_enabled"`
+	WebUIEmbedded         bool   `json:"webui_embedded"`
+}
+
+type adminSettingsConfigInfo struct {
+	EmbeddingProvider        string  `json:"embedding_provider"`
+	EmbeddingModel           string  `json:"embedding_model"`
+	DedupSimilarityThreshold float64 `json:"dedup_similarity_threshold"`
+	SynthesisProvider        string  `json:"synthesis_provider"`
+	SynthesisModel           string  `json:"synthesis_model"`
+	SynthesisMaxTokens       int     `json:"synthesis_max_tokens"`
+	SynthesisTemperature     float64 `json:"synthesis_temperature"`
+	SynthesisSystemPrompt    string  `json:"synthesis_system_prompt"`
+	SynthesisSystemPromptSet bool    `json:"synthesis_system_prompt_set"`
+}
+
+type adminSettingsProviders struct {
+	Embedding adminProviderStatus `json:"embedding"`
+	Synthesis adminProviderStatus `json:"synthesis"`
+}
+
+type adminSettingsUpdateRequest struct {
+	Config adminSettingsConfigInfo `json:"config"`
+}
+
+type adminSettingsMutationResponse struct {
+	ConfigFile      string                  `json:"config_file"`
+	Config          adminSettingsConfigInfo `json:"config"`
+	Providers       adminSettingsProviders  `json:"providers"`
+	ChangedFields   []string                `json:"changed_fields"`
+	Warnings        []string                `json:"warnings"`
+	RestartRequired bool                    `json:"restart_required"`
+	Applied         bool                    `json:"applied"`
+}
+
+type adminConfigBackupInfo struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	Source    string `json:"source"`
+	CreatedAt string `json:"created_at"`
+}
+
+type adminConfigBackupsResponse struct {
+	ConfigFile string                  `json:"config_file"`
+	BackupDir  string                  `json:"backup_dir"`
+	Items      []adminConfigBackupInfo `json:"items"`
+}
+
+type adminConfigBackupResponse struct {
+	ConfigFile string                `json:"config_file"`
+	BackupDir  string                `json:"backup_dir"`
+	Backup     adminConfigBackupInfo `json:"backup"`
+}
+
+type adminConfigRestoreRequest struct {
+	Path string `json:"path"`
+}
+
+type adminConfigRestoreResponse struct {
+	ConfigFile       string                  `json:"config_file"`
+	RestoredFrom     adminConfigBackupInfo   `json:"restored_from"`
+	PreRestoreBackup adminConfigBackupInfo   `json:"pre_restore_backup"`
+	Config           adminSettingsConfigInfo `json:"config"`
+	Providers        adminSettingsProviders  `json:"providers"`
+	RestartRequired  bool                    `json:"restart_required"`
+}
+
+type adminProviderStatus struct {
+	Kind         string `json:"kind"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	EnvVar       string `json:"env_var,omitempty"`
+	Configured   bool   `json:"configured"`
+	Supported    bool   `json:"supported"`
+	EnvPresent   bool   `json:"env_present"`
+	RuntimeReady bool   `json:"runtime_ready"`
+	Available    bool   `json:"available"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 type adminQueueResponse struct {
@@ -1029,6 +1284,40 @@ type adminQueueWorkerInfo struct {
 type adminQueueTypeInfo struct {
 	Type  string `json:"type"`
 	Count int64  `json:"count"`
+}
+
+type adminQueueFailureInfo struct {
+	ID       int64  `json:"id"`
+	Queue    string `json:"queue"`
+	Type     string `json:"type"`
+	Error    string `json:"error"`
+	Attempts int    `json:"attempts"`
+	FailedAt string `json:"failed_at"`
+	Payload  string `json:"payload,omitempty"`
+}
+
+type adminQueueFailuresResponse struct {
+	Items []adminQueueFailureInfo `json:"items"`
+	Count int                     `json:"count"`
+}
+
+type adminQueueRetryFailedRequest struct {
+	ID int64 `json:"id"`
+}
+
+type adminQueueRetryFailedResponse struct {
+	Retried int `json:"retried"`
+}
+
+type adminQueueBackfillRequest struct {
+	Namespace string `json:"namespace"`
+	Limit     int    `json:"limit"`
+}
+
+type adminQueueBackfillResponse struct {
+	Queued    int    `json:"queued"`
+	Namespace string `json:"namespace,omitempty"`
+	Limit     int    `json:"limit"`
 }
 
 type adminStorageResponse struct {
@@ -1074,20 +1363,268 @@ type adminNamespaceRecordInfo struct {
 }
 
 func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
-	cfg := s.RuntimeConfig
-	if cfg.Embedding.Model == "" {
-		cfg = config.Defaults()
-	}
+	cfg := s.effectiveRuntimeConfig()
+	writeJSON(w, http.StatusOK, adminSetupResponse{
+		App:   config.AppName,
+		Paths: s.adminPaths(r.Context()),
+		Auth:  adminAuthInfo{Mode: s.adminAuthMode()},
+		Runtime: adminRuntimeInfo{
+			MetricsEnabled:        s.EnableMetrics,
+			RequestLoggingEnabled: s.EnableRequestLogging,
+			RequestLogMode:        s.adminRequestLogMode(),
+			MemoryStoreEnabled:    s.MemoryStore != nil,
+			KnowledgeStoreEnabled: s.KnowledgeStore != nil,
+			SynthesisEnabled:      s.SynthesisProvider != nil,
+		},
+		Config: adminConfigInfo{
+			EmbeddingProvider:        cfg.Embedding.Provider,
+			EmbeddingModel:           cfg.Embedding.Model,
+			DedupSimilarityThreshold: cfg.Dedup.SimilarityThreshold,
+			SynthesisProvider:        cfg.Synthesis.Provider,
+			SynthesisModel:           cfg.Synthesis.Model,
+			SynthesisMaxTokens:       cfg.Synthesis.MaxTokens,
+			SynthesisTemperature:     cfg.Synthesis.Temperature,
+			SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
+		},
+	})
+}
 
-	layout := s.Layout
+func (s *Server) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
+	cfg := s.effectiveRuntimeConfig()
+	configFile := s.adminConfigFile()
+	writeJSON(w, http.StatusOK, adminSettingsResponse{
+		App:        config.AppName,
+		ConfigFile: configFile,
+		Paths:      s.adminPaths(r.Context()),
+		Auth:       adminAuthInfo{Mode: s.adminAuthMode()},
+		Runtime: adminSettingsRuntimeInfo{
+			MetricsEnabled:        s.EnableMetrics,
+			RequestLoggingEnabled: s.EnableRequestLogging,
+			RequestLogMode:        s.adminRequestLogMode(),
+			MemoryStoreEnabled:    s.MemoryStore != nil,
+			KnowledgeStoreEnabled: s.KnowledgeStore != nil,
+			SynthesisEnabled:      s.SynthesisProvider != nil,
+			QueueEnabled:          s.QueueDB != nil,
+			WebUIEmbedded:         true,
+		},
+		Config: adminSettingsConfigInfo{
+			EmbeddingProvider:        cfg.Embedding.Provider,
+			EmbeddingModel:           cfg.Embedding.Model,
+			DedupSimilarityThreshold: cfg.Dedup.SimilarityThreshold,
+			SynthesisProvider:        cfg.Synthesis.Provider,
+			SynthesisModel:           cfg.Synthesis.Model,
+			SynthesisMaxTokens:       cfg.Synthesis.MaxTokens,
+			SynthesisTemperature:     cfg.Synthesis.Temperature,
+			SynthesisSystemPrompt:    cfg.Synthesis.SystemPrompt,
+			SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
+		},
+		Providers: adminSettingsProviders{
+			Embedding: adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
+			Synthesis: adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
+		},
+	})
+}
+
+func (s *Server) handleAdminSettingsPreview(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "admin") {
+		return
+	}
+	resp, status, code, message := s.buildAdminSettingsMutationResponse(r)
+	if code != "" {
+		writeError(w, status, code, message, nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAdminSettingsApply(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "admin") {
+		return
+	}
+	resp, status, code, message := s.buildAdminSettingsMutationResponse(r)
+	if code != "" {
+		writeError(w, status, code, message, nil)
+		return
+	}
+	if err := config.Save(resp.ConfigFile, adminSettingsConfigToConfig(resp.Config)); err != nil {
+		writeError(w, http.StatusInternalServerError, "config_write_failed", err.Error(), nil)
+		return
+	}
+	s.RuntimeConfig = adminSettingsConfigToConfig(resp.Config)
+	s.SynthesisConfig = s.RuntimeConfig.Synthesis
+	resp.Applied = true
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAdminConfigBackups(w http.ResponseWriter, r *http.Request) {
+	configFile := s.adminConfigFile()
+	backupDir := s.adminConfigBackupDir()
+	items, err := s.readAdminConfigBackups()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_backup_list_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, adminConfigBackupsResponse{
+		ConfigFile: configFile,
+		BackupDir:  backupDir,
+		Items:      items,
+	})
+}
+
+func (s *Server) handleAdminConfigBackup(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "admin") {
+		return
+	}
+	backup, err := s.createAdminConfigBackup("manual")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_backup_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, adminConfigBackupResponse{
+		ConfigFile: s.adminConfigFile(),
+		BackupDir:  s.adminConfigBackupDir(),
+		Backup:     backup,
+	})
+}
+
+func (s *Server) handleAdminConfigRestore(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "admin") {
+		return
+	}
+	var req adminConfigRestoreRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	target, err := s.resolveAdminBackupPath(req.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	restoredInfo, err := s.statAdminBackup(target, "manual")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	preRestore, err := s.createAdminConfigBackup("pre-restore")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_backup_failed", err.Error(), nil)
+		return
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
+		return
+	}
+	configFile := s.adminConfigFile()
+	if configFile == "" {
+		writeError(w, http.StatusInternalServerError, "config_file_unavailable", "config file path is not available", nil)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
+		return
+	}
+	if err := os.WriteFile(configFile, data, 0o644); err != nil {
+		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
+		return
+	}
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
+		return
+	}
+	s.RuntimeConfig = cfg
+	s.SynthesisConfig = cfg.Synthesis
+	writeJSON(w, http.StatusOK, adminConfigRestoreResponse{
+		ConfigFile:       configFile,
+		RestoredFrom:     restoredInfo,
+		PreRestoreBackup: preRestore,
+		Config:           adminSettingsConfigFromConfig(cfg),
+		Providers:        adminSettingsProvidersFromConfig(cfg, s),
+		RestartRequired:  true,
+	})
+}
+
+func (s *Server) buildAdminSettingsMutationResponse(r *http.Request) (adminSettingsMutationResponse, int, string, string) {
+	var req adminSettingsUpdateRequest
+	if err := decodeJSON(r, &req); err != nil {
+		return adminSettingsMutationResponse{}, http.StatusBadRequest, "validation_error", err.Error()
+	}
+	next, warnings, err := validateAdminSettingsUpdate(req.Config)
+	if err != nil {
+		return adminSettingsMutationResponse{}, http.StatusBadRequest, "validation_error", err.Error()
+	}
+	configFile := s.adminConfigFile()
+	if strings.TrimSpace(configFile) == "" {
+		return adminSettingsMutationResponse{}, http.StatusInternalServerError, "config_file_unavailable", "config file path is not available"
+	}
+	current := adminSettingsConfigFromConfig(s.effectiveRuntimeConfig())
+	next = adminSettingsConfigFromConfig(adminSettingsConfigToConfig(next))
+	return adminSettingsMutationResponse{
+		ConfigFile:      configFile,
+		Config:          next,
+		Providers:       adminSettingsProvidersFromConfig(adminSettingsConfigToConfig(next), s),
+		ChangedFields:   adminSettingsChangedFields(current, next),
+		Warnings:        warnings,
+		RestartRequired: true,
+	}, http.StatusOK, "", ""
+}
+
+func (s *Server) effectiveRuntimeConfig() config.Config {
+	return config.Normalize(s.RuntimeConfig)
+}
+
+func (s *Server) adminConfigFile() string {
 	configFile := s.ConfigFile
-	if configFile == "" && layout.ConfigDir() != "" {
-		configFile = filepath.Join(layout.ConfigDir(), "config.yaml")
+	if configFile == "" && s.Layout.ConfigDir() != "" {
+		configFile = filepath.Join(s.Layout.ConfigDir(), "config.yaml")
 	}
+	return configFile
+}
+
+func (s *Server) adminQueueDBPath() string {
 	queueDBPath := s.QueueDBPath
-	if queueDBPath == "" && layout.StateDir() != "" {
-		queueDBPath = filepath.Join(layout.StateDir(), "queue.db")
+	if queueDBPath == "" && s.Layout.StateDir() != "" {
+		queueDBPath = filepath.Join(s.Layout.StateDir(), "queue.db")
 	}
+	return queueDBPath
+}
+
+func (s *Server) adminConfigBackupDir() string {
+	configFile := s.adminConfigFile()
+	if configFile != "" {
+		return filepath.Join(filepath.Dir(configFile), "backups")
+	}
+	if s.Layout.ConfigDir() != "" {
+		return filepath.Join(s.Layout.ConfigDir(), "backups")
+	}
+	return ""
+}
+
+func (s *Server) adminAuthMode() string {
+	switch {
+	case s.ManagedAuth:
+		return "managed"
+	case strings.TrimSpace(s.AuthToken) != "":
+		return "static-token"
+	default:
+		return "open"
+	}
+}
+
+func (s *Server) adminRequestLogMode() string {
+	requestLogMode := s.RequestLogMode
+	if requestLogMode == "" {
+		requestLogMode = "redacted"
+	}
+	return requestLogMode
+}
+
+func (s *Server) adminPaths(ctx context.Context) []adminPathInfo {
+	layout := s.Layout
+	configFile := s.adminConfigFile()
+	queueDBPath := s.adminQueueDBPath()
 
 	paths := make([]adminPathInfo, 0, 8)
 	if layout.DataDir() != "" {
@@ -1106,52 +1643,497 @@ func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
 	if queueDBPath != "" {
 		paths = append(paths, adminPath("queue-db", queueDBPath))
 	}
-	if report, err := s.Store.Readiness(r.Context()); err == nil {
+	if report, err := s.Store.Readiness(ctx); err == nil {
 		paths = append(paths, adminPath("records", report.RecordsDir))
 		if layout.MainDB() == "" && report.DBPath != "" {
 			paths = append(paths, adminPath("main-db", report.DBPath))
 		}
 	}
+	return paths
+}
 
-	authMode := "open"
-	switch {
-	case s.ManagedAuth:
-		authMode = "managed"
-	case strings.TrimSpace(s.AuthToken) != "":
-		authMode = "static-token"
+func adminEmbeddingProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
+	name := strings.ToLower(strings.TrimSpace(cfg.Embedding.Provider))
+	status := adminProviderStatus{
+		Kind:         "embedding",
+		Provider:     name,
+		Model:        strings.TrimSpace(cfg.Embedding.Model),
+		Configured:   name != "",
+		Supported:    name == "openai",
+		RuntimeReady: runtimeReady,
 	}
-	requestLogMode := s.RequestLogMode
-	if requestLogMode == "" {
-		requestLogMode = "redacted"
+	switch name {
+	case "":
+		status.Reason = "no embedding provider configured"
+	case "openai":
+		status.EnvVar = "OPENAI_API_KEY"
+		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+	default:
+		status.Reason = "unsupported embedding provider"
+	}
+	if status.Configured && status.Supported && status.EnvPresent {
+		status.Available = true
+	}
+	if status.Configured && status.Supported && !status.EnvPresent {
+		status.Reason = status.EnvVar + " not set"
+	}
+	return status
+}
+
+func adminSynthesisProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
+	name := strings.ToLower(strings.TrimSpace(cfg.Synthesis.Provider))
+	status := adminProviderStatus{
+		Kind:         "synthesis",
+		Provider:     name,
+		Model:        strings.TrimSpace(cfg.Synthesis.Model),
+		Configured:   name != "",
+		Supported:    name == "openai" || name == "anthropic",
+		RuntimeReady: runtimeReady,
+	}
+	switch name {
+	case "":
+		status.Reason = "no synthesis provider configured"
+	case "openai":
+		status.EnvVar = "OPENAI_API_KEY"
+		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+	case "anthropic":
+		status.EnvVar = "ANTHROPIC_API_KEY"
+		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+	default:
+		status.Reason = "unsupported synthesis provider"
+	}
+	if status.Configured && status.Supported && status.EnvPresent {
+		status.Available = true
+	}
+	if status.Configured && status.Supported && !status.EnvPresent {
+		status.Reason = status.EnvVar + " not set"
+	}
+	return status
+}
+
+func adminSettingsConfigFromConfig(cfg config.Config) adminSettingsConfigInfo {
+	cfg = config.Normalize(cfg)
+	return adminSettingsConfigInfo{
+		EmbeddingProvider:        cfg.Embedding.Provider,
+		EmbeddingModel:           cfg.Embedding.Model,
+		DedupSimilarityThreshold: cfg.Dedup.SimilarityThreshold,
+		SynthesisProvider:        cfg.Synthesis.Provider,
+		SynthesisModel:           cfg.Synthesis.Model,
+		SynthesisMaxTokens:       cfg.Synthesis.MaxTokens,
+		SynthesisTemperature:     cfg.Synthesis.Temperature,
+		SynthesisSystemPrompt:    cfg.Synthesis.SystemPrompt,
+		SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
+	}
+}
+
+func adminSettingsConfigToConfig(info adminSettingsConfigInfo) config.Config {
+	cfg := config.Defaults()
+	cfg.Embedding.Provider = strings.ToLower(strings.TrimSpace(info.EmbeddingProvider))
+	cfg.Embedding.Model = strings.TrimSpace(info.EmbeddingModel)
+	cfg.Dedup.SimilarityThreshold = info.DedupSimilarityThreshold
+	cfg.Synthesis.Provider = strings.ToLower(strings.TrimSpace(info.SynthesisProvider))
+	cfg.Synthesis.Model = strings.TrimSpace(info.SynthesisModel)
+	cfg.Synthesis.MaxTokens = info.SynthesisMaxTokens
+	cfg.Synthesis.Temperature = info.SynthesisTemperature
+	cfg.Synthesis.SystemPrompt = strings.TrimSpace(info.SynthesisSystemPrompt)
+	if cfg.Synthesis.Provider == "" {
+		cfg.Synthesis = config.SynthesisConfig{}
+	}
+	return config.Normalize(cfg)
+}
+
+func adminSettingsProvidersFromConfig(cfg config.Config, s *Server) adminSettingsProviders {
+	return adminSettingsProviders{
+		Embedding: adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
+		Synthesis: adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
+	}
+}
+
+func validateAdminSettingsUpdate(info adminSettingsConfigInfo) (adminSettingsConfigInfo, []string, error) {
+	info.EmbeddingProvider = strings.ToLower(strings.TrimSpace(info.EmbeddingProvider))
+	info.EmbeddingModel = strings.TrimSpace(info.EmbeddingModel)
+	info.SynthesisProvider = strings.ToLower(strings.TrimSpace(info.SynthesisProvider))
+	info.SynthesisModel = strings.TrimSpace(info.SynthesisModel)
+	info.SynthesisSystemPrompt = strings.TrimSpace(info.SynthesisSystemPrompt)
+
+	if info.EmbeddingProvider == "" {
+		return info, nil, errors.New("embedding_provider is required")
+	}
+	if info.EmbeddingProvider != "openai" {
+		return info, nil, errors.New("embedding_provider must be openai")
+	}
+	if info.EmbeddingModel == "" {
+		return info, nil, errors.New("embedding_model is required")
+	}
+	if info.DedupSimilarityThreshold <= 0 || info.DedupSimilarityThreshold > 1 {
+		return info, nil, errors.New("dedup_similarity_threshold must be between 0 and 1")
+	}
+	if info.SynthesisProvider != "" && info.SynthesisProvider != "openai" && info.SynthesisProvider != "anthropic" {
+		return info, nil, errors.New("synthesis_provider must be empty, openai, or anthropic")
+	}
+	if info.SynthesisProvider == "" {
+		info.SynthesisModel = ""
+		info.SynthesisMaxTokens = 0
+		info.SynthesisTemperature = 0
+		info.SynthesisSystemPrompt = ""
+		return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(info)), []string{
+			"synthesis is disabled until a provider is configured and the matching API key is set",
+		}, nil
+	}
+	if info.SynthesisModel == "" {
+		return info, nil, errors.New("synthesis_model is required when synthesis_provider is set")
+	}
+	if info.SynthesisMaxTokens < 0 {
+		return info, nil, errors.New("synthesis_max_tokens must be zero or a positive integer")
+	}
+	if info.SynthesisTemperature < 0 || info.SynthesisTemperature > 2 {
+		return info, nil, errors.New("synthesis_temperature must be between 0 and 2")
 	}
 
-	writeJSON(w, http.StatusOK, adminSetupResponse{
-		App:   config.AppName,
-		Paths: paths,
-		Auth:  adminAuthInfo{Mode: authMode},
-		Runtime: adminRuntimeInfo{
-			MetricsEnabled:        s.EnableMetrics,
-			RequestLoggingEnabled: s.EnableRequestLogging,
-			RequestLogMode:        requestLogMode,
-			MemoryStoreEnabled:    s.MemoryStore != nil,
-			KnowledgeStoreEnabled: s.KnowledgeStore != nil,
-			SynthesisEnabled:      s.SynthesisProvider != nil,
-		},
-		Config: adminConfigInfo{
-			EmbeddingProvider:        cfg.Embedding.Provider,
-			EmbeddingModel:           cfg.Embedding.Model,
-			DedupSimilarityThreshold: cfg.Dedup.SimilarityThreshold,
-			SynthesisProvider:        cfg.Synthesis.Provider,
-			SynthesisModel:           cfg.Synthesis.Model,
-			SynthesisMaxTokens:       cfg.Synthesis.MaxTokens,
-			SynthesisTemperature:     cfg.Synthesis.Temperature,
-			SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
-		},
+	warnings := []string{
+		"restart required for provider/runtime changes to take effect in the active daemon",
+	}
+	return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(info)), warnings, nil
+}
+
+func adminSettingsChangedFields(current, next adminSettingsConfigInfo) []string {
+	type field struct {
+		name string
+		same bool
+	}
+	fields := []field{
+		{name: "embedding.provider", same: current.EmbeddingProvider == next.EmbeddingProvider},
+		{name: "embedding.model", same: current.EmbeddingModel == next.EmbeddingModel},
+		{name: "dedup.similarity_threshold", same: current.DedupSimilarityThreshold == next.DedupSimilarityThreshold},
+		{name: "synthesis.provider", same: current.SynthesisProvider == next.SynthesisProvider},
+		{name: "synthesis.model", same: current.SynthesisModel == next.SynthesisModel},
+		{name: "synthesis.max_tokens", same: current.SynthesisMaxTokens == next.SynthesisMaxTokens},
+		{name: "synthesis.temperature", same: current.SynthesisTemperature == next.SynthesisTemperature},
+		{name: "synthesis.system_prompt", same: current.SynthesisSystemPrompt == next.SynthesisSystemPrompt},
+	}
+	changed := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if !field.same {
+			changed = append(changed, field.name)
+		}
+	}
+	return changed
+}
+
+func (s *Server) buildAdminNamespacePreview(ctx context.Context, r *http.Request) (adminNamespacePreviewResponse, int, string, string) {
+	var req namespaceRegisterRequest
+	if err := decodeJSON(r, &req); err != nil {
+		return adminNamespacePreviewResponse{}, http.StatusBadRequest, "validation_error", err.Error()
+	}
+	entry, warnings, err := validateNamespacePolicyEntry(req)
+	if err != nil {
+		return adminNamespacePreviewResponse{}, http.StatusBadRequest, "validation_error", err.Error()
+	}
+	if err := contextpolicy.New().RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy); err != nil {
+		return adminNamespacePreviewResponse{}, http.StatusBadRequest, "validation_error", err.Error()
+	}
+	current, err := s.Store.GetNamespacePolicy(ctx, entry.Namespace)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return adminNamespacePreviewResponse{}, http.StatusInternalServerError, "read_failed", err.Error()
+	}
+	exists := err == nil
+	changedFields := adminNamespaceChangedFields(current, entry, exists)
+	return adminNamespacePreviewResponse{
+		Entry:         entry,
+		Exists:        exists,
+		ChangedFields: changedFields,
+		Warnings:      warnings,
+	}, http.StatusOK, "", ""
+}
+
+func validateNamespacePolicyEntry(req namespaceRegisterRequest) (contextstore.NamespacePolicyEntry, []string, error) {
+	entry := contextstore.NamespacePolicyEntry{
+		Namespace: strings.TrimSpace(req.Namespace),
+		OwnerType: strings.TrimSpace(req.OwnerType),
+		OwnerID:   strings.TrimSpace(req.OwnerID),
+		Policy:    normalizeNamespacePolicy(req.Policy),
+	}
+	if entry.Namespace == "" {
+		return entry, nil, errors.New("namespace required")
+	}
+	if entry.OwnerType == "" {
+		return entry, nil, errors.New("owner_type required")
+	}
+	if entry.OwnerID == "" {
+		return entry, nil, errors.New("owner_id required")
+	}
+	tierPolicy := contextpolicy.ParseTierPolicy(entry.Policy)
+	if tierPolicy.Retention != "" {
+		if _, err := time.ParseDuration(tierPolicy.Retention); err != nil {
+			return entry, nil, errors.New("retention must be a valid duration (e.g. 720h)")
+		}
+	}
+	if tierPolicy.MaxRevisions < 0 {
+		return entry, nil, errors.New("max_revisions must be zero or a positive integer")
+	}
+	if tierPolicy.MaxBytesPerKey < 0 {
+		return entry, nil, errors.New("max_bytes_per_key must be zero or a positive integer")
+	}
+	warnings := make([]string, 0, 2)
+	if tierPolicy.Retention == "" && tierPolicy.MaxRevisions == 0 && tierPolicy.MaxBytesPerKey == 0 {
+		warnings = append(warnings, "namespace has no retention or revision limits")
+	}
+	if tierPolicy.Tier == "" {
+		warnings = append(warnings, "namespace tier is not set")
+	}
+	entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return entry, warnings, nil
+}
+
+func normalizeNamespacePolicy(policy map[string]any) map[string]any {
+	if policy == nil {
+		return map[string]any{}
+	}
+	normalized := make(map[string]any, len(policy))
+	for key, value := range policy {
+		switch v := value.(type) {
+		case string:
+			trimmed := strings.TrimSpace(v)
+			if trimmed != "" {
+				normalized[key] = trimmed
+			}
+		default:
+			normalized[key] = value
+		}
+	}
+	return normalized
+}
+
+func adminNamespaceChangedFields(current, next contextstore.NamespacePolicyEntry, exists bool) []string {
+	if !exists {
+		return []string{"namespace", "owner_type", "owner_id", "policy"}
+	}
+	changed := make([]string, 0, 4)
+	if current.OwnerType != next.OwnerType {
+		changed = append(changed, "owner_type")
+	}
+	if current.OwnerID != next.OwnerID {
+		changed = append(changed, "owner_id")
+	}
+	if !reflect.DeepEqual(current.Policy, next.Policy) {
+		changed = append(changed, "policy")
+	}
+	return changed
+}
+
+func (s *Server) readAdminConfigBackups() ([]adminConfigBackupInfo, error) {
+	backupDir := s.adminConfigBackupDir()
+	if backupDir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []adminConfigBackupInfo{}, nil
+		}
+		return nil, err
+	}
+	items := make([]adminConfigBackupInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := s.statAdminBackup(filepath.Join(backupDir, entry.Name()), backupSourceFromName(entry.Name()))
+		if err != nil {
+			continue
+		}
+		items = append(items, info)
+	}
+	slices.SortFunc(items, func(a, b adminConfigBackupInfo) int {
+		return strings.Compare(b.CreatedAt, a.CreatedAt)
 	})
+	return items, nil
+}
+
+func (s *Server) createAdminConfigBackup(source string) (adminConfigBackupInfo, error) {
+	backupDir := s.adminConfigBackupDir()
+	if backupDir == "" {
+		return adminConfigBackupInfo{}, errors.New("config backup directory is not available")
+	}
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return adminConfigBackupInfo{}, err
+	}
+	configFile := s.adminConfigFile()
+	var data []byte
+	if configFile != "" {
+		if b, err := os.ReadFile(configFile); err == nil {
+			data = b
+		} else if !os.IsNotExist(err) {
+			return adminConfigBackupInfo{}, err
+		}
+	}
+	if len(data) == 0 {
+		cfg := s.effectiveRuntimeConfig()
+		var err error
+		data, err = yaml.Marshal(cfg)
+		if err != nil {
+			return adminConfigBackupInfo{}, err
+		}
+		if source == "manual" {
+			source = "runtime-snapshot"
+		}
+	}
+	name := fmt.Sprintf("config-%s-%s.yaml", source, time.Now().UTC().Format("20060102T150405Z"))
+	target := filepath.Join(backupDir, name)
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		return adminConfigBackupInfo{}, err
+	}
+	return s.statAdminBackup(target, source)
+}
+
+func (s *Server) resolveAdminBackupPath(raw string) (string, error) {
+	backupDir := s.adminConfigBackupDir()
+	if backupDir == "" {
+		return "", errors.New("config backup directory is not available")
+	}
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", errors.New("path is required")
+	}
+	candidate := name
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(backupDir, candidate)
+	}
+	cleanDir := filepath.Clean(backupDir)
+	cleanPath := filepath.Clean(candidate)
+	rel, err := filepath.Rel(cleanDir, cleanPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("backup path must remain within the config backup directory")
+	}
+	return cleanPath, nil
+}
+
+func (s *Server) statAdminBackup(path string, source string) (adminConfigBackupInfo, error) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return adminConfigBackupInfo{}, err
+	}
+	return adminConfigBackupInfo{
+		Name:      filepath.Base(path),
+		Path:      path,
+		Size:      stat.Size(),
+		Source:    source,
+		CreatedAt: stat.ModTime().UTC().Format(time.RFC3339),
+	}, nil
+}
+
+func backupSourceFromName(name string) string {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	parts := strings.Split(base, "-")
+	if len(parts) >= 3 {
+		return strings.Join(parts[1:len(parts)-1], "-")
+	}
+	return "manual"
+}
+
+func (s *Server) retryFailedQueueJobs(ctx context.Context, id int64) (int, error) {
+	tx, err := s.QueueDB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	query := `
+SELECT id, queue, type, payload, attempts
+FROM failed_jobs
+WHERE queue = ?`
+	args := []any{"tesseract"}
+	if id > 0 {
+		query += " AND id = ?"
+		args = append(args, id)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type failedJob struct {
+		ID       int64
+		Queue    string
+		Type     string
+		Payload  []byte
+		Attempts int
+	}
+	var jobs []failedJob
+	for rows.Next() {
+		var job failedJob
+		if err := rows.Scan(&job.ID, &job.Queue, &job.Type, &job.Payload, &job.Attempts); err != nil {
+			return 0, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	now := time.Now().Unix()
+	for _, job := range jobs {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO jobs (queue, type, payload, attempts, max_tries, reserved_at, available_at, created_at)
+VALUES (?, ?, ?, 0, 3, NULL, ?, ?)`,
+			job.Queue, job.Type, job.Payload, now, now); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM failed_jobs WHERE id = ?`, job.ID); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(jobs), nil
+}
+
+func (s *Server) enqueueEmbeddingBackfill(ctx context.Context, namespace string, limit int) (int, error) {
+	query := `SELECT revision_id FROM memory_revisions WHERE embedding_vector IS NULL`
+	args := make([]any, 0, 2)
+	if namespace != "" {
+		query += ` AND namespace = ?`
+		args = append(args, namespace)
+	}
+	query += ` ORDER BY created_at ASC`
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.Store.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	now := time.Now().Unix()
+	queued := 0
+	for rows.Next() {
+		var revisionID string
+		if err := rows.Scan(&revisionID); err != nil {
+			return queued, err
+		}
+		payload := []byte(fmt.Sprintf(`{"revision_id":%q}`, revisionID))
+		if _, err := s.QueueDB.ExecContext(ctx, `
+INSERT INTO jobs (queue, type, payload, attempts, max_tries, reserved_at, available_at, created_at)
+VALUES (?, 'embed', ?, 0, 3, NULL, ?, ?)`,
+			"tesseract", payload, now, now); err != nil {
+			return queued, err
+		}
+		queued++
+	}
+	if err := rows.Err(); err != nil {
+		return queued, err
+	}
+	return queued, nil
 }
 
 func (s *Server) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
-	const queueName = "conduit"
+	const queueName = "tesseract"
 	resp := adminQueueResponse{
 		Enabled: s.QueueDB != nil,
 		Queue:   queueName,
@@ -1208,6 +2190,102 @@ func (s *Server) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAdminQueueFailures(w http.ResponseWriter, r *http.Request) {
+	if s.QueueDB == nil {
+		writeJSON(w, http.StatusOK, adminQueueFailuresResponse{Items: []adminQueueFailureInfo{}, Count: 0})
+		return
+	}
+	limit := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "validation_error", "limit must be a positive integer", nil)
+			return
+		}
+		if n > 100 {
+			n = 100
+		}
+		limit = n
+	}
+	rows, err := s.QueueDB.QueryContext(r.Context(), `
+SELECT id, queue, type, COALESCE(error, ''), attempts, failed_at, COALESCE(payload, '')
+FROM failed_jobs
+WHERE queue = ?
+ORDER BY failed_at DESC, id DESC
+LIMIT ?`, "tesseract", limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_failures_failed", err.Error(), nil)
+		return
+	}
+	defer rows.Close()
+	items := make([]adminQueueFailureInfo, 0, limit)
+	for rows.Next() {
+		var item adminQueueFailureInfo
+		var failedAt int64
+		if err := rows.Scan(&item.ID, &item.Queue, &item.Type, &item.Error, &item.Attempts, &failedAt, &item.Payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "queue_failures_failed", err.Error(), nil)
+			return
+		}
+		item.FailedAt = time.Unix(failedAt, 0).UTC().Format(time.RFC3339)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_failures_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, adminQueueFailuresResponse{Items: items, Count: len(items)})
+}
+
+func (s *Server) handleAdminQueueRetryFailed(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "repair") {
+		return
+	}
+	if s.QueueDB == nil {
+		writeError(w, http.StatusServiceUnavailable, "queue_unavailable", "queue database is not configured", nil)
+		return
+	}
+	var req adminQueueRetryFailedRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	retried, err := s.retryFailedQueueJobs(r.Context(), req.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_retry_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, adminQueueRetryFailedResponse{Retried: retried})
+}
+
+func (s *Server) handleAdminQueueBackfill(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, "repair") {
+		return
+	}
+	if s.QueueDB == nil {
+		writeError(w, http.StatusServiceUnavailable, "queue_unavailable", "queue database is not configured", nil)
+		return
+	}
+	var req adminQueueBackfillRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	if req.Limit < 0 {
+		writeError(w, http.StatusBadRequest, "validation_error", "limit must be zero or a positive integer", nil)
+		return
+	}
+	queued, err := s.enqueueEmbeddingBackfill(r.Context(), strings.TrimSpace(req.Namespace), req.Limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "queue_backfill_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, adminQueueBackfillResponse{
+		Queued:    queued,
+		Namespace: strings.TrimSpace(req.Namespace),
+		Limit:     req.Limit,
+	})
 }
 
 func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {

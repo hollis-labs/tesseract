@@ -6,11 +6,11 @@ Tesseract provides semantic search over stored records via embeddings. This exte
 
 Embeddings are stored in a dedicated `embeddings` table alongside the existing `records` table. Each record can have embeddings from multiple models, keyed by `(record_id, model)`. Vectors are stored as packed float32 BLOBs in SQLite.
 
-Similarity search uses brute-force cosine similarity in Go — no external vector database or C extensions required. This is efficient for Conduit's expected scale (hundreds to low thousands of records).
+Similarity search uses brute-force cosine similarity in Go — no external vector database or C extensions required. This is efficient for Tesseract's expected scale (hundreds to low thousands of records).
 
 ## Embedding Provider
 
-Conduit uses a pluggable `Provider` interface for embedding generation:
+Tesseract uses a pluggable `Provider` interface for embedding generation:
 
 ```go
 type Provider interface {

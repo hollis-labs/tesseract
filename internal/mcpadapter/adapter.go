@@ -43,8 +43,8 @@ func New(store *contextstore.Store, token string) *Adapter {
 // cancelled or the client disconnects.
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
-		"context-memory-service",
-		"0.5.3",
+		"tesseract",
+		"0.7.0",
 		server.WithToolCapabilities(true),
 	)
 	a.RegisterAllTools(s)

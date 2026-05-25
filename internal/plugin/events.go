@@ -6,8 +6,8 @@ import (
 	fplugin "github.com/hollis-labs/plugin-sdk"
 )
 
-// Conduit Event Catalog
-// These are the standard events that Conduit emits for plugins to listen to.
+// Tesseract Event Catalog
+// These are the standard events that Tesseract emits for plugins to listen to.
 const (
 	// Context lifecycle events
 	EventContextWritten  = "context.written"
@@ -30,7 +30,7 @@ func NewEvent(eventType, source string, data map[string]interface{}) fplugin.Eve
 
 // EmitContextWritten emits a context.written event.
 func (h *Host) EmitContextWritten(namespace, key string) {
-	h.EmitEvent(NewEvent(EventContextWritten, "conduit", map[string]interface{}{
+	h.EmitEvent(NewEvent(EventContextWritten, "tesseract", map[string]interface{}{
 		"namespace": namespace,
 		"key":       key,
 	}))
@@ -38,7 +38,7 @@ func (h *Host) EmitContextWritten(namespace, key string) {
 
 // EmitContextPromoted emits a context.promoted event.
 func (h *Host) EmitContextPromoted(namespace, key, fromStatus, toStatus string) {
-	h.EmitEvent(NewEvent(EventContextPromoted, "conduit", map[string]interface{}{
+	h.EmitEvent(NewEvent(EventContextPromoted, "tesseract", map[string]interface{}{
 		"namespace":   namespace,
 		"key":         key,
 		"from_status": fromStatus,
@@ -48,7 +48,7 @@ func (h *Host) EmitContextPromoted(namespace, key, fromStatus, toStatus string) 
 
 // EmitEmbedCompleted emits an embed.completed event.
 func (h *Host) EmitEmbedCompleted(namespace, key string, chunkCount int) {
-	h.EmitEvent(NewEvent(EventEmbedCompleted, "conduit", map[string]interface{}{
+	h.EmitEvent(NewEvent(EventEmbedCompleted, "tesseract", map[string]interface{}{
 		"namespace":   namespace,
 		"key":         key,
 		"chunk_count": chunkCount,
@@ -57,7 +57,7 @@ func (h *Host) EmitEmbedCompleted(namespace, key string, chunkCount int) {
 
 // EmitContextDeleted emits a context.deleted event.
 func (h *Host) EmitContextDeleted(namespace, key string) {
-	h.EmitEvent(NewEvent(EventContextDeleted, "conduit", map[string]interface{}{
+	h.EmitEvent(NewEvent(EventContextDeleted, "tesseract", map[string]interface{}{
 		"namespace": namespace,
 		"key":       key,
 	}))

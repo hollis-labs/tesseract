@@ -7,7 +7,7 @@ related: [start-here, promotion, memory, knowledge]
 
 # Namespaces
 
-Vanta organizes every record under a **namespace** — a path-like string encoding ownership, tier, and (for memory) user/project/session scope. The namespace is authoritative: it decides who may write, who may read, and whether promotion is required.
+Tesseract organizes every record under a **namespace** — a path-like string encoding ownership, tier, and (for memory) user/project/session scope. The namespace is authoritative: it decides who may write, who may read, and whether promotion is required.
 
 ## Canonical tier patterns
 
@@ -53,7 +53,7 @@ Bare `user/memory/*` from the tier spec is rejected by the memory parser — use
 
 - `user/*` — only `actor=user` may write directly.
 - `app/<id>/*` — only `actor=app:<id>` with matching `client_id=<id>` may write.
-- **Apps cannot write to `user/*`.** The only bridge is promotion (`vanta_skills promotion`).
+- **Apps cannot write to `user/*`.** The only bridge is promotion (`tesseract_skills promotion`).
 
 ## Actor and client_id matrix
 

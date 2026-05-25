@@ -42,9 +42,9 @@ func TestMapRow_TypeStripAndProjectExtraction(t *testing.T) {
 		{
 			name:     "singular reference -> references; project not lifted when not in set",
 			oldNS:    "user/chrispian/memory",
-			oldKey:   "reference.vanta.weekly_review",
+			oldKey:   "reference.atlas.weekly_review",
 			wantNS:   "user/chrispian/memory/references",
-			wantKey:  "vanta.weekly_review", // vanta not in project set, so not lifted
+			wantKey:  "atlas.weekly_review", // atlas not in project set, so not lifted
 			wantTags: nil,
 			wantNote: "normalized-type-prefix-reference-to-references",
 		},

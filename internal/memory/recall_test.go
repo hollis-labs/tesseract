@@ -100,7 +100,7 @@ func TestRecall_MultiNamespace(t *testing.T) {
 	defer cleanup()
 
 	ns1 := "user/chrispian/memory/notes"
-	ns2 := "user/chrispian/project/conduit/memory/notes"
+	ns2 := "user/chrispian/project/tesseract/memory/notes"
 
 	in1 := sampleInput("multi.a")
 	in1.Namespace = ns1
@@ -150,7 +150,7 @@ func TestRecall_PrefixMatchesTypedSubNamespaces(t *testing.T) {
 	}
 	// And one in a different scope — must NOT match the user-scope prefix.
 	other := sampleInput("p.one")
-	other.Namespace = "user/chrispian/project/conduit/memory/notes"
+	other.Namespace = "user/chrispian/project/tesseract/memory/notes"
 	if _, err := ms.WriteRevision(context.Background(), other); err != nil {
 		t.Fatalf("write other: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestRecall_PrefixMatchesTypedSubNamespaces(t *testing.T) {
 
 	t.Run("project legacy flat matches typed project sub-namespaces", func(t *testing.T) {
 		results, err := ms.Recall(context.Background(), memory.RecallInput{
-			Namespaces: []string{"user/chrispian/project/conduit/memory"},
+			Namespaces: []string{"user/chrispian/project/tesseract/memory"},
 		})
 		if err != nil {
 			t.Fatalf("Recall: %v", err)
@@ -214,7 +214,7 @@ func TestRecall_PrefixMatchesTypedSubNamespaces(t *testing.T) {
 			t.Fatalf("Recall: %v", err)
 		}
 		for _, r := range results {
-			if r.Revision.Namespace == "user/chrispian/project/conduit/memory/notes" {
+			if r.Revision.Namespace == "user/chrispian/project/tesseract/memory/notes" {
 				t.Errorf("user prefix leaked into project scope: %s", r.Revision.Namespace)
 			}
 		}

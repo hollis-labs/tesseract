@@ -2,11 +2,12 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds the top-level conduit configuration loaded from config.yaml.
+// Config holds the top-level tesseract configuration loaded from config.yaml.
 type Config struct {
 	Embedding EmbeddingConfig `yaml:"embedding"`
 	Dedup     DedupConfig     `yaml:"dedup"`
@@ -66,13 +67,21 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
 	}
+	return Normalize(cfg), nil
+}
 
-	// Re-apply defaults for zero values that shouldn't be zero.
+// Normalize reapplies defaults for zero values that should not remain zero in
+// runtime/admin representations.
+func Normalize(cfg Config) Config {
+	defaults := Defaults()
+	if cfg.Embedding.Provider == "" {
+		cfg.Embedding.Provider = defaults.Embedding.Provider
+	}
 	if cfg.Embedding.Model == "" {
-		cfg.Embedding.Model = Defaults().Embedding.Model
+		cfg.Embedding.Model = defaults.Embedding.Model
 	}
 	if cfg.Dedup.SimilarityThreshold == 0 {
-		cfg.Dedup.SimilarityThreshold = Defaults().Dedup.SimilarityThreshold
+		cfg.Dedup.SimilarityThreshold = defaults.Dedup.SimilarityThreshold
 	}
 	if cfg.Synthesis.Provider != "" {
 		if cfg.Synthesis.MaxTokens == 0 {
@@ -82,8 +91,20 @@ func Load(path string) (Config, error) {
 			cfg.Synthesis.SystemPrompt = DefaultSynthesisSystemPrompt
 		}
 	}
+	return cfg
+}
 
-	return cfg, nil
+// Save writes cfg to path as YAML, creating the parent directory when needed.
+func Save(path string, cfg Config) error {
+	cfg = Normalize(cfg)
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // DefaultSynthesisSystemPrompt is used when Synthesis.SystemPrompt is empty.

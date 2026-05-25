@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
-  conduitLookup,
+  tesseractLookup,
   getAuditEvents,
   getMetrics,
   estimate,
@@ -62,7 +62,7 @@ export function DashboardPage({ health, onNavigate }: Props) {
     if (namespaces.length === 0) {
       return { lowConfidence: 0, reviewed: 0, pendingReview: 0 };
     }
-    const res = await conduitLookup({
+    const res = await tesseractLookup({
       namespaces,
       ranking: "activation",
       revision_scope: "current",

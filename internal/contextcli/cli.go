@@ -145,14 +145,7 @@ func contractSuites() []contractSuite {
 		{Name: "smoke-invalid-token", Command: "go test ./tests/integration -run SmokeInvalidTokenContract -count=1"},
 		{Name: "make-contract-cli-list", Command: "go test ./tests/integration -run MakeContractCLIListContract -count=1"},
 		{Name: "make-contract-cli-run", Command: "go test ./tests/integration -run MakeContractCLIRunContract -count=1"},
-		{Name: "bootstrap-sync", Command: "go test ./tests/integration -run BootstrapSyncScript -count=1"},
-		{Name: "bootstrap-sync-no-log", Command: "go test ./tests/integration -run BootstrapSyncNoLogContract -count=1"},
-		{Name: "bootstrap-sync-idempotent", Command: "go test ./tests/integration -run BootstrapSyncIdempotentContract -count=1"},
-		{Name: "make-bootstrap-report", Command: "go test ./tests/integration -run MakeBootstrapReportContract -count=1"},
-		{Name: "make-bootstrap-sync", Command: "go test ./tests/integration -run MakeBootstrapSyncContract -count=1"},
-		{Name: "make-bootstrap-sync-alias", Command: "go test ./tests/integration -run MakeBootstrapSyncAliasContract -count=1"},
 		{Name: "make-smoke-invalid-token", Command: "go test ./tests/integration -run MakeSmokeInvalidTokenContract -count=1"},
-		{Name: "runlog-helper", Command: "go test ./tests/integration -run RunlogHelperContract -count=1"},
 		{Name: "contract-suite-commands-format", Command: "go test ./tests/integration -run ContractSuiteCommandsFormatContract -count=1"},
 		{Name: "contract-suite-commands-unique", Command: "go test ./tests/integration -run ContractSuiteCommandsUniqueContract -count=1"},
 		{Name: "contract-suite-commands-prefix", Command: "go test ./tests/integration -run ContractSuiteCommandsPrefixContract -count=1"},
@@ -161,7 +154,6 @@ func contractSuites() []contractSuite {
 		{Name: "contract-suite-commands-token-count", Command: "go test ./tests/integration -run ContractSuiteCommandsTokenCountContract -count=1"},
 		{Name: "contract-suite-commands-non-empty", Command: "go test ./tests/integration -run ContractSuiteCommandsNonEmptyContract -count=1"},
 		{Name: "fixture-lint-script", Command: "go test ./tests/integration -run ContractFixtureLintScript -count=1"},
-		{Name: "agents-boot-check", Command: "go test ./tests/integration -run AgentsBootCheckContract -count=1"},
 	}
 }
 

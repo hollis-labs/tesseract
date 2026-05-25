@@ -9,13 +9,13 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// registerSkillsTool registers the vanta_skills progressive-discovery
+// registerSkillsTool registers the tesseract_skills progressive-discovery
 // meta-tool. No capability token required — this is read-only orientation
 // served from an embedded filesystem.
 func (a *Adapter) registerSkillsTool(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("vanta_skills",
+	a.addTool(s, mcp.NewTool("tesseract_skills",
 		mcp.WithDescription(
-			"Vanta's self-documenting skill index. Call with no args for the catalog; "+
+			"Tesseract's self-documenting skill index. Call with no args for the catalog; "+
 				"call with `name` to read a specific skill in full. Progressive discovery — "+
 				"skills only load when requested. Start with name=`start-here` for orientation.",
 		),
@@ -25,10 +25,10 @@ func (a *Adapter) registerSkillsTool(s *server.MCPServer) {
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleVantaSkills)
+	), a.handleTesseractSkills)
 }
 
-func (a *Adapter) handleVantaSkills(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTesseractSkills(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	name := req.GetString("name", "")
 	if name == "" {
 		metas, err := skills.List()

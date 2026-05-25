@@ -19,7 +19,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** the content is authored by you or another agent and belongs to the memory domain.\n"+
 				"• **Don't use this for:** pointer-to-external-content (`knowledge_write`) or generic revisioned records (`context_write`).\n"+
-				"• **Deeper:** `vanta_skills memory` for patterns; `vanta_skills namespaces` for namespace rules.",
+				"• **Deeper:** `tesseract_skills memory` for patterns; `tesseract_skills namespaces` for namespace rules.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style)")),
@@ -52,7 +52,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Use this when:** you have a specific key and want its current value.\n"+
 				"• **Don't use this for:** revision history (`memory_history`), ranked recall (`memory_recall`), or a specific revision by ID (`memory_get_revision`).\n"+
 				"• **Side effect:** reinforces the memory's activation/access_count — a deliberate read counts as use, unlike `memory_recall`.\n"+
-				"• **Deeper:** `vanta_skills memory`.",
+				"• **Deeper:** `tesseract_skills memory`.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
@@ -70,7 +70,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you need to trace how a memory evolved, or inspect superseded content.\n"+
 				"• **Don't use this for:** just the current value (`memory_get`).\n"+
-				"• **Deeper:** `vanta_skills revisions`.",
+				"• **Deeper:** `tesseract_skills revisions`.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
@@ -87,8 +87,8 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match memories for a query or the top-of-mind memories without a query.\n"+
-				"• **Don't use this for:** cross-domain search — `conduit_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+
-				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills memory` for patterns.",
+				"• **Don't use this for:** cross-domain search — `tesseract_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+
+				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills memory` for patterns.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of memory namespace strings. Use typed form user/{id}/memory/{type} (e.g. [\"user/chrispian/memory/decisions\"]) or the legacy/prefix form user/{id}/memory (e.g. [\"user/chrispian/memory\"]) to span every typed sub-namespace under that scope. Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("revision_scope", mcp.Description("current or timeline (default: current)")),
@@ -115,7 +115,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** a session memory has proven durable and you want it to survive session boundaries.\n"+
 				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote_*` three-stage workflow.\n"+
-				"• **Deeper:** `vanta_skills promotion`.",
+				"• **Deeper:** `tesseract_skills promotion`.",
 		),
 		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace user/{id}/session/{sid}/memory/{type} (e.g. user/chrispian/session/2026-04-19:backend/memory/decisions)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),
@@ -136,7 +136,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** a revision is wrong, outdated, or should no longer appear in current recall.\n"+
 				"• **Don't use this for:** replacing content — write a new revision with `supersedes`. Hard deletes — not supported (history is canonical).\n"+
-				"• **Deeper:** `vanta_skills revisions`.",
+				"• **Deeper:** `tesseract_skills revisions`.",
 		),
 		mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to deprecate (e.g. 01HX...)")),
 		mcp.WithReadOnlyHintAnnotation(false),

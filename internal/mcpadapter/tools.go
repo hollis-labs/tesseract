@@ -20,27 +20,27 @@ import (
 
 func (a *Adapter) registerTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_head",
-		mcp.WithDescription("Read the current head (latest revision) of a record by namespace and key. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read the current head (latest revision) of a record by namespace and key. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path, e.g. user/memory/task-001")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 	), a.handleHead)
 
 	a.addTool(s, mcp.NewTool("context_history",
-		mcp.WithDescription("Read the revision history for a namespace/key, newest first. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read the revision history for a namespace/key, newest first. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithNumber("limit", mcp.Description("Max revisions to return (default 10, max 25)")),
 	), a.handleHistory)
 
 	a.addTool(s, mcp.NewTool("context_view",
-		mcp.WithDescription("Evaluate a view selector and return matching records. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Evaluate a view selector and return matching records. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\"")),
 		mcp.WithString("revision_scope", mcp.Description("head or all (default: head)")),
 		mcp.WithNumber("limit", mcp.Description("Max records to return (default 10, max 25). Returns summaries; use context_head for full record.")),
 	), a.handleView)
 
 	a.addTool(s, mcp.NewTool("context_packet",
-		mcp.WithDescription("Retrieve a budget-bounded context packet with manifest. The primary agent continuity surface. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Retrieve a budget-bounded context packet with manifest. The primary agent continuity surface. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns to include")),
 		mcp.WithBoolean("include_pins", mcp.Description("Whether to prepend user/pins/* records (default true)")),
 		mcp.WithNumber("max_items", mcp.Description("Item budget limit (default 50)")),
@@ -49,7 +49,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handlePacket)
 
 	a.addTool(s, mcp.NewTool("context_write",
-		mcp.WithDescription("Write a record to a namespace. Requires 'write' scope in the configured capability token. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Write a record to a namespace. Requires 'write' scope in the configured capability token. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace, e.g. app/test/session/task-001")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload as a string, e.g. '{\"status\":\"in_progress\"}'")),
@@ -58,7 +58,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleWrite)
 
 	a.addTool(s, mcp.NewTool("context_promote_request",
-		mcp.WithDescription("Request promotion of a record from an app namespace to a user namespace. Requires 'promote.request' scope. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Request promotion of a record from an app namespace to a user namespace. Requires 'promote.request' scope. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source namespace (must be in app/*)")),
 		mcp.WithString("source_key", mcp.Required(), mcp.Description("Source record key")),
 		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target namespace (typically user/memory/*)")),
@@ -68,20 +68,20 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handlePromoteRequest)
 
 	a.addTool(s, mcp.NewTool("context_promote_list",
-		mcp.WithDescription("List promotion requests. Read-only, no token required. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("List promotion requests. Read-only, no token required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("status", mcp.Description("Filter by status: pending|approved|applied|all (default: pending)")),
 		mcp.WithNumber("limit", mcp.Description("Max requests to return (default 10, max 25)")),
 	), a.handlePromoteList)
 
 	a.addTool(s, mcp.NewTool("context_promote_approve",
-		mcp.WithDescription("Approve a pending promotion request. Requires 'promote.approve' scope. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Approve a pending promotion request. Requires 'promote.approve' scope. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("request_id", mcp.Required(), mcp.Description("Promotion request ID to approve")),
 		mcp.WithString("notes", mcp.Description("Optional approval notes")),
 		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
 	), a.handlePromoteApprove)
 
 	a.addTool(s, mcp.NewTool("context_promote_apply",
-		mcp.WithDescription("Apply an approved promotion request, writing the record to the target namespace. Requires 'promote.apply' scope. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Apply an approved promotion request, writing the record to the target namespace. Requires 'promote.apply' scope. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("request_id", mcp.Required(), mcp.Description("Approved promotion request ID to apply")),
 		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
 	), a.handlePromoteApply)
@@ -89,7 +89,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	// NOTE: MCP tool names retain "broker" for backward compatibility with consumers.
 	// Internally these are the context query planner, not the universal ContextBroker.
 	a.addTool(s, mcp.NewTool("context_broker_plan",
-		mcp.WithDescription("Generate a context fetch plan for a given intent. Returns namespace patterns, budget, and rationale. No auth required. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Generate a context fetch plan for a given intent. Returns namespace patterns, budget, and rationale. No auth required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
 		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction (used with resume_task intent)")),
 		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
@@ -97,7 +97,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleContextPlan)
 
 	a.addTool(s, mcp.NewTool("context_broker_fetch",
-		mcp.WithDescription("Execute a context plan and return a context packet in one call. Combines context_broker_plan and context_packet. No auth required. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Execute a context plan and return a context packet in one call. Combines context_broker_plan and context_packet. No auth required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
 		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction")),
 		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
@@ -106,25 +106,25 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleContextFetch)
 
 	a.addTool(s, mcp.NewTool("context_namespace_register",
-		mcp.WithDescription("Register a namespace with ownership policy. Requires 'namespace.admin' scope. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Register a namespace with ownership policy. Requires 'namespace.admin' scope. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path to register")),
 		mcp.WithString("owner_type", mcp.Required(), mcp.Description("Ownership type: user or app")),
 		mcp.WithString("owner_id", mcp.Required(), mcp.Description("Owner identity (e.g. my-agent)")),
 	), a.handleNamespaceRegister)
 
 	a.addTool(s, mcp.NewTool("context_namespace_show",
-		mcp.WithDescription("Show the ownership policy for a registered namespace. No auth required. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Show the ownership policy for a registered namespace. No auth required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path to inspect")),
 	), a.handleNamespaceShow)
 
 	a.addTool(s, mcp.NewTool("context_namespaces_list",
-		mcp.WithDescription("List all registered namespaces with ownership policies. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("List all registered namespaces with ownership policies. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("prefix", mcp.Description("Filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
 		mcp.WithNumber("limit", mcp.Description("Max namespaces to return (default 10, max 25)")),
 	), a.handleNamespacesList)
 
 	a.addTool(s, mcp.NewTool("context_audit",
-		mcp.WithDescription("Query the audit event log. No auth required. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Query the audit event log. No auth required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Description("Filter by exact namespace")),
 		mcp.WithString("event_type", mcp.Description("Filter by event type (e.g. write, promote)")),
 		mcp.WithNumber("limit", mcp.Description("Max events to return (default 10, max 25)")),
@@ -793,7 +793,7 @@ func (a *Adapter) handleContextFetch(_ context.Context, req mcp.CallToolRequest)
 }
 
 // buildContextPlan derives namespace patterns and fetch strategy from an intent.
-// This is Conduit's internal query planner — not the universal ContextBroker.
+// This is Tesseract's internal query planner — not the universal ContextBroker.
 func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []string, includePins bool, rationale string) {
 	switch intent {
 	case "resume_task":

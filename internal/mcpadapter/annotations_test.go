@@ -43,8 +43,8 @@ func TestMemoryKnowledgeUnifiedToolsAnnotated(t *testing.T) {
 		"knowledge_get",
 		"knowledge_history",
 		// unified / meta
-		"conduit_lookup",
-		"vanta_skills",
+		"tesseract_lookup",
+		"tesseract_skills",
 	}
 
 	registered := srv.ListTools()

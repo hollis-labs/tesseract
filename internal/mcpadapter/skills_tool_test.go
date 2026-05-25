@@ -9,13 +9,13 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func TestVantaSkills_Index(t *testing.T) {
+func TestTesseractSkills_Index(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{}
-	res, err := a.handleVantaSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleVantaSkills: %v", err)
+		t.Fatalf("handleTesseractSkills: %v", err)
 	}
 	if res == nil || len(res.Content) == 0 {
 		t.Fatal("empty result")
@@ -36,13 +36,13 @@ func TestVantaSkills_Index(t *testing.T) {
 	}
 }
 
-func TestVantaSkills_GetByName(t *testing.T) {
+func TestTesseractSkills_GetByName(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"name": "start-here"}
-	res, err := a.handleVantaSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleVantaSkills: %v", err)
+		t.Fatalf("handleTesseractSkills: %v", err)
 	}
 	if res == nil || len(res.Content) == 0 {
 		t.Fatal("empty result")
@@ -56,11 +56,11 @@ func TestVantaSkills_GetByName(t *testing.T) {
 	}
 }
 
-func TestVantaSkills_UnknownName_ReturnsToolError(t *testing.T) {
+func TestTesseractSkills_UnknownName_ReturnsToolError(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"name": "does-not-exist"}
-	res, err := a.handleVantaSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handler returned err: %v", err)
 	}

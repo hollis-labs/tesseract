@@ -1,6 +1,17 @@
 import { demo, isDemoMode } from "../demo/data";
 import type {
+  AdminQueueBackfillResponse,
+  AdminQueueFailuresResponse,
+  AdminQueueRetryFailedResponse,
+  AdminNamespaceHistoryResponse,
+  AdminNamespacePreviewResponse,
+  AdminConfigBackupResponse,
+  AdminConfigBackupsResponse,
+  AdminConfigRestoreResponse,
+  AdminSettingsMutationResponse,
   AdminQueueResponse,
+  AdminSettingsResponse,
+  AdminSettingsUpdateRequest,
   AdminSetupResponse,
   AdminStorageResponse,
   AuditResponse,
@@ -9,8 +20,8 @@ import type {
   BrokerPlanResponse,
   CompactRequest,
   CompactResponse,
-  ConduitLookupRequest,
-  ConduitLookupResponse,
+  TesseractLookupRequest,
+  TesseractLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
@@ -83,9 +94,206 @@ export async function getAdminSetup(): Promise<AdminSetupResponse> {
   return apiFetch<AdminSetupResponse>("/v1/admin/setup");
 }
 
+export async function getAdminSettings(): Promise<AdminSettingsResponse> {
+  if (isDemoMode()) {
+    const setup = await demo.getAdminSetup();
+    return {
+      app: setup.app,
+      config_file: setup.paths.find((path) => path.label === "config-file")?.path ?? "",
+      paths: setup.paths,
+      auth: setup.auth,
+      runtime: {
+        ...setup.runtime,
+        queue_enabled: false,
+        webui_embedded: true,
+      },
+      config: {
+        ...setup.config,
+        synthesis_system_prompt: "",
+      },
+      providers: {
+        embedding: {
+          kind: "embedding",
+          provider: setup.config.embedding_provider,
+          model: setup.config.embedding_model,
+          env_var: "OPENAI_API_KEY",
+          configured: Boolean(setup.config.embedding_provider),
+          supported: setup.config.embedding_provider === "openai",
+          env_present: false,
+          runtime_ready: setup.runtime.memory_store_enabled,
+          available: false,
+          reason: "demo mode",
+        },
+        synthesis: {
+          kind: "synthesis",
+          provider: setup.config.synthesis_provider,
+          model: setup.config.synthesis_model,
+          env_var:
+            setup.config.synthesis_provider === "anthropic"
+              ? "ANTHROPIC_API_KEY"
+              : "OPENAI_API_KEY",
+          configured: Boolean(setup.config.synthesis_provider),
+          supported:
+            setup.config.synthesis_provider === "openai" ||
+            setup.config.synthesis_provider === "anthropic",
+          env_present: false,
+          runtime_ready: setup.runtime.synthesis_enabled,
+          available: false,
+          reason: "demo mode",
+        },
+      },
+    };
+  }
+  return apiFetch<AdminSettingsResponse>("/v1/admin/settings");
+}
+
+export async function previewAdminSettings(
+  req: AdminSettingsUpdateRequest,
+): Promise<AdminSettingsMutationResponse> {
+  if (isDemoMode()) {
+    const settings = await getAdminSettings();
+    return {
+      config_file: settings.config_file,
+      config: req.config,
+      providers: settings.providers,
+      changed_fields: ["demo.settings"],
+      warnings: ["demo mode does not persist settings"],
+      restart_required: true,
+      applied: false,
+    };
+  }
+  return apiFetch<AdminSettingsMutationResponse>("/v1/admin/settings/preview", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function applyAdminSettings(
+  req: AdminSettingsUpdateRequest,
+): Promise<AdminSettingsMutationResponse> {
+  if (isDemoMode()) {
+    const preview = await previewAdminSettings(req);
+    return { ...preview, applied: true };
+  }
+  return apiFetch<AdminSettingsMutationResponse>("/v1/admin/settings/apply", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function getAdminConfigBackups(): Promise<AdminConfigBackupsResponse> {
+  if (isDemoMode()) {
+    const settings = await getAdminSettings();
+    return {
+      config_file: settings.config_file,
+      backup_dir: "/demo/config/backups",
+      items: [],
+    };
+  }
+  return apiFetch<AdminConfigBackupsResponse>("/v1/admin/config/backups");
+}
+
+export async function createAdminConfigBackup(): Promise<AdminConfigBackupResponse> {
+  if (isDemoMode()) {
+    return {
+      config_file: "/demo/config/config.yaml",
+      backup_dir: "/demo/config/backups",
+      backup: {
+        name: "config-demo.yaml",
+        path: "/demo/config/backups/config-demo.yaml",
+        size: 512,
+        source: "demo",
+        created_at: new Date().toISOString(),
+      },
+    };
+  }
+  return apiFetch<AdminConfigBackupResponse>("/v1/admin/config/backup", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function restoreAdminConfigBackup(path: string): Promise<AdminConfigRestoreResponse> {
+  if (isDemoMode()) {
+    const settings = await getAdminSettings();
+    return {
+      config_file: settings.config_file,
+      restored_from: {
+        name: "config-demo.yaml",
+        path,
+        size: 512,
+        source: "demo",
+        created_at: new Date().toISOString(),
+      },
+      pre_restore_backup: {
+        name: "config-demo-pre-restore.yaml",
+        path: "/demo/config/backups/config-demo-pre-restore.yaml",
+        size: 512,
+        source: "pre-restore",
+        created_at: new Date().toISOString(),
+      },
+      config: settings.config,
+      providers: settings.providers,
+      restart_required: true,
+    };
+  }
+  return apiFetch<AdminConfigRestoreResponse>("/v1/admin/config/restore", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+}
+
 export async function getAdminQueue(): Promise<AdminQueueResponse> {
   if (isDemoMode()) return demo.getAdminQueue();
   return apiFetch<AdminQueueResponse>("/v1/admin/queue");
+}
+
+export async function getAdminQueueFailures(limit = 25): Promise<AdminQueueFailuresResponse> {
+  if (isDemoMode()) {
+    return {
+      count: 1,
+      items: [
+        {
+          id: 1,
+          queue: "tesseract",
+          type: "embed",
+          error: "demo embedding provider timeout",
+          attempts: 3,
+          failed_at: new Date().toISOString(),
+          payload: '{"revision_id":"demo-rev"}',
+        },
+      ],
+    };
+  }
+  return apiFetch<AdminQueueFailuresResponse>(`/v1/admin/queue/failures?limit=${limit}`);
+}
+
+export async function retryAdminQueueFailed(id?: number): Promise<AdminQueueRetryFailedResponse> {
+  if (isDemoMode()) return { retried: id ? 1 : 1 };
+  return apiFetch<AdminQueueRetryFailedResponse>("/v1/admin/queue/retry-failed", {
+    method: "POST",
+    body: JSON.stringify(id ? { id } : {}),
+  });
+}
+
+export async function backfillAdminQueue(params?: {
+  namespace?: string;
+  limit?: number;
+}): Promise<AdminQueueBackfillResponse> {
+  if (isDemoMode()) {
+    return {
+      queued: params?.limit ?? 3,
+      ...(params?.namespace ? { namespace: params.namespace } : {}),
+      limit: params?.limit ?? 3,
+    };
+  }
+  return apiFetch<AdminQueueBackfillResponse>("/v1/admin/queue/backfill", {
+    method: "POST",
+    body: JSON.stringify({
+      namespace: params?.namespace ?? "",
+      limit: params?.limit ?? 0,
+    }),
+  });
 }
 
 export async function getAdminStorage(): Promise<AdminStorageResponse> {
@@ -239,6 +447,71 @@ export async function registerNamespace(
   });
 }
 
+export async function previewNamespacePolicy(
+  namespace: string,
+  ownerType: string,
+  ownerId: string,
+  policy: NamespacePolicy["policy"],
+): Promise<AdminNamespacePreviewResponse> {
+  if (isDemoMode()) {
+    return {
+      entry: { namespace, owner_type: ownerType, owner_id: ownerId, policy },
+      exists: false,
+      changed_fields: ["namespace", "policy"],
+      warnings: [],
+    };
+  }
+  return apiFetch<AdminNamespacePreviewResponse>("/v1/admin/namespaces/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      namespace,
+      owner_type: ownerType,
+      owner_id: ownerId,
+      policy,
+    }),
+  });
+}
+
+export async function updateNamespacePolicy(
+  namespace: string,
+  ownerType: string,
+  ownerId: string,
+  policy: NamespacePolicy["policy"],
+): Promise<AdminNamespacePreviewResponse> {
+  if (isDemoMode()) {
+    return {
+      entry: { namespace, owner_type: ownerType, owner_id: ownerId, policy },
+      exists: true,
+      changed_fields: ["policy"],
+      warnings: [],
+    };
+  }
+  return apiFetch<AdminNamespacePreviewResponse>("/v1/admin/namespaces/update", {
+    method: "POST",
+    body: JSON.stringify({
+      namespace,
+      owner_type: ownerType,
+      owner_id: ownerId,
+      policy,
+    }),
+  });
+}
+
+export async function getAdminNamespaceHistory(
+  namespace: string,
+  limit = 20,
+): Promise<AdminNamespaceHistoryResponse> {
+  if (isDemoMode()) {
+    return {
+      namespace,
+      count: 0,
+      items: [],
+    };
+  }
+  const q = new URLSearchParams({ namespace, limit: String(limit) });
+  return apiFetch<AdminNamespaceHistoryResponse>(`/v1/admin/namespaces/history?${q.toString()}`);
+}
+
 export async function listNamespaces(params?: {
   prefix?: string;
   limit?: number;
@@ -337,11 +610,11 @@ export async function synthesisAsk(req: SynthesisAskRequest): Promise<SynthesisA
   });
 }
 
-// ── Conduit lookup (unified search) ─────────────────────────────────
+// ── Tesseract lookup (unified search) ─────────────────────────────────
 
-export async function conduitLookup(req: ConduitLookupRequest): Promise<ConduitLookupResponse> {
-  if (isDemoMode()) return demo.conduitLookup(req);
-  return apiFetch<ConduitLookupResponse>("/v1/conduit/lookup", {
+export async function tesseractLookup(req: TesseractLookupRequest): Promise<TesseractLookupResponse> {
+  if (isDemoMode()) return demo.tesseractLookup(req);
+  return apiFetch<TesseractLookupResponse>("/v1/tesseract/lookup", {
     method: "POST",
     body: JSON.stringify(req),
   });

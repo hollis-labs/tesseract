@@ -10,7 +10,7 @@ import (
 
 	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
 
-	conduit "github.com/hollis-labs/tesseract"
+	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/internal/config"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -38,21 +38,21 @@ func main() {
 		log.Fatalf("queue driver: %v", err)
 	}
 
-	c, err := conduit.Open(ctx, conduit.Config{
+	c, err := tesseract.Open(ctx, tesseract.Config{
 		RootDir:    layout.DataDir(),
 		DBPath:     layout.MainDB(),
 		RecordsDir: filepath.Join(layout.StateDir(), "records"),
 	},
-		conduit.WithQueue(q),
-		conduit.WithEmbedder(llmopenai.New("")),
-		conduit.WithEmbeddingModel("text-embedding-3-large"),
+		tesseract.WithQueue(q),
+		tesseract.WithEmbedder(llmopenai.New("")),
+		tesseract.WithEmbeddingModel("text-embedding-3-large"),
 	)
 	if err != nil {
-		log.Fatalf("conduit.Open: %v", err)
+		log.Fatalf("tesseract.Open: %v", err)
 	}
 	defer c.Close()
 
-	ns := "user/chrispian/project/conduit/memory"
+	ns := "user/chrispian/project/tesseract/memory"
 	key := fmt.Sprintf("smoke_%d", time.Now().UnixNano())
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
 		Namespace:  ns,

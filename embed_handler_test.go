@@ -1,10 +1,10 @@
-package conduit_test
+package tesseract_test
 
 import (
 	"context"
 	"testing"
 
-	conduit "github.com/hollis-labs/tesseract"
+	tesseract "github.com/hollis-labs/tesseract"
 
 	queue "github.com/hollis-labs/go-queue"
 )
@@ -12,7 +12,7 @@ import (
 func TestNewEmbedHandler_InvalidJSON(t *testing.T) {
 	logger := func(string, ...any) {}
 
-	handler := conduit.NewEmbedHandler(nil, "test-model", logger)
+	handler := tesseract.NewEmbedHandler(nil, "test-model", logger)
 	job := &queue.QueuedJob{
 		Type:    "embed",
 		Payload: []byte(`not valid json`),
@@ -27,7 +27,7 @@ func TestNewEmbedHandler_InvalidJSON(t *testing.T) {
 func TestNewEmbedHandler_NilStore(t *testing.T) {
 	logger := func(string, ...any) {}
 
-	handler := conduit.NewEmbedHandler(nil, "test-model", logger)
+	handler := tesseract.NewEmbedHandler(nil, "test-model", logger)
 	job := &queue.QueuedJob{
 		Type:    "embed",
 		Payload: []byte(`{"revision_id":"rev_abc123"}`),

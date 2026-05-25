@@ -29,14 +29,7 @@
     {"name": "smoke-invalid-token", "command": "go test ./tests/integration -run SmokeInvalidTokenContract -count=1"},
     {"name": "make-contract-cli-list", "command": "go test ./tests/integration -run MakeContractCLIListContract -count=1"},
     {"name": "make-contract-cli-run", "command": "go test ./tests/integration -run MakeContractCLIRunContract -count=1"},
-    {"name": "bootstrap-sync", "command": "go test ./tests/integration -run BootstrapSyncScript -count=1"},
-    {"name": "bootstrap-sync-no-log", "command": "go test ./tests/integration -run BootstrapSyncNoLogContract -count=1"},
-    {"name": "bootstrap-sync-idempotent", "command": "go test ./tests/integration -run BootstrapSyncIdempotentContract -count=1"},
-    {"name": "make-bootstrap-report", "command": "go test ./tests/integration -run MakeBootstrapReportContract -count=1"},
-    {"name": "make-bootstrap-sync", "command": "go test ./tests/integration -run MakeBootstrapSyncContract -count=1"},
-    {"name": "make-bootstrap-sync-alias", "command": "go test ./tests/integration -run MakeBootstrapSyncAliasContract -count=1"},
     {"name": "make-smoke-invalid-token", "command": "go test ./tests/integration -run MakeSmokeInvalidTokenContract -count=1"},
-    {"name": "runlog-helper", "command": "go test ./tests/integration -run RunlogHelperContract -count=1"},
     {"name": "contract-suite-commands-format", "command": "go test ./tests/integration -run ContractSuiteCommandsFormatContract -count=1"},
     {"name": "contract-suite-commands-unique", "command": "go test ./tests/integration -run ContractSuiteCommandsUniqueContract -count=1"},
     {"name": "contract-suite-commands-prefix", "command": "go test ./tests/integration -run ContractSuiteCommandsPrefixContract -count=1"},
@@ -44,7 +37,6 @@
     {"name": "contract-suite-commands-suffix", "command": "go test ./tests/integration -run ContractSuiteCommandsSuffixContract -count=1"},
     {"name": "contract-suite-commands-token-count", "command": "go test ./tests/integration -run ContractSuiteCommandsTokenCountContract -count=1"},
     {"name": "contract-suite-commands-non-empty", "command": "go test ./tests/integration -run ContractSuiteCommandsNonEmptyContract -count=1"},
-    {"name": "fixture-lint-script", "command": "go test ./tests/integration -run ContractFixtureLintScript -count=1"},
-    {"name": "agents-boot-check", "command": "go test ./tests/integration -run AgentsBootCheckContract -count=1"}
+    {"name": "fixture-lint-script", "command": "go test ./tests/integration -run ContractFixtureLintScript -count=1"}
   ]
 }

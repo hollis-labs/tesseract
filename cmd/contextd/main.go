@@ -52,7 +52,7 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
-	shutdown, err := feotel.Init(ctx, feotel.WithServiceName("conduit"))
+	shutdown, err := feotel.Init(ctx, feotel.WithServiceName("tesseract"))
 	if err != nil {
 		log.Printf("warning: OTel init failed: %v", err)
 	} else {
@@ -83,10 +83,10 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMigrateNamespaces(ctx, layout.MainDB(), args[1:], stdout, stderr)
 	}
 
-	conduitCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
+	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
-		conduitCfg = config.Defaults()
+		tesseractCfg = config.Defaults()
 	}
 
 	store, err := contextstore.Open(ctx, contextstore.Config{
@@ -106,7 +106,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runServe(ctx, store, stderr, cfg, layout, conduitCfg)
+		return runServe(ctx, store, stderr, cfg, layout, tesseractCfg)
 	}
 
 	if len(args) > 0 && args[0] == "plugin" {
@@ -119,11 +119,11 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runMCP(ctx, store, stderr, token, layout, conduitCfg)
+		return runMCP(ctx, store, stderr, token, layout, tesseractCfg)
 	}
 
 	if len(args) > 0 && args[0] == "backfill-embeddings" {
-		return runBackfill(ctx, store, conduitCfg, args[1:], stdout, stderr)
+		return runBackfill(ctx, store, tesseractCfg, args[1:], stdout, stderr)
 	}
 
 	cli := &contextcli.CLI{
@@ -243,10 +243,10 @@ func createEmbedder(cfg config.Config) embedcontracts.Embedder {
 	return llmopenai.New("")
 }
 
-func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, conduitCfg config.Config) int {
+func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, tesseractCfg config.Config) int {
 	_, _ = stderr.WriteString("Tesseract MCP adapter starting (stdio)\n")
 
-	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, conduitCfg)
+	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -267,8 +267,8 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	return 0
 }
 
-func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, layout paths.Layout, conduitCfg config.Config) int {
-	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, conduitCfg)
+func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, layout paths.Layout, tesseractCfg config.Config) int {
+	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -288,13 +288,13 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.ConfigFile = filepath.Join(layout.ConfigDir(), "config.yaml")
 	srv.QueueDBPath = mem.QueueDBPath
 	srv.QueueDB = mem.queueDB
-	srv.RuntimeConfig = conduitCfg
+	srv.RuntimeConfig = tesseractCfg
 
 	// Wire LLM-backed synthesis if config + credentials are present. Failure
 	// to construct the provider is non-fatal — the route just stays 503.
-	if synth := createSynthesisProvider(conduitCfg, stderr); synth != nil {
+	if synth := createSynthesisProvider(tesseractCfg, stderr); synth != nil {
 		srv.SynthesisProvider = synth
-		srv.SynthesisConfig = conduitCfg.Synthesis
+		srv.SynthesisConfig = tesseractCfg.Synthesis
 		srv.ModelsDev = createModelsDevClient(ctx, stderr)
 	}
 
@@ -311,12 +311,12 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	}
 
 	// Initialise plugin host and discover plugins.
-	pluginLogger := cplugin.NewLogger("conduit-plugin")
+	pluginLogger := cplugin.NewLogger("tesseract-plugin")
 	pluginHost := cplugin.NewHost(http.NewServeMux(), pluginLogger)
 	pluginHost.RegisterService("store", store)
 
 	pluginsDir := "./plugins"
-	if d := os.Getenv("CONDUIT_PLUGINS_DIR"); d != "" {
+	if d := os.Getenv("TESSERACT_PLUGINS_DIR"); d != "" {
 		pluginsDir = d
 	}
 	discovered, discoverErr := cplugin.DiscoverPlugins(pluginsDir)
@@ -347,7 +347,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 
 	select {
 	case <-ctx.Done():
-		_, _ = stderr.WriteString("conduit shutdown requested\n")
+		_, _ = stderr.WriteString("tesseract shutdown requested\n")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -358,7 +358,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		_, _ = stderr.WriteString("conduit shutdown complete\n")
+		_, _ = stderr.WriteString("tesseract shutdown complete\n")
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")

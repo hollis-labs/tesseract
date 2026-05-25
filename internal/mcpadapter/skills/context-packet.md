@@ -59,7 +59,7 @@ Use `head_only` to survey a large surface cheaply; follow up with `full` on a na
 
 ## Pins
 
-User pins live at `user/pins/*` (see `vanta_skills namespaces`). With `include_pins: true` (the default), pin records are loaded first and counted against the budget before any namespace-matched candidates. The manifest reports `pins_included`.
+User pins live at `user/pins/*` (see `tesseract_skills namespaces`). With `include_pins: true` (the default), pin records are loaded first and counted against the budget before any namespace-matched candidates. The manifest reports `pins_included`.
 
 ## Manifest
 

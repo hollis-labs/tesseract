@@ -20,7 +20,7 @@ const NAMESPACE_SUGGESTIONS = [
   "app/<id>/draft",
 ];
 
-const RECENT_NAMESPACES_KEY = "conduit.recall.recentNamespaces";
+const RECENT_NAMESPACES_KEY = "tesseract.recall.recentNamespaces";
 const RECENT_NAMESPACES_MAX = 8;
 
 function loadRecentNamespaces(): string[] {

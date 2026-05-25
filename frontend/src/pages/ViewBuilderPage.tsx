@@ -15,7 +15,7 @@ interface Preset {
   selector: Selector;
 }
 
-const STORAGE_KEY = "conduit:viewbuilder:presets";
+const STORAGE_KEY = "tesseract:viewbuilder:presets";
 
 function loadPresets(): Preset[] {
   try {

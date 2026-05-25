@@ -1,4 +1,4 @@
-package conduit
+package tesseract
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/embedding"
 )
 
-func openTestConduit(t *testing.T, opts ...Option) *Conduit {
+func openTestTesseract(t *testing.T, opts ...Option) *Tesseract {
 	t.Helper()
 	dir := t.TempDir()
 	c, err := Open(context.Background(), Config{RootDir: dir}, opts...)
@@ -20,7 +20,7 @@ func openTestConduit(t *testing.T, opts ...Option) *Conduit {
 	return c
 }
 
-func writeTestRecord(t *testing.T, c *Conduit, ns, key, payload string) contextstore.Record {
+func writeTestRecord(t *testing.T, c *Tesseract, ns, key, payload string) contextstore.Record {
 	t.Helper()
 	rec, err := c.store.AppendRecord(context.Background(), contextstore.AppendInput{
 		Namespace: ns,
@@ -35,7 +35,7 @@ func writeTestRecord(t *testing.T, c *Conduit, ns, key, payload string) contexts
 }
 
 func TestEmbed_NoProvider(t *testing.T) {
-	c := openTestConduit(t)
+	c := openTestTesseract(t)
 	rec := writeTestRecord(t, c, "user/test", "doc", `{"content":"hello"}`)
 	err := c.Embed(context.Background(), rec.RecordID)
 	if !errors.Is(err, ErrEmbedderUnavailable) {
@@ -45,7 +45,7 @@ func TestEmbed_NoProvider(t *testing.T) {
 
 func TestEmbed_Success(t *testing.T) {
 	mock := embedding.NewMockProvider(128)
-	c := openTestConduit(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
+	c := openTestTesseract(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
 	rec := writeTestRecord(t, c, "user/test", "doc", `{"content":"hello world"}`)
 	err := c.Embed(context.Background(), rec.RecordID)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestEmbed_Success(t *testing.T) {
 
 func TestEmbed_Idempotent(t *testing.T) {
 	mock := embedding.NewMockProvider(128)
-	c := openTestConduit(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
+	c := openTestTesseract(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
 	rec := writeTestRecord(t, c, "user/test", "doc", `{"content":"idempotent"}`)
 	for i := 0; i < 3; i++ {
 		if err := c.Embed(context.Background(), rec.RecordID); err != nil {
@@ -83,7 +83,7 @@ func TestEmbed_Idempotent(t *testing.T) {
 
 func TestEmbed_RecordNotFound(t *testing.T) {
 	mock := embedding.NewMockProvider(128)
-	c := openTestConduit(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
+	c := openTestTesseract(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
 	err := c.Embed(context.Background(), "nonexistent-id")
 	if err == nil {
 		t.Fatal("expected error for nonexistent record")
@@ -91,7 +91,7 @@ func TestEmbed_RecordNotFound(t *testing.T) {
 }
 
 func TestSearch_NoProvider(t *testing.T) {
-	c := openTestConduit(t)
+	c := openTestTesseract(t)
 	_, err := c.Search(context.Background(), "test query", SearchOptions{})
 	if !errors.Is(err, ErrEmbedderUnavailable) {
 		t.Errorf("expected ErrEmbedderUnavailable, got %v", err)
@@ -100,7 +100,7 @@ func TestSearch_NoProvider(t *testing.T) {
 
 func TestSearch_EmptyResults(t *testing.T) {
 	mock := embedding.NewMockProvider(128)
-	c := openTestConduit(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
+	c := openTestTesseract(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
 	results, err := c.Search(context.Background(), "test query", SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -112,7 +112,7 @@ func TestSearch_EmptyResults(t *testing.T) {
 
 func TestSearch_FindsEmbeddedRecords(t *testing.T) {
 	mock := embedding.NewMockProvider(128)
-	c := openTestConduit(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
+	c := openTestTesseract(t, WithEmbedder(mock), WithEmbeddingModel("mock-embed"))
 	rec1 := writeTestRecord(t, c, "app/notes", "alpha", `{"content":"machine learning neural networks"}`)
 	rec2 := writeTestRecord(t, c, "app/notes", "beta", `{"content":"database schema migration"}`)
 	if err := c.Embed(context.Background(), rec1.RecordID); err != nil {

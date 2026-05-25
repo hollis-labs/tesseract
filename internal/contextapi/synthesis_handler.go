@@ -2,7 +2,7 @@
 //
 // POST /v1/synthesis/ask is the LLM-backed answer surface for the
 // Search & Research page (v2). It runs the same memory.Recall-style
-// curation the existing /v1/conduit/lookup endpoint does, then fans
+// curation the existing /v1/tesseract/lookup endpoint does, then fans
 // the curated results into a go-providers Complete() call with a
 // fixed-shape system prompt. The response carries the synthesised
 // answer, the cited sources (so the frontend can resolve [n] markers),
@@ -111,7 +111,7 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
-	// 1. Recall — same shape memory + knowledge results conduit_lookup uses.
+	// 1. Recall — same shape memory + knowledge results tesseract_lookup uses.
 	recallIn := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		Query:         req.Question,

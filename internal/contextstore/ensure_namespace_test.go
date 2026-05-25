@@ -17,8 +17,8 @@ func TestDeriveNamespaceOwner(t *testing.T) {
 	}{
 		{"user/chrispian/memory", "user", "chrispian"},
 		{"user/chrispian/project/nanite/memory", "user", "chrispian"},
-		{"app/cortex", "app", "cortex"},
-		{"app/cortex/identity", "app", "cortex"},
+		{"app/tesseract", "app", "tesseract"},
+		{"app/tesseract/identity", "app", "tesseract"},
 		{"mentat", "system", "mentat"},
 		{"adr", "system", "adr"},
 		{"user/", "system", "user/"},

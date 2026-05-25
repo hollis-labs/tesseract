@@ -7,7 +7,7 @@ related: [knowledge, memory]
 
 # Facets and kinds
 
-Vanta is deliberately soft on content taxonomy. Structural invariants (namespaces, revisions, audit) are rigid; how you tag content is up to you.
+Tesseract is deliberately soft on content taxonomy. Structural invariants (namespaces, revisions, audit) are rigid; how you tag content is up to you.
 
 ## Facets
 
@@ -26,11 +26,11 @@ Every memory and knowledge revision carries a small, open-valued facet structure
 - `note` — an agent or user note (memory or knowledge).
 - `pointer` — a bare external reference with minimal body.
 
-Consumers can and should introduce new `kind` values as needed (e.g., `playbook`, `adr`, `todo`). Nothing in Vanta validates the `kind` string — it is a coordination convention.
+Consumers can and should introduce new `kind` values as needed (e.g., `playbook`, `adr`, `todo`). Nothing in Tesseract validates the `kind` string — it is a coordination convention.
 
 ## Filtering by facet
 
-`conduit_lookup` accepts `facet_kinds` and `facet_sources` as JSON-array filters. Use these to narrow a cross-domain search:
+`tesseract_lookup` accepts `facet_kinds` and `facet_sources` as JSON-array filters. Use these to narrow a cross-domain search:
 
 ```json
 {"query": "embedding provider", "facet_kinds": ["package"], "limit": 10}

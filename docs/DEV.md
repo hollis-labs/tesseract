@@ -183,12 +183,6 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Make contract-cli-run suite: `go test ./tests/integration -run MakeContractCLIRunContract`
 - Golden make contract-commands fixture: `tests/integration/fixtures/make_contract_commands_contract_golden.json`
 - Make contract-commands suite: `go test ./tests/integration -run MakeContractCommandsContract`
-- Golden make bootstrap-report fixture: `tests/integration/fixtures/make_bootstrap_report_contract_golden.json`
-- Make bootstrap-report suite: `go test ./tests/integration -run MakeBootstrapReportContract`
-- Golden make bootstrap-sync fixture: `tests/integration/fixtures/make_bootstrap_sync_contract_golden.json`
-- Make bootstrap-sync suite: `go test ./tests/integration -run MakeBootstrapSyncContract`
-- Golden make bootstrap-sync alias fixture: `tests/integration/fixtures/make_bootstrap_sync_alias_contract_golden.json`
-- Make bootstrap-sync alias suite: `go test ./tests/integration -run MakeBootstrapSyncAliasContract`
 - Golden contract-suite-commands fixture: `tests/integration/fixtures/contract_suite_commands_contract_golden.json`
 - Contract-suite-commands suite: `go test ./tests/integration -run ContractSuiteCommandsScript`
 - Golden suite-registry parity fixture: `tests/integration/fixtures/contract_suite_registry_parity_golden.json`
@@ -197,8 +191,6 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Smoke invalid-token contract suite: `go test ./tests/integration -run SmokeInvalidTokenContract`
 - Golden make smoke-invalid-token fixture: `tests/integration/fixtures/make_smoke_invalid_token_contract_golden.json`
 - Make smoke-invalid-token contract suite: `go test ./tests/integration -run MakeSmokeInvalidTokenContract`
-- Golden run-log helper fixture: `tests/integration/fixtures/runlog_helper_contract_golden.json`
-- Run-log helper contract suite: `go test ./tests/integration -run RunlogHelperContract`
 - Contract suite command-format guardrail: `go test ./tests/integration -run ContractSuiteCommandsFormatContract`
 - Contract suite name-uniqueness guardrail: `go test ./tests/integration -run ContractSuiteCommandsUniqueContract`
 - Contract suite command-prefix guardrail: `go test ./tests/integration -run ContractSuiteCommandsPrefixContract`
@@ -207,16 +199,8 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Contract suite command token-count guardrail: `go test ./tests/integration -run ContractSuiteCommandsTokenCountContract`
 - Contract suite non-empty output guardrail: `go test ./tests/integration -run ContractSuiteCommandsNonEmptyContract`
 - Contract fixture lint script suite: `go test ./tests/integration -run ContractFixtureLintScript`
-- Golden bootstrap-sync fixture: `tests/integration/fixtures/bootstrap_sync_contract_golden.json`
-- Bootstrap-sync contract suite: `go test ./tests/integration -run BootstrapSyncScript`
-- Golden bootstrap-sync no-log fixture: `tests/integration/fixtures/bootstrap_sync_no_log_contract_golden.json`
-- Bootstrap-sync no-log suite: `go test ./tests/integration -run BootstrapSyncNoLogContract`
-- Golden bootstrap-sync idempotent fixture: `tests/integration/fixtures/bootstrap_sync_idempotent_contract_golden.json`
-- Bootstrap-sync idempotent suite: `go test ./tests/integration -run BootstrapSyncIdempotentContract`
-- Golden AGENTS boot check fixture: `tests/integration/fixtures/agents_boot_check_contract_golden.json`
-- AGENTS boot check contract suite: `go test ./tests/integration -run AgentsBootCheckContract`
 - Full fixture inventory: `docs/CONTRACT_FIXTURES.md`
-- Bootstrap/make fixture index: `docs/CONTRACT_FIXTURES.md#bootstrap-and-make-fixture-index`
+- Make fixture index: `docs/CONTRACT_FIXTURES.md#make-fixture-index`
 - Suite ordering policy: `docs/CONTRACT_FIXTURES.md#suite-ordering-policy`
 - Suite naming conventions: `docs/CONTRACT_FIXTURES.md#suite-naming-conventions`
 - CLI error-path suite matrix: `docs/CONTRACT_FIXTURES.md#cli-error-path-suite-matrix`
@@ -328,35 +312,12 @@ Parity pack:
 - Run smoke with invalid-token precheck: `make smoke BASE_URL=http://127.0.0.1:8080 AUTH_MODE=managed TOKEN=<token> INVALID_TOKEN_CHECK=1`
 - Smoke invalid-token preset: `make smoke-invalid-token BASE_URL=http://127.0.0.1:8080 AUTH_MODE=managed TOKEN=<token>`
 - Contract fixture presence lint: `make contract-lint`
-- AGENTS boot drift check: `make agents-boot-check`
 - Run full local harness (boot + contracts + smoke + teardown):
   - `make e2e-local`
   - `AUTH_MODE=static make e2e-local`
   - `AUTH_MODE=managed make e2e-local`
 - Managed-auth preset:
   - `make e2e-managed`
-
-## Iteration run-log helper
-- Script: `scripts/volon-runlog-init.sh`
-- Example:
-  - `scripts/volon-runlog-init.sh --iteration 47 --date 2026-02-25 --profile orchestrator`
-- Make wrapper:
-  - `make runlog-init ITERATION=47`
-  - `make runlog-init ITERATION=47 RUN_DATE=2026-02-25 PROFILE=orchestrator RUNLOG_OUT=/tmp/runlog-047.md`
-- Overwrite safety:
-  - By default, existing run-log files are not overwritten.
-  - Use script-level force only when intentional:
-    - `scripts/volon-runlog-init.sh --iteration 47 --date 2026-02-25 --force`
-- Bootstrap summary sync:
-  - report only: `make bootstrap-report`
-  - apply updates: `make bootstrap-sync`
-  - explicit aliases: `make bootstrap-sync-report` and `make bootstrap-sync-apply`
-
-## Boot profile drift checks
-- Script: `scripts/agents-boot-drift-check.sh`
-- Purpose: verify critical AGENTS/boot files exist and warn on AGENTS boot-reference drift.
-- Default output path pattern:
-  - `.agentrc/logs/run-iteration-<NNN>-<YYYY-MM-DD>.md`
 - Quick validation sequence:
   1. `make contracts`
   2. Start `contextd serve ...`
@@ -365,7 +326,7 @@ Parity pack:
 ## Embedding smoke test (`cmd/smoke`)
 
 A one-shot program that exercises the full embedding pipeline against the
-live `~/.tesseract` store: opens `conduit.Open` with an OpenAI embedder and a
+live `~/.tesseract` store: opens `tesseract.Open` with an OpenAI embedder and a
 SQLite-backed queue, writes a memory revision, waits for the queue worker
 to populate `embedding_model`/`embedding_vector`, then runs a
 `RankingSimilarity` recall to confirm end-to-end correctness.
@@ -384,16 +345,14 @@ go run ./cmd/smoke
 ```
 
 Notes:
-- Writes into `user/chrispian/project/conduit/memory`. Clean up test
+- Writes into `user/chrispian/project/tesseract/memory`. Clean up test
   revisions periodically or change the namespace/key in the source.
-- Requires the `conduit-api` cerberus service to be stopped OR relies on
-  SQLite WAL concurrency — the smoke process opens the same `context.db`
-  and `queue.db`. Running alongside `contextd serve` is safe for reads but
-  avoid concurrent writers in MCP mode.
+- Opens the same `context.db` and `queue.db` files as a running daemon.
+  Running alongside `contextd serve` is fine for reads, but avoid concurrent
+  writers while using the smoke helper.
 - Source: `cmd/smoke/main.go`.
 
 ## Repository conventions
 - Product specifications: `docs/SPECS/`
 - Architecture decisions: `docs/DECISIONS/`
-- Agent artifacts: `artifacts/` and `outputs/`
-- Volon runtime state: `.agentrc/`
+- Embedded frontend assets: `internal/webui/dist/`

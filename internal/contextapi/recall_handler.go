@@ -41,7 +41,7 @@ type recallMeta struct {
 
 // handleRecall serves GET /v1/recall — a read-only, query-param-driven recall
 // endpoint that spans all three domains (memory, knowledge) within a single
-// namespace. Mirrors POST /v1/conduit/lookup but optimised for scripted/agent
+// namespace. Mirrors POST /v1/tesseract/lookup but optimised for scripted/agent
 // consumption where a GET + URL params is more convenient than a JSON body.
 //
 // Query parameters:

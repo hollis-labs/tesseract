@@ -15,8 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func newTestServer(t *testing.T) *Server {
@@ -549,6 +552,410 @@ func TestAdminSetupEndpoint(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsEndpoint(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.EnableMetrics = true
+	srv.EnableRequestLogging = true
+	srv.RequestLogMode = "redacted"
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	srv.QueueDBPath = filepath.Join(root, "queue.db")
+	srv.RuntimeConfig = config.Config{
+		Embedding: config.EmbeddingConfig{
+			Provider: "openai",
+			Model:    "text-embedding-3-large",
+		},
+		Dedup: config.DedupConfig{
+			SimilarityThreshold: 0.91,
+		},
+		Synthesis: config.SynthesisConfig{
+			Provider:    "anthropic",
+			Model:       "claude-sonnet-4-5",
+			MaxTokens:   2048,
+			Temperature: 0.2,
+		},
+	}
+
+	res := performJSON(t, srv, http.MethodGet, "/v1/admin/settings", nil)
+	if res.Code != http.StatusOK {
+		t.Fatalf("admin settings status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		App        string `json:"app"`
+		ConfigFile string `json:"config_file"`
+		Auth       struct {
+			Mode string `json:"mode"`
+		} `json:"auth"`
+		Runtime struct {
+			MetricsEnabled bool `json:"metrics_enabled"`
+			QueueEnabled   bool `json:"queue_enabled"`
+			WebUIEmbedded  bool `json:"webui_embedded"`
+		} `json:"runtime"`
+		Config struct {
+			EmbeddingProvider        string  `json:"embedding_provider"`
+			DedupSimilarityThreshold float64 `json:"dedup_similarity_threshold"`
+			SynthesisProvider        string  `json:"synthesis_provider"`
+			SynthesisSystemPrompt    string  `json:"synthesis_system_prompt"`
+		} `json:"config"`
+		Providers struct {
+			Embedding struct {
+				Kind       string `json:"kind"`
+				Provider   string `json:"provider"`
+				EnvVar     string `json:"env_var"`
+				Supported  bool   `json:"supported"`
+				EnvPresent bool   `json:"env_present"`
+				Available  bool   `json:"available"`
+			} `json:"embedding"`
+			Synthesis struct {
+				Kind       string `json:"kind"`
+				Provider   string `json:"provider"`
+				EnvVar     string `json:"env_var"`
+				Supported  bool   `json:"supported"`
+				EnvPresent bool   `json:"env_present"`
+				Available  bool   `json:"available"`
+				Reason     string `json:"reason"`
+			} `json:"synthesis"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal admin settings: %v", err)
+	}
+	if payload.App != "tesseract" {
+		t.Fatalf("app: got %q", payload.App)
+	}
+	if payload.ConfigFile != srv.ConfigFile {
+		t.Fatalf("config file: got %q want %q", payload.ConfigFile, srv.ConfigFile)
+	}
+	if payload.Auth.Mode != "open" {
+		t.Fatalf("auth mode: got %q", payload.Auth.Mode)
+	}
+	if !payload.Runtime.MetricsEnabled || payload.Runtime.QueueEnabled || !payload.Runtime.WebUIEmbedded {
+		t.Fatalf("runtime: %+v", payload.Runtime)
+	}
+	if payload.Config.EmbeddingProvider != "openai" || payload.Config.DedupSimilarityThreshold != 0.91 || payload.Config.SynthesisProvider != "anthropic" {
+		t.Fatalf("config payload: %+v", payload.Config)
+	}
+	if payload.Config.SynthesisSystemPrompt != config.DefaultSynthesisSystemPrompt {
+		t.Fatalf("expected normalized synthesis prompt, got %q", payload.Config.SynthesisSystemPrompt)
+	}
+	if payload.Providers.Embedding.Kind != "embedding" || payload.Providers.Embedding.Provider != "openai" || payload.Providers.Embedding.EnvVar != "OPENAI_API_KEY" || !payload.Providers.Embedding.Supported {
+		t.Fatalf("embedding provider payload: %+v", payload.Providers.Embedding)
+	}
+	if payload.Providers.Synthesis.Kind != "synthesis" || payload.Providers.Synthesis.Provider != "anthropic" || payload.Providers.Synthesis.EnvVar != "ANTHROPIC_API_KEY" || !payload.Providers.Synthesis.Supported {
+		t.Fatalf("synthesis provider payload: %+v", payload.Providers.Synthesis)
+	}
+	if payload.Providers.Synthesis.EnvPresent || payload.Providers.Synthesis.Available || payload.Providers.Synthesis.Reason == "" {
+		t.Fatalf("expected missing env to be reflected in synthesis provider payload: %+v", payload.Providers.Synthesis)
+	}
+}
+
+func TestAdminSettingsPreviewEndpoint(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	srv.RuntimeConfig = config.Config{
+		Embedding: config.EmbeddingConfig{
+			Provider: "openai",
+			Model:    "text-embedding-3-large",
+		},
+		Dedup: config.DedupConfig{
+			SimilarityThreshold: 0.85,
+		},
+	}
+	req := map[string]any{
+		"config": map[string]any{
+			"embedding_provider":         "openai",
+			"embedding_model":            "text-embedding-3-small",
+			"dedup_similarity_threshold": 0.9,
+			"synthesis_provider":         "anthropic",
+			"synthesis_model":            "claude-sonnet-4-5",
+			"synthesis_max_tokens":       2048,
+			"synthesis_temperature":      0.2,
+			"synthesis_system_prompt":    "Answer precisely.",
+		},
+	}
+
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/settings/preview", req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("preview status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		Config struct {
+			EmbeddingModel        string `json:"embedding_model"`
+			SynthesisProvider     string `json:"synthesis_provider"`
+			SynthesisSystemPrompt string `json:"synthesis_system_prompt"`
+		} `json:"config"`
+		ChangedFields   []string `json:"changed_fields"`
+		Warnings        []string `json:"warnings"`
+		RestartRequired bool     `json:"restart_required"`
+		Applied         bool     `json:"applied"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal preview: %v", err)
+	}
+	if payload.Config.EmbeddingModel != "text-embedding-3-small" || payload.Config.SynthesisProvider != "anthropic" || payload.Config.SynthesisSystemPrompt != "Answer precisely." {
+		t.Fatalf("unexpected preview config: %+v", payload.Config)
+	}
+	if len(payload.ChangedFields) == 0 || !payload.RestartRequired || payload.Applied {
+		t.Fatalf("unexpected preview metadata: %+v", payload)
+	}
+	if len(payload.Warnings) == 0 {
+		t.Fatalf("expected preview warnings")
+	}
+}
+
+func TestAdminSettingsApplyEndpointWritesConfig(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	srv.RuntimeConfig = config.Defaults()
+	req := map[string]any{
+		"config": map[string]any{
+			"embedding_provider":         "openai",
+			"embedding_model":            "text-embedding-3-small",
+			"dedup_similarity_threshold": 0.93,
+			"synthesis_provider":         "openai",
+			"synthesis_model":            "gpt-4.1-mini",
+			"synthesis_max_tokens":       1024,
+			"synthesis_temperature":      0.1,
+			"synthesis_system_prompt":    "Use only supplied sources.",
+		},
+	}
+
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/settings/apply", req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("apply status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		Applied bool `json:"applied"`
+		Config  struct {
+			EmbeddingModel string  `json:"embedding_model"`
+			DedupThreshold float64 `json:"dedup_similarity_threshold"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal apply: %v", err)
+	}
+	if !payload.Applied || payload.Config.EmbeddingModel != "text-embedding-3-small" || payload.Config.DedupThreshold != 0.93 {
+		t.Fatalf("unexpected apply payload: %+v", payload)
+	}
+	got, err := config.Load(srv.ConfigFile)
+	if err != nil {
+		t.Fatalf("load written config: %v", err)
+	}
+	if got.Embedding.Model != "text-embedding-3-small" || got.Dedup.SimilarityThreshold != 0.93 || got.Synthesis.Provider != "openai" {
+		t.Fatalf("written config mismatch: %+v", got)
+	}
+	if srv.RuntimeConfig.Embedding.Model != "text-embedding-3-small" || srv.SynthesisConfig.Provider != "openai" {
+		t.Fatalf("server runtime config not updated: runtime=%+v synthesis=%+v", srv.RuntimeConfig, srv.SynthesisConfig)
+	}
+}
+
+func TestAdminSettingsPreviewEndpointRejectsInvalidThreshold(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	req := map[string]any{
+		"config": map[string]any{
+			"embedding_provider":         "openai",
+			"embedding_model":            "text-embedding-3-large",
+			"dedup_similarity_threshold": 2,
+		},
+	}
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/settings/preview", req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestAdminConfigBackupAndRestoreEndpoints(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	if err := config.Save(srv.ConfigFile, config.Config{
+		Embedding: config.EmbeddingConfig{Provider: "openai", Model: "text-embedding-3-large"},
+		Dedup:     config.DedupConfig{SimilarityThreshold: 0.85},
+	}); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	srv.RuntimeConfig, _ = config.Load(srv.ConfigFile)
+
+	listRes := performJSON(t, srv, http.MethodGet, "/v1/admin/config/backups", nil)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("list backups status=%d body=%s", listRes.Code, listRes.Body.String())
+	}
+	var initial struct {
+		Items []adminConfigBackupInfo `json:"items"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &initial); err != nil {
+		t.Fatalf("unmarshal initial backups: %v", err)
+	}
+	if len(initial.Items) != 0 {
+		t.Fatalf("expected no backups, got %+v", initial.Items)
+	}
+
+	backupRes := performJSON(t, srv, http.MethodPost, "/v1/admin/config/backup", map[string]any{})
+	if backupRes.Code != http.StatusOK {
+		t.Fatalf("create backup status=%d body=%s", backupRes.Code, backupRes.Body.String())
+	}
+	var backupPayload struct {
+		Backup adminConfigBackupInfo `json:"backup"`
+	}
+	if err := json.Unmarshal(backupRes.Body.Bytes(), &backupPayload); err != nil {
+		t.Fatalf("unmarshal backup: %v", err)
+	}
+	if backupPayload.Backup.Path == "" || backupPayload.Backup.Source == "" {
+		t.Fatalf("unexpected backup payload: %+v", backupPayload.Backup)
+	}
+
+	if err := config.Save(srv.ConfigFile, config.Config{
+		Embedding: config.EmbeddingConfig{Provider: "openai", Model: "text-embedding-3-small"},
+		Dedup:     config.DedupConfig{SimilarityThreshold: 0.91},
+		Synthesis: config.SynthesisConfig{Provider: "openai", Model: "gpt-4.1-mini"},
+	}); err != nil {
+		t.Fatalf("mutate config before restore: %v", err)
+	}
+
+	restoreRes := performJSON(t, srv, http.MethodPost, "/v1/admin/config/restore", map[string]any{
+		"path": backupPayload.Backup.Path,
+	})
+	if restoreRes.Code != http.StatusOK {
+		t.Fatalf("restore backup status=%d body=%s", restoreRes.Code, restoreRes.Body.String())
+	}
+	var restorePayload struct {
+		Config struct {
+			EmbeddingModel string `json:"embedding_model"`
+		} `json:"config"`
+		RestoredFrom     adminConfigBackupInfo `json:"restored_from"`
+		PreRestoreBackup adminConfigBackupInfo `json:"pre_restore_backup"`
+		RestartRequired  bool                  `json:"restart_required"`
+	}
+	if err := json.Unmarshal(restoreRes.Body.Bytes(), &restorePayload); err != nil {
+		t.Fatalf("unmarshal restore payload: %v", err)
+	}
+	if restorePayload.Config.EmbeddingModel != "text-embedding-3-large" || !restorePayload.RestartRequired {
+		t.Fatalf("unexpected restore payload: %+v", restorePayload)
+	}
+	if restorePayload.RestoredFrom.Path != backupPayload.Backup.Path || restorePayload.PreRestoreBackup.Path == "" {
+		t.Fatalf("unexpected restore metadata: %+v", restorePayload)
+	}
+	got, err := config.Load(srv.ConfigFile)
+	if err != nil {
+		t.Fatalf("load restored config: %v", err)
+	}
+	if got.Embedding.Model != "text-embedding-3-large" {
+		t.Fatalf("restore did not write expected config: %+v", got)
+	}
+}
+
+func TestAdminConfigRestoreRejectsPathTraversal(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/config/restore", map[string]any{
+		"path": "../outside.yaml",
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestAdminNamespacePreviewUpdateAndHistory(t *testing.T) {
+	srv := newTestServer(t)
+	seed := contextstore.NamespacePolicyEntry{
+		Namespace: "app/demo/session",
+		OwnerType: "app",
+		OwnerID:   "demo",
+		Policy: map[string]any{
+			"tier":          "session",
+			"retention":     "720h",
+			"max_revisions": float64(10),
+		},
+	}
+	if err := srv.Store.UpsertNamespacePolicy(context.Background(), seed); err != nil {
+		t.Fatalf("seed namespace policy: %v", err)
+	}
+	if err := srv.Policy.RegisterNamespace(seed.Namespace, seed.OwnerType, seed.OwnerID, seed.Policy); err != nil {
+		t.Fatalf("register seed namespace: %v", err)
+	}
+
+	previewRes := performJSON(t, srv, http.MethodPost, "/v1/admin/namespaces/preview", map[string]any{
+		"namespace":  "app/demo/session",
+		"owner_type": "app",
+		"owner_id":   "demo",
+		"policy": map[string]any{
+			"tier":              "session",
+			"retention":         "1440h",
+			"max_revisions":     25,
+			"max_bytes_per_key": 4096,
+		},
+	})
+	if previewRes.Code != http.StatusOK {
+		t.Fatalf("preview namespace status=%d body=%s", previewRes.Code, previewRes.Body.String())
+	}
+	var previewPayload struct {
+		Exists        bool     `json:"exists"`
+		ChangedFields []string `json:"changed_fields"`
+		Entry         struct {
+			Policy map[string]any `json:"policy"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal(previewRes.Body.Bytes(), &previewPayload); err != nil {
+		t.Fatalf("unmarshal namespace preview: %v", err)
+	}
+	if !previewPayload.Exists || len(previewPayload.ChangedFields) == 0 {
+		t.Fatalf("unexpected namespace preview payload: %+v", previewPayload)
+	}
+
+	updateRes := performJSON(t, srv, http.MethodPost, "/v1/admin/namespaces/update", map[string]any{
+		"namespace":  "app/demo/session",
+		"owner_type": "app",
+		"owner_id":   "demo",
+		"policy": map[string]any{
+			"tier":              "session",
+			"retention":         "1440h",
+			"max_revisions":     25,
+			"max_bytes_per_key": 4096,
+		},
+	})
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("update namespace status=%d body=%s", updateRes.Code, updateRes.Body.String())
+	}
+	got, err := srv.Store.GetNamespacePolicy(context.Background(), "app/demo/session")
+	if err != nil {
+		t.Fatalf("get updated namespace policy: %v", err)
+	}
+	if got.Policy["retention"] != "1440h" {
+		t.Fatalf("expected updated retention, got %+v", got.Policy)
+	}
+
+	historyRes := performJSON(t, srv, http.MethodGet, "/v1/admin/namespaces/history?namespace=app/demo/session", nil)
+	if historyRes.Code != http.StatusOK {
+		t.Fatalf("namespace history status=%d body=%s", historyRes.Code, historyRes.Body.String())
+	}
+	var historyPayload struct {
+		Count int `json:"count"`
+		Items []struct {
+			EventType string `json:"event_type"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(historyRes.Body.Bytes(), &historyPayload); err != nil {
+		t.Fatalf("unmarshal namespace history: %v", err)
+	}
+	if historyPayload.Count == 0 || historyPayload.Items[0].EventType != contextstore.EventNamespaceUpdate {
+		t.Fatalf("unexpected namespace history payload: %+v", historyPayload)
+	}
+}
+
+func TestAdminNamespacePreviewRejectsBadRetention(t *testing.T) {
+	srv := newTestServer(t)
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/namespaces/preview", map[string]any{
+		"namespace":  "app/demo/session",
+		"owner_type": "app",
+		"owner_id":   "demo",
+		"policy": map[string]any{
+			"retention": "not-a-duration",
+		},
+	})
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestAdminQueueEndpoint(t *testing.T) {
 	srv, root := newTestServerWithRoot(t)
 	queueDBPath := filepath.Join(root, "queue.db")
@@ -584,12 +991,12 @@ CREATE TABLE failed_jobs (
 	if _, err := db.Exec(`
 INSERT INTO jobs (queue, type, attempts, max_tries, reserved_at, available_at, created_at)
 VALUES
-  ('conduit', 'embed', 0, 3, NULL, ?, ?),
-  ('conduit', 'embed', 1, 3, NULL, ?, ?),
-  ('conduit', 'embed', 1, 3, ?, ?, ?),
+  ('tesseract', 'embed', 0, 3, NULL, ?, ?),
+  ('tesseract', 'embed', 1, 3, NULL, ?, ?),
+  ('tesseract', 'embed', 1, 3, ?, ?, ?),
   ('other', 'embed', 0, 3, NULL, ?, ?);
 INSERT INTO failed_jobs (queue, type, payload, error, attempts, failed_at)
-VALUES ('conduit', 'embed', NULL, 'boom', 3, ?);`,
+VALUES ('tesseract', 'embed', NULL, 'boom', 3, ?);`,
 		now-10, now-100,
 		now+300, now-50,
 		now-5, now-5, now-80,
@@ -625,6 +1032,167 @@ VALUES ('conduit', 'embed', NULL, 'boom', 3, ?);`,
 	}
 	if len(payload.ActiveType) != 1 || payload.ActiveType[0].Type != "embed" || payload.ActiveType[0].Count != 3 {
 		t.Fatalf("unexpected active types: %+v", payload.ActiveType)
+	}
+}
+
+func TestAdminQueueFailuresRetryAndBackfillEndpoints(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	queueDBPath := filepath.Join(root, "queue.db")
+	db, err := sql.Open("sqlite", queueDBPath)
+	if err != nil {
+		t.Fatalf("open queue db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue TEXT NOT NULL DEFAULT 'default',
+    type TEXT NOT NULL,
+    payload BLOB,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_tries INTEGER NOT NULL DEFAULT 0,
+    reserved_at INTEGER,
+    available_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE failed_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload BLOB,
+    error TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    failed_at INTEGER NOT NULL
+);`); err != nil {
+		t.Fatalf("create queue schema: %v", err)
+	}
+	now := time.Now().Unix()
+	if _, err := db.Exec(`
+INSERT INTO failed_jobs (queue, type, payload, error, attempts, failed_at)
+VALUES
+  ('tesseract', 'embed', '{"revision_id":"rev-failed"}', 'boom', 3, ?),
+  ('other', 'embed', '{"revision_id":"rev-other"}', 'ignore', 2, ?);`,
+		now-5, now-10,
+	); err != nil {
+		t.Fatalf("seed failed queue: %v", err)
+	}
+	srv.QueueDBPath = queueDBPath
+	srv.QueueDB = db
+
+	memStore := memory.NewStore(srv.Store.DB(), nil, "", 0, nil)
+	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/chrispian/memory/notes",
+		MemoryKey:  "rev_1",
+		Author:     memory.Author{AgentID: "app:test"},
+		Trigger:    memory.TriggerExplicit,
+		SessionID:  "manual:01HXXXXX",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Status:     memory.StatusDraft,
+		Payload:    memory.Payload{Summary: "demo one"},
+	}); err != nil {
+		t.Fatalf("seed memory revision 1: %v", err)
+	}
+	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/chrispian/memory/notes",
+		MemoryKey:  "rev_2",
+		Author:     memory.Author{AgentID: "app:test"},
+		Trigger:    memory.TriggerExplicit,
+		SessionID:  "manual:01HXXXXX",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Status:     memory.StatusDraft,
+		Payload:    memory.Payload{Summary: "demo two"},
+	}); err != nil {
+		t.Fatalf("seed memory revision 2: %v", err)
+	}
+	rev3, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  "user/chrispian/memory/notes",
+		MemoryKey:  "rev_3",
+		Author:     memory.Author{AgentID: "app:test"},
+		Trigger:    memory.TriggerExplicit,
+		SessionID:  "manual:01HXXXXX",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Status:     memory.StatusDraft,
+		Payload:    memory.Payload{Summary: "other three"},
+	})
+	if err != nil {
+		t.Fatalf("seed memory revision 3: %v", err)
+	}
+	if _, err := srv.Store.DB().Exec(
+		`UPDATE memory_revisions SET embedding_model = ?, embedding_vector = ? WHERE revision_id = ?`,
+		"test-model", []byte{1, 2}, rev3.RevisionID,
+	); err != nil {
+		t.Fatalf("mark embedded revision: %v", err)
+	}
+
+	failuresRes := performJSON(t, srv, http.MethodGet, "/v1/admin/queue/failures?limit=10", nil)
+	if failuresRes.Code != http.StatusOK {
+		t.Fatalf("queue failures status=%d body=%s", failuresRes.Code, failuresRes.Body.String())
+	}
+	var failuresPayload struct {
+		Count int `json:"count"`
+		Items []struct {
+			ID    int64  `json:"id"`
+			Error string `json:"error"`
+			Type  string `json:"type"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(failuresRes.Body.Bytes(), &failuresPayload); err != nil {
+		t.Fatalf("unmarshal queue failures: %v", err)
+	}
+	if failuresPayload.Count != 1 || len(failuresPayload.Items) != 1 || failuresPayload.Items[0].Type != "embed" || failuresPayload.Items[0].Error != "boom" {
+		t.Fatalf("unexpected failures payload: %+v", failuresPayload)
+	}
+
+	retryRes := performJSON(t, srv, http.MethodPost, "/v1/admin/queue/retry-failed", map[string]any{
+		"id": failuresPayload.Items[0].ID,
+	})
+	if retryRes.Code != http.StatusOK {
+		t.Fatalf("queue retry status=%d body=%s", retryRes.Code, retryRes.Body.String())
+	}
+	var retryPayload struct {
+		Retried int `json:"retried"`
+	}
+	if err := json.Unmarshal(retryRes.Body.Bytes(), &retryPayload); err != nil {
+		t.Fatalf("unmarshal queue retry: %v", err)
+	}
+	if retryPayload.Retried != 1 {
+		t.Fatalf("unexpected retry payload: %+v", retryPayload)
+	}
+	var jobCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE queue = 'tesseract' AND type = 'embed'`).Scan(&jobCount); err != nil {
+		t.Fatalf("count retried jobs: %v", err)
+	}
+	if jobCount != 1 {
+		t.Fatalf("expected 1 retried job, got %d", jobCount)
+	}
+
+	backfillRes := performJSON(t, srv, http.MethodPost, "/v1/admin/queue/backfill", map[string]any{
+		"namespace": "user/chrispian/memory/notes",
+		"limit":     1,
+	})
+	if backfillRes.Code != http.StatusOK {
+		t.Fatalf("queue backfill status=%d body=%s", backfillRes.Code, backfillRes.Body.String())
+	}
+	var backfillPayload struct {
+		Queued int `json:"queued"`
+	}
+	if err := json.Unmarshal(backfillRes.Body.Bytes(), &backfillPayload); err != nil {
+		t.Fatalf("unmarshal queue backfill: %v", err)
+	}
+	if backfillPayload.Queued != 1 {
+		t.Fatalf("unexpected backfill payload: %+v", backfillPayload)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE queue = 'tesseract' AND type = 'embed'`).Scan(&jobCount); err != nil {
+		t.Fatalf("count jobs after backfill: %v", err)
+	}
+	if jobCount != 2 {
+		t.Fatalf("expected 2 total jobs after backfill, got %d", jobCount)
 	}
 }
 

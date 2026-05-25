@@ -15,13 +15,13 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  conduitLookup,
+  tesseractLookup,
   listNamespaces,
   memoryDeprecate,
   memoryPromote,
   memoryWrite,
 } from "../api/client";
-import type { ConduitLookupResultItem, MemoryRevision, MemoryStatus } from "../api/types";
+import type { TesseractLookupResultItem, MemoryRevision, MemoryStatus } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -36,12 +36,12 @@ interface Props {
   initialPreset?: ReviewPreset | undefined;
 }
 
-interface QueueItem extends ConduitLookupResultItem {
+interface QueueItem extends TesseractLookupResultItem {
   reviewReasons: string[];
   reviewPriority: number;
 }
 
-const DISMISSED_STORAGE_KEY = "conduit.memoryReview.dismissed";
+const DISMISSED_STORAGE_KEY = "tesseract.memoryReview.dismissed";
 const ALL_STATUSES: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
 
 function isSessionNamespace(namespace: string): boolean {
@@ -99,15 +99,15 @@ function getReviewPriority(revision: MemoryRevision, threshold: number, score?: 
   return priority;
 }
 
-function isActionable(item: ConduitLookupResultItem, threshold: number): boolean {
+function isActionable(item: TesseractLookupResultItem, threshold: number): boolean {
   return getReviewReasons(item.Revision, threshold).length > 0;
 }
 
-function isPromotable(item: ConduitLookupResultItem): boolean {
+function isPromotable(item: TesseractLookupResultItem): boolean {
   return isSessionNamespace(item.Revision.namespace) && item.Revision.status !== "deprecated";
 }
 
-function canClarify(item: ConduitLookupResultItem): boolean {
+function canClarify(item: TesseractLookupResultItem): boolean {
   return Boolean(item.Revision.memory_key);
 }
 
@@ -184,14 +184,14 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       const fetchLimit = Math.min(Math.max(baseLimit * 2, 100), 500);
       const domainFilter = domain === "both" ? undefined : [domain];
 
-      const headReq: Parameters<typeof conduitLookup>[0] = {
+      const headReq: Parameters<typeof tesseractLookup>[0] = {
         namespaces: allNamespaces,
         ranking: "activation",
         revision_scope: "current",
         statuses: ["draft", "reviewed", "canonical"],
         limit: fetchLimit,
       };
-      const deprecatedReq: Parameters<typeof conduitLookup>[0] = {
+      const deprecatedReq: Parameters<typeof tesseractLookup>[0] = {
         namespaces: allNamespaces,
         ranking: "chronological",
         revision_scope: "timeline",
@@ -204,11 +204,11 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       }
 
       const [heads, deprecated] = await Promise.all([
-        conduitLookup(headReq),
-        conduitLookup(deprecatedReq),
+        tesseractLookup(headReq),
+        tesseractLookup(deprecatedReq),
       ]);
 
-      const latestDeprecatedByMemory = new Map<string, ConduitLookupResultItem>();
+      const latestDeprecatedByMemory = new Map<string, TesseractLookupResultItem>();
       for (const item of deprecated.results) {
         const existing = latestDeprecatedByMemory.get(item.Revision.memory_id);
         if (!existing || item.Revision.created_at > existing.Revision.created_at) {

@@ -10,10 +10,10 @@ import (
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-// conduitLookupRequest is the unified search payload across memory +
+// tesseractLookupRequest is the unified search payload across memory +
 // knowledge domains. Thin wrapper over memory.RecallInput that makes the
 // cross-domain filters explicit in JSON.
-type conduitLookupRequest struct {
+type tesseractLookupRequest struct {
 	Namespaces    []string             `json:"namespaces"`
 	RevisionScope memory.RevisionScope `json:"revision_scope,omitempty"`
 	Ranking       memory.Ranking       `json:"ranking,omitempty"`
@@ -32,10 +32,10 @@ type conduitLookupRequest struct {
 	Until         *time.Time      `json:"until,omitempty"`
 }
 
-// conduitLookupResponse wraps the recall results with a simple facet
+// tesseractLookupResponse wraps the recall results with a simple facet
 // histogram computed client-side from the result set. The histogram is
 // best-effort: it reflects only returned rows, not the full match set.
-type conduitLookupResponse struct {
+type tesseractLookupResponse struct {
 	Results []memory.RecallResult `json:"results"`
 	Facets  lookupFacets          `json:"facets"`
 }
@@ -46,11 +46,11 @@ type lookupFacets struct {
 	Sources map[string]int `json:"sources,omitempty"`
 }
 
-func (s *Server) handleConduitLookup(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
 	}
-	var req conduitLookupRequest
+	var req tesseractLookupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
 		return
@@ -92,7 +92,7 @@ func (s *Server) handleConduitLookup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup_failed", err.Error(), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, conduitLookupResponse{
+	writeJSON(w, http.StatusOK, tesseractLookupResponse{
 		Results: results,
 		Facets:  buildFacets(results),
 	})

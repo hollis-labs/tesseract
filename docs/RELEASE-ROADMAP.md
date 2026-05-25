@@ -1,13 +1,10 @@
 # Tesseract Release Roadmap
 
-Status: tracking doc — refreshed 2026-04-27
-Purpose: decompose the "Tesseract 1.0 release" effort into independent workstreams
-with clear ordering and hand-off boundaries. Each track gets its own design spec
-and implementation plan — this file only tracks what the tracks *are* and why.
+Status: historical planning snapshot
+Purpose: summarize the major workstreams that shaped the Tesseract 1.0 path.
 
-This document is the high-level release view only. Older sprint artifacts and
-pre-migration "Cortex" planning docs are historical context, not the current
-execution board. Clockwork is the source of truth for active work.
+This document is no longer the active execution board. Use current release docs,
+the beta checklist, and the repository surface itself for present-day status.
 
 ## Product framing
 
@@ -17,7 +14,7 @@ ships in two deployment profiles:
 1. **MCP server mode** — standalone daemon any agent (Claude Code, other MCP
    clients) connects to for context + memory operations.
 2. **Embedded runtime mode** — in-process library for apps that want memory as
-   a native feature (primary target: Nanite).
+   a native feature.
 
 It ships in two distribution forms:
 
@@ -28,20 +25,16 @@ It ships in two distribution forms:
 ## Workstreams
 
 ### A. Rename + identity
-The project has been renamed from "Cortex" to "Tesseract". This workstream is complete.
+Unify the product under the Tesseract name.
 
 ### B. Repository extraction
-Move Conduit out of `fragments-engine/cortex/` into a standalone repo. Own
-`go.mod`, CI, release pipeline, issue tracker. Preserve git history where
-reasonable. Update Nanite's contextbroker integration to point at the new repo.
+Move Tesseract into a standalone repository with its own module, CI, and release process.
 
 ### C. Cross-repo TODO audit
-Sweep Fragments Engine (MCP Engine), Nanite, and Conduit's own docs/SPECS for
-open items that belong to Conduit, block Conduit, or are obsoleted by the release
-plan. Produce one consolidated list before locking scope on later tracks.
+Audit related repos and docs for work that blocks or depends on Tesseract.
 
 ### D. Memory domain *(next up)*
-The actual product gap. Conduit today is a deterministic context registry with
+The actual product gap. Tesseract today is a deterministic context registry with
 15 content types — none are memory. `context_search` and `context_rag_query`
 return `embedding_unavailable`. Chat continuity is impossible without this.
 
@@ -53,14 +46,10 @@ In scope:
 - Extraction triggers and dedup/conflict resolution
 - Retrieval access pattern (contextbroker integration)
 
-Blocks: E, and Nanite's `MemoryService` work (see
-`nanite/docs/phase-c-conduit-investigation.md`).
+Blocks: E.
 
 ### E. Embedded-runtime API surface
-Library API that Nanite (and future embedding hosts) link in-process. Distinct
-from the MCP tool surface. Must cover the memory domain from (D) plus the
-existing context operations. Decisions needed on: public package boundary,
-lifecycle/ownership of the store, concurrency model, error surface.
+Library API for in-process embedding. Distinct from the MCP tool surface.
 
 Depends on: D (can't stabilize an API around a moving domain).
 
@@ -74,41 +63,17 @@ ships as the supported 1.0 surface. Build + release pipeline for both.
 Depends on: D, E (packaging stable surfaces, not moving ones).
 
 ### G. Release readiness
-Versioning policy, license audit, install story, user docs site, migration
-notes for existing Cortex integrations (Nanite contextbroker, Hadron, Volon,
-Mentat, Sigil — all have `app/<name>` namespaces registered today).
+Versioning policy, install story, public docs, and migration notes.
 
 Depends on: D, E, F.
 
-### H. Shared AI provider Go module *(new — prerequisite for D's embedding subsystem)*
-Extract multi-provider AI code into a standalone Go module shared by Nanite,
-Tesseract, Hadron, Engine, and future apps. Covers both LLM calls and
-embedding calls. Handles capability differences (not every provider embeds).
-At launch: Anthropic, OpenAI-compatible, Ollama, and CLI agent adapters
-(Claude/Codex/Copilot/Gemini) where applicable.
-
-**Why shared:** Every app touching AI has the same provider problem. Solving
-it once in a versioned module eliminates drift and multiplies the value of each
-bug fix. The shared repo now exists as `hollis-labs/go-providers` and is under
-active development; Vanta already consumes it locally.
+### H. Shared AI provider Go module
+Extract multi-provider AI code into a standalone Go module shared across Hollis Labs apps.
 
 Blocks: D's embedding subsystem.
 
-### I. Shared queue Go module *(new — prerequisite for D's auto-embed)*
-Standalone Go module implementing a Laravel-inspired job queue: jobs with
-serializable payloads, workers, retry/backoff, failed-jobs table, dispatchable
-interface, pluggable drivers. At 1.0: in-process workers with SQLite-backed
-persistence. Post-1.0: additional drivers (DB, Redis, etc.).
-
-**Why shared:** Every app ends up needing a job queue. Conduit's memory
-auto-embed and backfill are the first consumers; every future "do this
-reliably in the background" need across the portfolio benefits.
-
-**Why Laravel-style:** Well-understood pattern, proven in production, the user
-is already fluent in its mental model. No invention needed. The shared repo now
-exists as `hollis-labs/go-queue` and is already a working beta module; the
-remaining Vanta-specific question is adoption/integration timing, not whether
-the queue module itself exists.
+### I. Shared queue Go module
+Adopt a shared background-job module for embedding backfill and other async work.
 
 Blocks: D's auto-embed and backfill paths.
 
@@ -145,29 +110,14 @@ the embedding-dependent subsystems (auto-embed on write, backfill, semantic
 dedup) block on H and I. If H/I run in parallel with D's core, the timeline
 collapses cleanly.
 
-## Current status
+## Snapshot status
 
-- [ ] A. Rename + identity — deferred (sidebar)
-- [ ] B. Repository extraction — not started
+- [x] A. Rename + identity
+- [x] B. Repository extraction
 - [ ] C. Cross-repo TODO audit — not started
-- [x] **D. Memory domain — D-core complete** (merged via PR #1, 2026-04-05)
-  - D-core: 15 tasks, all merged. Types, keys, namespaces, stubs, schema v9,
-    write/read/recall/promote/deprecate, activation, decay, 6 MCP tools,
-    main.go wiring, integration test. 44 test functions, all passing.
-  - D-embedding: provider integration complete (shared provider.Embedder,
-    on-demand embed/search via library API). Auto-embed deferred to Track I.
-  - D-deferred: backfill, semantic similarity, semantic dedup —
-    blocked on I. Stub `NoopQueue` in place; swap is mechanical.
-- [ ] E. Embedded-runtime API surface — **partially complete**; `conduit.Open()`
-  with functional options provides the library init pattern. Full API surface TBD.
-- [ ] F. Dual-mode packaging — **partially complete**; the frontend/operator
-  surface is shipped, and the repo-local build now produces the expected
-  embedded frontend plus `./contextd` artifact. Remaining work is packaging,
-  release hardening, and support-boundary decisions.
-- [ ] G. Release readiness — blocked on E, F
-- [ ] H. Shared AI provider module — **in progress**; active shared repo
-  `hollis-labs/go-providers`, with Vanta already consuming it locally.
-- [ ] I. Shared queue module — **module exists and is active** as
-  `hollis-labs/go-queue`; Vanta adoption for auto-embed/backfill is still
-  pending and should be tracked as an integration decision, not as greenfield
-  queue work.
+- [x] D. Memory domain
+- [~] E. Embedded-runtime API surface — partially complete
+- [~] F. Dual-mode packaging — partially complete
+- [~] G. Release readiness — in progress
+- [x] H. Shared AI provider module
+- [x] I. Shared queue module

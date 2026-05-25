@@ -1,266 +1,225 @@
-# Context Memory Service — Quick Start
+# Tesseract Quick Start
 
-Get the service running and writing records in under 10 minutes.
+This guide gets a fresh install to a working local daemon, a configured provider, and a first write/read flow.
 
-## What is this?
+## What you need
 
-A local-first persistent memory store for AI agents and developer tools. Agents
-write structured records into typed namespaces, read them back with deterministic
-view selectors, and request promotions between namespaces. The store is a SQLite
-index on top of local JSON record files.
+- Go installed
+- a built or installed `contextd` binary
+- an API key for at least one supported provider if you want embeddings or synthesis
 
-Key concepts:
-- **Namespace** — hierarchical path (`user/memory/task-001`) that scopes records
-- **Record** — versioned JSON payload with actor, revision, and checksum
-- **Packet** — budget-bounded bundle of records assembled for agent context
-- **Token** — capability credential scoping write access to specific namespaces
+Current provider support:
 
----
+- embeddings: `openai`
+- synthesis: `openai`, `anthropic`
 
-## 1. Build
+Without provider keys, Tesseract still supports the core context, memory, knowledge, CLI, API, and MCP flows. Embedding-backed recall and synthesis stay disabled.
+
+## 1. Install `contextd`
+
+Preferred:
+
+```bash
+go install github.com/hollis-labs/tesseract/cmd/contextd@latest
+```
+
+From source:
 
 ```bash
 go build -o contextd ./cmd/contextd
 ```
 
-Place `contextd` on your `$PATH` or use the full path in commands below.
+## 2. Inspect the runtime paths
 
----
-
-## 2. Configure root directory
-
-All data lives under `CONTEXTD_ROOT`. Set it in your shell or in `.env`:
+Tesseract resolves its data, state, and config locations automatically.
 
 ```bash
-export CONTEXTD_ROOT="$HOME/.context"
-mkdir -p "$CONTEXTD_ROOT"
+contextd path
 ```
 
-The store auto-initializes the first time you write a record.
+Look for these values:
 
----
+- `config-file`
+- `data`
+- `state`
+- `records`
 
-## 3. Start the API server (optional — CLI works without it)
+The config file lives at the reported `config-file` path.
+
+Note:
+
+- `CONTEXTD_ROOT` still works as a one-release compatibility shim, but it is deprecated.
+- Prefer the default XDG layout unless you have a concrete reason to override it.
+
+## 3. Create a config file
+
+Start from one of the sample configs in [`../examples/`](../examples):
+
+- [`../examples/config.openai.yaml`](../examples/config.openai.yaml)
+- [`../examples/config.anthropic-openai.yaml`](../examples/config.anthropic-openai.yaml)
+
+Minimal example:
+
+```yaml
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+
+dedup:
+  similarity_threshold: 0.85
+
+synthesis:
+  provider: anthropic
+  model: claude-sonnet-4-5
+  max_tokens: 1024
+```
+
+## 4. Export provider credentials
+
+Use [`../env.example`](../env.example) as a starting point.
+
+OpenAI-only:
 
 ```bash
-contextd serve --addr :8080
+export OPENAI_API_KEY=...
 ```
 
-The CLI (`context ...` commands) talks directly to the store — no server required.
-Start the server only if you need the HTTP API or the MCP adapter.
-
----
-
-## 4. Create a capability token
-
-Tokens scope write access to specific namespace globs and operations.
+Anthropic for synthesis plus OpenAI for embeddings:
 
 ```bash
-contextd context token create \
-  --name my-agent \
-  --scopes write,packet,promote.request \
-  --namespaces "app/my-agent/*" \
-  --ttl 8760h
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
 ```
 
-**Copy the token value immediately** — it is only shown once.
-
-Output:
-```
-Token created. Copy this value now — it will not be shown again.
-
-  Token:       tok_abc123...
-  ID:          tid_...
-  Name:        my-agent
-  Client:
-  Scopes:      write, packet, promote.request
-  Namespaces:  app/my-agent/*
-  Expires:     2027-02-27T...
-```
-
----
-
-## 5. Register a namespace (optional)
-
-Namespaces are created implicitly on first write. Explicit registration sets
-ownership policy, which the policy engine enforces on write.
+## 5. Start the daemon
 
 ```bash
-contextd context namespace register \
-  --namespace app/my-agent/session \
-  --owner-type app \
-  --owner-id my-agent
+contextd serve --addr :8089
 ```
 
----
+What this gives you:
 
-## 6. Write a record
+- HTTP API at `http://127.0.0.1:8089/v1/`
+- embedded web UI at `http://127.0.0.1:8089/`
+
+The CLI does not require the server to be running, but the HTTP API and browser UI do.
+
+## 6. Write and read your first record
+
+Write:
 
 ```bash
 contextd context put \
-  --namespace app/my-agent/session \
+  --namespace app/demo/session \
   --key goal \
-  --actor app:my-agent \
-  --json '{"phase":"start","objective":"ship quick start"}'
+  --actor app:demo \
+  --json '{"phase":"start","objective":"ship beta"}'
 ```
 
-Response:
-```json
-{"record_id":"rec_...","namespace":"app/my-agent/session","key":"goal","revision":1,"actor":"app:my-agent","created_at":"...","checksum":"sha256:..."}
-```
-
----
-
-## 7. Read it back
+Read:
 
 ```bash
-# Head (latest revision)
-contextd context get --namespace app/my-agent/session --key goal
-
-# Full revision history
-contextd context history --namespace app/my-agent/session --key goal --limit 10
+contextd context get --namespace app/demo/session --key goal
+contextd context history --namespace app/demo/session --key goal --limit 10
 ```
 
----
+## 7. Create a capability token for MCP or automated writers
 
-## 8. Get a context packet
+Tokens scope mutating operations to specific namespaces and capabilities.
 
-A packet is a budget-bounded bundle of records for agent context loading:
+```bash
+contextd context token create \
+  --name demo-agent \
+  --client-id app:demo-agent \
+  --scopes write,promote.request \
+  --namespaces "app/demo-agent/*" \
+  --ttl 8760h
+```
+
+Copy the raw token immediately. It is only shown once.
+
+## 8. Optional: register a namespace policy
+
+Namespaces are created implicitly on first write. Register them explicitly if you want an ownership policy enforced from the start.
+
+```bash
+contextd context namespace register \
+  --namespace app/demo-agent/session \
+  --owner-type app \
+  --owner-id demo-agent
+```
+
+## 9. Optional: build a context packet
+
+Packets assemble a budget-bounded bundle of records for agent context loading.
 
 ```bash
 contextd context packet \
-  --namespace "app/my-agent/*" \
+  --namespace "app/demo/*" \
   --budget-items 20 \
   --budget-tokens 4000
 ```
 
-With a human-readable manifest:
-```bash
-contextd context packet \
-  --namespace "app/my-agent/*" \
-  --namespace "user/memory/*" \
-  --budget-tokens 8000 \
-  --output json
-```
+## 10. Optional: request a promotion
 
----
-
-## 9. Request a promotion
-
-Agents write to `app/*` namespaces and request promotion to `user/*` for
-human review:
+Apps write to `app/*` and request promotion into protected `user/*` namespaces.
 
 ```bash
-# Agent writes a candidate summary
 contextd context put \
-  --namespace app/my-agent/session \
+  --namespace app/demo-agent/session \
   --key summary \
-  --actor app:my-agent \
-  --json '{"text":"session complete, ready for review"}'
+  --actor app:demo-agent \
+  --json '{"text":"session complete"}'
 
-# Agent requests promotion to user/memory
 contextd context promote request \
-  --source-namespace app/my-agent/session \
+  --source-namespace app/demo-agent/session \
   --source-key summary \
-  --target-namespace user/memory/my-agent \
+  --target-namespace user/memory/demo-agent \
   --target-key summary
 ```
 
----
+## 11. Optional: connect an MCP client
 
-## 10. Configure MCP for Claude Code
-
-### Add `.mcp.json` to your project
-
-```json
-{
-  "mcpServers": {
-    "context": {
-      "command": "/usr/local/bin/contextd",
-      "args": ["mcp", "--token", "<your-token-here>"],
-      "env": {
-        "CONTEXTD_ROOT": "/Users/<you>/.context"
-      }
-    }
-  }
-}
-```
-
-Place this in your project root (applies to that project only) or in
-`~/.claude/.mcp.json` (applies globally to all Claude Code sessions).
-
-Restart Claude Code after adding or changing `.mcp.json`.
-
-### Available tools
-
-Claude Code discovers tools automatically via MCP — no CLAUDE.md setup required.
-There are 14 tools in three groups:
-
-**No token needed (read-only)**
-
-| Tool | What it does |
-|---|---|
-| `context_head` | Read the latest revision of a record |
-| `context_history` | Read revision history for a record |
-| `context_view` | Query records across multiple namespace globs |
-| `context_packet` | Load a budget-bounded bundle of records (primary boot tool) |
-| `context_promote_list` | List promotion requests by status |
-| `context_broker_plan` | Generate a namespace fetch plan for a given intent |
-| `context_broker_fetch` | Plan + fetch in one call (recommended for session boot) |
-| `context_namespace_show` | Show the ownership policy for a namespace |
-| `context_audit` | Query the audit event log |
-
-**Write token required**
-
-| Tool | Required scope |
-|---|---|
-| `context_write` | `write` |
-| `context_promote_request` | `promote.request` |
-| `context_promote_approve` | `promote.approve` |
-| `context_promote_apply` | `promote.apply` |
-| `context_namespace_register` | `namespace.admin` |
-
-### Token scopes by role
+Tesseract can run as an MCP stdio server:
 
 ```bash
-# Typical agent (read + write session memory + request promotions)
-contextd context token create --name my-agent \
-  --scopes write,promote.request \
-  --namespaces "app/my-agent/*"
-
-# Human operator (approve and apply promotions, manage namespaces)
-contextd context token create --name operator \
-  --scopes promote.approve,promote.apply,namespace.admin \
-  --namespaces "*"
+contextd mcp --token <capability-token>
 ```
 
-### Explicit guidance for agents in other projects
+For a ready-to-copy config, see:
 
-MCP exposes tool descriptions automatically, but you can add a CLAUDE.md snippet
-to any project to give agents workflow guidance. See
-[CONTEXT-FOR-PROJECTS.md](./CONTEXT-FOR-PROJECTS.md) for a copy-paste block.
+- [`../examples/mcp.json`](../examples/mcp.json)
+- [AGENT-SETUP.md](AGENT-SETUP.md)
 
-See [AGENT-SETUP.md](./AGENT-SETUP.md) for the full agent workflow and tool reference.
+## Common issues
 
----
+### `embedding_unavailable`
 
-## CLI reference summary
+Cause:
 
-| Command | Description |
-|---|---|
-| `context namespace register` | Register namespace with ownership policy |
-| `context put` | Append a record revision |
-| `context get` | Read head revision |
-| `context history` | Read revision history |
-| `context view` | Evaluate a selector query |
-| `context packet` | Assemble a budget-bounded context packet |
-| `context promote request` | Request record promotion to user/* |
-| `context promote list` | List pending promotion requests |
-| `context promote approve` | Approve a pending request |
-| `context promote apply` | Apply an approved request |
-| `context token create` | Create a capability token |
-| `context token list` | List active tokens |
-| `context token revoke` | Revoke a token |
-| `context broker plan` | Generate a context fetch plan |
-| `context broker fetch` | Fetch context for an intent |
-| `context maintenance trim` | Trim old revisions |
+- `embedding.provider` is not supported, or
+- `OPENAI_API_KEY` is not set
+
+### `synthesis_unavailable`
+
+Cause:
+
+- `synthesis.provider` is not supported, or
+- the corresponding API key is not set
+
+### Managed auth startup error
+
+If you start the daemon with `--managed-auth`, it requires at least one active managed token:
+
+```bash
+contextd context token issue --label admin --ttl 24h
+```
+
+That is separate from capability tokens created with `context token create`.
+
+## Next docs
+
+- [AGENT-SETUP.md](AGENT-SETUP.md) for MCP / Claude Code setup
+- [ARCHITECTURE.md](ARCHITECTURE.md) for the core model
+- [SPECS/API.md](SPECS/API.md) for HTTP details
+- [SPECS/CLI.md](SPECS/CLI.md) for CLI behavior

@@ -4,7 +4,7 @@ All notable changes to Tesseract are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Pre-1.0: minor bumps for additive surface, patch bumps for fixes — breaking changes can land in any minor.
 
-Consumers (Nanite, Cerberus, custom Tesseract clients) should watch this file for new MCP tools, HTTP routes, store-method additions, and configuration changes. Each release notes the user-visible MCP tool IDs and `/v1/*` routes that landed.
+Consumers should watch this file for new MCP tools, HTTP routes, store-method additions, and configuration changes. Each release notes the user-visible MCP tool IDs and `/v1/*` routes that landed.
 
 ## [Unreleased]
 
@@ -16,13 +16,13 @@ Consumers (Nanite, Cerberus, custom Tesseract clients) should watch this file fo
 
 ### Changed
 
-- Renamed the project from Vanta Conduit to Tesseract. The Go module path is now `github.com/hollis-labs/tesseract`; the local state root is now `~/.tesseract` with `~/.conduit` preserved as a compatibility symlink. A Go module-path change is effectively a new module — consumers must update their import paths and move to `v0.7.0` in lockstep.
+- Finalized the public Tesseract naming pass. The Go module path is `github.com/hollis-labs/tesseract`, and the default local state root is `~/.tesseract`.
 - Pinned `go.mod` dependency references to published versions so the module is consumable from GitHub: `go-otel v0.1.0`, `go-queue v0.1.0`, `go-embed-contracts v0.1.1`, `go-modelsdev v0.2.0`, and the renamed `go-mcp v0.1.0` (previously the dead `mcp-helpers` module path). These were placeholder `v0.0.0` requires resolvable only via local `replace` directives.
 
 ## [0.6.0] — 2026-05-09
 
 Path B clean-break migration off `github.com/hollis-labs/go-providers`. All
-LLM contract types relocate to dedicated repos; vanta-conduit ships its own
+LLM contract types relocate to dedicated repos; Tesseract ships its own
 SDK-backed wrappers for the embedding and synthesis paths.
 
 ### Breaking changes
@@ -35,7 +35,7 @@ SDK-backed wrappers for the embedding and synthesis paths.
     (`github.com/hollis-labs/go-llm-types`)
   - `provider.Provider` → `llmcontracts.Provider`
     (`github.com/hollis-labs/go-llm-contracts`)
-- **`conduit.WithEmbedder` parameter type** changed from `provider.Embedder`
+- **`tesseract.WithEmbedder` parameter type** changed from `provider.Embedder`
   to `embedcontracts.Embedder`. Callers must update imports + types.
 - **`Server.SynthesisProvider` type** changed from `provider.Provider` to
   `llmcontracts.Provider`. Callers wiring a custom synthesis provider must
@@ -60,10 +60,9 @@ SDK-backed wrappers for the embedding and synthesis paths.
 
 - `Complete` is fully implemented in both wrappers (the synthesis route
   is non-streaming). `StreamChat` returns a "not implemented" error —
-  vanta-conduit's only chat consumer (`/v1/synthesis/ask`) is non-streaming,
-  and bringing up streaming would duplicate work happening in nanite's
-  Wave 2 wrappers. If a future caller needs streaming, fill in `StreamChat`
-  per provider or import an SDK-backed wrapper from a sibling module.
+  Tesseract's only chat consumer (`/v1/synthesis/ask`) is non-streaming.
+  If a future caller needs streaming, fill in `StreamChat` per provider or
+  import an SDK-backed wrapper from a sibling module.
 - `Capabilities()` returns conservative fixed defaults; per-model tuning
   is left to callers that need it.
 
@@ -76,7 +75,7 @@ embedding contract relocated to `go-embed-contracts`, the LLM contracts to
 references in one pass.
 
 Sprint: SP-20260508-0001
-Vanta decision: `decisions.nanite.architecture.go_llm_contracts_split`
+Tesseract decision: `decisions.nanite.architecture.go_llm_contracts_split`
 
 ## [0.5.3] — 2026-04-26
 
@@ -92,7 +91,7 @@ consolidates `invalid_request` → `validation_error`.
   answer + numbered cited sources + per-call telemetry (provider, model,
   latency, tokens when available, cost via go-modelsdev catalog lookup).
   Returns 503 `synthesis_unavailable` when no provider is configured.
-- **Config: `synthesis.*`** in `~/.conduit/config.yaml` —
+- **Config: `synthesis.*`** in `~/.tesseract/config.yaml` —
   `provider`, `model`, `system_prompt`, `max_tokens`, `temperature`.
   Provider names: `openai`, `anthropic`, `gemini`, `mistral`. API key
   is read from the conventional env var (e.g. `ANTHROPIC_API_KEY`).
@@ -175,7 +174,7 @@ fix that re-enables `make frontend` / `npm run build`.
   memory vs knowledge; lazy-load keys per namespace via `/v1/recall`;
   drill-through to the new memory/knowledge detail page.
 - **Frontend page: Search & Research (v1 curated)** — question textarea
-  over `POST /v1/conduit/lookup` with status / domain / tag / confidence
+  over `POST /v1/tesseract/lookup` with status / domain / tag / confidence
   filters. Tabbed result view: **Answer** (cards grouped by domain) and
   **Sources** (raw revisions for citation). Session-local thread of past
   Q&As. v2 LLM-backed synthesis is comment-tracked in source — will use
@@ -196,7 +195,7 @@ fix that re-enables `make frontend` / `npm run build`.
 
 ## [0.5.1] — 2026-04-26
 
-Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear in `context_audit`, the audit-emit code path is consolidated through canonical `Store.Emit*` helpers, the daemon degrades gracefully when no embedding key is present, and a new `GET /v1/recall` endpoint gives scripted / agent consumers a query-param surface that mirrors `POST /v1/conduit/lookup`. Includes the audit fixes from `CW-20260419-0040` (PR #11) plus the audit-helper consolidation from `CW-20260419-0060`.
+Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear in `context_audit`, the audit-emit code path is consolidated through canonical `Store.Emit*` helpers, the daemon degrades gracefully when no embedding key is present, and a new `GET /v1/recall` endpoint gives scripted / agent consumers a query-param surface that mirrors `POST /v1/tesseract/lookup`. Includes the audit fixes from `CW-20260419-0040` (PR #11) plus the audit-helper consolidation from `CW-20260419-0060`.
 
 ### Changed
 
@@ -236,7 +235,7 @@ Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear 
   new dependency-injection seam for domain-layer audit. `contextstore.Store`
   satisfies the interface structurally. (`CW-20260419-0040`)
 - **HTTP route: `GET /v1/recall`** — query-param-driven recall optimised
-  for scripted / agent consumption. Mirrors `POST /v1/conduit/lookup` but
+  for scripted / agent consumption. Mirrors `POST /v1/tesseract/lookup` but
   takes `?namespace=…&tags=…&limit=…&format=brief|full`. Default `brief`
   format returns condensed `{revision_id, memory_id, domain, namespace,
   memory_key, tags, confidence, summary, created_at}` items; `full`
@@ -255,11 +254,11 @@ Audit-pipeline catch-up + recall ergonomics. Memory/knowledge writes now appear 
 
 ## [0.5.0] — 2026-04-19
 
-MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/meta MCP tool descriptions against a consistent v2 template, adds MCP protocol annotations per spec §5.4, and ships `vanta_skills` as a progressive-discovery meta-tool backed by 11 embedded markdown skills. Additive — no Go library API changes; existing consumers are unaffected.
+MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/meta MCP tool descriptions against a consistent v2 template, adds MCP protocol annotations per spec §5.4, and ships `tesseract_skills` as a progressive-discovery meta-tool backed by 11 embedded markdown skills. Additive — no Go library API changes; existing consumers are unaffected.
 
 ### Added
 
-- **MCP tool: `vanta_skills`** — progressive-discovery meta-tool. No-args returns an 11-entry index; `name=<skill>` returns the full markdown body. Skills embedded via `//go:embed` at `internal/mcpadapter/skills/*.md`: `start-here`, `namespaces`, `facets-and-kinds`, `revisions`, `recall-and-ranking`, `promotion`, `views`, `memory`, `knowledge`, `context-packet`, `audit`. `start-here` is indexed first; rest alphabetical.
+- **MCP tool: `tesseract_skills`** — progressive-discovery meta-tool. No-args returns an 11-entry index; `name=<skill>` returns the full markdown body. Skills embedded via `//go:embed` at `internal/mcpadapter/skills/*.md`: `start-here`, `namespaces`, `facets-and-kinds`, `revisions`, `recall-and-ranking`, `promotion`, `views`, `memory`, `knowledge`, `context-packet`, `audit`. `start-here` is indexed first; rest alphabetical.
 - **MCP protocol annotations** on all 12 memory / knowledge / unified / meta tools — `ReadOnlyHint`, `IdempotentHint`, `DestructiveHint`, `OpenWorldHint` per spec §5.4. `memory_deprecate` correctly carries `IdempotentHint=true` (second call is a no-op).
 - **Drift guardrail:** `internal/mcpadapter/annotations_test.go` fails CI if any of the 12 v2-template tools drops its required annotations.
 
@@ -267,9 +266,9 @@ MCP Surface v2 (PR #9 `feat/mcp-surface-v2`). Rewrites memory/knowledge/unified/
 
 - **MCPServer version string** bumped `0.4.0 → 0.5.0`.
 - **12 MCP tool descriptions** rewritten to v2 template — bold action phrase + `Kind of content` / `Scope` / `Use this when` / `Don't use this for` / `Deeper:` bullets plus concrete parameter-value examples. Covers all memory, knowledge, unified-lookup, and meta surfaces.
-- **30 context-domain tool descriptions** get an appended `See vanta_skills start-here for the primitive model.` footer. Minimum-touch; full context-domain rewrite is deferred.
-- **Parity catalog** — `vanta_skills` registered as MCP-only meta-tool in `surfaceCatalog`.
-- **`docs/MCP_TOOLS.md`** refreshed — new Skills section, `Deeper` column on memory/knowledge/unified tables, new Meta section for `vanta_skills`.
+- **30 context-domain tool descriptions** get an appended `See tesseract_skills start-here for the primitive model.` footer. Minimum-touch; full context-domain rewrite is deferred.
+- **Parity catalog** — `tesseract_skills` registered as MCP-only meta-tool in `surfaceCatalog`.
+- **`docs/MCP_TOOLS.md`** refreshed — new Skills section, `Deeper` column on memory/knowledge/unified tables, new Meta section for `tesseract_skills`.
 
 ### Follow-ups filed (not in this release)
 
@@ -293,12 +292,12 @@ Minor-bump candidate — default ranking changes when a query is provided, and a
 ### Changed
 
 - **Ranking default is now smart**: empty `Ranking` with a non-empty `Query` resolves to `relevance`; empty `Ranking` with no query stays on `activation`. Explicit callers are unaffected.
-- **MCP tool descriptions** updated on `memory_recall` and `conduit_lookup`: `activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)`.
-- **Access reinforcement widens to all recall modes** (was activation-only). Dense-only or chronological queries now bump `last_accessed_at` and `access_count` too so hot memories keep their activation trail when agents switch ranking modes. Consumers that depended on "only activation-mode recall reinforces" should flag this — relevant for the Nanite consumer.
+- **MCP tool descriptions** updated on `memory_recall` and `tesseract_lookup`: `activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)`.
+- **Access reinforcement widens to all recall modes** (was activation-only). Dense-only or chronological queries now bump `last_accessed_at` and `access_count` too so hot memories keep their activation trail when agents switch ranking modes.
 
 ### Fixed
 
-- **BLG-037** — `memory_recall` and `conduit_lookup` were shipping the full `EmbeddingVector` (~39KB/record for text-embedding-3-large) in every `Revision` JSON response, blowing agent context budgets on recalls of 5+. `json:"-"` on `Revision.EmbeddingVector` drops the field from every JSON response universally. Struct field is retained — similarity ranking still reads it directly via `similarityScore`/`CosineSimilarity`; SQL storage is untouched. Smoke-test on a live store: `memory_recall limit=10` went from ~390KB to 26KB; `conduit_lookup limit=20` went from ~660KB to 40KB.
+- **BLG-037** — `memory_recall` and `tesseract_lookup` were shipping the full `EmbeddingVector` (~39KB/record for text-embedding-3-large) in every `Revision` JSON response, blowing agent context budgets on recalls of 5+. `json:"-"` on `Revision.EmbeddingVector` drops the field from every JSON response universally. Struct field is retained — similarity ranking still reads it directly via `similarityScore`/`CosineSimilarity`; SQL storage is untouched. Smoke-test on a live store: `memory_recall limit=10` went from ~390KB to 26KB; `tesseract_lookup limit=20` went from ~660KB to 40KB.
 
 ### Operator notes
 
@@ -308,7 +307,7 @@ Minor-bump candidate — default ranking changes when a query is provided, and a
 
 ## [0.3.0] — 2026-04-15
 
-MCP↔HTTP parity batch 1: agent-access fixes plus a durable drift guardrail. Closes the gaps surfaced after the knowledge-domain S1 merge so an agent booted against `mcp__vanta__*` has functional parity with the HTTP `/v1/*` surface for context, memory, and knowledge reads.
+MCP↔HTTP parity batch 1: agent-access fixes plus a durable drift guardrail. Closes the gaps surfaced after the knowledge-domain S1 merge so an agent booted against `mcp__tesseract__*` has functional parity with the HTTP `/v1/*` surface for context, memory, and knowledge reads.
 
 ### Added
 
@@ -333,25 +332,22 @@ MCP↔HTTP parity batch 1: agent-access fixes plus a durable drift guardrail. Cl
 
 ### Documentation
 
-- `README.md` and `.agentrc/boot-prompt.md` link to `docs/MCP_TOOLS.md`.
-- Portfolio rename docs (`docs/superpowers/plans|specs/2026-04-07-cortex-to-vanta-conduit-rename.md`) updated to `mcp__vanta__*` tool IDs.
+- `README.md` links to `docs/MCP_TOOLS.md`.
 
 ### Operator notes
 
-The `cortex` → `vanta` MCP server rename in `~/.claude.json` is required for agents to reach this binary; old `cortex` entries point at the legacy `~/.cortex/` data root and miss every tool added since the knowledge-domain merge. See `docs/MCP_TOOLS.md` for the new `~/.claude.json` block.
-
-After a `go install ./cmd/contextd` the Cerberus-managed `conduit-api` service must be restarted so the HTTP and MCP surfaces stay binary-locked.
+The MCP client config should point at the `contextd mcp` binary and the same Tesseract data root used by the HTTP server.
 
 ## [0.2.0] — 2026-04-15
 
-Knowledge Domain S1 (`SPR-20260414-knowledge-domain-s1`, `EPIC-20260414-84967`). Adds a second info domain (`knowledge`) alongside `memory`, wires the memory subsystem into HTTP serve mode, and introduces `conduit_lookup` for cross-domain search. Merged as PR #3.
+Knowledge Domain S1 (`SPR-20260414-knowledge-domain-s1`, `EPIC-20260414-84967`). Adds a second info domain (`knowledge`) alongside `memory`, wires the memory subsystem into HTTP serve mode, and introduces `tesseract_lookup` for cross-domain search. Merged as PR #3.
 
 ### Added
 
 - **Domain discriminator** — `domains.Domain` type + in-tree `DomainPolicy` interface (`MemoryDomain`, `KnowledgeDomain`).
 - **Knowledge facets** — `kind`, `source`, `pointer{scheme, locator, resolved_at}` on `memory.Revision`. Required on knowledge writes.
 - **MCP tool: `knowledge_write`** + HTTP `POST /v1/knowledge/write` — pointer-first writes with required facets.
-- **MCP tool: `conduit_lookup`** + HTTP `POST /v1/conduit/lookup` — unified search across memory + knowledge with facet histogram.
+- **MCP tool: `tesseract_lookup`** + HTTP `POST /v1/tesseract/lookup` — unified search across memory + knowledge with facet histogram.
 - **HTTP `/v1/memory/*` surface** — `write`, `current`, `history`, `revisions/{id}`, `recall`, `promote`, `deprecate` routes (`TASK-20260414-001`).
 - **`memory.RecallFilters`** — new filter fields `Domains`, `FacetKinds`, `FacetSources`.
 - **Schema migrations** — v10 adds `domain` (default `'memory'`) to `memory_state` + `memory_revisions` with indexes; v11 adds nullable flat facet columns with partial indexes on `facet_kind` and `facet_source`.
@@ -373,19 +369,19 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 ### Added
 
-- **`go-queue` integration** — SQLite-backed `go-queue` instance for async embed jobs. `QueueAdapter` bridges `memory.JobQueue` → `queue.Queue`. `WithQueue()` functional option on `conduit.Open()`. Worker lifecycle with retry (3 max tries / 30s delay). Separate `queue.db` for write safety.
+- **`go-queue` integration** — SQLite-backed `go-queue` instance for async embed jobs. `QueueAdapter` bridges `memory.JobQueue` → `queue.Queue`. `WithQueue()` functional option on `tesseract.Open()`. Worker lifecycle with retry (3 max tries / 30s delay). Separate `queue.db` for write safety.
 - **Auto-embed on write** — `memory.Store.EmbedRevision()` loads revision, extracts text, calls embedder, writes vector inline to `embedding_model`/`embedding_vector` columns. Queue embed handler wired to call it on every write.
 - **Similarity recall** — `Recall(RankingSimilarity)` embeds the query and ranks candidates by cosine similarity. Exposed on both MCP `memory_recall` and library API. Unembedded revisions filtered out.
-- **Conduit facade** — `WriteMemory`, `RecallMemory`, `GetCurrentRevision`, `GetRevisionHistory`, `EmbedRevision` on `*Conduit`. Library consumers no longer need to reach through `.Store()` / `.MemoryStore()`.
+- **Tesseract facade** — `WriteMemory`, `RecallMemory`, `GetCurrentRevision`, `GetRevisionHistory`, `EmbedRevision` on `*Tesseract`. Library consumers no longer need to reach through `.Store()` / `.MemoryStore()`.
 - **Backfill CLI** — `contextd backfill-embeddings [--namespace=...]` iterates unembedded revisions and embeds them.
 - **Semantic dedup** — opt-in via `Dedup: "semantic"` on `WriteInput`. Same-key matches auto-supersede; cross-key matches set `DedupMatch` without superseding. MCP `memory_write` exposes `dedup` + `dedup_threshold` params.
-- **Config file** — `~/.conduit/config.yaml` for embedding provider/model and dedup threshold. Loaded by `internal/config.Load()`. Defaults: OpenAI `text-embedding-3-large`, threshold 0.85. Falls back to env vars for auth.
+- **Config file** — `~/.tesseract/config.yaml` for embedding provider/model and dedup threshold. Loaded by `internal/config.Load()`. Defaults: OpenAI `text-embedding-3-large`, threshold 0.85. Falls back to env vars for auth.
 - **SQLite WAL mode** enabled for better concurrent read/write performance.
 
 ### Changed
 
 - **Monotonic ULIDs** (`ulid.Monotonic`) + **RFC3339Nano timestamps** eliminate the nondeterministic revision ordering bug. `parseMemoryTime()` falls back to `time.DateTime` for backward compat.
-- All stale `cortex` references replaced with `conduit` (plugin CLI usage strings, env vars).
+- All stale `tesseract` references replaced with `tesseract` (plugin CLI usage strings, env vars).
 
 ### Fixed
 
@@ -394,7 +390,7 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 ## [0.0.1] — 2026-04-08
 
-Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/cortex/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
+Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
 [Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.5.3...HEAD
 [0.5.3]: https://github.com/hollis-labs/tesseract/compare/v0.5.2...v0.5.3

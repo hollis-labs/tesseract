@@ -12,14 +12,14 @@ import (
 )
 
 func (a *Adapter) registerLookupTools(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("conduit_lookup",
+	a.addTool(s, mcp.NewTool("tesseract_lookup",
 		mcp.WithDescription(
 			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
-				"• **Deeper:** `vanta_skills recall-and-ranking` for ranking modes; `vanta_skills facets-and-kinds` for facet filters.",
+				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
@@ -39,10 +39,10 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleConduitLookup)
+	), a.handleTesseractLookup)
 }
 
-func (a *Adapter) handleConduitLookup(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
 		return res, nil
 	}

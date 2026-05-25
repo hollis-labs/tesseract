@@ -1,7 +1,0 @@
-{
-  "markers": [
-    "scripts/bootstrap-sync.sh",
-    "todo=1 doing=0 blocked=0 done=1",
-    "latest_log=.agentrc/logs/run-iteration-001-2026-02-25.md"
-  ]
-}

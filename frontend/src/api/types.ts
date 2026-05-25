@@ -142,6 +142,96 @@ export interface AdminSetupResponse {
   };
 }
 
+export interface AdminProviderStatus {
+  kind: string;
+  provider: string;
+  model: string;
+  env_var?: string;
+  configured: boolean;
+  supported: boolean;
+  env_present: boolean;
+  runtime_ready: boolean;
+  available: boolean;
+  reason?: string;
+}
+
+export interface AdminSettingsResponse {
+  app: string;
+  config_file: string;
+  paths: AdminPathInfo[];
+  auth: {
+    mode: string;
+  };
+  runtime: {
+    metrics_enabled: boolean;
+    request_logging_enabled: boolean;
+    request_log_mode: string;
+    memory_store_enabled: boolean;
+    knowledge_store_enabled: boolean;
+    synthesis_enabled: boolean;
+    queue_enabled: boolean;
+    webui_embedded: boolean;
+  };
+  config: {
+    embedding_provider: string;
+    embedding_model: string;
+    dedup_similarity_threshold: number;
+    synthesis_provider: string;
+    synthesis_model: string;
+    synthesis_max_tokens: number;
+    synthesis_temperature: number;
+    synthesis_system_prompt: string;
+    synthesis_system_prompt_set: boolean;
+  };
+  providers: {
+    embedding: AdminProviderStatus;
+    synthesis: AdminProviderStatus;
+  };
+}
+
+export interface AdminSettingsUpdateRequest {
+  config: AdminSettingsResponse["config"];
+}
+
+export interface AdminSettingsMutationResponse {
+  config_file: string;
+  config: AdminSettingsResponse["config"];
+  providers: AdminSettingsResponse["providers"];
+  changed_fields: string[];
+  warnings: string[];
+  restart_required: boolean;
+  applied: boolean;
+}
+
+export interface AdminConfigBackupInfo {
+  name: string;
+  path: string;
+  size: number;
+  source: string;
+  created_at: string;
+}
+
+export interface AdminConfigBackupsResponse {
+  config_file: string;
+  backup_dir: string;
+  items: AdminConfigBackupInfo[];
+}
+
+export interface AdminConfigBackupResponse {
+  config_file: string;
+  backup_dir: string;
+  backup: AdminConfigBackupInfo;
+}
+
+export interface AdminConfigRestoreResponse {
+  config_file: string;
+  restored_from: AdminConfigBackupInfo;
+  pre_restore_backup: AdminConfigBackupInfo;
+  config: AdminSettingsResponse["config"];
+  providers: AdminSettingsResponse["providers"];
+  restart_required: boolean;
+}
+
 export interface AdminQueueTypeInfo {
   type: string;
   count: number;
@@ -167,6 +257,31 @@ export interface AdminQueueResponse {
   next_available_at?: string;
   active_by_type: AdminQueueTypeInfo[];
   generated_at: string;
+}
+
+export interface AdminQueueFailureInfo {
+  id: number;
+  queue: string;
+  type: string;
+  error: string;
+  attempts: number;
+  failed_at: string;
+  payload?: string;
+}
+
+export interface AdminQueueFailuresResponse {
+  items: AdminQueueFailureInfo[];
+  count: number;
+}
+
+export interface AdminQueueRetryFailedResponse {
+  retried: number;
+}
+
+export interface AdminQueueBackfillResponse {
+  queued: number;
+  namespace?: string;
+  limit: number;
 }
 
 export interface AdminStoragePathInfo {
@@ -276,6 +391,19 @@ export interface NamespacePolicy {
     allowed_ops?: string[];
     [key: string]: unknown;
   };
+}
+
+export interface AdminNamespacePreviewResponse {
+  entry: NamespacePolicy;
+  exists: boolean;
+  changed_fields: string[];
+  warnings: string[];
+}
+
+export interface AdminNamespaceHistoryResponse {
+  namespace: string;
+  items: AuditEvent[];
+  count: number;
 }
 
 // ── Write types ─────────────────────────────────────────────────────
@@ -525,9 +653,9 @@ export interface NamespaceListResponse {
   truncated: boolean;
 }
 
-// ── Conduit lookup (unified search) types ───────────────────────────
+// ── Tesseract lookup (unified search) types ───────────────────────────
 
-export interface ConduitLookupRequest {
+export interface TesseractLookupRequest {
   namespaces: string[];
   query?: string;
   ranking?: "activation" | "chronological" | "similarity" | "relevance";
@@ -544,15 +672,15 @@ export interface ConduitLookupRequest {
   until?: string;
 }
 
-export interface ConduitLookupResultItem {
+export interface TesseractLookupResultItem {
   Revision: MemoryRevision;
   Score?: number;
   State?: unknown;
 }
 
-export interface ConduitLookupResponse {
+export interface TesseractLookupResponse {
   facets: LookupFacets;
-  results: ConduitLookupResultItem[];
+  results: TesseractLookupResultItem[];
 }
 
 // ── Synthesis (LLM-backed answer) types ─────────────────────────────

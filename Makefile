@@ -1,4 +1,4 @@
-.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed runlog-init contract-lint agents-boot-check contract-commands contract-cli-list contract-cli-run bootstrap-sync bootstrap-report bootstrap-sync-apply bootstrap-sync-report frontend build install
+.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install
 
 BASE_URL ?= http://127.0.0.1:8089
 TOKEN ?=
@@ -15,7 +15,7 @@ RUNLOG_OUT ?=
 # shim — contextd maps it onto $XDG_*_HOME so the whole layout still nests
 # under it. When the shim is removed, switch these targets to setting
 # $XDG_DATA_HOME/$XDG_STATE_HOME/$XDG_CONFIG_HOME directly.
-CONTEXTD_ROOT ?= .volon/tmp/contextd
+CONTEXTD_ROOT ?= .tesseract/tmp/contextd
 SUITE ?= all
 
 TEST ?= go test ./...
@@ -80,19 +80,8 @@ e2e-local:
 e2e-managed:
 	AUTH_MODE=managed scripts/contextd-e2e-local.sh
 
-runlog-init:
-	@if [ -z "$(ITERATION)" ]; then echo "ITERATION is required"; exit 2; fi
-	@if [ -n "$(RUNLOG_OUT)" ]; then \
-		scripts/volon-runlog-init.sh --iteration $(ITERATION) --date $(RUN_DATE) --profile $(PROFILE) --out $(RUNLOG_OUT); \
-	else \
-		scripts/volon-runlog-init.sh --iteration $(ITERATION) --date $(RUN_DATE) --profile $(PROFILE); \
-	fi
-
 contract-lint:
 	scripts/contract-fixture-lint.sh
-
-agents-boot-check:
-	scripts/agents-boot-drift-check.sh
 
 contract-commands:
 	scripts/contract-suite-commands.sh
@@ -104,15 +93,3 @@ contract-cli-list:
 contract-cli-run:
 	@mkdir -p $(CONTEXTD_ROOT)
 	CONTEXTD_ROOT=$(CONTEXTD_ROOT) go run ./cmd/contextd context contract run --suite $(SUITE) --output table
-
-bootstrap-report:
-	scripts/bootstrap-sync.sh
-
-bootstrap-sync:
-	scripts/bootstrap-sync.sh --apply
-
-bootstrap-sync-report:
-	scripts/bootstrap-sync.sh
-
-bootstrap-sync-apply:
-	scripts/bootstrap-sync.sh --apply

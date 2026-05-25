@@ -17,9 +17,9 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
 				"• **Kind of content:** package / doc / note / pointer records with `kind`/`source`/`pointer` facets.\n"+
 				"• **Scope:** `memory:write`.\n"+
-				"• **Use this when:** you are cataloging something that lives outside Vanta (a file, URL, library, doc).\n"+
+				"• **Use this when:** you are cataloging something that lives outside Tesseract (a file, URL, library, doc).\n"+
 				"• **Don't use this for:** agent-authored content with no external source — use `memory_write`. Generic records — use `context_write`.\n"+
-				"• **Deeper:** `vanta_skills knowledge` for patterns; `vanta_skills facets-and-kinds` for facet vocabulary.",
+				"• **Deeper:** `tesseract_skills knowledge` for patterns; `tesseract_skills facets-and-kinds` for facet vocabulary.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
 		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision")),

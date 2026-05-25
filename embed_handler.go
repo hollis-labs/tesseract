@@ -1,4 +1,4 @@
-package conduit
+package tesseract
 
 import (
 	"context"

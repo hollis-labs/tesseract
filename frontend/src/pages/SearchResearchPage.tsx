@@ -1,10 +1,10 @@
 import { Lightbulb, MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { conduitLookup, listNamespaces, synthesisAsk } from "../api/client";
+import { tesseractLookup, listNamespaces, synthesisAsk } from "../api/client";
 import type {
-  ConduitLookupResponse,
-  ConduitLookupResultItem,
+  TesseractLookupResponse,
+  TesseractLookupResultItem,
   MemoryStatus,
   SynthesisAskResponse,
 } from "../api/types";
@@ -30,7 +30,7 @@ type DomainFilter = "both" | "memory" | "knowledge";
 interface ThreadEntry {
   id: string;
   question: string;
-  response: ConduitLookupResponse | null;
+  response: TesseractLookupResponse | null;
   // synthesis is loaded lazily when the operator opens the Synthesis tab and
   // clicks "Synthesize". Cached on the entry so re-clicking the entry doesn't
   // re-spend tokens.
@@ -46,9 +46,9 @@ interface Props {
 
 const STATUS_FILTERS: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
 
-const THREAD_STORAGE_KEY = "conduit.searchResearch.thread";
-const PRESETS_STORAGE_KEY = "conduit.searchResearch.presets";
-const RECENT_NS_STORAGE_KEY = "conduit.searchResearch.recentNamespaces";
+const THREAD_STORAGE_KEY = "tesseract.searchResearch.thread";
+const PRESETS_STORAGE_KEY = "tesseract.searchResearch.presets";
+const RECENT_NS_STORAGE_KEY = "tesseract.searchResearch.recentNamespaces";
 const THREAD_MAX = 20;
 const RECENT_NS_MAX = 8;
 
@@ -166,7 +166,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
         .filter(Boolean);
       const parsedLimit = parseInt(limit, 10);
       const parsedConf = parseFloat(confidenceMin);
-      const req: Parameters<typeof conduitLookup>[0] = {
+      const req: Parameters<typeof tesseractLookup>[0] = {
         namespaces,
         query: q,
         ranking: "relevance",
@@ -177,7 +177,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
       if (statusSet.size > 0) req.statuses = Array.from(statusSet);
       if (Number.isFinite(parsedConf) && parsedConf > 0) req.confidence_min = parsedConf;
 
-      const res = await conduitLookup(req);
+      const res = await tesseractLookup(req);
       setThread((prev) => prev.map((e) => (e.id === id ? { ...e, response: res } : e)));
       // Update recent namespaces from the actual queried set (explicit > default).
       const used = explicitNs.length > 0 ? explicitNs : namespaces.slice(0, 3);
@@ -256,8 +256,8 @@ export function SearchResearchPage({ onOpenItem }: Props) {
     setStatusSet(next);
   };
 
-  const groupedByDomain = (results: ConduitLookupResultItem[]) => {
-    const map = new Map<string, ConduitLookupResultItem[]>();
+  const groupedByDomain = (results: TesseractLookupResultItem[]) => {
+    const map = new Map<string, TesseractLookupResultItem[]>();
     for (const r of results) {
       const d = r.Revision.domain;
       const arr = map.get(d) ?? [];

@@ -15,14 +15,14 @@ import (
 
 func (a *Adapter) registerBulkTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_bulk_ingest",
-		mcp.WithDescription("Batch write multiple records with optional type validation and embedding. Accepts a JSON array of items. Each item is validated, written, and optionally embedded. Returns per-item results. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Batch write multiple records with optional type validation and embedding. Accepts a JSON array of items. Each item is validated, written, and optionally embedded. Returns per-item results. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("items", mcp.Required(), mcp.Description("JSON array of items. Each item: {namespace, key, payload (JSON string or object), record_type?, status?, ttl?, pointers? (comma-sep), actor?}")),
 		mcp.WithBoolean("embed", mcp.Description("Auto-embed each record after writing (default: false). Requires configured embedding provider.")),
 		mcp.WithBoolean("stop_on_error", mcp.Description("Stop processing on first error (default: false). When false, errors are collected per-item.")),
 	), a.handleBulkIngest)
 
 	a.addTool(s, mcp.NewTool("context_chunked_ingest",
-		mcp.WithDescription("Ingest a large document by chunking it into multiple records, each auto-embedded. Useful for RAG pipelines with documents exceeding embedding context windows. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Ingest a large document by chunking it into multiple records, each auto-embedded. Useful for RAG pipelines with documents exceeding embedding context windows. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace")),
 		mcp.WithString("key_prefix", mcp.Required(), mcp.Description("Key prefix — chunks are named <prefix>/chunk-000, chunk-001, etc.")),
 		mcp.WithString("text", mcp.Required(), mcp.Description("Full document text to chunk")),

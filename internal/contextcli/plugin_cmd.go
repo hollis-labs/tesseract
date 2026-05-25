@@ -16,7 +16,7 @@ const pluginGitOrg = "hollis-labs"
 // RunPluginCmd dispatches plugin subcommands.
 func RunPluginCmd(args []string, stdout, stderr *os.File) int {
 	if len(args) < 1 {
-		fmt.Fprintln(stderr, "usage: conduit plugin <command>")
+		fmt.Fprintln(stderr, "usage: tesseract plugin <command>")
 		fmt.Fprintln(stderr, "commands: list, install, uninstall, disable, enable")
 		return 1
 	}
@@ -28,25 +28,25 @@ func RunPluginCmd(args []string, stdout, stderr *os.File) int {
 		return pluginList(pluginsDir, stdout)
 	case "install":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr, "usage: conduit plugin install <name>")
+			fmt.Fprintln(stderr, "usage: tesseract plugin install <name>")
 			return 1
 		}
 		return pluginInstall(pluginsDir, args[1], stdout, stderr)
 	case "uninstall":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr, "usage: conduit plugin uninstall <name>")
+			fmt.Fprintln(stderr, "usage: tesseract plugin uninstall <name>")
 			return 1
 		}
 		return pluginUninstall(pluginsDir, args[1], stdout, stderr)
 	case "disable":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr, "usage: conduit plugin disable <name>")
+			fmt.Fprintln(stderr, "usage: tesseract plugin disable <name>")
 			return 1
 		}
 		return pluginDisable(pluginsDir, args[1], stdout, stderr)
 	case "enable":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr, "usage: conduit plugin enable <name>")
+			fmt.Fprintln(stderr, "usage: tesseract plugin enable <name>")
 			return 1
 		}
 		return pluginEnable(pluginsDir, args[1], stdout, stderr)
@@ -57,7 +57,7 @@ func RunPluginCmd(args []string, stdout, stderr *os.File) int {
 }
 
 func resolvePluginsDir() string {
-	if d := os.Getenv("CONDUIT_PLUGINS_DIR"); d != "" {
+	if d := os.Getenv("TESSERACT_PLUGINS_DIR"); d != "" {
 		return d
 	}
 	return "./plugins"

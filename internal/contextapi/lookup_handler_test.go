@@ -55,7 +55,7 @@ func seedKnowledge(t *testing.T, srv *Server) {
 	}
 }
 
-func TestConduitLookup_UnifiedAcrossDomains(t *testing.T) {
+func TestTesseractLookup_UnifiedAcrossDomains(t *testing.T) {
 	srv := newLookupServer(t)
 	seedMemory(t, srv)
 	seedKnowledge(t, srv)
@@ -64,14 +64,14 @@ func TestConduitLookup_UnifiedAcrossDomains(t *testing.T) {
 		"namespaces":["user/chrispian/memory/notes","user/chrispian/knowledge/framework"],
 		"ranking":"chronological"
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/conduit/lookup", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/tesseract/lookup", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d; body = %s", rr.Code, rr.Body.String())
 	}
-	var resp conduitLookupResponse
+	var resp tesseractLookupResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestConduitLookup_UnifiedAcrossDomains(t *testing.T) {
 	}
 }
 
-func TestConduitLookup_DomainFilter(t *testing.T) {
+func TestTesseractLookup_DomainFilter(t *testing.T) {
 	srv := newLookupServer(t)
 	seedMemory(t, srv)
 	seedKnowledge(t, srv)
@@ -96,14 +96,14 @@ func TestConduitLookup_DomainFilter(t *testing.T) {
 		"ranking":"chronological",
 		"domains":["knowledge"]
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/conduit/lookup", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/tesseract/lookup", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d; body = %s", rr.Code, rr.Body.String())
 	}
-	var resp conduitLookupResponse
+	var resp tesseractLookupResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestConduitLookup_DomainFilter(t *testing.T) {
 	}
 }
 
-func TestConduitLookup_FacetKindFilter(t *testing.T) {
+func TestTesseractLookup_FacetKindFilter(t *testing.T) {
 	srv := newLookupServer(t)
 	seedKnowledge(t, srv)
 
@@ -124,14 +124,14 @@ func TestConduitLookup_FacetKindFilter(t *testing.T) {
 		"ranking":"chronological",
 		"facet_kinds":["package"]
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/conduit/lookup", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/tesseract/lookup", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d; body = %s", rr.Code, rr.Body.String())
 	}
-	var resp conduitLookupResponse
+	var resp tesseractLookupResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}

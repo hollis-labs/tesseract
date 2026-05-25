@@ -49,10 +49,17 @@ import {
 } from "react";
 import { toast } from "sonner";
 import {
+  applyAdminSettings,
+  backfillAdminQueue,
   cleanupExpiredTTL,
   compactRecords,
+  createAdminConfigBackup,
   createToken,
+  getAdminConfigBackups,
+  getAdminNamespaceHistory,
   getAdminQueue,
+  getAdminQueueFailures,
+  getAdminSettings,
   getAdminSetup,
   getAdminStorage,
   getAuditEvents,
@@ -60,14 +67,29 @@ import {
   getMetrics,
   listNamespaces,
   listTokens,
+  previewAdminSettings,
+  previewNamespacePolicy,
   registerNamespace,
   repairConsistency,
+  retryAdminQueueFailed,
+  restoreAdminConfigBackup,
   revokeToken,
   scanConsistency,
   trimRecords,
+  updateNamespacePolicy,
 } from "../api/client";
 import type {
+  AdminQueueBackfillResponse,
+  AdminQueueFailureInfo,
+  AdminQueueFailuresResponse,
+  AdminQueueRetryFailedResponse,
+  AdminNamespaceHistoryResponse,
+  AdminNamespacePreviewResponse,
+  AdminConfigBackupInfo,
+  AdminConfigBackupsResponse,
+  AdminSettingsMutationResponse,
   AdminQueueResponse,
+  AdminSettingsResponse,
   AdminSetupResponse,
   AdminStorageNamespaceInfo,
   AdminStorageResponse,
@@ -97,6 +119,9 @@ type AdminTab =
   | "roadmap";
 
 interface LoadState {
+  configBackups: AdminConfigBackupsResponse | null;
+  queueFailures: AdminQueueFailuresResponse | null;
+  settings: AdminSettingsResponse | null;
   setup: AdminSetupResponse | null;
   queue: AdminQueueResponse | null;
   storage: AdminStorageResponse | null;
@@ -133,6 +158,9 @@ interface RoadmapRow {
   status: "now" | "next" | "later";
   outcome: string;
 }
+
+type EditableAdminSettings = AdminSettingsResponse["config"];
+type EditableNamespacePolicy = NamespacePolicy["policy"];
 
 const AVAILABLE_SCOPES = [
   "read",
@@ -464,7 +492,10 @@ const routeMetricColumns: ColumnDef<RouteMetric>[] = [
   },
 ];
 
-const namespaceColumns: ColumnDef<NamespaceListItem>[] = [
+const namespaceColumns = (
+  onEdit: (row: NamespaceListItem) => void,
+  editingNamespace: string | null,
+): ColumnDef<NamespaceListItem>[] => [
   {
     key: "namespace",
     header: "Namespace",
@@ -518,6 +549,21 @@ const namespaceColumns: ColumnDef<NamespaceListItem>[] = [
     header: "Updated",
     cell: (row) => (row.updated_at ? formatDateTime(row.updated_at) : "unknown"),
     sortValue: (row) => row.updated_at ?? "",
+  },
+  {
+    key: "actions",
+    header: "",
+    cell: (row) => (
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={() => onEdit(row)}
+        disabled={editingNamespace === row.namespace}
+      >
+        <Settings className="h-3 w-3" />
+        Edit
+      </Button>
+    ),
   },
 ];
 
@@ -611,6 +657,49 @@ function compactKey(namespacePattern: string, maxRevisions: string): string {
   return `${namespacePattern.trim() || "*"}::${Number.parseInt(maxRevisions, 10) || 10}`;
 }
 
+function emptyEditableSettings(): EditableAdminSettings {
+  return {
+    embedding_provider: "openai",
+    embedding_model: "text-embedding-3-large",
+    dedup_similarity_threshold: 0.85,
+    synthesis_provider: "",
+    synthesis_model: "",
+    synthesis_max_tokens: 0,
+    synthesis_temperature: 0,
+    synthesis_system_prompt: "",
+    synthesis_system_prompt_set: false,
+  };
+}
+
+function settingsDraftKey(config: EditableAdminSettings): string {
+  return JSON.stringify({
+    embedding_provider: config.embedding_provider,
+    embedding_model: config.embedding_model,
+    dedup_similarity_threshold: config.dedup_similarity_threshold,
+    synthesis_provider: config.synthesis_provider,
+    synthesis_model: config.synthesis_model,
+    synthesis_max_tokens: config.synthesis_max_tokens,
+    synthesis_temperature: config.synthesis_temperature,
+    synthesis_system_prompt: config.synthesis_system_prompt,
+  });
+}
+
+function buildNamespacePolicy(
+  tier: string,
+  retention: string,
+  maxRevisions: string,
+  maxBytes: string,
+): EditableNamespacePolicy {
+  const policy: EditableNamespacePolicy = {};
+  if (tier.trim()) policy.tier = tier.trim();
+  if (retention.trim()) policy.retention = retention.trim();
+  const revisions = Number.parseInt(maxRevisions, 10);
+  if (Number.isFinite(revisions) && revisions > 0) policy.max_revisions = revisions;
+  const bytes = Number.parseInt(maxBytes, 10);
+  if (Number.isFinite(bytes) && bytes > 0) policy.max_bytes_per_key = bytes;
+  return policy;
+}
+
 function AdminField({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
     <label
@@ -635,11 +724,26 @@ function AdminInput(props: ComponentProps<"input">) {
   );
 }
 
+function AdminTextarea(props: ComponentProps<"textarea">) {
+  return (
+    <textarea
+      {...props}
+      className={cn(
+        "min-h-28 min-w-0 border border-border bg-bg px-2.5 py-2 font-mono text-[12px] text-text outline-none transition-colors placeholder:text-text-subtle focus:border-border-strong",
+        props.className,
+      )}
+    />
+  );
+}
+
 export function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("setup");
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<LoadState>({
+    configBackups: null,
+    queueFailures: null,
     setup: null,
+    settings: null,
     queue: null,
     storage: null,
     health: null,
@@ -653,6 +757,19 @@ export function AdminPage() {
     errors: [],
   });
   const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<EditableAdminSettings>(emptyEditableSettings);
+  const [settingsPreview, setSettingsPreview] = useState<AdminSettingsMutationResponse | null>(null);
+  const [settingsPreviewKey, setSettingsPreviewKey] = useState<string | null>(null);
+  const [previewingSettings, setPreviewingSettings] = useState(false);
+  const [applyingSettings, setApplyingSettings] = useState(false);
+  const [creatingConfigBackup, setCreatingConfigBackup] = useState(false);
+  const [restoringConfigBackup, setRestoringConfigBackup] = useState<string | null>(null);
+  const [queueBackfillNamespace, setQueueBackfillNamespace] = useState("");
+  const [queueBackfillLimit, setQueueBackfillLimit] = useState("25");
+  const [queueBackfillResult, setQueueBackfillResult] = useState<AdminQueueBackfillResponse | null>(null);
+  const [queueRetryResult, setQueueRetryResult] = useState<AdminQueueRetryFailedResponse | null>(null);
+  const [runningQueueBackfill, setRunningQueueBackfill] = useState(false);
+  const [retryingQueueFailureID, setRetryingQueueFailureID] = useState<number | null>(null);
   const [namespaceName, setNamespaceName] = useState("");
   const [namespaceOwnerType, setNamespaceOwnerType] = useState("app");
   const [namespaceOwnerID, setNamespaceOwnerID] = useState("");
@@ -660,6 +777,11 @@ export function AdminPage() {
   const [namespaceRetention, setNamespaceRetention] = useState("");
   const [namespaceMaxRevisions, setNamespaceMaxRevisions] = useState("");
   const [namespaceMaxBytes, setNamespaceMaxBytes] = useState("");
+  const [namespacePreview, setNamespacePreview] = useState<AdminNamespacePreviewResponse | null>(null);
+  const [namespaceHistory, setNamespaceHistory] = useState<AdminNamespaceHistoryResponse | null>(null);
+  const [editingNamespace, setEditingNamespace] = useState<string | null>(null);
+  const [previewingNamespace, setPreviewingNamespace] = useState(false);
+  const [updatingNamespace, setUpdatingNamespace] = useState(false);
   const [registeringNamespace, setRegisteringNamespace] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [repairing, setRepairing] = useState(false);
@@ -693,7 +815,10 @@ export function AdminPage() {
 
     Promise.allSettled([
       getAdminSetup(),
+      getAdminSettings(),
+      getAdminConfigBackups(),
       getAdminQueue(),
+      getAdminQueueFailures(),
       getAdminStorage(),
       getHealth(),
       getMetrics(),
@@ -705,7 +830,10 @@ export function AdminPage() {
       .then(
         ([
           setupResult,
+          settingsResult,
+          backupsResult,
           queueResult,
+          queueFailuresResult,
           storageResult,
           healthResult,
           metricsResult,
@@ -716,8 +844,11 @@ export function AdminPage() {
         ]) => {
           if (cancelled) return;
           setState({
+            configBackups: isFulfilled(backupsResult) ? backupsResult.value : null,
+            settings: isFulfilled(settingsResult) ? settingsResult.value : null,
             setup: isFulfilled(setupResult) ? setupResult.value : null,
             queue: isFulfilled(queueResult) ? queueResult.value : null,
+            queueFailures: isFulfilled(queueFailuresResult) ? queueFailuresResult.value : null,
             storage: isFulfilled(storageResult) ? storageResult.value : null,
             health: isFulfilled(healthResult) ? healthResult.value : null,
             metrics: isFulfilled(metricsResult) ? metricsResult.value : null,
@@ -729,7 +860,10 @@ export function AdminPage() {
             consistency: isFulfilled(consistencyResult) ? consistencyResult.value : null,
             errors: [
               errorMessage("admin setup", setupResult),
+              errorMessage("admin settings", settingsResult),
+              errorMessage("admin config backups", backupsResult),
               errorMessage("admin queue", queueResult),
+              errorMessage("admin queue failures", queueFailuresResult),
               errorMessage("admin storage", storageResult),
               errorMessage("readiness", healthResult),
               errorMessage("metrics", metricsResult),
@@ -751,6 +885,33 @@ export function AdminPage() {
   }, []);
 
   useEffect(() => load(), [load]);
+
+  useEffect(() => {
+    if (!state.settings) return;
+    setSettingsDraft(state.settings.config);
+    setSettingsPreview(null);
+    setSettingsPreviewKey(null);
+  }, [state.settings]);
+
+  const refreshConfigBackups = useCallback(async () => {
+    const result = await getAdminConfigBackups();
+    setState((current) => ({
+      ...current,
+      configBackups: result,
+    }));
+  }, []);
+
+  const refreshQueueAdmin = useCallback(async () => {
+    const [queueResult, failuresResult] = await Promise.all([
+      getAdminQueue(),
+      getAdminQueueFailures(),
+    ]);
+    setState((current) => ({
+      ...current,
+      queue: queueResult,
+      queueFailures: failuresResult,
+    }));
+  }, []);
 
   const refreshNamespaceInventory = useCallback(async () => {
     const [namespacesResult, storageResult] = await Promise.all([
@@ -790,29 +951,304 @@ export function AdminPage() {
     }
   }, [state.auditNextCursor]);
 
+  const loadNamespaceEditor = useCallback(async (row: NamespaceListItem) => {
+    setEditingNamespace(row.namespace);
+    setNamespaceName(row.namespace);
+    setNamespaceOwnerType(row.owner_type);
+    setNamespaceOwnerID(row.owner_id);
+    setNamespaceTier(policyText(row.policy, "tier") || "");
+    setNamespaceRetention(policyText(row.policy, "retention") || "");
+    setNamespaceMaxRevisions(
+      policyNumber(row.policy, "max_revisions") > 0 ? String(policyNumber(row.policy, "max_revisions")) : "",
+    );
+    setNamespaceMaxBytes(
+      policyNumber(row.policy, "max_bytes_per_key") > 0
+        ? String(policyNumber(row.policy, "max_bytes_per_key"))
+        : "",
+    );
+    setNamespacePreview(null);
+    try {
+      const history = await getAdminNamespaceHistory(row.namespace);
+      setNamespaceHistory(history);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+    }
+  }, []);
+
+  const handlePreviewNamespace = useCallback(async () => {
+    if (!namespaceName.trim() || !namespaceOwnerID.trim()) return;
+    setPreviewingNamespace(true);
+    setWorkflowError(null);
+    try {
+      const result = await previewNamespacePolicy(
+        namespaceName.trim(),
+        namespaceOwnerType,
+        namespaceOwnerID.trim(),
+        buildNamespacePolicy(
+          namespaceTier,
+          namespaceRetention,
+          namespaceMaxRevisions,
+          namespaceMaxBytes,
+        ),
+      );
+      setNamespacePreview(result);
+      if (result.entry.namespace) {
+        const history = await getAdminNamespaceHistory(result.entry.namespace);
+        setNamespaceHistory(history);
+      }
+      toast.success(
+        result.changed_fields.length === 0
+          ? "No namespace policy changes detected"
+          : `Preview ready: ${result.changed_fields.length} field${result.changed_fields.length === 1 ? "" : "s"} changed`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Namespace preview failed: ${message}`);
+    } finally {
+      setPreviewingNamespace(false);
+    }
+  }, [
+    namespaceMaxBytes,
+    namespaceMaxRevisions,
+    namespaceName,
+    namespaceOwnerID,
+    namespaceOwnerType,
+    namespaceRetention,
+    namespaceTier,
+  ]);
+
+  const handleUpdateNamespace = useCallback(async () => {
+    if (!namespaceName.trim() || !namespaceOwnerID.trim()) return;
+    setUpdatingNamespace(true);
+    setWorkflowError(null);
+    try {
+      const result = await updateNamespacePolicy(
+        namespaceName.trim(),
+        namespaceOwnerType,
+        namespaceOwnerID.trim(),
+        buildNamespacePolicy(
+          namespaceTier,
+          namespaceRetention,
+          namespaceMaxRevisions,
+          namespaceMaxBytes,
+        ),
+      );
+      setNamespacePreview(result);
+      await refreshNamespaceInventory();
+      const history = await getAdminNamespaceHistory(namespaceName.trim());
+      setNamespaceHistory(history);
+      setEditingNamespace(namespaceName.trim());
+      toast.success(
+        result.exists
+          ? `Namespace "${namespaceName.trim()}" updated`
+          : `Namespace "${namespaceName.trim()}" registered`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Namespace save failed: ${message}`);
+    } finally {
+      setUpdatingNamespace(false);
+    }
+  }, [
+    namespaceMaxBytes,
+    namespaceMaxRevisions,
+    namespaceName,
+    namespaceOwnerID,
+    namespaceOwnerType,
+    namespaceRetention,
+    namespaceTier,
+    refreshNamespaceInventory,
+  ]);
+
+  const handlePreviewSettings = useCallback(async () => {
+    setPreviewingSettings(true);
+    setWorkflowError(null);
+    try {
+      const result = await previewAdminSettings({ config: settingsDraft });
+      setSettingsPreview(result);
+      setSettingsPreviewKey(settingsDraftKey(settingsDraft));
+      toast.success(
+        result.changed_fields.length === 0
+          ? "No config changes detected"
+          : `Preview ready: ${result.changed_fields.length} field${result.changed_fields.length === 1 ? "" : "s"} changed`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Settings preview failed: ${message}`);
+    } finally {
+      setPreviewingSettings(false);
+    }
+  }, [settingsDraft]);
+
+  const handleApplySettings = useCallback(async () => {
+    const currentKey = settingsDraftKey(settingsDraft);
+    if (settingsPreviewKey !== currentKey) {
+      setWorkflowError("Run a matching settings preview before applying.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Apply these config changes to config.yaml? Provider and runtime changes require a daemon restart.",
+      )
+    ) {
+      return;
+    }
+    setApplyingSettings(true);
+    setWorkflowError(null);
+    try {
+      const result = await applyAdminSettings({ config: settingsDraft });
+      setSettingsPreview(result);
+      setSettingsPreviewKey(currentKey)
+      setState((current) =>
+        current.settings
+          ? {
+              ...current,
+              settings: {
+                ...current.settings,
+                config_file: result.config_file,
+                config: result.config,
+                providers: result.providers,
+              },
+            }
+          : current,
+      );
+      await refreshConfigBackups();
+      toast.success("Config saved to config.yaml. Restart the daemon to apply provider/runtime changes.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Settings apply failed: ${message}`);
+    } finally {
+      setApplyingSettings(false);
+    }
+  }, [refreshConfigBackups, settingsDraft, settingsPreviewKey]);
+
+  const handleCreateConfigBackup = useCallback(async () => {
+    setCreatingConfigBackup(true);
+    setWorkflowError(null);
+    try {
+      const result = await createAdminConfigBackup();
+      await refreshConfigBackups();
+      toast.success(`Created config backup ${result.backup.name}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Config backup failed: ${message}`);
+    } finally {
+      setCreatingConfigBackup(false);
+    }
+  }, [refreshConfigBackups]);
+
+  const handleRestoreConfigBackup = useCallback(
+    async (backup: AdminConfigBackupInfo) => {
+      if (
+        !window.confirm(
+          `Restore config from "${backup.name}"? A pre-restore safety backup will be created and a daemon restart will still be required.`,
+        )
+      ) {
+        return;
+      }
+      setRestoringConfigBackup(backup.path);
+      setWorkflowError(null);
+      try {
+        const result = await restoreAdminConfigBackup(backup.path);
+        setState((current) =>
+          current.settings
+            ? {
+                ...current,
+                settings: {
+                  ...current.settings,
+                  config_file: result.config_file,
+                  config: result.config,
+                  providers: result.providers,
+                },
+              }
+            : current,
+        );
+        setSettingsDraft(result.config);
+        setSettingsPreview(null);
+        setSettingsPreviewKey(null);
+        await refreshConfigBackups();
+        toast.success(
+          `Restored ${backup.name}. Restart the daemon to apply provider/runtime changes.`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setWorkflowError(message);
+        toast.error(`Config restore failed: ${message}`);
+      } finally {
+        setRestoringConfigBackup(null);
+      }
+    },
+    [refreshConfigBackups],
+  );
+
+  const handleRetryQueueFailure = useCallback(
+    async (failure: AdminQueueFailureInfo) => {
+      setRetryingQueueFailureID(failure.id);
+      setWorkflowError(null);
+      try {
+        const result = await retryAdminQueueFailed(failure.id);
+        setQueueRetryResult(result);
+        await refreshQueueAdmin();
+        toast.success(`Retried ${result.retried} failed queue job${result.retried === 1 ? "" : "s"}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setWorkflowError(message);
+        toast.error(`Queue retry failed: ${message}`);
+      } finally {
+        setRetryingQueueFailureID(null);
+      }
+    },
+    [refreshQueueAdmin],
+  );
+
+  const handleQueueBackfill = useCallback(async () => {
+    setRunningQueueBackfill(true);
+    setWorkflowError(null);
+    try {
+      const result = await backfillAdminQueue({
+        ...(queueBackfillNamespace.trim()
+          ? { namespace: queueBackfillNamespace.trim() }
+          : {}),
+        limit: Number.parseInt(queueBackfillLimit, 10) || 0,
+      });
+      setQueueBackfillResult(result);
+      await refreshQueueAdmin();
+      toast.success(`Queued ${result.queued} embedding backfill job${result.queued === 1 ? "" : "s"}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setWorkflowError(message);
+      toast.error(`Queue backfill failed: ${message}`);
+    } finally {
+      setRunningQueueBackfill(false);
+    }
+  }, [queueBackfillLimit, queueBackfillNamespace, refreshQueueAdmin]);
+
   const handleRegisterNamespace = useCallback(async () => {
     if (!namespaceName.trim() || !namespaceOwnerID.trim()) return;
     setRegisteringNamespace(true);
     setWorkflowError(null);
     try {
-      const policy: NamespacePolicy["policy"] = {};
-      if (namespaceTier.trim()) policy.tier = namespaceTier.trim();
-      if (namespaceRetention.trim()) policy.retention = namespaceRetention.trim();
-      const maxRevisions = Number.parseInt(namespaceMaxRevisions, 10);
-      if (Number.isFinite(maxRevisions) && maxRevisions > 0) {
-        policy.max_revisions = maxRevisions;
-      }
-      const maxBytes = Number.parseInt(namespaceMaxBytes, 10);
-      if (Number.isFinite(maxBytes) && maxBytes > 0) {
-        policy.max_bytes_per_key = maxBytes;
-      }
       await registerNamespace(
         namespaceName.trim(),
         namespaceOwnerType,
         namespaceOwnerID.trim(),
-        policy,
+        buildNamespacePolicy(
+          namespaceTier,
+          namespaceRetention,
+          namespaceMaxRevisions,
+          namespaceMaxBytes,
+        ),
       );
       await refreshNamespaceInventory();
+      setNamespacePreview(null);
+      setNamespaceHistory(null);
+      setEditingNamespace(null);
       setNamespaceName("");
       setNamespaceOwnerID("");
       setNamespaceTier("");
@@ -1140,9 +1576,9 @@ export function AdminPage() {
     {
       key: "setup",
       area: "Setup",
-      surface: "/v1/admin/setup",
+      surface: "/v1/admin/settings + preview/apply",
       state: "ready",
-      next: "Add edit/apply flows once config write contracts are defined.",
+      next: "Config tab now previews and writes provider/dedup/synthesis settings; next add backups and runtime restart flow.",
     },
     {
       key: "queues",
@@ -1257,7 +1693,8 @@ export function AdminPage() {
       summary={<SummaryCards cards={summaryCards} />}
       filters={
         <p className="shrink-0 border-b border-border-strong bg-bg px-4 py-1.5 text-[11px] text-text-subtle">
-          {state.setup?.paths.find((path) => path.label === "config-file")?.path ??
+          {state.settings?.config_file ??
+            state.setup?.paths.find((path) => path.label === "config-file")?.path ??
             state.health?.db_path ??
             "Loading admin preflight..."}
         </p>
@@ -1304,11 +1741,13 @@ export function AdminPage() {
               <SettingsField label="DB path">
                 <CopyableId
                   id={
+                    state.settings?.paths.find((path) => path.label === "main-db")?.path ??
                     state.setup?.paths.find((path) => path.label === "main-db")?.path ??
                     state.health?.db_path ??
                     "unknown"
                   }
                   label={
+                    state.settings?.paths.find((path) => path.label === "main-db")?.path ??
                     state.setup?.paths.find((path) => path.label === "main-db")?.path ??
                     state.health?.db_path ??
                     "unknown"
@@ -1318,11 +1757,13 @@ export function AdminPage() {
               <SettingsField label="Records dir">
                 <CopyableId
                   id={
+                    state.settings?.paths.find((path) => path.label === "records")?.path ??
                     state.setup?.paths.find((path) => path.label === "records")?.path ??
                     state.health?.records_dir ??
                     "unknown"
                   }
                   label={
+                    state.settings?.paths.find((path) => path.label === "records")?.path ??
                     state.setup?.paths.find((path) => path.label === "records")?.path ??
                     state.health?.records_dir ??
                     "unknown"
@@ -1352,7 +1793,9 @@ export function AdminPage() {
                   ? `${state.storage.namespace_policy.with_retention} retention, ${state.storage.namespace_policy.with_max_revisions} revision caps, ${state.storage.namespace_policy.without_policy_limits} without limits`
                   : "unknown"}
               </SettingsField>
-              <SettingsField label="Auth mode">{state.setup?.auth.mode ?? "unknown"}</SettingsField>
+              <SettingsField label="Auth mode">
+                {state.settings?.auth.mode ?? state.setup?.auth.mode ?? "unknown"}
+              </SettingsField>
             </SettingsGrid>
           </SettingsPanel>
 
@@ -1389,23 +1832,23 @@ export function AdminPage() {
           <SettingsPanel title="Runtime" icon={<ServerCog className="h-3.5 w-3.5" />}>
             <SettingsGrid>
               <SettingsField label="Metrics">
-                <Pill tone={state.setup?.runtime.metrics_enabled ? "success" : "warning"}>
-                  {state.setup?.runtime.metrics_enabled ? "enabled" : "not available"}
+                <Pill tone={state.settings?.runtime.metrics_enabled ? "success" : "warning"}>
+                  {state.settings?.runtime.metrics_enabled ? "enabled" : "not available"}
                 </Pill>
               </SettingsField>
               <SettingsField label="Request logging">
-                {state.setup
-                  ? `${state.setup.runtime.request_logging_enabled ? "enabled" : "disabled"} (${state.setup.runtime.request_log_mode})`
+                {state.settings
+                  ? `${state.settings.runtime.request_logging_enabled ? "enabled" : "disabled"} (${state.settings.runtime.request_log_mode})`
                   : "unknown"}
               </SettingsField>
               <SettingsField label="Memory store">
-                <Pill tone={state.setup?.runtime.memory_store_enabled ? "success" : "warning"}>
-                  {state.setup?.runtime.memory_store_enabled ? "enabled" : "unavailable"}
+                <Pill tone={state.settings?.runtime.memory_store_enabled ? "success" : "warning"}>
+                  {state.settings?.runtime.memory_store_enabled ? "enabled" : "unavailable"}
                 </Pill>
               </SettingsField>
               <SettingsField label="Knowledge store">
-                <Pill tone={state.setup?.runtime.knowledge_store_enabled ? "success" : "warning"}>
-                  {state.setup?.runtime.knowledge_store_enabled ? "enabled" : "unavailable"}
+                <Pill tone={state.settings?.runtime.knowledge_store_enabled ? "success" : "warning"}>
+                  {state.settings?.runtime.knowledge_store_enabled ? "enabled" : "unavailable"}
                 </Pill>
               </SettingsField>
               <SettingsField label="Route count">
@@ -1415,27 +1858,338 @@ export function AdminPage() {
                 {state.metrics?.totals.errors ?? "unknown"}
               </SettingsField>
               <SettingsField label="Embedding">
-                {state.setup
-                  ? `${state.setup.config.embedding_provider || "default"} / ${state.setup.config.embedding_model}`
+                {state.settings
+                  ? `${state.settings.config.embedding_provider || "default"} / ${state.settings.config.embedding_model}`
                   : "unknown"}
               </SettingsField>
               <SettingsField label="Dedup threshold">
-                {state.setup?.config.dedup_similarity_threshold ?? "unknown"}
+                {state.settings?.config.dedup_similarity_threshold ?? "unknown"}
               </SettingsField>
               <SettingsField label="Synthesis">
-                {state.setup?.runtime.synthesis_enabled
-                  ? `${state.setup.config.synthesis_provider} / ${state.setup.config.synthesis_model}`
+                {state.settings?.runtime.synthesis_enabled
+                  ? `${state.settings.config.synthesis_provider} / ${state.settings.config.synthesis_model}`
                   : "disabled"}
               </SettingsField>
               <SettingsField label="Queue DB">
                 <CopyableId
                   id={
-                    state.setup?.paths.find((path) => path.label === "queue-db")?.path ?? "unknown"
+                    state.settings?.paths.find((path) => path.label === "queue-db")?.path ??
+                    "unknown"
                   }
                   label={
-                    state.setup?.paths.find((path) => path.label === "queue-db")?.path ?? "unknown"
+                    state.settings?.paths.find((path) => path.label === "queue-db")?.path ??
+                    "unknown"
                   }
                 />
+              </SettingsField>
+              <SettingsField label="Web UI embedded">
+                <Pill tone={state.settings?.runtime.webui_embedded ? "success" : "warning"}>
+                  {state.settings?.runtime.webui_embedded ? "yes" : "no"}
+                </Pill>
+              </SettingsField>
+            </SettingsGrid>
+          </SettingsPanel>
+
+          <SettingsPanel title="Editable Settings" icon={<FileSliders className="h-3.5 w-3.5" />}>
+            <div className="grid gap-3 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <AdminField id="admin-settings-embedding-provider" label="Embedding Provider">
+                  <AdminInput
+                    id="admin-settings-embedding-provider"
+                    value={settingsDraft.embedding_provider}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        embedding_provider: event.target.value,
+                      }))
+                    }
+                    placeholder="openai"
+                  />
+                </AdminField>
+                <AdminField id="admin-settings-embedding-model" label="Embedding Model">
+                  <AdminInput
+                    id="admin-settings-embedding-model"
+                    value={settingsDraft.embedding_model}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        embedding_model: event.target.value,
+                      }))
+                    }
+                    placeholder="text-embedding-3-large"
+                  />
+                </AdminField>
+                <AdminField id="admin-settings-dedup" label="Dedup Threshold">
+                  <AdminInput
+                    id="admin-settings-dedup"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={String(settingsDraft.dedup_similarity_threshold)}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        dedup_similarity_threshold:
+                          Number.parseFloat(event.target.value) || 0,
+                      }))
+                    }
+                    placeholder="0.85"
+                  />
+                </AdminField>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <AdminField id="admin-settings-synthesis-provider" label="Synthesis Provider">
+                  <AdminInput
+                    id="admin-settings-synthesis-provider"
+                    value={settingsDraft.synthesis_provider}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        synthesis_provider: event.target.value,
+                      }))
+                    }
+                    placeholder="openai or anthropic"
+                  />
+                </AdminField>
+                <AdminField id="admin-settings-synthesis-model" label="Synthesis Model">
+                  <AdminInput
+                    id="admin-settings-synthesis-model"
+                    value={settingsDraft.synthesis_model}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        synthesis_model: event.target.value,
+                      }))
+                    }
+                    placeholder="gpt-4.1-mini"
+                  />
+                </AdminField>
+                <AdminField id="admin-settings-synthesis-max" label="Synthesis Max Tokens">
+                  <AdminInput
+                    id="admin-settings-synthesis-max"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={String(settingsDraft.synthesis_max_tokens)}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        synthesis_max_tokens: Number.parseInt(event.target.value, 10) || 0,
+                      }))
+                    }
+                    placeholder="1024"
+                  />
+                </AdminField>
+                <AdminField id="admin-settings-synthesis-temp" label="Synthesis Temperature">
+                  <AdminInput
+                    id="admin-settings-synthesis-temp"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={String(settingsDraft.synthesis_temperature)}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        synthesis_temperature: Number.parseFloat(event.target.value) || 0,
+                      }))
+                    }
+                    placeholder="0.2"
+                  />
+                </AdminField>
+              </div>
+
+              <AdminField id="admin-settings-synthesis-prompt" label="Synthesis System Prompt">
+                <AdminTextarea
+                  id="admin-settings-synthesis-prompt"
+                  value={settingsDraft.synthesis_system_prompt}
+                  onChange={(event) =>
+                    setSettingsDraft((current) => ({
+                      ...current,
+                      synthesis_system_prompt: event.target.value,
+                      synthesis_system_prompt_set: event.target.value.trim().length > 0,
+                    }))
+                  }
+                  placeholder="Use only supplied sources and cite claims."
+                />
+              </AdminField>
+
+              <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreviewSettings}
+                  disabled={previewingSettings}
+                >
+                  <Search className={cn("h-3.5 w-3.5", previewingSettings && "animate-pulse")} />
+                  Preview Changes
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplySettings}
+                  disabled={applyingSettings || settingsPreviewKey !== settingsDraftKey(settingsDraft)}
+                >
+                  <Check className={cn("h-3.5 w-3.5", applyingSettings && "animate-pulse")} />
+                  Apply To Config
+                </Button>
+                <Pill tone="neutral">
+                  {state.settings?.config_file || state.settings?.paths.find((path) => path.label === "config-file")?.path || "config.yaml"}
+                </Pill>
+              </div>
+
+              {settingsPreview && (
+                <SettingsGrid>
+                  <SettingsField label="Changed fields">
+                    {settingsPreview.changed_fields.length > 0
+                      ? settingsPreview.changed_fields.join(", ")
+                      : "none"}
+                  </SettingsField>
+                  <SettingsField label="Restart required">
+                    <Pill tone={settingsPreview.restart_required ? "warning" : "success"}>
+                      {settingsPreview.restart_required ? "yes" : "no"}
+                    </Pill>
+                  </SettingsField>
+                  <SettingsField label="Warnings">
+                    {settingsPreview.warnings.length > 0
+                      ? settingsPreview.warnings.join(" ")
+                      : "none"}
+                  </SettingsField>
+                  <SettingsField label="Preview target">
+                    <CopyableId id={settingsPreview.config_file} label={settingsPreview.config_file} />
+                  </SettingsField>
+                </SettingsGrid>
+              )}
+            </div>
+          </SettingsPanel>
+
+          <SettingsPanel title="Config Backups" icon={<Archive className="h-3.5 w-3.5" />}>
+            <div className="grid gap-3 px-4 py-3">
+              <SettingsGrid>
+                <SettingsField label="Backup dir">
+                  <CopyableId
+                    id={state.configBackups?.backup_dir || "unknown"}
+                    label={state.configBackups?.backup_dir || "unknown"}
+                  />
+                </SettingsField>
+                <SettingsField label="Snapshots">
+                  {state.configBackups?.items.length ?? 0}
+                </SettingsField>
+              </SettingsGrid>
+
+              <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreateConfigBackup}
+                  disabled={creatingConfigBackup}
+                >
+                  <Archive className={cn("h-3.5 w-3.5", creatingConfigBackup && "animate-pulse")} />
+                  Create Backup
+                </Button>
+              </div>
+
+              {state.configBackups?.items.length ? (
+                <div className="grid gap-2">
+                  {state.configBackups.items.map((backup) => (
+                    <div
+                      key={backup.path}
+                      className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-[12px] text-text">{backup.name}</div>
+                        <div className="text-[11px] text-text-soft">
+                          {formatDateTime(backup.created_at)} · {formatBytes(backup.size)} · {backup.source}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => handleRestoreConfigBackup(backup)}
+                          disabled={restoringConfigBackup === backup.path}
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "h-3 w-3",
+                              restoringConfigBackup === backup.path && "animate-pulse",
+                            )}
+                          />
+                          Restore
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  variant="empty"
+                  title="No config backups"
+                  description="Create a snapshot before larger provider or runtime changes."
+                />
+              )}
+            </div>
+          </SettingsPanel>
+
+          <SettingsPanel title="Provider Readiness" icon={<Settings className="h-3.5 w-3.5" />}>
+            <SettingsGrid>
+              <SettingsField label="Embedding provider">
+                {settingsPreview?.providers.embedding.provider ||
+                  state.settings?.providers.embedding.provider ||
+                  "unconfigured"}
+              </SettingsField>
+              <SettingsField label="Embedding env">
+                {(settingsPreview?.providers.embedding.env_var ||
+                  state.settings?.providers.embedding.env_var)
+                  ? `${settingsPreview?.providers.embedding.env_var || state.settings?.providers.embedding.env_var}: ${(settingsPreview?.providers.embedding.env_present ?? state.settings?.providers.embedding.env_present) ? "present" : "missing"}`
+                  : settingsPreview?.providers.embedding.reason ||
+                    state.settings?.providers.embedding.reason ||
+                    "n/a"}
+              </SettingsField>
+              <SettingsField label="Embedding availability">
+                <Pill
+                  tone={
+                    (settingsPreview?.providers.embedding.available ??
+                      state.settings?.providers.embedding.available)
+                      ? "success"
+                      : "warning"
+                  }
+                >
+                  {(settingsPreview?.providers.embedding.available ??
+                    state.settings?.providers.embedding.available)
+                    ? "available"
+                    : "not ready"}
+                </Pill>
+              </SettingsField>
+              <SettingsField label="Synthesis provider">
+                {settingsPreview?.providers.synthesis.provider ||
+                  state.settings?.providers.synthesis.provider ||
+                  "unconfigured"}
+              </SettingsField>
+              <SettingsField label="Synthesis env">
+                {(settingsPreview?.providers.synthesis.env_var ||
+                  state.settings?.providers.synthesis.env_var)
+                  ? `${settingsPreview?.providers.synthesis.env_var || state.settings?.providers.synthesis.env_var}: ${(settingsPreview?.providers.synthesis.env_present ?? state.settings?.providers.synthesis.env_present) ? "present" : "missing"}`
+                  : settingsPreview?.providers.synthesis.reason ||
+                    state.settings?.providers.synthesis.reason ||
+                    "n/a"}
+              </SettingsField>
+              <SettingsField label="Synthesis availability">
+                <Pill
+                  tone={
+                    (settingsPreview?.providers.synthesis.available ??
+                      state.settings?.providers.synthesis.available)
+                      ? "success"
+                      : "warning"
+                  }
+                >
+                  {(settingsPreview?.providers.synthesis.available ??
+                    state.settings?.providers.synthesis.available)
+                    ? "available"
+                    : "not ready"}
+                </Pill>
               </SettingsField>
             </SettingsGrid>
           </SettingsPanel>
@@ -1481,6 +2235,98 @@ export function AdminPage() {
                   : "none"}
               </SettingsField>
             </SettingsGrid>
+          </SettingsPanel>
+
+          <SettingsPanel title="Queue Controls" icon={<RefreshCw className="h-3.5 w-3.5" />}>
+            <div className="grid gap-3 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto]">
+                <AdminField id="admin-queue-backfill-namespace" label="Backfill Namespace">
+                  <AdminInput
+                    id="admin-queue-backfill-namespace"
+                    value={queueBackfillNamespace}
+                    onChange={(event) => setQueueBackfillNamespace(event.target.value)}
+                    placeholder="app/demo"
+                  />
+                </AdminField>
+                <AdminField id="admin-queue-backfill-limit" label="Backfill Limit">
+                  <AdminInput
+                    id="admin-queue-backfill-limit"
+                    type="number"
+                    min="0"
+                    value={queueBackfillLimit}
+                    onChange={(event) => setQueueBackfillLimit(event.target.value)}
+                    placeholder="25"
+                  />
+                </AdminField>
+                <div className="flex items-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleQueueBackfill}
+                    disabled={runningQueueBackfill}
+                  >
+                    <Archive className={cn("h-3.5 w-3.5", runningQueueBackfill && "animate-pulse")} />
+                    Queue Backfill
+                  </Button>
+                </div>
+              </div>
+
+              {(queueBackfillResult || queueRetryResult) && (
+                <SettingsGrid className="border-t border-border px-0 pt-3">
+                  <SettingsField label="Backfill queued">
+                    {queueBackfillResult?.queued ?? "none"}
+                  </SettingsField>
+                  <SettingsField label="Retry result">
+                    {queueRetryResult?.retried ?? "none"}
+                  </SettingsField>
+                </SettingsGrid>
+              )}
+            </div>
+          </SettingsPanel>
+
+          <SettingsPanel title="Queue Failures" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
+            <div className="grid gap-2 px-4 py-3">
+              {state.queueFailures?.items.length ? (
+                state.queueFailures.items.map((failure) => (
+                  <div
+                    key={failure.id}
+                    className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-mono text-[12px] text-text">
+                        #{failure.id} {failure.type}
+                      </div>
+                      <div className="text-[11px] text-text-soft">
+                        {formatDateTime(failure.failed_at)} · attempts {failure.attempts}
+                      </div>
+                      <div className="text-[11px] text-text-soft">{failure.error}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => handleRetryQueueFailure(failure)}
+                        disabled={retryingQueueFailureID === failure.id}
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "h-3 w-3",
+                            retryingQueueFailureID === failure.id && "animate-pulse",
+                          )}
+                        />
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState
+                  variant="empty"
+                  title="No failed queue jobs"
+                  description="Failed embed jobs will appear here for retry."
+                />
+              )}
+            </div>
           </SettingsPanel>
 
           {topRoutes.length > 0 && (
@@ -1773,7 +2619,10 @@ export function AdminPage() {
             </SettingsPanel>
           )}
 
-          <SettingsPanel title="Register Namespace" icon={<Tags className="h-3.5 w-3.5" />}>
+          <SettingsPanel
+            title={editingNamespace ? "Edit Namespace Policy" : "Register Namespace"}
+            icon={<Tags className="h-3.5 w-3.5" />}
+          >
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)]">
                 <AdminField id="admin-namespace-name" label="Namespace">
@@ -1859,6 +2708,15 @@ export function AdminPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handlePreviewNamespace}
+                  disabled={previewingNamespace || !namespaceName.trim() || !namespaceOwnerID.trim()}
+                >
+                  <Search className={cn("h-3.5 w-3.5", previewingNamespace && "animate-pulse")} />
+                  Preview Policy
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleRegisterNamespace}
                   disabled={
                     registeringNamespace || !namespaceName.trim() || !namespaceOwnerID.trim()
@@ -1867,14 +2725,91 @@ export function AdminPage() {
                   <Tags className={cn("h-3.5 w-3.5", registeringNamespace && "animate-pulse")} />
                   Register Namespace
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUpdateNamespace}
+                  disabled={updatingNamespace || !namespaceName.trim() || !namespaceOwnerID.trim()}
+                >
+                  <Settings className={cn("h-3.5 w-3.5", updatingNamespace && "animate-pulse")} />
+                  Save Policy
+                </Button>
+                {editingNamespace && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingNamespace(null);
+                      setNamespacePreview(null);
+                      setNamespaceHistory(null);
+                      setNamespaceName("");
+                      setNamespaceOwnerType("app");
+                      setNamespaceOwnerID("");
+                      setNamespaceTier("");
+                      setNamespaceRetention("");
+                      setNamespaceMaxRevisions("");
+                      setNamespaceMaxBytes("");
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
                 <Pill tone="neutral">{state.namespaces.length} registered</Pill>
               </div>
+
+              {namespacePreview && (
+                <SettingsGrid className="border-t border-border px-0 pt-3">
+                  <SettingsField label="Mode">
+                    <Pill tone={namespacePreview.exists ? "warning" : "success"}>
+                      {namespacePreview.exists ? "update" : "new"}
+                    </Pill>
+                  </SettingsField>
+                  <SettingsField label="Changed fields">
+                    {namespacePreview.changed_fields.length
+                      ? namespacePreview.changed_fields.join(", ")
+                      : "none"}
+                  </SettingsField>
+                  <SettingsField label="Warnings">
+                    {namespacePreview.warnings.length
+                      ? namespacePreview.warnings.join(" ")
+                      : "none"}
+                  </SettingsField>
+                </SettingsGrid>
+              )}
             </div>
           </SettingsPanel>
 
+          {namespaceHistory && (
+            <SettingsPanel title="Policy History" icon={<ScrollText className="h-3.5 w-3.5" />}>
+              <div className="grid gap-2 px-4 py-3">
+                {namespaceHistory.items.length ? (
+                  namespaceHistory.items.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-[12px] text-text">{event.event_type}</div>
+                        <div className="text-[11px] text-text-soft">
+                          {formatDateTime(event.created_at)} · {event.actor || "system"}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    variant="empty"
+                    title="No policy history"
+                    description="Namespace register and update events will appear here."
+                  />
+                )}
+              </div>
+            </SettingsPanel>
+          )}
+
           <DataTable
             items={state.namespaces}
-            columns={namespaceColumns}
+            columns={namespaceColumns(loadNamespaceEditor, editingNamespace)}
             getRowId={(row) => row.namespace}
             initialSort={{ key: "namespace", dir: "asc" }}
             scrollRootRef={scrollRef}

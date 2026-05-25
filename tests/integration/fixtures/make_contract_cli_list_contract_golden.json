@@ -3,8 +3,6 @@
     "context contract list --output table",
     "SUITE",
     "api",
-    "api-errors",
-    "runlog-helper",
-    "agents-boot-check"
+    "api-errors"
   ]
 }

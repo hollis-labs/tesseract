@@ -4,7 +4,7 @@
 // without updating the shared catalog — that's the durable guardrail against
 // MCP↔HTTP drift called out in SPR-20260415-mcp-parity-access-s1 task 007.
 //
-// The catalog is the single source of truth for "what Vanta exposes."
+// The catalog is the single source of truth for "what Tesseract exposes."
 // Adding a new tool or route without a matching entry is the signal to
 // consciously decide whether it belongs on both surfaces or is one-sided
 // by design; either way, the reason gets documented here.
@@ -37,7 +37,7 @@ type parityOp struct {
 	Waiver     string // non-empty reason when MCP or HTTP is intentionally empty
 }
 
-// surfaceCatalog lists every tool + route Vanta exposes. Keep sorted by MCP
+// surfaceCatalog lists every tool + route Tesseract exposes. Keep sorted by MCP
 // name, then HTTPPath, to minimize merge churn.
 //
 // Waiver rules:
@@ -93,10 +93,10 @@ var surfaceCatalog = []parityOp{
 	{MCP: "knowledge_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/knowledge/write"},
 
 	// ── Unified lookup ─────────────────────────────────────────────────
-	{MCP: "conduit_lookup", HTTPMethod: http.MethodPost, HTTPPath: "/v1/conduit/lookup"},
+	{MCP: "tesseract_lookup", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
 
 	// ── Meta (orientation / discovery) ─────────────────────────────────
-	{MCP: "vanta_skills", Waiver: "MCP-only: progressive-discovery meta-tool; serves embedded skill MDs"},
+	{MCP: "tesseract_skills", Waiver: "MCP-only: progressive-discovery meta-tool; serves embedded skill MDs"},
 
 	// ── HTTP-only (infra, admin, security boundary, batch-2) ───────────
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/metrics", Waiver: "HTTP-only: Prometheus-style scrape endpoint"},
@@ -136,7 +136,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/create"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/revoke"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
-	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/conduit/lookup"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/bulk-ingest"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/consistency/repair"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/estimate"},

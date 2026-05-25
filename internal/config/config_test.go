@@ -67,3 +67,46 @@ dedup:
 		t.Errorf("threshold: got %f, want 0.70", cfg.Dedup.SimilarityThreshold)
 	}
 }
+
+func TestSave_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "config.yaml")
+	want := config.Config{
+		Embedding: config.EmbeddingConfig{
+			Provider: "openai",
+			Model:    "text-embedding-3-small",
+		},
+		Dedup: config.DedupConfig{
+			SimilarityThreshold: 0.92,
+		},
+		Synthesis: config.SynthesisConfig{
+			Provider:     "anthropic",
+			Model:        "claude-sonnet-4-5",
+			MaxTokens:    2048,
+			Temperature:  0.3,
+			SystemPrompt: "Answer with citations.",
+		},
+	}
+
+	if err := config.Save(path, want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Embedding.Provider != want.Embedding.Provider || got.Embedding.Model != want.Embedding.Model {
+		t.Fatalf("embedding mismatch: got %+v want %+v", got.Embedding, want.Embedding)
+	}
+	if got.Dedup.SimilarityThreshold != want.Dedup.SimilarityThreshold {
+		t.Fatalf("dedup mismatch: got %+v want %+v", got.Dedup, want.Dedup)
+	}
+	if got.Synthesis.Provider != want.Synthesis.Provider ||
+		got.Synthesis.Model != want.Synthesis.Model ||
+		got.Synthesis.MaxTokens != want.Synthesis.MaxTokens ||
+		got.Synthesis.Temperature != want.Synthesis.Temperature ||
+		got.Synthesis.SystemPrompt != want.Synthesis.SystemPrompt {
+		t.Fatalf("synthesis mismatch: got %+v want %+v", got.Synthesis, want.Synthesis)
+	}
+}

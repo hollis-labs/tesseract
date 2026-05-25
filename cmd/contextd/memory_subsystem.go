@@ -12,7 +12,7 @@ import (
 	"github.com/hollis-labs/go-apppaths/paths"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-queue/driver/sqlite"
-	conduit "github.com/hollis-labs/tesseract"
+	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -41,10 +41,10 @@ func (m *memorySubsystem) Close() error {
 // handler, and decay job. Shared by the MCP stdio entry point and the HTTP
 // serve entry point so both expose the same behavior.
 //
-// Returns nil subsystem when conduit configuration cannot produce an
+// Returns nil subsystem when tesseract configuration cannot produce an
 // embedder AND no queue is strictly required — but we always wire the
 // queue so the embed path is consistent.
-func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, conduitCfg config.Config) (*memorySubsystem, error) {
+func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
 	// queue.db is STATE (the embed-job queue), so it lands under the
 	// go-apppaths StateDir alongside records/ — not under DataDir with the
 	// main DB. CW-20260517-0066.
@@ -65,14 +65,14 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		return nil, fmt.Errorf("init queue driver: %w", err)
 	}
 
-	queueAdapter := memory.NewQueueAdapter(q, "conduit")
+	queueAdapter := memory.NewQueueAdapter(q, "tesseract")
 
-	embedder := createEmbedder(conduitCfg)
+	embedder := createEmbedder(tesseractCfg)
 	memStore := memory.NewStore(
 		store.DB(),
 		embedder,
-		conduitCfg.Embedding.Model,
-		conduitCfg.Dedup.SimilarityThreshold,
+		tesseractCfg.Embedding.Model,
+		tesseractCfg.Dedup.SimilarityThreshold,
 		queueAdapter,
 	)
 	memStore.SetAuditSink(store)
@@ -87,20 +87,20 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 	}
 
 	worker := queue.NewWorker(q, queue.WorkerOpts{
-		Queues:     []string{"conduit"},
+		Queues:     []string{"tesseract"},
 		MaxTries:   3,
 		RetryAfter: 30 * time.Second,
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
 	})
-	worker.Register("embed", conduit.NewEmbedHandler(memStore, conduitCfg.Embedding.Model, log.Printf))
+	worker.Register("embed", tesseract.NewEmbedHandler(memStore, tesseractCfg.Embedding.Model, log.Printf))
 	go worker.Start(ctx)
 
 	decayInterval := 1 * time.Hour
-	if v := os.Getenv("CONDUIT_MEMORY_DECAY_INTERVAL"); v != "" {
+	if v := os.Getenv("TESSERACT_MEMORY_DECAY_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			decayInterval = d
 		} else if stderr != nil {
-			_, _ = stderr.WriteString("warning: invalid CONDUIT_MEMORY_DECAY_INTERVAL, using default 1h\n")
+			_, _ = stderr.WriteString("warning: invalid TESSERACT_MEMORY_DECAY_INTERVAL, using default 1h\n")
 		}
 	}
 	decayJob := &memory.DecayJob{

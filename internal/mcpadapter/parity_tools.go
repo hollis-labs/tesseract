@@ -17,12 +17,12 @@ import (
 // KnowledgeStore is present) knowledge_get + knowledge_history.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_estimate",
-		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),
 	), a.handleContextEstimate)
 
 	a.addTool(s, mcp.NewTool("views_evaluate",
-		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector")),
 		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false)")),
 		mcp.WithNumber("limit", mcp.Description("Override selector.limit (0 = use selector or default)")),
@@ -37,7 +37,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 					"• **Use this when:** a recall or history result referenced a revision_id and you want the full content.\n"+
 					"• **Don't use this for:** resolving by (namespace, memory_key) — use `memory_get`.\n"+
 					"• **Side effect:** reinforces the parent memory's activation/access_count — a deliberate read counts as use.\n"+
-					"• **Deeper:** `vanta_skills revisions`.",
+					"• **Deeper:** `tesseract_skills revisions`.",
 			),
 			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
 			mcp.WithReadOnlyHintAnnotation(true),
@@ -54,8 +54,8 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 					"• **Kind of content:** the latest non-deprecated knowledge revision for this entry.\n"+
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** you know the key and want the current pointer + summary + body.\n"+
-					"• **Don't use this for:** full history (`knowledge_history`), cross-entry search (`conduit_lookup`).\n"+
-					"• **Deeper:** `vanta_skills knowledge`.",
+					"• **Don't use this for:** full history (`knowledge_history`), cross-entry search (`tesseract_lookup`).\n"+
+					"• **Deeper:** `tesseract_skills knowledge`.",
 			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace (must contain 'knowledge' segment, e.g. user/chrispian/knowledge/framework)")),
 			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers). Named memory_key for parity with memory tools — both stores share the Revision shape.")),
@@ -72,7 +72,7 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** you need to trace how a knowledge entry evolved (e.g. pointer churn, summary rewrites).\n"+
 					"• **Don't use this for:** just the current value (`knowledge_get`).\n"+
-					"• **Deeper:** `vanta_skills revisions`.",
+					"• **Deeper:** `tesseract_skills revisions`.",
 			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
 			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key. Named memory_key for parity with memory tools.")),

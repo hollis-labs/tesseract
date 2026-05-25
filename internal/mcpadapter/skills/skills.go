@@ -1,6 +1,6 @@
 // Package skills embeds agent-facing markdown skills that document
 // Tesseract primitives and features. Served over MCP via the
-// vanta_skills tool.
+// tesseract_skills tool.
 package skills
 
 import (

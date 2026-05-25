@@ -12,7 +12,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// BLG-20260416-037 guard. memory_recall and conduit_lookup must not ship
+// BLG-20260416-037 guard. memory_recall and tesseract_lookup must not ship
 // the embedding_vector field in their JSON responses. A 3072-dim vector
 // per record (text-embedding-3-large — see docs/DEV.md) inflates each
 // result by ~39KB, which blows Claude Code's 200K context budget on
@@ -126,7 +126,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 	}
 }
 
-func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
+func TestTesseractLookup_OmitsEmbeddingVector(t *testing.T) {
 	vec := make([]float32, 3072)
 	for i := range vec {
 		vec[i] = 0.02
@@ -148,16 +148,16 @@ func TestConduitLookup_OmitsEmbeddingVector(t *testing.T) {
 	req.Params.Arguments = map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
-	res, err := a.handleConduitLookup(context.Background(), req)
+	res, err := a.handleTesseractLookup(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleConduitLookup: %v", err)
+		t.Fatalf("handleTesseractLookup: %v", err)
 	}
 	textContent, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
 		t.Fatalf("expected TextContent")
 	}
 	if strings.Contains(textContent.Text, "embedding_vector") {
-		t.Fatalf("embedding_vector must not appear in conduit_lookup response")
+		t.Fatalf("embedding_vector must not appear in tesseract_lookup response")
 	}
 	if len(textContent.Text) > 4096 {
 		t.Fatalf("lookup response unexpectedly large (%d bytes); vector may still be leaking", len(textContent.Text))

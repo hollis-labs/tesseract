@@ -21,20 +21,6 @@ require (
 	modernc.org/sqlite v1.48.1
 )
 
-replace github.com/hollis-labs/go-mcp => ../../libs/go-mcp
-
-replace github.com/hollis-labs/go-otel => ../../libs/go-otel
-
-replace github.com/hollis-labs/go-queue => ../../libs/go-queue
-
-replace github.com/hollis-labs/go-modelsdev => ../../libs/go-modelsdev
-
-replace github.com/hollis-labs/go-llm-types => ../../libs/go-llm-types
-
-replace github.com/hollis-labs/go-llm-contracts => ../../libs/go-llm-contracts
-
-replace github.com/hollis-labs/go-embed-contracts => ../../libs/go-embed-contracts
-
 require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

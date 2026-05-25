@@ -13,7 +13,7 @@ import (
 
 func (a *Adapter) registerRAGTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_rag_query",
-		mcp.WithDescription("RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `vanta_skills start-here` for the primitive model."),
+		mcp.WithDescription("RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural language query")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default: 5, max: 20)")),
 		mcp.WithNumber("threshold", mcp.Description("Minimum similarity score 0.0-1.0 (default: 0.6)")),

@@ -65,7 +65,7 @@ Every knowledge write is stamped `Domain=knowledge`, `status=canonical`, `trigge
 
 - `knowledge_get` returns the current revision by `(namespace, key)`. Returns `not_found` if the entry exists but is not knowledge-domain (cross-domain reads are filtered).
 - `knowledge_history` returns the full chain, newest first; non-knowledge revisions are filtered out.
-- For cross-domain search (memory + knowledge), use `conduit_lookup` with `facet_kinds` / `facet_sources` filters. See `vanta_skills facets-and-kinds`.
+- For cross-domain search (memory + knowledge), use `tesseract_lookup` with `facet_kinds` / `facet_sources` filters. See `tesseract_skills facets-and-kinds`.
 
 ## Confidence default
 

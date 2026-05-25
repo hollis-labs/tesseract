@@ -1,0 +1,11 @@
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+
+dedup:
+  similarity_threshold: 0.85
+
+synthesis:
+  provider: anthropic
+  model: claude-sonnet-4-5
+  max_tokens: 1024

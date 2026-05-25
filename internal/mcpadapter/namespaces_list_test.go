@@ -17,9 +17,9 @@ func TestNamespacesList_PrefixIsStringPrefixNotGlob(t *testing.T) {
 	ctx := context.Background()
 	for _, ns := range []string{
 		"user/chrispian/memory",
-		"user/chrispian/project/conduit/memory",
+		"user/chrispian/project/tesseract/memory",
 		"user/chrispian/project/nanite/memory",
-		"app/cortex/identity",
+		"app/tesseract/identity",
 	} {
 		if err := s.EnsureNamespaceRegistered(ctx, ns); err != nil {
 			t.Fatalf("seed %s: %v", ns, err)
@@ -36,12 +36,12 @@ func TestNamespacesList_PrefixIsStringPrefixNotGlob(t *testing.T) {
 		{
 			name:   "deep prefix returns matching namespaces",
 			prefix: "user/chrispian/project/",
-			want:   []string{"user/chrispian/project/conduit/memory", "user/chrispian/project/nanite/memory"},
+			want:   []string{"user/chrispian/project/nanite/memory", "user/chrispian/project/tesseract/memory"},
 		},
 		{
 			name:   "tier prefix returns all under tier",
 			prefix: "app/",
-			want:   []string{"app/cortex/identity"},
+			want:   []string{"app/tesseract/identity"},
 		},
 		{
 			name:   "literal-glob does NOT match (prefix is not a glob)",

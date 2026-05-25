@@ -2,7 +2,7 @@
 session_date: 2026-02-22
 goal: Discover a strong project name for an intent-to-output orchestration system
 constraints:
-  - Not "Volon" (overused)
+  - Not "Tesseract" (overused)
   - Not SaaS dashboard vibes
   - Not trendy AI buzzwords
   - Durable 3–5 year horizon
@@ -17,7 +17,7 @@ vibe_keywords:
 shortlist:
   - Relay
   - Praxis
-  - Volon
+  - Tesseract
   - Resonance
   - Fulcrum
   - Ergon
@@ -34,7 +34,7 @@ Before generating, it helps to understand *why* the existing anchors work:
 |---|---|
 | **Nanite** | Technical precision. Sci-fi heritage (nanotechnology, Starcraft). Small unit, immense collective power. Sounds like a real thing that exists in physics. |
 | **Fragments Engine** | Compositional logic — pieces becoming whole. "Engine" signals mechanism, not product. Suggests latent power waiting to be assembled. |
-| **Volon** | Industrial transformation. Force applied to raw material to make something permanent. Strong. Unfortunately, extremely overused in dev tooling. |
+| **Tesseract** | Industrial transformation. Force applied to raw material to make something permanent. Strong. Unfortunately, extremely overused in dev tooling. |
 
 **What these share:**
 - They describe a *mechanism*, not a *feature*
@@ -726,9 +726,9 @@ For a parallel Nanite-quality coinage, we'd need:
 - *ag-* + *-on* → **Agon** — already a Greek word meaning "contest/struggle"! Has philosophy background. One syllable feeling.
 - *puls-* + *-ar* → **Pulsar** — already a word (neutron star)
 - *dynam-* + *-on* → **Dynamon** — too long
-- *vol-* + *-on* → **Volon** — unit of will? Two syllables, clean, not a real word.
+- *vol-* + *-on* → **Tesseract** — unit of will? Two syllables, clean, not a real word.
 
-**Volon** is a genuinely interesting coinage:
+**Tesseract** is a genuinely interesting coinage:
 - *vol-* from Latin *volo* (I want/will) + -on (particle suffix)
 - Sounds like: a quasiparticle of volition; a quantum of will
 - Two syllables: VO-lon. Rhymes with "proton," "photon"
@@ -745,7 +745,7 @@ For a parallel Nanite-quality coinage, we'd need:
 |---|---|---|---|
 | **Ergon** | Existing Greek word | Work/action; root of energy and synergy | Strong — real, unused, precise |
 | **Praxis** | Existing Greek word | The actualization of intent into action | Strong — semantically perfect, limited collision |
-| **Volon** | Coined | Quasiparticle of volition/will | Interesting — feels like physics, entirely original |
+| **Tesseract** | Coined | Quasiparticle of volition/will | Interesting — feels like physics, entirely original |
 | **Ergant** | Coined | Acting work-agent; the force of execution | Interesting — Nanite register |
 | **Tractus** | Existing Latin term | The pathway/bundle along which signals travel | Sleeper — unusual, anatomical, precise |
 | **Reson** | Portmanteau | Compressed resonance | Clean but "reason" homophone |
@@ -770,7 +770,7 @@ Drawing together all rounds:
 
 **Dark horses:**
 - **Impetus** — initiating force; clean Latin
-- **Volon** — coined quasiparticle of volition
+- **Tesseract** — coined quasiparticle of volition
 - **Harmonic** — resonant structure amplification
 - **Tractus** — the pathway of execution
 
@@ -802,10 +802,10 @@ Aristotle's distinction: *theoria* (knowing), *poiesis* (making), *praxis* (doin
 
 Why it's worth living with: it says precisely the right thing without trying to, and it holds up under repetition.
 
-**3. Volon**
+**3. Tesseract**
 *The bold coinage.*
 
-Derived from Latin *volo* (I want, I will) + the quasiparticle suffix *-on* (photon, proton, soliton). A *volon* is — by invention — a quantum of volition; a unit of intent. Two syllables: VO-lon. It sits in the register of particle physics but does not exist in any physics glossary. Entirely original in this naming space. Encodes: the smallest meaningful unit of will that the system processes and amplifies.
+Derived from Latin *volo* (I want, I will) + the quasiparticle suffix *-on* (photon, proton, soliton). A *tesseract* is — by invention — a quantum of volition; a unit of intent. Two syllables: VO-lon. It sits in the register of particle physics but does not exist in any physics glossary. Entirely original in this naming space. Encodes: the smallest meaningful unit of will that the system processes and amplifies.
 
 Risk: because it's coined, it carries an explain-it tax. But the explanation is one sentence and is memorable. This is the name most likely to *surprise* the right audience and be immediately adopted.
 
@@ -855,13 +855,13 @@ Less flashy than the others, but perhaps the most durable of the six.
 1. `[Name] run` — does it work as a command verb?
 2. `[Name] complete` — does it work as a status?
 3. `a [name]` vs `the [name]` — which article fits naturally?
-4. Can you name a sub-component? (e.g., "a Relay worker," "a Praxis task," "a Volon dispatch")
+4. Can you name a sub-component? (e.g., "a Relay worker," "a Praxis task," "a Tesseract dispatch")
 
 **Current ranking by likely durability:**
 
 1. **Relay** — most immediately usable, clear, functional
 2. **Praxis** — most semantically precise, highest conceptual fit
-3. **Volon** — highest originality, highest explain-it tax
+3. **Tesseract** — highest originality, highest explain-it tax
 4. **Fulcrum** — excellent but most dependent on collision check
 5. **Resonance** — strongest as a compound; less clean as single word
 6. **Ergon** — most durable, quietest, least distinctive on first contact
