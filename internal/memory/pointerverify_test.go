@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,9 +14,18 @@ import (
 // stubResolver returns a canned outcome per locator and counts calls, so a
 // test can assert both what was concluded and how many times the world was
 // touched.
+//
+// BuildVerificationPlan resolves distinct targets on concurrent goroutines, so
+// Resolve is called from several at once. byLocator is written once at
+// construction and only read afterwards; calls is mutated on every call, so mu
+// guards it. Reads go through callCount rather than touching the map directly,
+// which keeps the counter safe by construction instead of by an argument about
+// when the goroutines have finished.
 type stubResolver struct {
 	byLocator map[string]memory.PointerOutcome
-	calls     map[string]int
+
+	mu    sync.Mutex
+	calls map[string]int
 }
 
 func newStubResolver(m map[string]memory.PointerOutcome) *stubResolver {
@@ -23,11 +33,20 @@ func newStubResolver(m map[string]memory.PointerOutcome) *stubResolver {
 }
 
 func (s *stubResolver) Resolve(_ context.Context, scheme, locator string) (memory.PointerOutcome, string) {
+	s.mu.Lock()
 	s.calls[locator]++
+	s.mu.Unlock()
 	if o, ok := s.byLocator[locator]; ok {
 		return o, "stub_" + string(o)
 	}
 	return memory.OutcomeUnverifiable, "stub_unknown:" + scheme
+}
+
+// callCount reports how many times locator was resolved.
+func (s *stubResolver) callCount(locator string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls[locator]
 }
 
 func TestBuildVerificationPlan_ScopeSchemesAndSkips(t *testing.T) {
@@ -133,9 +152,8 @@ func TestBuildVerificationPlan_DistinctTargetsResolvedOnce(t *testing.T) {
 	if plan.DistinctTargets != 2 {
 		t.Errorf("distinct targets = %d, want 2", plan.DistinctTargets)
 	}
-	if stub.calls["/tmp/shared-target"] != 1 {
-		t.Errorf("shared target resolved %d times, want 1 — two revisions naming one file must not disagree",
-			stub.calls["/tmp/shared-target"])
+	if n := stub.callCount("/tmp/shared-target"); n != 1 {
+		t.Errorf("shared target resolved %d times, want 1 — two revisions naming one file must not disagree", n)
 	}
 }
 
@@ -165,9 +183,8 @@ func TestBuildVerificationPlan_RecheckAfterSkipsRecentAndBoundsLogGrowth(t *test
 	}
 	// The check itself was skipped, which is what bounds growth: the row is
 	// not written because the work was not done, not because it was deduped.
-	if stub.calls["/tmp/rc-fresh"] != 0 {
-		t.Errorf("recently-checked pointer was resolved %d time(s); recheck-after must skip the WORK, not just the row",
-			stub.calls["/tmp/rc-fresh"])
+	if n := stub.callCount("/tmp/rc-fresh"); n != 0 {
+		t.Errorf("recently-checked pointer was resolved %d time(s); recheck-after must skip the WORK, not just the row", n)
 	}
 }
 
