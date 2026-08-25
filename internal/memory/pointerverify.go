@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -120,11 +121,28 @@ func (d *defaultResolver) Resolve(ctx context.Context, scheme, locator string) (
 // the target is absent. An unmounted external drive is the case that makes
 // this concrete: every path on it would otherwise be branded dead in one
 // sweep, and the brand would outlive the unmount.
+//
+// A locator that is not absolute never reaches os.Stat at all. Statting a
+// relative path resolves it against the JOB'S working directory, and a
+// leading "~" against whoever ran it — so the recorded observation would be a
+// fact about where the operator was standing rather than about the corpus,
+// and two runs from different directories could legitimately disagree. The
+// record does not carry the base such a path is relative to, so the honest
+// answer is that we cannot tell. They surface with their own detail because
+// they are an authoring defect with a different fix from a rotted path: the
+// entry needs rewriting, not re-pointing.
 func resolveFile(locator string) (PointerOutcome, string) {
-	if strings.TrimSpace(locator) == "" {
+	trimmed := strings.TrimSpace(locator)
+	if trimmed == "" {
 		return OutcomeUnverifiable, "empty_locator"
 	}
-	_, err := os.Stat(locator)
+	if strings.HasPrefix(trimmed, "~") {
+		return OutcomeUnverifiable, "unexpanded_home_locator"
+	}
+	if !filepath.IsAbs(trimmed) {
+		return OutcomeUnverifiable, "relative_locator"
+	}
+	_, err := os.Stat(trimmed)
 	if err == nil {
 		return OutcomeResolved, "stat_ok"
 	}

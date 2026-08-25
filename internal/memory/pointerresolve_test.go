@@ -45,6 +45,50 @@ func TestResolveFile_Discriminates(t *testing.T) {
 	}
 }
 
+// TestResolveFile_NonAbsoluteLocatorsAreUnverifiable pins the reproducibility
+// property: an observation must be a fact about the corpus, not about where
+// the job happened to run.
+//
+// The relative case is checked from a directory where the path WOULD stat
+// successfully. If the resolver ever statted it, this test would see
+// `resolved` — and that is precisely the answer that is wrong, because it
+// would flip to `unresolvable` for the same entry run from anywhere else.
+func TestResolveFile_NonAbsoluteLocatorsAreUnverifiable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "here.md"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Chdir(dir)
+
+	r := memory.NewPointerResolver(time.Second, false)
+	ctx := context.Background()
+
+	got, detail := r.Resolve(ctx, memory.SchemeFile, "here.md")
+	if got != memory.OutcomeUnverifiable {
+		t.Errorf("relative locator resolvable from cwd: got %q (%s), want %q — "+
+			"statting it would record where the operator stood, not a fact about the corpus",
+			got, detail, memory.OutcomeUnverifiable)
+	}
+	if detail != "relative_locator" {
+		t.Errorf("relative locator detail = %q, want \"relative_locator\"", detail)
+	}
+
+	got, detail = r.Resolve(ctx, memory.SchemeFile, "~/dev/thing.md")
+	if got != memory.OutcomeUnverifiable {
+		t.Errorf("tilde locator: got %q (%s), want %q", got, detail, memory.OutcomeUnverifiable)
+	}
+	if detail != "unexpanded_home_locator" {
+		t.Errorf("tilde locator detail = %q, want \"unexpanded_home_locator\" — "+
+			"an unexpanded ~ is an authoring defect with a different fix from a rotted path", detail)
+	}
+
+	// And an absolute path in the same directory still resolves, so the guard
+	// above is not just refusing everything.
+	if got, detail = r.Resolve(ctx, memory.SchemeFile, filepath.Join(dir, "here.md")); got != memory.OutcomeResolved {
+		t.Errorf("absolute locator: got %q (%s), want %q", got, detail, memory.OutcomeResolved)
+	}
+}
+
 // TestResolveFile_UnreadableParentIsUnverifiableNotDead is the file-side guard
 // against the failure this design exists to prevent: a path we cannot look at
 // must never be reported as a path that is not there.
