@@ -61,6 +61,25 @@ func (o PointerOutcome) Valid() bool {
 	return false
 }
 
+// PointerOutcomeVocabulary returns every storable outcome, sorted.
+//
+// The pointer_verifications.outcome CHECK constraint (schema 13) must permit
+// exactly this set and nothing else. The two are separate renderings of one
+// rule — Go cannot generate the DDL without contextstore importing this
+// package, which would invert the dependency — so
+// TestPointerVerificationOutcomeCheckMatchesVocabulary drives every member
+// through a real INSERT, and drives non-members through too, to catch either
+// side drifting.
+func PointerOutcomeVocabulary() []string {
+	out := []string{
+		string(OutcomeResolved),
+		string(OutcomeUnresolvable),
+		string(OutcomeUnverifiable),
+	}
+	sort.Strings(out)
+	return out
+}
+
 // PointerHealthStatus is the pointer state a read surface reports.
 type PointerHealthStatus string
 
@@ -226,10 +245,18 @@ type PointerObservation struct {
 // candidate set. Mirrors fetchStates, which solves the same problem for
 // memory_state.
 //
-// Best-effort by design: if the lookup fails, results are returned WITHOUT
-// health rather than not at all. A verification side table going wrong must
-// not be able to take recall down with it — recall worked before this table
-// existed and has to keep working if it is unreadable.
+// Best-effort by design: if the lookup fails, recall still returns its
+// results. A verification side table going wrong must not be able to take
+// recall down with it — recall worked before this table existed and has to
+// keep working if it is unreadable.
+//
+// What a failed lookup must NOT do is omit the field. Absent is contractually
+// "this revision has no pointer", which is a claim about the record; an
+// unreadable log is a claim about us. Omitting it would make an entire
+// knowledge namespace read as pointer-free, which is both false and
+// unfalsifiable from the caller's side. A failed lookup falls through with no
+// observations, so every pointer renders as `unchecked` — the value that
+// exists to say nobody has looked. On this path nobody could.
 func (s *Store) attachPointerHealth(ctx context.Context, results []RecallResult) ([]RecallResult, error) {
 	if len(results) == 0 {
 		return results, nil
@@ -250,11 +277,15 @@ func (s *Store) attachPointerHealth(ctx context.Context, results []RecallResult)
 	latest := map[string]PointerObservation{}
 	lastResolved := map[string]time.Time{}
 	if len(ids) > 0 {
-		var err error
-		latest, lastResolved, err = s.fetchPointerObservations(ctx, ids)
-		if err != nil {
-			return results, nil //nolint:nilerr // health is best-effort; recall must not fail on it
+		obs, resolved, err := s.fetchPointerObservations(ctx, ids)
+		if err == nil {
+			latest, lastResolved = obs, resolved
 		}
+		// On error the maps stay empty and we fall through rather than
+		// returning early: DerivePointerHealth with no observation yields
+		// `unchecked`, which is the honest rendering of an unreadable log.
+		// Returning here would omit the field and assert the revisions have
+		// no pointers.
 	}
 
 	for i := range results {

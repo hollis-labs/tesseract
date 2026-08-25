@@ -638,13 +638,33 @@ END`); err != nil {
 			// revision is immutable, so they cannot drift, and carrying them
 			// makes each observation self-describing in a report without a
 			// join back to memory_revisions.
+			//
+			// The CHECK on `outcome` is the enforcement half of the
+			// vocabulary. Without it the three values live only in Go, and
+			// anything holding the *sql.DB — a repair script, a future
+			// subsystem, a person with sqlite3 — can insert a fourth. It
+			// would then surface verbatim on every read surface while being
+			// rejected as a filter argument: visible in results, unreachable
+			// by query, invisible to enumeration. That is exactly the failure
+			// this table exists to remove, one layer down.
+			//
+			// `not_applicable` is deliberately NOT permitted. It is derived
+			// from the pointer scheme at read time and is never an
+			// observation, so the constraint makes "never stored" true by
+			// construction rather than by convention.
+			//
+			// It has to land here, in the migration that creates the table:
+			// SQLite cannot add a CHECK to an existing table without a full
+			// rebuild, so once any store reaches version 13 the cheap moment
+			// has passed. memory.PointerOutcomeVocabulary() is the Go half;
+			// TestPointerVerificationOutcomeCheckMatchesVocabulary binds them.
 			if _, err = tx.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS pointer_verifications (
 	id           INTEGER PRIMARY KEY AUTOINCREMENT,
 	revision_id  TEXT NOT NULL,
 	scheme       TEXT NOT NULL,
 	locator      TEXT NOT NULL,
-	outcome      TEXT NOT NULL,
+	outcome      TEXT NOT NULL CHECK (outcome IN ('resolved', 'unresolvable', 'unverifiable')),
 	checked_at   TEXT NOT NULL,
 	detail       TEXT NOT NULL DEFAULT '',
 	FOREIGN KEY (revision_id) REFERENCES memory_revisions(revision_id) ON DELETE CASCADE

@@ -260,15 +260,107 @@ FROM memory_revisions WHERE revision_id = ?`, rev.RevisionID).Scan(&s); err != n
 	}
 }
 
+// TestPointerHealth_UnreadableLogRendersUncheckedNotAbsent covers the
+// best-effort degradation path, which had no test.
+//
+// When the verification log cannot be read, recall must still return its
+// results — but it must not OMIT pointer_health. Absent is contractually "this
+// revision has no pointer", a claim about the record; an unreadable log is a
+// claim about us. Omitting it makes a whole knowledge namespace read as
+// pointer-free, which is false and, from the caller's side, unfalsifiable.
+//
+// `unchecked` is the honest rendering: nobody has looked, and on this path
+// nobody could. It is the value this package created for exactly that.
+func TestPointerHealth_UnreadableLogRendersUncheckedNotAbsent(t *testing.T) {
+	ms, ks := newHealthFixture(t)
+	db := ms.DB()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	dead := seedKnowledge(t, ks, "deg.dead", "file", "/tmp/deg-dead")
+	live := seedKnowledge(t, ks, "deg.live", "file", "/tmp/deg-live")
+	selfContained := seedKnowledge(t, ks, "deg.self", memory.SchemeNil, "none")
+	recordObservation(t, db, dead.RevisionID, "file", "/tmp/deg-dead", memory.OutcomeUnresolvable, "not_found", now)
+	recordObservation(t, db, live.RevisionID, "file", "/tmp/deg-live", memory.OutcomeResolved, "stat_ok", now)
+
+	// Sanity: with the log readable, the two file pointers disagree. If they
+	// did not, the assertion after the break would prove nothing.
+	before, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{healthNamespace}, Ranking: memory.RankingChronological, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Recall (before): %v", err)
+	}
+	seen := map[memory.PointerHealthStatus]bool{}
+	for _, r := range before {
+		if r.PointerHealth != nil {
+			seen[r.PointerHealth.Status] = true
+		}
+	}
+	if !seen[memory.PointerHealthUnresolvable] || !seen[memory.PointerHealthResolved] {
+		t.Fatalf("fixture did not produce distinct statuses: %v", seen)
+	}
+
+	// Break the log the way an unmigrated or damaged store would.
+	if _, err = db.ExecContext(ctx, `ALTER TABLE pointer_verifications RENAME TO pointer_verifications_gone`); err != nil {
+		t.Fatalf("rename log away: %v", err)
+	}
+
+	after, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{healthNamespace}, Ranking: memory.RankingChronological, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("recall must survive an unreadable verification log, got: %v", err)
+	}
+	if len(after) != 3 {
+		t.Fatalf("got %d results, want 3 — recall must still return its rows", len(after))
+	}
+
+	byID := map[string]*memory.PointerHealth{}
+	for _, r := range after {
+		byID[r.Revision.RevisionID] = r.PointerHealth
+	}
+
+	for _, id := range []string{dead.RevisionID, live.RevisionID} {
+		h := byID[id]
+		if h == nil {
+			t.Errorf("revision %s: pointer_health omitted when the log was unreadable.\n"+
+				"    Absent means \"this revision has no pointer\" — an entire knowledge namespace\n"+
+				"    would read as pointer-free. Want %q.", id, memory.PointerHealthUnchecked)
+			continue
+		}
+		if h.Status != memory.PointerHealthUnchecked {
+			t.Errorf("revision %s: status %q, want %q", id, h.Status, memory.PointerHealthUnchecked)
+		}
+		if h.CheckedAt != nil {
+			t.Errorf("revision %s: unchecked carries a checked_at", id)
+		}
+	}
+
+	// The scheme-derived state needs no log at all and must be unaffected.
+	if h := byID[selfContained.RevisionID]; h == nil || h.Status != memory.PointerHealthNotApplicable {
+		t.Errorf("nil-scheme revision: got %+v, want %q — this state is derived from the scheme "+
+			"and does not depend on the log", h, memory.PointerHealthNotApplicable)
+	}
+}
+
 // --- the filter ---------------------------------------------------------
 
 // TestPointerHealth_FilterEnumeratesRatherThanSamples is the acceptance
-// criterion "discoverable by query rather than by failure", tested at the
+// criterion "discoverable by query rather than by failure", tested at the one
 // place it can silently fail: the interaction with limit.
 //
-// The filter runs in SQL before truncation. A post-fetch filter would pass a
-// test with a generous limit and quietly under-report in production, so the
-// limit here is smaller than the dead set and the assertion is on the count.
+// The ORDER the fixture seeds in is the whole test. Ranking is chronological
+// (newest first), so the dead entries are written FIRST and the live ones
+// after, which puts every dead revision outside the top-`limit` window. A
+// post-LIMIT filter therefore returns zero here, while the shipped SQL filter
+// returns all of them.
+//
+// Seeding the other way round is the trap: the dead entries are then the
+// newest, they all fall inside the window, and a post-LIMIT filter returns
+// exactly the right answer for the wrong reason. This test previously did
+// that and could not detect the failure it exists to detect. The
+// precondition below pins the ordering so it cannot silently regress again.
 func TestPointerHealth_FilterEnumeratesRatherThanSamples(t *testing.T) {
 	ms, ks := newHealthFixture(t)
 	db := ms.DB()
@@ -277,24 +369,47 @@ func TestPointerHealth_FilterEnumeratesRatherThanSamples(t *testing.T) {
 
 	const deadCount = 7
 	const liveCount = 20
-	for i := 0; i < liveCount; i++ {
-		r := seedKnowledge(t, ks, fmt.Sprintf("live.%02d", i), "file", fmt.Sprintf("/tmp/live-%02d", i))
-		recordObservation(t, db, r.RevisionID, "file", fmt.Sprintf("/tmp/live-%02d", i), memory.OutcomeResolved, "stat_ok", now)
-	}
+	const limit = 10
+
+	// Dead first => oldest => outside the newest-first limit window.
 	var deadIDs []string
 	for i := 0; i < deadCount; i++ {
 		r := seedKnowledge(t, ks, fmt.Sprintf("dead.%02d", i), "file", fmt.Sprintf("/tmp/dead-%02d", i))
 		recordObservation(t, db, r.RevisionID, "file", fmt.Sprintf("/tmp/dead-%02d", i), memory.OutcomeUnresolvable, "not_found", now)
 		deadIDs = append(deadIDs, r.RevisionID)
 	}
+	for i := 0; i < liveCount; i++ {
+		r := seedKnowledge(t, ks, fmt.Sprintf("live.%02d", i), "file", fmt.Sprintf("/tmp/live-%02d", i))
+		recordObservation(t, db, r.RevisionID, "file", fmt.Sprintf("/tmp/live-%02d", i), memory.OutcomeResolved, "stat_ok", now)
+	}
+
+	// Precondition: with no filter, the top `limit` must contain NONE of the
+	// dead revisions. If this ever stops holding, the assertion below is
+	// satisfiable by a post-LIMIT filter and proves nothing.
+	unfiltered, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{healthNamespace},
+		Ranking:    memory.RankingChronological,
+		Limit:      limit,
+	})
+	if err != nil {
+		t.Fatalf("Recall (precondition): %v", err)
+	}
+	inWindow := map[string]bool{}
+	for _, r := range unfiltered {
+		inWindow[r.Revision.RevisionID] = true
+	}
+	for _, id := range deadIDs {
+		if inWindow[id] {
+			t.Fatalf("fixture no longer isolates the filter: dead revision %s is inside the top-%d window, "+
+				"so a post-LIMIT filter would pass this test", id, limit)
+		}
+	}
 
 	results, err := ms.Recall(ctx, memory.RecallInput{
 		Namespaces: []string{healthNamespace},
 		Ranking:    memory.RankingChronological,
-		// Deliberately smaller than the total corpus and larger than the dead
-		// set: a post-LIMIT filter would return roughly limit*deadFraction.
-		Limit:   10,
-		Filters: memory.RecallFilters{PointerHealth: []string{string(memory.PointerHealthUnresolvable)}},
+		Limit:      limit,
+		Filters:    memory.RecallFilters{PointerHealth: []string{string(memory.PointerHealthUnresolvable)}},
 	})
 	if err != nil {
 		t.Fatalf("Recall: %v", err)

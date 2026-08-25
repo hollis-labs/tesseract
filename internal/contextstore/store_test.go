@@ -1351,12 +1351,20 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 		t.Fatalf("drop fts table: %v", err)
 	}
 	// Roll the recorded version back to 11 so the migration loop resumes at
-	// case 12. This deletes every row >= 12 rather than exactly 12: the loop
-	// resumes from MAX(version), so leaving a later migration's row behind
-	// would make it believe the schema is already current and skip case 12
-	// entirely — the test would then pass on an unmigrated database.
-	// An equality delete quietly stops testing anything the moment a
-	// migration is added after this one, which is how it broke.
+	// case 12. This deletes every row >= 12 rather than exactly 12.
+	//
+	// The loop resumes from MAX(version). Deleting only the row for 12 while a
+	// later migration's row remains leaves MAX at that later version, the loop
+	// body never runs, and case 12 never rebuilds the FTS objects this test
+	// just dropped. The test then FAILS LOUDLY at the MATCH below with
+	// "no such table: memory_revisions_fts" — which is how adding migration 13
+	// broke it, and why fixing it was required rather than optional.
+	//
+	// Worth being precise about, because the plausible-sounding version is
+	// wrong: an equality delete does not silently stop testing its subject
+	// here. It breaks the fixture outright. The assertion below pins the
+	// rolled-back version so a future migration cannot quietly change which
+	// case the loop resumes at.
 	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 12`); err != nil {
 		t.Fatalf("roll schema_version back: %v", err)
 	}
