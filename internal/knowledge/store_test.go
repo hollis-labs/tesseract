@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -138,36 +139,105 @@ func TestWrite_MissingKindNamesAllowedSet(t *testing.T) {
 	}
 }
 
-// TestShippedSkillsMatchEnforcedVocabulary keeps the enforced enum and the
-// shipped agent-facing docs from drifting apart. An agent reads the skill to
-// learn what it may write; if the two disagree, the skill teaches a value the
-// write path rejects. Asserted rather than reviewed, because this is exactly
-// the drift that produced the off-vocabulary rows in the first place.
-func TestShippedSkillsMatchEnforcedVocabulary(t *testing.T) {
-	vocab := memory.KnowledgeKindVocabulary()
+// skillKindAnchors says, per shipped skill, how to find the passage that
+// actually advertises the kind vocabulary and how a kind appears inside it.
+//
+// The anchors are structural on purpose. A bare "does `doc` appear anywhere in
+// the file" check is satisfied by an incidental prose mention, so it would
+// notice neither a kind dropping out of the real list nor one being invented
+// into it.
+var skillKindAnchors = map[string]struct {
+	start   string // the passage begins after this literal
+	end     string // and ends at this literal (empty => the next markdown heading)
+	pattern *regexp.Regexp
+}{
+	// The table under the vocabulary heading; only a row's first cell counts.
+	"facets-and-kinds": {
+		start:   "## The `kind` vocabulary",
+		pattern: regexp.MustCompile("(?m)^\\|\\s*`([a-z_]+)`\\s*\\|"),
+	},
+	// The inline list on the `kind` parameter line.
+	"knowledge": {
+		start:   "**closed vocabulary**:",
+		end:     "Anything else",
+		pattern: regexp.MustCompile("`([a-z_]+)`"),
+	},
+}
 
-	// facets-and-kinds documents each kind as a table row; knowledge.md lists
-	// them inline. Checking the table row specifically matters: a bare
-	// "appears somewhere" check is satisfied by an incidental prose mention,
-	// so it would not notice a kind dropping out of the actual table.
-	rowFor := map[string]func(string) string{
-		"facets-and-kinds": func(k string) string { return "| `" + k + "` |" },
-		"knowledge":        func(k string) string { return "`" + k + "`" },
+// documentedKinds extracts the kind set a shipped skill actually advertises.
+func documentedKinds(t *testing.T, skill string) map[string]bool {
+	t.Helper()
+	anchor, ok := skillKindAnchors[skill]
+	if !ok {
+		t.Fatalf("no kind anchor defined for skill %q", skill)
+	}
+	body, err := skills.Get(skill)
+	if err != nil {
+		t.Fatalf("skills.Get(%s): %v", skill, err)
+	}
+
+	i := strings.Index(body, anchor.start)
+	if i < 0 {
+		t.Fatalf("skill %q: anchor %q not found — the doc was restructured and this test can no longer see the vocabulary; update the anchor",
+			skill, anchor.start)
+	}
+	seg := body[i+len(anchor.start):]
+	end := anchor.end
+	if end == "" {
+		end = "\n## "
+	}
+	if j := strings.Index(seg, end); j >= 0 {
+		seg = seg[:j]
+	}
+
+	got := map[string]bool{}
+	for _, m := range anchor.pattern.FindAllStringSubmatch(seg, -1) {
+		got[m[1]] = true
+	}
+	// Without this the test passes vacuously when the anchor still matches but
+	// the passage's shape changed out from under the pattern.
+	if len(got) == 0 {
+		t.Fatalf("skill %q: found the vocabulary passage but extracted no kinds from it; the pattern no longer matches the doc",
+			skill)
+	}
+	return got
+}
+
+// TestShippedSkillsMatchEnforcedVocabulary keeps the enforced enum and the
+// shipped agent-facing docs in agreement — in BOTH directions.
+//
+// An agent reads the skill to learn what it may write. If the skill omits a
+// kind, a usable value looks unavailable. If the skill advertises a kind the
+// enum rejects, the agent follows the doc and the write fails. Checking only
+// that every enum member is documented verifies containment, not agreement,
+// and would miss the second case entirely.
+func TestShippedSkillsMatchEnforcedVocabulary(t *testing.T) {
+	want := map[string]bool{}
+	for _, k := range memory.KnowledgeKindVocabulary() {
+		want[k] = true
 	}
 
 	for _, name := range []string{"facets-and-kinds", "knowledge"} {
+		got := documentedKinds(t, name)
+
+		for k := range want {
+			if !got[k] {
+				t.Errorf("skill %q does not document canonical kind %q", name, k)
+			}
+		}
+		for k := range got {
+			if !want[k] {
+				t.Errorf("skill %q advertises kind %q, which knowledge_write rejects", name, k)
+			}
+		}
+
+		// Rejected spellings must not appear anywhere in the file, including
+		// prose outside the vocabulary passage. The hyphenated forms matter
+		// most: hyphen guidance is what put a hyphenated kind in the corpus.
 		body, err := skills.Get(name)
 		if err != nil {
 			t.Fatalf("skills.Get(%s): %v", name, err)
 		}
-		for _, kind := range vocab {
-			if !strings.Contains(body, rowFor[name](kind)) {
-				t.Errorf("skill %q does not document canonical kind %q", name, kind)
-			}
-		}
-		// Values the vocabulary rejects must not appear as guidance. The
-		// hyphenated forms matter most: hyphen advice is what produced a
-		// hyphenated kind in the corpus.
 		for _, stale := range []string{"`mcp-server`", "`issue/bug`", "`decision-record`", "`session-close`"} {
 			if strings.Contains(body, stale) {
 				t.Errorf("skill %q still presents %s, which knowledge_write rejects", name, stale)
