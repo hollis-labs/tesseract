@@ -86,6 +86,16 @@ type RecallFilters struct {
 	// listed facet values. Applied as SQL IN (...) filters when non-empty.
 	FacetKinds   []string
 	FacetSources []string
+
+	// PointerHealth constrains results to revisions whose derived pointer
+	// health is one of the listed statuses (see PointerHealthStatus).
+	//
+	// Applied in SQL, not as a post-fetch pass, and that is load-bearing: a
+	// post-filter runs after LIMIT, so "show me the dead pointers" would
+	// return however many dead ones happened to fall in the top N by score.
+	// A query whose whole purpose is to enumerate a suspect population cannot
+	// be sampled by an unrelated ranking.
+	PointerHealth []string
 }
 
 // RecallResult pairs a revision with its ranking score and the parent state.
@@ -103,10 +113,17 @@ type RecallFilters struct {
 // restate the sort key in units nothing else uses. It is a pointer rather
 // than a bare float64 so that "no score" stays distinguishable from a real
 // zero — cosine similarity is legitimately 0 (orthogonal) or negative.
+// PointerHealth is the verification state of this revision's pointer, or nil
+// when the revision carries no pointer facet at all (every memory-domain
+// revision, and any knowledge revision predating facets). It is a sibling of
+// Revision rather than a field inside it because a verification is an
+// observation ABOUT the revision made later, not part of what was authored —
+// the same reason State sits here.
 type RecallResult struct {
-	Revision Revision `json:"revision"`
-	Score    *float64 `json:"score,omitempty"`
-	State    State    `json:"state"`
+	Revision      Revision       `json:"revision"`
+	Score         *float64       `json:"score,omitempty"`
+	State         State          `json:"state"`
+	PointerHealth *PointerHealth `json:"pointer_health,omitempty"`
 }
 
 // scoreOf reads a result's score, treating an absent score as zero. Used for
@@ -260,6 +277,17 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 		return RecallPageResult{}, err
 	}
 
+	// Attach pointer verification state last, on the WINDOW rather than on
+	// the ordered set. CW-20260825-0015 added this at the end of the recall
+	// path specifically so the lookup is bounded by the page size rather than
+	// by the candidate count; running it inside recallOrdered would restore
+	// exactly the unbounded lookup it was placed here to avoid. Paging moved
+	// where the truncation happens, so this had to move with it.
+	window, err = s.attachPointerHealth(ctx, window)
+	if err != nil {
+		return RecallPageResult{}, err
+	}
+
 	return RecallPageResult{Results: window, Total: total, Offset: start}, nil
 }
 
@@ -351,9 +379,9 @@ func (s *Store) recallOrdered(ctx context.Context, in RecallInput) ([]RecallResu
 		results = filtered
 	}
 
-	// Windowing and the reranker are RecallPage's job — recallOrdered hands
-	// back the complete sequence so the caller can report how much of it it
-	// is about to withhold.
+	// Windowing, the reranker, and the pointer-health attach are RecallPage's
+	// job — recallOrdered hands back the complete sequence so the caller can
+	// report how much of it it is about to withhold.
 	return results, nil
 }
 

@@ -298,6 +298,7 @@ type orderingKey struct {
 	Domains       []string `json:"domains"`
 	FacetKinds    []string `json:"kinds"`
 	FacetSources  []string `json:"sources"`
+	PointerHealth []string `json:"pointer_health"`
 	Reranker      string   `json:"reranker"`
 	RerankerTopK  int      `json:"reranker_topk"`
 }
@@ -326,6 +327,7 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		Domains:       sortedStringsFrom(in.Filters.Domains, func(d domains.Domain) string { return string(d) }),
 		FacetKinds:    sortedCopy(in.Filters.FacetKinds),
 		FacetSources:  sortedCopy(in.Filters.FacetSources),
+		PointerHealth: sortedCopy(in.Filters.PointerHealth),
 		Reranker:      in.Reranker,
 		RerankerTopK:  in.RerankerTopK,
 	}

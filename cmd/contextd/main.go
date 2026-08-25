@@ -91,6 +91,14 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMigrateKnowledgeKinds(ctx, layout.MainDB(), args[1:], stdout, stderr)
 	}
 
+	// `verify-pointers` resolves knowledge pointers and records what it saw
+	// in the verification log. Same one-shot, direct-DB rationale as the
+	// migrations above; it is dispatched here, before contextstore.Open, so a
+	// dry-run against a copy holds a read-only handle and nothing else.
+	if len(args) > 0 && args[0] == "verify-pointers" {
+		return runVerifyPointers(ctx, layout.MainDB(), args[1:], stdout, stderr)
+	}
+
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)

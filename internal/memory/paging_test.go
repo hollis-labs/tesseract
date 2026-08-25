@@ -1121,6 +1121,74 @@ func TestRecall_RerankerStillWorksUnpaged(t *testing.T) {
 	}
 }
 
+// ── Paging x pointer health ──────────────────────────────────────────────────
+
+// CW-20260825-0015 attaches pointer verification state at the end of the
+// recall path, deliberately on the TRUNCATED set so the lookup is bounded by
+// limit rather than by the candidate count. This lane moved where truncation
+// happens — recallOrdered now returns the whole ordered sequence and
+// RecallPage windows it — so the attach had to move with it or it would have
+// silently gone back to running over every candidate.
+//
+// Neither ticket could test this interaction: paging did not exist when the
+// attach landed, and the attach did not exist when paging was written. It only
+// became reachable at the merge, which is exactly when it is least likely to
+// be covered.
+//
+// The assertion is that pointer health reaches EVERY page, not just the first.
+func TestPaging_AttachesPointerHealthToEveryPage(t *testing.T) {
+	ms, _, cleanup := newPagingStore(t)
+	defer cleanup()
+
+	const ns = "user/chrispian/memory/notes"
+	for i := 0; i < 6; i++ {
+		in := sampleInput("")
+		in.MemoryKey = ""
+		in.Facets = memory.Facets{
+			Kind:    "note",
+			Source:  "manual",
+			Pointer: &memory.Pointer{Scheme: "https", Locator: "https://example.test/doc"},
+		}
+		if _, err := ms.WriteRevision(context.Background(), in); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+
+	in := memory.RecallInput{Namespaces: []string{ns}, Ranking: memory.RankingChronological}
+	cursor := ""
+	pages, withHealth, rows := 0, 0, 0
+	for pages < 10 {
+		page, err := ms.RecallPaged(context.Background(), in, memory.PageRequest{
+			Cursor: cursor, Limit: 2, PayloadMode: memory.PayloadModeSummary,
+		})
+		if err != nil {
+			t.Fatalf("page %d: %v", pages, err)
+		}
+		pages++
+		for _, r := range page.Kept {
+			rows++
+			if r.PointerHealth != nil {
+				withHealth++
+			}
+		}
+		if page.Manifest.NextCursor == nil {
+			break
+		}
+		cursor = *page.Manifest.NextCursor
+	}
+
+	if pages < 2 {
+		t.Fatalf("test needs more than one page to say anything; got %d", pages)
+	}
+	if rows != 6 {
+		t.Fatalf("paged %d rows, want 6", rows)
+	}
+	if withHealth != rows {
+		t.Errorf("pointer health reached %d of %d paged rows — the attach is not running "+
+			"on every window", withHealth, rows)
+	}
+}
+
 // ── The composition claim ────────────────────────────────────────────────────
 
 // The ticket asserts that ranking=chronological + payload_mode=summary +

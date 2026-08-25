@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -24,6 +25,11 @@ type tesseractLookupRequest struct {
 	Domains      []domains.Domain `json:"domains,omitempty"`
 	FacetKinds   []string         `json:"facet_kinds,omitempty"`
 	FacetSources []string         `json:"facet_sources,omitempty"`
+
+	// PointerHealth filters knowledge results by verification state. Peer of
+	// the MCP tesseract_lookup argument of the same name — same vocabulary,
+	// same semantics, same SQL-before-limit application.
+	PointerHealth []string `json:"pointer_health,omitempty"`
 
 	Origins       []memory.Origin `json:"origins,omitempty"`
 	Statuses      []memory.Status `json:"statuses,omitempty"`
@@ -96,6 +102,16 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject an unknown status rather than letting it silently match nothing:
+	// an empty result set from a typo is indistinguishable from a clean corpus.
+	for _, h := range req.PointerHealth {
+		if !memory.PointerHealthStatus(h).Valid() {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				"pointer_health must be one of "+strings.Join(memory.PointerHealthStatusVocabulary(), ", ")+", got "+h, nil)
+			return
+		}
+	}
+
 	in := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
@@ -111,6 +127,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			Domains:       req.Domains,
 			FacetKinds:    req.FacetKinds,
 			FacetSources:  req.FacetSources,
+			PointerHealth: req.PointerHealth,
 		},
 	}
 	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
