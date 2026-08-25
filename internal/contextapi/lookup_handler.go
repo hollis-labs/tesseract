@@ -42,8 +42,19 @@ type tesseractLookupRequest struct {
 	Statuses      []memory.Status `json:"statuses,omitempty"`
 	Tags          []string        `json:"tags,omitempty"`
 	ConfidenceMin float64         `json:"confidence_min,omitempty"`
-	Since         *time.Time      `json:"since,omitempty"`
-	Until         *time.Time      `json:"until,omitempty"`
+
+	// SimilarityMin is the cosine floor. Peer of the MCP tesseract_lookup
+	// argument of the same name — same range, same ranking/search_mode
+	// restriction, same error, because both hand the value to RecallPaged
+	// unmodified and it is RecallPaged that rejects it.
+	//
+	// A pointer for the reason memory.RecallFilters.SimilarityMin documents:
+	// 0.0 is a legal floor that selects a different set from an absent one, and
+	// `omitempty` on a bare float64 would erase exactly that case on the wire.
+	SimilarityMin *float64 `json:"similarity_min,omitempty"`
+
+	Since *time.Time `json:"since,omitempty"`
+	Until *time.Time `json:"until,omitempty"`
 
 	// PayloadMode projects each result: keys|summary|full. Empty means the
 	// server default (read.payload_mode). Peer of the MCP tesseract_lookup
@@ -130,6 +141,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			Statuses:      req.Statuses,
 			Tags:          req.Tags,
 			ConfidenceMin: req.ConfidenceMin,
+			SimilarityMin: req.SimilarityMin,
 			Since:         req.Since,
 			Until:         req.Until,
 			Domains:       req.Domains,
@@ -145,11 +157,40 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	// Facets come from the unprojected results: the histogram describes what
 	// this page returned, not what was serialized.
+	facets := buildFacets(page.Kept)
+	// Built from the same facets value and the same manifest the full response
+	// below carries, so an estimate cannot report different numbers than the
+	// read it is estimating.
+	if pr.EstimateOnly {
+		writeJSON(w, http.StatusOK, estimateResponse{
+			Facets:       &facets,
+			Manifest:     page.Manifest,
+			EstimateOnly: true,
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, tesseractLookupResponse{
 		Results:  page.Results,
-		Facets:   buildFacets(page.Kept),
+		Facets:   facets,
 		Manifest: page.Manifest,
 	})
+}
+
+// estimateResponse is the wire shape of an estimate_only read on either
+// route: the envelope the route would have returned, minus the rows.
+//
+// `results` is absent rather than empty for the same reason the MCP peer omits
+// it — an empty array reads as "nothing matched", and the whole value of a
+// pre-flight is telling those two apart. EstimateOnly is the positive marker.
+//
+// Facets is a pointer so the field disappears entirely on the recall route,
+// which has no facet histogram in its normal response either. An estimate must
+// not advertise a number the read it estimates cannot return; that would be the
+// opposite of the identity the knob exists to provide.
+type estimateResponse struct {
+	Facets       *lookupFacets   `json:"facets,omitempty"`
+	Manifest     memory.Manifest `json:"manifest"`
+	EstimateOnly bool            `json:"estimate_only"`
 }
 
 // defaultPayloadMode resolves the server-configured recall projection,
@@ -178,6 +219,16 @@ type pageArgs struct {
 	Cursor       string `json:"cursor,omitempty"`
 	BudgetBytes  *int   `json:"budget_bytes,omitempty"`
 	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+
+	// EstimateOnly withholds the result rows and returns only the envelope
+	// describing them. Peer of the MCP argument of the same name on both
+	// memory_recall and tesseract_lookup.
+	//
+	// A plain bool rather than a pointer, unlike the budgets beside it: false
+	// is both the zero value and the meaning of an absent field, so there is no
+	// third state for a pointer to preserve. The budgets need one because 0
+	// sits inside their range but outside their meaning.
+	EstimateOnly bool `json:"estimate_only,omitempty"`
 }
 
 // pageRequest resolves the shared knobs against server config and the
@@ -185,9 +236,10 @@ type pageArgs struct {
 // invalid budget.
 func (s *Server) pageRequest(w http.ResponseWriter, a pageArgs, mode memory.PayloadMode, limit int) (memory.PageRequest, bool) {
 	pr := memory.PageRequest{
-		Cursor:      a.Cursor,
-		PayloadMode: mode,
-		Limit:       limit,
+		Cursor:       a.Cursor,
+		PayloadMode:  mode,
+		Limit:        limit,
+		EstimateOnly: a.EstimateOnly,
 		Budget: memory.Budget{
 			Bytes:  s.RuntimeConfig.Read.BudgetBytes,
 			Tokens: s.RuntimeConfig.Read.BudgetTokens,

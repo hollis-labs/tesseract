@@ -95,6 +95,48 @@ type RecallFilters struct {
 	Since         *time.Time
 	Until         *time.Time
 
+	// SimilarityMin is a floor on the COSINE SIMILARITY between the query and
+	// a revision's embedding. Results scoring below it are dropped.
+	//
+	// It is a different quantity from ConfidenceMin, which is a SQL filter on
+	// the confidence the AUTHOR recorded when writing the memory. One is how
+	// well a revision matches this query; the other is how sure its author was
+	// when they wrote it, and a revision can rank at 0.9 similarity while
+	// carrying 0.2 confidence. Neither substitutes for the other, which is why
+	// this is a second knob rather than an overload of the first.
+	//
+	// The floor is INCLUSIVE — a row clears it at score >= floor — matching
+	// ConfidenceMin's SQL `>=` so the two _min knobs mean the same thing by
+	// their boundary as well as by their name.
+	//
+	// It is a POINTER because 0.0 is a legal floor that means something
+	// different from absent. Cosine similarity ranges over [-1, 1], so a floor
+	// of 0.0 says "drop everything OPPOSED to my query" — it removes the
+	// strictly negative rows and keeps the orthogonal ones at exactly 0 —
+	// while an absent floor keeps the negatives too. A bare float64 would
+	// collapse the two and silently serve "no floor" to a caller who asked for
+	// zero. That is the same defect already fixed four times in this domain
+	// (RecallResult.Score, synthesisSource.Score, Payload.Confidence,
+	// Manifest.Truncated); this is the fifth field in the class.
+	//
+	// It is honored only where cosine similarity is the ordering signal —
+	// ranking=similarity, and ranking=relevance with search_mode=semantic.
+	// Under every other combination RecallPage refuses the call rather than
+	// ignoring the floor; see the validation there for why.
+	//
+	// It lives in RecallFilters rather than on RecallInput because it narrows
+	// the candidate set by an attribute of the match, which is what a filter
+	// is. SearchMode sits on RecallInput instead because it selects which
+	// retrieval arm produces candidates at all. Being here also means
+	// TestFingerprint_CoversEveryRecallFilter reaches it by reflection: it
+	// changes which rows are candidates, so a cursor must not carry across a
+	// change to it.
+	//
+	// buildRecallFilters does NOT render it into SQL. Cosine similarity is
+	// computed in Go against the query vector and has no column to compare
+	// against, so the floor is applied where the scores exist.
+	SimilarityMin *float64
+
 	// Domains filters to revisions written under any of the listed domains.
 	// Empty means no domain filter (all domains returned).
 	Domains []domains.Domain
@@ -289,6 +331,36 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 			ErrInvalidInput, string(in.SearchMode), string(in.Ranking))
 	}
 
+	// 2c. similarity_min must name a floor this call can actually apply.
+	//
+	// Same placement and same reasoning as the search_mode checks above: all
+	// four doors (memory_recall, tesseract_lookup, and both HTTP peers) funnel
+	// through here, so one check gives them the same vocabulary and the same
+	// message by construction rather than by four copies agreeing.
+	if in.Filters.SimilarityMin != nil {
+		floor := *in.Filters.SimilarityMin
+		// Cosine similarity is bounded on [-1, 1]. A floor outside that range
+		// is a caller mistake with a silent failure mode in both directions: a
+		// floor above 1 can never admit a row, and a floor below -1 can never
+		// exclude one. An empty page from a typo'd floor reads exactly like a
+		// corpus with nothing in it, which is the same failure the
+		// pointer_health vocabulary check exists to prevent.
+		if floor < -1 || floor > 1 {
+			return RecallPageResult{}, fmt.Errorf(
+				"%w: similarity_min must be within [-1, 1] — it is a floor on cosine "+
+					"similarity, which cannot fall outside that range — got %v",
+				ErrInvalidInput, floor)
+		}
+		if !cosineIsTheOrderingSignal(in) {
+			return RecallPageResult{}, fmt.Errorf(
+				"%w: similarity_min is a floor on cosine similarity, but ranking=%s%s does "+
+					"not score by cosine similarity, so there is no similarity to compare "+
+					"against — pass ranking=similarity, or ranking=relevance with "+
+					"search_mode=semantic, or drop similarity_min",
+				ErrInvalidInput, string(in.Ranking), searchModeClause(in))
+		}
+	}
+
 	// 3. Similarity ranking requires an embedder and a query.
 	if in.Ranking == RankingSimilarity {
 		if s.embedder == nil {
@@ -426,6 +498,13 @@ func (s *Store) recallOrdered(ctx context.Context, in RecallInput) ([]RecallResu
 			}
 		}
 		results = filtered
+		// The similarity floor runs after the embedding-presence filter and
+		// before RecallPage windows the sequence, so Total counts the rows that
+		// cleared the floor rather than the rows that would have matched
+		// without it. A floor applied after LIMIT would return "the top N by
+		// similarity, minus whichever of them happened to be weak" — a sample
+		// of the qualifying set rather than the set.
+		results = applySimilarityFloor(results, in.Filters.SimilarityMin)
 	}
 
 	// Windowing, the reranker, and the pointer-health attach are RecallPage's
@@ -602,6 +681,96 @@ func similarityScore(rev Revision, queryVec []float32) float64 {
 		return 0
 	}
 	return embedding.CosineSimilarity(queryVec, rev.EmbeddingVector)
+}
+
+// SimilarityMinBoundaryRule states the similarity floor's boundary semantics
+// ONCE, so every surface that explains the floor renders this string rather
+// than restating it in its own words.
+//
+// It exists because a restatement already went wrong twice in one lane. A first
+// draft of the MCP argument description, and the failure message in the
+// fingerprint guard, both said a floor of 0.0 "drops every orthogonal and
+// opposed result" — which is what a `>` floor would do. The code implements
+// `>=`, so the prose described a tool that does not exist.
+//
+// Rendering rather than restating is the same treatment SearchModeVocabulary
+// gets, and for a sharper reason here: the description-accuracy guard scans
+// tool descriptions, so it structurally cannot see a claim that lives in a
+// test's failure text. A wrong sentence is worst at failure time, when someone
+// reads it while forming a hypothesis about what just broke.
+const SimilarityMinBoundaryRule = "the floor is inclusive — a result clears it at a score equal to it, " +
+	"as confidence_min does — so a floor of 0.0 drops only results scoring BELOW 0 " +
+	"(opposed to the query) and keeps those at exactly 0, while omitting the floor keeps the negative ones too"
+
+// cosineIsTheOrderingSignal reports whether this call scores its results by
+// cosine similarity against the query — the precondition for similarity_min
+// to mean anything. It expects in to have been through resolveRecallDefaults.
+//
+// Two combinations qualify, and the two rejected ones are rejected for
+// different reasons worth keeping distinct:
+//
+//	ranking=similarity                      RecallResult.Score IS the cosine.
+//	ranking=relevance + search_mode=semantic  same — semanticOrdered carries
+//	                                        the cosine through untouched.
+//
+//	ranking=relevance + search_mode=hybrid  the score is an RRF fusion of two
+//	    arm POSITIONS multiplied by status/origin/confidence/recency/activation
+//	    modifiers. It is not a similarity and is not on the same scale. Worse,
+//	    the BM25 arm admits revisions with no embedding at all, so a floor
+//	    applied to the cosine arm would not bound what the caller receives —
+//	    below-floor rows would still arrive through the other arm. A knob whose
+//	    stated job is "only results that actually resemble my query" must not
+//	    be honored in a way that lets unresembling rows through.
+//	ranking=relevance + search_mode=lexical, ranking=activation,
+//	ranking=chronological                   no cosine is computed anywhere on
+//	    these paths; there is no query vector to compare against.
+//
+// Refusing rather than ignoring follows the rule search_mode already set here:
+// silently dropping a knob hands back a differently-filtered result set under
+// the name the caller asked for.
+func cosineIsTheOrderingSignal(in RecallInput) bool {
+	if in.Ranking == RankingSimilarity {
+		return true
+	}
+	return in.Ranking == RankingRelevance && in.SearchMode == SearchModeSemantic
+}
+
+// searchModeClause renders the search_mode half of the similarity_min refusal
+// message, and only when search_mode is load-bearing for the refusal. Naming a
+// search_mode under ranking=activation would point the caller at a knob that
+// has no effect there.
+func searchModeClause(in RecallInput) string {
+	if in.Ranking != RankingRelevance {
+		return ""
+	}
+	return " with search_mode=" + string(in.SearchMode)
+}
+
+// applySimilarityFloor drops results scoring below floor.
+//
+// It compares against Score rather than recomputing, so it measures exactly the
+// number the response reports — a caller told "score: 0.42" with a floor of 0.5
+// must never see that row. A result with no Score at all cannot clear a floor
+// on a quantity it does not carry, so it is dropped; RecallPage refuses every
+// path that produces nil scores before this can run, which makes that branch
+// unreachable today and correct if a fourth scoring path is added later.
+//
+// A nil floor returns results untouched — absent means no floor, which is the
+// distinction SimilarityMin is a pointer to preserve.
+func applySimilarityFloor(results []RecallResult, floor *float64) []RecallResult {
+	if floor == nil {
+		return results
+	}
+	kept := results[:0]
+	for _, r := range results {
+		if r.Score == nil {
+			continue
+		}
+		if *r.Score >= *floor {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 // placeholders returns a comma-separated string of n question marks.
