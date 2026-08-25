@@ -28,9 +28,20 @@ related: [memory, revisions]
 
 The default is `hybrid`, which is what every caller got before the knob existed.
 
-**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a namespace, a literal error message. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
+**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a namespace. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
 
-Under `lexical` a punctuated token is matched as an **adjacent phrase**: `CW-20260519-0032` finds the entry containing that identifier, not the entries that mention `CW`, `20260519` and `0032` in unrelated places. Separate words still combine with AND. Matching is over `[A-Za-z0-9_]` tokens, so a query of only punctuation or of non-Latin script has nothing to match and is refused rather than answered with an empty page.
+**What `lexical` binds is a punctuation-joined run**, as an adjacent phrase: `CW-20260519-0032` finds the entry containing that identifier, not the entries that mention `CW`, `20260519` and `0032` in unrelated places.
+
+**What it does not do is multi-word phrase search.** Space-separated words are each *required to appear*, not required to appear together:
+
+| query | rows | what it is |
+|---|---|---|
+| `sqlite NOT NULL` under `lexical` | 2 | the three words, anywhere |
+| the phrase `"NOT NULL"` | 6 | not expressible here |
+
+Whitespace carries no signal about which of those a caller meant, so neither is inferred. If you need the phrase, `lexical` is not the tool yet — say so rather than reading an empty result as absence.
+
+Two more things `lexical` does differently from `hybrid`: `AND`, `OR` and `NOT` are matched as **literal words**, not operators (under `hybrid` they *are* operators); and a query containing a non-ASCII letter is a `validation_error` rather than an empty page, because lexical tokens are `[A-Za-z0-9_]` only and no lexical query can name the token the index actually holds. A query of only punctuation is refused for the same reason.
 
 `lexical` results carry **no `score`**. Order is the signal — `bm25()` is lower-is-better, and reporting it in a field that is higher-is-better everywhere else would invert its meaning for one mode.
 
@@ -115,6 +126,7 @@ memory_recall namespaces=[...] ranking=chronological payload_mode=summary limit=
 | "What do I know about X?" | `relevance` |
 | "Where did we record CW-20260519-0032?" | `relevance` + `search_mode=lexical` |
 | "Which entries mention `fetchBM25Candidates`?" | `relevance` + `search_mode=lexical` |
+| "Find this exact multi-word error message." | not yet — `lexical` requires the words, not the phrase |
 | "Something about retries backing off, I forget the wording." | `relevance` + `search_mode=semantic` |
 | "What are the most active memories right now?" | `activation` |
 | "Show me the last 10 entries in this namespace." | `chronological` |

@@ -169,19 +169,30 @@ const payloadModeArgDescription = "How much of each result to return: " +
 // memory_recall and tesseract_lookup so the two cannot describe it differently,
 // and rendered from memory.SearchModeVocabulary so it cannot advertise a value
 // the store rejects.
+//
+// Every capability sentence below is one the code actually has. Two earlier
+// drafts of this string did not clear that bar — it advertised a
+// service_unavailable code this path never emits, and multi-word phrase search
+// the mode does not do — and a description that overstates is worse than a
+// missing one, because an agent branches on it.
 var searchModeArgDescription = "Which retrieval signal answers the query, under ranking=relevance: " +
 	strings.Join(memory.SearchModeVocabulary(), " | ") + " (default: hybrid). " +
 	"`hybrid` fuses keyword and semantic matching — the right default when you are describing a topic in your own words. " +
-	"`lexical` runs keyword (BM25) matching alone, ordered by match strength. " +
+	"`lexical` runs keyword (BM25) matching alone, ordered by match strength, with every term required. " +
 	"Reach for it when you know the exact string you are looking for and fusion would only blur it: " +
-	"a ticket ID (CW-20260519-0032), a function or symbol name, a namespace, a literal error message. " +
+	"a ticket ID (CW-20260519-0032), a function or symbol name, a dotted or slashed path, a namespace. " +
 	"Semantic similarity is the wrong tool for an identifier — it returns things that MEAN something like your query, " +
 	"and an identifier means nothing, it only matches. " +
-	"Under `lexical` a punctuated token is matched as an adjacent phrase, so CW-20260519-0032 finds that ticket rather than " +
-	"documents mentioning CW, 20260519 and 0032 in unrelated places; `score` is absent because the order is the signal. " +
+	"What `lexical` binds as an adjacent phrase is a PUNCTUATION-joined run: CW-20260519-0032 finds that ticket rather than " +
+	"documents mentioning CW, 20260519 and 0032 in unrelated places. " +
+	"What it does NOT do is multi-word phrase search — space-separated words are each required to appear, not to appear together, " +
+	"so `sqlite NOT NULL` finds documents carrying all three words anywhere rather than the phrase. " +
+	"AND, OR and NOT are matched as literal words here, not as operators (they ARE operators under hybrid). " +
+	"A query containing a non-ASCII letter is a validation_error rather than an empty page: lexical tokens are [A-Za-z0-9_] only. " +
+	"`score` is absent under `lexical` because the order is the signal. " +
 	"`semantic` runs embedding (cosine) matching alone, ordered by similarity. " +
 	"Reach for it when you know the words in the corpus will NOT be the words in your query. " +
-	"It is a service_unavailable error when no embedder is configured — it never falls back to keyword matching, " +
+	"It is a similarity_unavailable error when no embedder is configured — it never falls back to keyword matching, " +
 	"because getting keyword results labeled semantic is worse than being told. " +
 	"`lexical` and `semantic` require ranking=relevance (the default when a query is set); passing them with another ranking is a validation_error."
 

@@ -523,7 +523,12 @@ func TestSearchModeLexical_UntokenizableQueryIsAnError(t *testing.T) {
 	ctx := context.Background()
 	seedIdentifierCorpus(t, ms)
 
-	for _, q := range []string{"--*^:()", "日本語", "   "} {
+	// The last three are the ones a guard checking only for an EMPTY expression
+	// misses: an interior non-ASCII letter splits a word into tokens the index
+	// does not contain, so the query is well-formed, non-empty, and can only
+	// ever match nothing. `naïve` builds the phrase "na ve"; `résumé memory`
+	// builds "r sum" "memory". Both would have been a confidently empty page.
+	for _, q := range []string{"--*^:()", "   ", "日本語", "naïve", "résumé memory"} {
 		t.Run(q, func(t *testing.T) {
 			_, err := ms.Recall(ctx, memory.RecallInput{
 				Namespaces: []string{searchModeNS},
@@ -533,6 +538,102 @@ func TestSearchModeLexical_UntokenizableQueryIsAnError(t *testing.T) {
 			})
 			if !errors.Is(err, memory.ErrInvalidInput) {
 				t.Fatalf("expected ErrInvalidInput for %q, got %v", q, err)
+			}
+		})
+	}
+
+	// Non-ASCII PUNCTUATION must NOT be refused: unicode61 splits on an em-dash
+	// or a curly quote too, so the grouping still lines up with the index and
+	// the query is answerable. Without this the guard would be a blanket
+	// non-ASCII ban dressed up as a correctness check.
+	for _, q := range []string{"memory — recall", "memory’s recall", "memory … recall"} {
+		t.Run("punctuation/"+q, func(t *testing.T) {
+			if _, err := ms.Recall(ctx, memory.RecallInput{
+				Namespaces: []string{searchModeNS},
+				Ranking:    memory.RankingRelevance,
+				SearchMode: memory.SearchModeLexical,
+				Query:      q,
+			}); err != nil {
+				t.Fatalf("non-ASCII punctuation is representable and must be answered, got %v", err)
+			}
+		})
+	}
+}
+
+// hybrid honors FTS5's infix operators; lexical matches them as literal words.
+// The asymmetry is the design, so it is asserted rather than left to the
+// builders' unit tests — this is the caller-visible half of it.
+func TestSearchMode_OperatorsAreOperatorsUnderHybridAndLiteralUnderLexical(t *testing.T) {
+	ms, cleanup := newTestStoreNoEmbedder(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rows := []struct{ key, summary, body string }{
+		{"op.memory", "memory only", "nothing else here"},
+		{"op.recall", "recall only", "nothing else here"},
+		{"op.both", "memory recall", "both words, no keyword"},
+		{"op.literal", "memory recall", "the words or and not appear literally"},
+	}
+	for _, r := range rows {
+		in := memory.WriteInput{
+			Namespace: searchModeNS, MemoryKey: r.key,
+			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
+			Trigger: memory.TriggerExplicit, SessionID: "manual:op",
+			Origin: memory.OriginUser, Confidence: 0.9, Status: memory.StatusCanonical,
+			Payload: memory.Payload{Summary: r.summary, Body: r.body},
+		}
+		if _, err := ms.WriteRevision(ctx, in); err != nil {
+			t.Fatalf("write %s: %v", r.key, err)
+		}
+	}
+
+	base := memory.RecallInput{
+		Namespaces: []string{searchModeNS},
+		Ranking:    memory.RankingRelevance,
+		Query:      "memory OR recall",
+	}
+	hyb, err := ms.Recall(ctx, base)
+	if err != nil {
+		t.Fatalf("hybrid: %v", err)
+	}
+	// OR is a union: every row carries memory or recall.
+	if len(hyb) != len(rows) {
+		t.Errorf("hybrid treated OR as something other than a union: got %v, want all %d rows",
+			keysOf(hyb), len(rows))
+	}
+
+	lex := base
+	lex.SearchMode = memory.SearchModeLexical
+	got, err := ms.Recall(ctx, lex)
+	if err != nil {
+		t.Fatalf("lexical: %v", err)
+	}
+	// Literal: the row that actually contains the word "or", and only it.
+	if len(got) != 1 || got[0].Revision.MemoryKey != "op.literal" {
+		t.Errorf("lexical should require the literal word \"or\", got %v", keysOf(got))
+	}
+}
+
+// An operator keyword with no operand on one side is a syntax error on main
+// and must become an answer here — through the mode surface, not just the
+// builder. This is the live crash the lane fixes.
+func TestSearchMode_LeadingAndTrailingOperatorsDoNotCrashRecall(t *testing.T) {
+	ms, cleanup := newTestStoreNoEmbedder(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedIdentifierCorpus(t, ms)
+
+	for _, q := range []string{"AND memory", "memory AND", "NOT NULL constraint", "OR", "memory AND OR recall"} {
+		t.Run(q, func(t *testing.T) {
+			for _, mode := range []memory.SearchMode{memory.SearchModeHybrid, memory.SearchModeLexical} {
+				if _, err := ms.Recall(ctx, memory.RecallInput{
+					Namespaces: []string{searchModeNS},
+					Ranking:    memory.RankingRelevance,
+					SearchMode: mode,
+					Query:      q,
+				}); err != nil {
+					t.Errorf("search_mode=%s query %q: %v", mode, q, err)
+				}
 			}
 		})
 	}

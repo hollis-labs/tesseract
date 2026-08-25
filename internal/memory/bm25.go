@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // bm25CandidateDefault is the default top-N fetched for the BM25 arm of
@@ -102,10 +104,17 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 //
 // Everything outside [A-Za-z0-9_] is a separator, which is also what strips
 // every FTS5 MATCH metacharacter (`"`, `*`, `:`, `^`, `-`, `(`, `)`) before
-// the parser can see it. Note the consequence: the token set is ASCII-only, so
-// a query in a non-Latin script reduces to nothing and an accented word is
-// truncated at the accent. That is pre-existing behavior of the BM25 arm, not
-// introduced here.
+// the parser can see it.
+//
+// The consequence to know about is that this DISAGREES with the tokenizer the
+// index was built with. memory_revisions_fts declares no tokenize= option, so
+// it uses unicode61, which does not split on a non-ASCII letter — it folds one
+// into a token. This function does split there: `naïve` becomes the two tokens
+// `na` and `ve`, neither of which the index contains. It is a split, not a
+// truncation; only a TRAILING accent looks like truncation. search_mode=lexical
+// refuses such a query outright (see unrepresentableRune) rather than answer it
+// with a confidently empty page. Under hybrid the behavior is pre-existing and
+// the cosine arm still answers.
 func bm25Tokenize(q string) [][]string {
 	var groups [][]string
 	var cur []string
@@ -145,44 +154,113 @@ func bm25Tokenize(q string) [][]string {
 
 // quotePhrase renders tokens as one FTS5 phrase: `"a b c"`.
 //
-// Quoting is not cosmetic. Inside double quotes FTS5 treats AND, OR, NOT and
-// NEAR as ordinary tokens rather than as operators, which is what makes this
-// safe against arbitrary user input. Unquoted, a query whose first word is
-// "and" reaches MATCH as `AND ...` and SQLite answers `fts5: syntax error near
-// "AND"` — the whole recall fails. Unquoted "memory NOT recall" parses as a
-// NOT operator and silently answers a different question than the caller asked.
-//
 // No escaping of the tokens themselves is needed, and none is possible to get
 // wrong: bm25Tokenize emits only [A-Za-z0-9_], so a token can never contain
-// the `"` that would close the phrase early.
+// the `"` that would close the phrase early. That is what makes the output
+// safe by construction rather than by enumerating what to escape.
 func quotePhrase(tokens []string) string {
 	return `"` + strings.Join(tokens, " ") + `"`
 }
 
-// sanitizeBM25Query builds the recall-oriented MATCH expression used by the
-// hybrid arm: every token as its own single-token phrase, joined by FTS5's
-// implicit AND.
+// fts5Operators are the tokens FTS5's MATCH grammar reads as infix operators.
 //
-// The implicit operator between bare phrases in FTS5 is AND, not OR. Measured
-// against the live corpus (1,639 revisions, max created_at 2026-08-25T19:18:16Z):
-// `CW 20260519 0032` and `CW AND 20260519 AND 0032` both return 12 rows, while
-// `CW OR 20260519 OR 0032` returns 720.
+// Case-sensitive, and that is the grammar's rule, not a shortcut here: only
+// the uppercase spellings are keywords, so `and memory` is two ordinary tokens
+// and has always answered fine.
 //
-// Per-token quoting is exactly ranking-neutral against the bare form it
-// replaces — a one-token phrase is the same query as a bare token — so the
-// hybrid arm's results and bm25 scores are unchanged. Verified on the same
-// corpus for two queries: `CW 20260519 0032` (12 rows) and
-// `memory recall ranking` (16 rows) each produce an identical ordered
-// (revision_id, bm25 score) sequence in both forms, 0 positions differing.
-// What quoting changes is only the failure modes described on quotePhrase.
-func sanitizeBM25Query(q string) string {
-	var phrases []string
-	for _, group := range bm25Tokenize(q) {
-		for _, tok := range group {
-			phrases = append(phrases, quotePhrase([]string{tok}))
+// NEAR is deliberately absent. It is an operator only when immediately
+// followed by `(`, and bm25Tokenize strips every parenthesis before this is
+// consulted — so a NEAR reaching MATCH from here is always an ordinary token.
+// `NEAR memory` matches the documents containing both words; it does not error.
+var fts5Operators = map[string]bool{"AND": true, "OR": true, "NOT": true}
+
+// unrepresentableRune returns the first rune of q that the BM25 builders cannot
+// represent as a query against this index, or -1 if there is none.
+//
+// bm25Tokenize splits on everything outside [A-Za-z0-9_]; unicode61, which
+// built the index, does not split on a non-ASCII letter, digit, or combining
+// mark. Where the two disagree, no expression this file can emit will ever
+// match the token the index actually holds: `naïve` is one indexed token and
+// becomes the phrase `"na ve"` here, which matches nothing and never can.
+//
+// Non-ASCII PUNCTUATION is fine and is deliberately not flagged — unicode61
+// splits on an em-dash or a curly quote too, so the grouping still lines up.
+func unrepresentableRune(q string) rune {
+	for _, r := range q {
+		if r < utf8.RuneSelf {
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.In(r, unicode.M) {
+			return r
 		}
 	}
-	return strings.Join(phrases, " ")
+	return -1
+}
+
+// sanitizeBM25Query builds the recall-oriented MATCH expression used by the
+// hybrid arm: every token quoted into its own single-token phrase, EXCEPT an
+// operator keyword sitting where the grammar can actually take an operator,
+// which is passed through bare.
+//
+// The selectivity is the whole design, and getting it wrong is not a tail
+// effect. Quoting every token — which reads as the safe, uniform choice —
+// turns the operator into a required literal term, a third interpretation
+// narrower than either thing a caller could have meant. Measured on the live
+// corpus (1,642 revisions, max created_at 2026-08-25T21:32:39.933565Z):
+//
+//	query                 today   quote-everything   this builder
+//	nanite AND torque      100           96              100
+//	nanite OR torque       927           57              927
+//	nanite NOT torque      701           84              701
+//	memory OR recall       390           53              390
+//	a AND b OR c           254           46              254
+//
+// OR loses 94% of its rows that way, silently, and the divergence reaches the
+// top of the ranking rather than the tail: for `nanite AND torque`, positions
+// 1-5 held but position 6 onward differed and one revision dropped out of the
+// top 10 entirely.
+//
+// Preserving the infix operator reproduces today exactly, and that is measured
+// rather than argued: over 3,030 queries on that corpus — 2- 3- and 5-word
+// prefixes of real payload summaries, plus every AND/OR/NOT pairing of eight
+// corpus words — this builder produced an ordered (revision_id, bm25) sequence
+// identical to the bare form in ALL of them, while quoting every token diverged
+// in 146.
+//
+// Where the grammar CANNOT take an operator — leading, trailing, or doubled —
+// the keyword is quoted into an ordinary term. That is the crash fix, and it
+// changes no query that parses today, because today those queries do not parse
+// at all: `AND memory`, `memory AND` and `NOT NULL constraint` are all
+// `fts5: syntax error` on main and become 301, 301 and 1 here.
+//
+// One more thing the quoting buys, unchanged from before: the implicit
+// operator between bare phrases in FTS5 is AND, not OR. On the same corpus
+// `CW 20260519 0032` and `CW AND 20260519 AND 0032` both return 12 rows while
+// `CW OR 20260519 OR 0032` returns 720 — so the recall-oriented arm is an
+// intersection, and always was.
+func sanitizeBM25Query(q string) string {
+	var tokens []string
+	for _, group := range bm25Tokenize(q) {
+		tokens = append(tokens, group...)
+	}
+
+	out := make([]string, 0, len(tokens))
+	// expectTerm tracks the grammar position. An operator is legal only after
+	// a completed operand, and only if an operand follows it. Because a token
+	// in term position is always quoted — an operator keyword included — the
+	// "an operand follows" test is just "another token follows", and the
+	// emitted expression can never be leading-, trailing-, or double-operator.
+	expectTerm := true
+	for i, tok := range tokens {
+		if fts5Operators[tok] && !expectTerm && i+1 < len(tokens) {
+			out = append(out, tok)
+			expectTerm = true
+			continue
+		}
+		out = append(out, quotePhrase([]string{tok}))
+		expectTerm = false
+	}
+	return strings.Join(out, " ")
 }
 
 // sanitizeBM25Phrase builds the precision-oriented MATCH expression used by
@@ -191,14 +269,34 @@ func sanitizeBM25Query(q string) string {
 //
 // This is the difference between finding a ticket ID and finding documents
 // that happen to mention its three pieces somewhere. Measured on the live
-// corpus (1,639 revisions, max created_at 2026-08-25T19:18:16Z), for the query
+// corpus (1,642 revisions, max created_at 2026-08-25T21:32:39.933565Z), for
 // `CW-20260519-0032`, which appears in exactly one revision:
 //
 //	term form   `"CW" "20260519" "0032"`   12 rows; the true row ranks 5th
 //	phrase form `"CW 20260519 0032"`        1 row;  the true row ranks 1st
 //
-// Multiple runs still combine under implicit AND, so `CW-20260519-0032 cursor`
-// is "that identifier, in a document that also says cursor".
+// Unlike sanitizeBM25Query this builder is operator-BLIND: every token is
+// quoted, so AND/OR/NOT are literal words. That asymmetry is deliberate. The
+// two builders differ on grouping AND on operator handling, because no single
+// rule can serve both callers — the hybrid caller needs `nanite OR torque` to
+// stay 925 rows, and the lexical caller asked for the words they typed.
+//
+// KNOWN LIMIT, and it is in the tool description because a caller cannot infer
+// it: adjacency is bound only for PUNCTUATION-joined runs, never for
+// whitespace-joined ones. Multiple runs combine under implicit AND, so
+// `CW-20260519-0032 cursor` is "that identifier, in a document that also says
+// cursor" — but `sqlite NOT NULL` is the three words anywhere, not the phrase.
+// On the same corpus:
+//
+//	"sqlite" "not" "null"   ->  2   what lexical builds
+//	"NOT NULL"              ->  6   the phrase a caller may have meant
+//	"null" "not"            -> 33   the terms, reversed: still 33
+//	"null not"              ->  0   the phrase, reversed: adjacency is real
+//
+// Whitespace carries no signal about which of the two a caller wanted, and
+// inferring either way is silently wrong for the other — the defect class this
+// ticket exists to remove. Explicit phrase search is a separate affordance and
+// is deliberately NOT smuggled in here.
 func sanitizeBM25Phrase(q string) string {
 	var phrases []string
 	for _, group := range bm25Tokenize(q) {
@@ -210,9 +308,11 @@ func sanitizeBM25Phrase(q string) string {
 // bm25MatchExpr picks the MATCH expression for in's search mode.
 //
 // It is the single place the two builders are chosen between, so the lexical
-// entry point cannot acquire a different escaping story from the hybrid one:
-// both go through bm25Tokenize, and neither can emit a character the MATCH
-// parser treats as syntax.
+// entry point cannot acquire a different ESCAPING story from the hybrid one:
+// both take their tokens from bm25Tokenize, so neither can emit a token
+// carrying a character the MATCH parser treats as syntax. They differ only in
+// what they do with those tokens — grouping and operator handling — which is
+// the caller-visible part, not the safety part.
 func bm25MatchExpr(in RecallInput) string {
 	if in.SearchMode == SearchModeLexical {
 		return sanitizeBM25Phrase(in.Query)

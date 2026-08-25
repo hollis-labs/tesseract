@@ -141,16 +141,29 @@ func (s *Store) relevanceOrdered(ctx context.Context, in RecallInput) ([]RecallR
 // same-shape-different-meaning value this domain has already been bitten by.
 // Under lexical the ORDER is the signal, and array order carries it.
 func (s *Store) lexicalOrdered(ctx context.Context, in RecallInput) ([]RecallResult, error) {
-	// An all-punctuation or non-ASCII query survives tokenization as nothing,
-	// and a MATCH against nothing returns nothing. Under hybrid that is
-	// harmless (the cosine arm still answers), but under lexical it would hand
-	// back an empty page that looks exactly like "no such memory exists". Say
-	// which of the two it is.
+	// Two ways a query can be unanswerable here, and both would otherwise
+	// return an empty page that reads exactly like "no such memory exists".
+	//
+	// The first is the one that is easy to miss, because it does not produce
+	// an empty EXPRESSION. A non-ASCII letter splits a word this builder
+	// cannot reassemble: `naïve` becomes the phrase `"na ve"` and `résumé
+	// memory` becomes `"r sum" "memory"` — well-formed queries for tokens the
+	// index does not contain, which can only ever match nothing. Checking only
+	// for an empty expression leaves the guard blind in its own case.
+	if bad := unrepresentableRune(in.Query); bad >= 0 {
+		return nil, fmt.Errorf(
+			"%w: query %q contains %q, which search_mode=lexical cannot match — its tokens "+
+				"are [A-Za-z0-9_] only, while the index was built with a tokenizer that keeps "+
+				"such characters inside a word, so no lexical query can name that token; use "+
+				"search_mode=semantic or search_mode=hybrid",
+			ErrInvalidInput, in.Query, bad)
+	}
+	// The second: nothing tokenizable at all, e.g. a query of pure punctuation.
 	if bm25MatchExpr(in) == "" {
 		return nil, fmt.Errorf(
 			"%w: query %q contains no searchable tokens — search_mode=lexical matches on "+
-				"[A-Za-z0-9_] tokens, so a query of only punctuation or non-Latin script has "+
-				"nothing to match; use search_mode=semantic for those",
+				"[A-Za-z0-9_] tokens, so a query of only punctuation has nothing to match; "+
+				"use search_mode=semantic for those",
 			ErrInvalidInput, in.Query)
 	}
 
