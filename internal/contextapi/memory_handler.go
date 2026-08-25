@@ -121,8 +121,30 @@ type memoryRecallRequest struct {
 	// argument parity is on us.
 	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
 
-	// Cursor, BudgetBytes and BudgetTokens: peers of the MCP memory_recall
-	// arguments of the same name. See pageArgs.
+	// SimilarityMin is the cosine floor. Peer of the MCP memory_recall argument
+	// of the same name — same range, same ranking/search_mode restriction, same
+	// error, because both hand the value to RecallPaged unmodified.
+	//
+	// It is declared FLAT here, next to search_mode and payload_mode, rather
+	// than left to ride inside `filters`. The MCP argument is spelled
+	// similarity_min, and this route's `filters` object decodes
+	// memory.RecallFilters with Go's default field names (Origins, Tags,
+	// ConfidenceMin, ...), so a nested spelling would be `SimilarityMin` and the
+	// two doors would disagree on the name of the same knob. Flat keeps the
+	// vocabulary identical across all four surfaces.
+	//
+	// When set it wins over anything decoded into Filters.SimilarityMin. The
+	// two cannot collide in practice — encoding/json matches field names
+	// case-insensitively but not across underscores, so `filters.similarity_min`
+	// does not decode into that field at all — but the precedence is stated
+	// rather than left to be discovered.
+	//
+	// A pointer for the reason memory.RecallFilters.SimilarityMin documents:
+	// 0.0 is a legal floor and `omitempty` on a bare float64 would drop it.
+	SimilarityMin *float64 `json:"similarity_min,omitempty"`
+
+	// Cursor, BudgetBytes, BudgetTokens and EstimateOnly: peers of the MCP
+	// memory_recall arguments of the same name. See pageArgs.
 	pageArgs
 }
 
@@ -155,17 +177,30 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	filters := req.Filters
+	if req.SimilarityMin != nil {
+		filters.SimilarityMin = req.SimilarityMin
+	}
 	in := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
 		Ranking:       req.Ranking,
 		SearchMode:    req.SearchMode,
 		Query:         req.Query,
-		Filters:       req.Filters,
+		Filters:       filters,
 	}
 	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
 	if err != nil {
 		writeRecallError(w, err, "recall_failed")
+		return
+	}
+	// The same page.Manifest the full response below carries — this route has
+	// no facet histogram, so its estimate carries none either.
+	if pr.EstimateOnly {
+		writeJSON(w, http.StatusOK, estimateResponse{
+			Manifest:     page.Manifest,
+			EstimateOnly: true,
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, page)

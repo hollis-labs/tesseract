@@ -289,7 +289,20 @@ func (s *Store) fetchCosineScored(ctx context.Context, in RecallInput, n int) ([
 		if len(r.EmbeddingVector) == 0 {
 			continue
 		}
-		ranked = append(ranked, scoredRevision{r, similarityScore(r, queryVec)})
+		score := similarityScore(r, queryVec)
+		// The similarity floor is applied here — before the top-n arm cap
+		// below — so it narrows the candidate pool rather than thinning
+		// whichever of the top n happened to be weak. Applying it after the
+		// cap would make the number of results depend on how many below-floor
+		// rows crowded the top n, which is not a filter, it is a sample.
+		//
+		// Reached only under ranking=relevance + search_mode=semantic:
+		// RecallPage refuses similarity_min under hybrid, and hybrid is the
+		// only other caller of this function (via fetchCosineCandidates).
+		if in.Filters.SimilarityMin != nil && score < *in.Filters.SimilarityMin {
+			continue
+		}
+		ranked = append(ranked, scoredRevision{r, score})
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		if ranked[i].score == ranked[j].score {

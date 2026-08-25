@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -109,7 +110,88 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 		*knob.dst = v
 	}
 
+	// estimate_only rides on PageRequest because it is a knob on what gets
+	// serialized, alongside payload_mode and the budgets, not on what gets
+	// retrieved. It is read as a plain bool: false is both the zero value and
+	// the meaning of an absent argument, so unlike the budgets there is no
+	// third state to preserve and no presence check to do.
+	pr.EstimateOnly = req.GetBool("estimate_only", false)
+
 	return pr, nil
+}
+
+// resolveSimilarityMin reads the optional cosine floor from an MCP call.
+//
+// Read through a presence check rather than req.GetFloat's default, for the
+// reason RecallFilters.SimilarityMin documents: 0.0 is a legal floor that means
+// something different from absent, and a default-based read cannot tell them
+// apart. GetFloat would also return 0 for a caller who passed the string
+// "0.5" — silently installing a floor of zero where the caller asked for
+// half — so the argument's type is checked rather than coerced.
+//
+// The VALUE is not validated here. Range and applicability are checked by
+// RecallPage, which both MCP tools and both HTTP peers funnel through, so all
+// four doors reject the same floors with the same message by construction
+// rather than by four copies agreeing. This is the pattern search_mode
+// established.
+func resolveSimilarityMin(req mcp.CallToolRequest) (*float64, *mcp.CallToolResult) {
+	raw, ok := req.GetArguments()["similarity_min"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	switch v := raw.(type) {
+	case float64:
+		return &v, nil
+	case float32:
+		f := float64(v)
+		return &f, nil
+	case int:
+		f := float64(v)
+		return &f, nil
+	case int64:
+		f := float64(v)
+		return &f, nil
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return nil, toolError("validation_error",
+				"similarity_min must be a number, got "+v.String())
+		}
+		return &f, nil
+	}
+	return nil, toolError("validation_error",
+		fmt.Sprintf("similarity_min must be a number, got %T", raw))
+}
+
+// estimateEnvelope renders an estimate_only response: the envelope the tool
+// would have returned, minus the rows.
+//
+// The rule it implements is that every field of an estimate has a referent in
+// the SAME tool's non-estimate response. That is what makes the identity
+// checkable field by field rather than by eye: memory_recall answers with
+// {results, manifest}, so its estimate is {manifest}; tesseract_lookup answers
+// with {results, facets, manifest}, so its estimate is {facets, manifest}.
+// Reporting a facet histogram from memory_recall would mean the estimate
+// advertised a number the real call cannot return, which is the opposite of an
+// identity. Callers wanting the histogram use tesseract_lookup, which has it.
+//
+// `results` is OMITTED, not emitted as an empty array. An empty array is
+// indistinguishable from "your query matched nothing" — the same absent-versus-
+// empty conflation that payload_mode carries `payload_mode` on every projected
+// row to avoid. estimate_only: true is the positive marker that says withheld.
+//
+// facets is `any` and skipped when nil so the two tools' differently-shaped
+// histograms both pass through unchanged; the caller builds it exactly as it
+// would for a real response, so the estimate cannot compute it differently.
+func estimateEnvelope(page memory.PagedRecall, facets any) map[string]any {
+	out := map[string]any{
+		"manifest":      page.Manifest,
+		"estimate_only": true,
+	}
+	if facets != nil {
+		out["facets"] = facets
+	}
+	return out
 }
 
 // resolveHistoryPageRequest builds the paging half of a memory_history or
@@ -222,6 +304,35 @@ const (
 	historyLimitArgDescription = "Max revisions to return (default: all, max 500). " +
 		"Passing it switches the response from a bare array to `{results, manifest}`. " +
 		"Chains are shallow today, so this is a ceiling against unbounded growth rather than a routine knob."
+
+	// similarityMinArgDescription documents the cosine floor. Shared by
+	// memory_recall and tesseract_lookup so the two cannot describe it
+	// differently, and so their HTTP peers' field docs have one thing to agree
+	// with.
+	//
+	// Every sentence here is a claim the code makes good on and a test
+	// exercises: the [-1, 1] range check, the 0.0-is-not-absent distinction,
+	// the ranking/search_mode restriction, and validation_error as the code
+	// emitted on each. The contrast with confidence_min is stated because the
+	// two are easy to reach for interchangeably and measure different things.
+	similarityMinArgDescription = "Floor on cosine similarity between your query and each result. " +
+		"Results scoring below it are dropped before `limit` applies, so this narrows the qualifying set rather than thinning a page of it. " +
+		"Range [-1, 1]; anything outside is a validation_error. " +
+		"The floor is inclusive: a result clears it at a score equal to it, matching `confidence_min`. " +
+		"Omit for no floor — 0.0 is NOT the same as omitting it: a floor of 0.0 drops every result with a NEGATIVE score (opposed to your query) while keeping those at exactly 0, and omitting it keeps the negative ones too. " +
+		"Only honored where cosine similarity is the score: `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`. " +
+		"Passing it under any other combination — including the default `search_mode=hybrid`, whose score is an RRF fusion rather than a similarity — is a validation_error rather than a silently ignored knob. " +
+		"NOT the same as `confidence_min`, which filters on the confidence the memory's author recorded when writing it; a result can match your query closely and still have been written tentatively."
+
+	// estimateOnlyArgDescription documents the pre-flight knob. Its central
+	// claim — that the numbers equal what the same call without it returns —
+	// is the one an agent will act on, so it is stated as the exact identity it
+	// is rather than as an approximation.
+	estimateOnlyArgDescription = "Return the envelope describing the results without the results themselves — the pre-flight for deciding whether to spend context on a read. " +
+		"The response is `{manifest, estimate_only: true}` with no `results` key at all; an absent array means withheld, never empty. " +
+		"The numbers are exact, not approximate: `results_total`, `results_returned`, `bytes_returned` and `tokens_estimate` are the same values the identical call WITHOUT this argument reports, under the same `payload_mode`. " +
+		"Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at. " +
+		"`manifest.next_cursor` from an estimate is a valid cursor for the real read — this changes what is serialized, never which rows match or in what order."
 
 	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +
 		"`bytes_returned`, `tokens_estimate`, `truncated`, `truncation_reason`, and `next_cursor`. " +

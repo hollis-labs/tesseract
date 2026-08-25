@@ -94,6 +94,8 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Result shape:** `{results, manifest}`. `results` is an array of `{revision, score}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				manifestResultShapeDescription+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
+				"• **`estimate_only`:** size a read before paying for it. Returns `{manifest, estimate_only: true}` with no `results` key — the counts and byte totals are exactly what the same call without it returns under the same `payload_mode`.\n"+
+				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Just-in-time pattern — recall → choose → hydrate.** Recall returns a projection, not the whole corpus: **recall** at the default `payload_mode` to see what exists, **choose** the few hits that matter, then **hydrate** each one by passing its `revision_id` to `memory_get_revision`. Do not reach for `payload_mode=full` to avoid the third step — a full recall of 30 hits can cost more context than the rest of your turn.\n"+
 				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode, so hydration is always available. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
 				"• **Scope:** `memory:read`.\n"+
@@ -110,6 +112,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("statuses", mcp.Description("JSON array of status filter values")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filter values")),
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence threshold")),
+		mcp.WithNumber("similarity_min", mcp.Description(similarityMinArgDescription)),
 		mcp.WithString("since", mcp.Description("RFC3339 timestamp lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 timestamp upper bound")),
 		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
@@ -117,6 +120,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
 		mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
 		mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
+		mcp.WithBoolean("estimate_only", mcp.Description(estimateOnlyArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -324,6 +328,11 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		until = &t
 	}
 
+	similarityMin, errRes := resolveSimilarityMin(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+
 	in := memory.RecallInput{
 		Namespaces:    namespaces,
 		RevisionScope: memory.RevisionScope(req.GetString("revision_scope", "")),
@@ -340,6 +349,10 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 			Statuses:      statuses,
 			Tags:          tags,
 			ConfidenceMin: req.GetFloat("confidence_min", 0),
+			// Passed through unvalidated, like search_mode above: RecallPaged
+			// range-checks it and refuses the rankings that carry no cosine,
+			// so this door and its HTTP peer cannot drift on either rule.
+			SimilarityMin: similarityMin,
 			Since:         since,
 			Until:         until,
 		},
@@ -359,6 +372,9 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 			return toolError("validation_error", err.Error()), nil
 		}
 		return nil, err
+	}
+	if pageReq.EstimateOnly {
+		return toolJSON(estimateEnvelope(page, nil)), nil
 	}
 	return toolJSON(page), nil
 }

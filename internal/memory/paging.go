@@ -299,6 +299,11 @@ type orderingKey struct {
 	Statuses      []string `json:"statuses"`
 	Tags          []string `json:"tags"`
 	ConfidenceMin float64  `json:"conf"`
+	// SimilarityMin stays a pointer here rather than being flattened to a
+	// float: an absent floor and a floor of 0.0 select different candidate
+	// sets, so they must fingerprint differently. json.Marshal renders nil as
+	// null and 0.0 as 0, which is exactly the distinction needed.
+	SimilarityMin *float64 `json:"sim_min"`
 	Since         string   `json:"since"`
 	Until         string   `json:"until"`
 	Domains       []string `json:"domains"`
@@ -333,6 +338,10 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		Statuses:      sortedStringsFrom(in.Filters.Statuses, func(s Status) string { return string(s) }),
 		Tags:          sortedCopy(in.Filters.Tags),
 		ConfidenceMin: in.Filters.ConfidenceMin,
+		// A similarity floor removes rows from the candidate set, so a cursor
+		// issued at one floor and resumed at another offsets into a shorter or
+		// longer sequence and returns plausible, wrong rows.
+		SimilarityMin: in.Filters.SimilarityMin,
 		Since:         formatTimePtr(in.Filters.Since),
 		Until:         formatTimePtr(in.Filters.Until),
 		Domains:       sortedStringsFrom(in.Filters.Domains, func(d domains.Domain) string { return string(d) }),
@@ -509,6 +518,27 @@ type PageRequest struct {
 	PayloadMode PayloadMode
 	// Limit is the caller's requested page size. Zero means unspecified.
 	Limit int
+
+	// EstimateOnly asks the surface to withhold the result rows and return
+	// only the envelope describing them — the pre-flight half of progressive
+	// discovery, so an agent can size a result before spending its context
+	// window on it.
+	//
+	// It deliberately changes NOTHING about how the page is computed. The
+	// query runs, the rows are fetched, projected, and measured exactly as they
+	// would be without it; only the serialization of the rows is skipped. That
+	// is what makes the reported numbers an identity rather than a prediction:
+	// there is no second code path that could estimate differently from what
+	// the real call returns. The saving is the caller's context window, not the
+	// server's work — a knob that guessed cheaply would report a number that
+	// could be wrong, and a wrong pre-flight is worse than none.
+	//
+	// It is not part of the cursor fingerprint and must never become part of
+	// it: it cannot reorder or remove a single row, so a cursor issued by an
+	// estimate is a valid cursor for the real read. RecallPaged never consults
+	// it — the surfaces own the wire shape — and Engaged() deliberately ignores
+	// it too, since the history routes that Engaged() serves do not offer it.
+	EstimateOnly bool
 }
 
 // Engaged reports whether THE CALLER asked for any bounded-read behavior.

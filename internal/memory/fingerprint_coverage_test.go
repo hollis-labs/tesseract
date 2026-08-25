@@ -55,6 +55,17 @@ func nonZero(t *testing.T, f reflect.Value, name string) reflect.Value {
 			p.Elem().Set(reflect.ValueOf(ts))
 			return p
 		}
+		// 0.5 rather than 0 only for consistency with the Float64 case above.
+		// &0.0 would serve as a probe here too — a pointer float fingerprints
+		// as null when nil and 0 when it points at zero, so both differ from
+		// the nil baseline. That is a load-bearing property rather than an
+		// incidental one, so TestFingerprint_DistinguishesAbsentFromZeroFloor
+		// asserts it directly instead of leaving it to this probe.
+		if ty.Elem().Kind() == reflect.Float64 {
+			p := reflect.New(ty.Elem())
+			p.Elem().SetFloat(0.5)
+			return p
+		}
 		t.Fatalf("field %s: unhandled pointer type %s — teach nonZero about it", name, ty)
 	default:
 		t.Fatalf("field %s: unhandled kind %s — teach nonZero about it", name, ty.Kind())
@@ -226,6 +237,51 @@ func TestFingerprint_CoversEveryRecallInputField(t *testing.T) {
 	}
 	if covered == 0 {
 		t.Fatal("every RecallInput field was excluded; this guard is not testing anything")
+	}
+}
+
+// A similarity floor of 0.0 and no floor at all select different candidate
+// sets, so they must fingerprint differently — otherwise a cursor issued
+// without a floor is silently accepted when resumed with a floor of zero, and
+// the caller pages into a shorter sequence with no error.
+//
+// This is the cursor-side half of the reason SimilarityMin is a pointer.
+// TestFingerprint_CoversEveryRecallFilter cannot show it: that guard probes one
+// non-zero value against a nil baseline, which passes whether or not the zero
+// case is distinguishable.
+func TestFingerprint_DistinguishesAbsentFromZeroFloor(t *testing.T) {
+	base := memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory/notes"},
+		Ranking:    memory.RankingChronological,
+	}
+
+	withFloor := func(v *float64) string {
+		in := base
+		in.Filters.SimilarityMin = v
+		return memory.RecallOrderingFingerprint(in)
+	}
+
+	zero, half := 0.0, 0.5
+	absent := withFloor(nil)
+	atZero := withFloor(&zero)
+	atHalf := withFloor(&half)
+
+	if absent == atZero {
+		t.Errorf("similarity_min absent and similarity_min=0.0 fingerprint identically (%s).\n"+
+			"They are different queries: a floor of 0.0 drops every orthogonal and opposed "+
+			"result, while an absent floor keeps them. A cursor must not carry between them.",
+			absent)
+	}
+	// The positive control for the assertion above: the fingerprint does move
+	// for a floor it certainly reads, so a passing zero-case is evidence about
+	// the zero case rather than about the field being read at all.
+	if absent == atHalf {
+		t.Errorf("similarity_min=0.5 did not change the fingerprint at all (%s); "+
+			"the zero-versus-absent check above cannot mean anything until this does", absent)
+	}
+	if atZero == atHalf {
+		t.Errorf("similarity_min=0.0 and similarity_min=0.5 fingerprint identically (%s); "+
+			"the fingerprint is reading presence rather than value", atZero)
 	}
 }
 

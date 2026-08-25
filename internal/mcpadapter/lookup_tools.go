@@ -24,6 +24,8 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you looked up without it.\n"+
 				"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
 				"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
+				"• **`estimate_only`:** size a lookup before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
+				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
@@ -52,12 +54,14 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence")),
+		mcp.WithNumber("similarity_min", mcp.Description(similarityMinArgDescription)),
 		mcp.WithString("since", mcp.Description("RFC3339 lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 upper bound")),
 		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
 		mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
 		mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
 		mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
+		mcp.WithBoolean("estimate_only", mcp.Description(estimateOnlyArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -163,6 +167,11 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		until = &t
 	}
 
+	similarityMin, errRes := resolveSimilarityMin(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+
 	in := memory.RecallInput{
 		Namespaces:    namespaces,
 		RevisionScope: memory.RevisionScope(req.GetString("revision_scope", "")),
@@ -176,6 +185,10 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 			Statuses:      statuses,
 			Tags:          tags,
 			ConfidenceMin: req.GetFloat("confidence_min", 0),
+			// See handleMemoryRecall: validated by RecallPaged, not here, so
+			// this door and its HTTP peer cannot drift on the accepted range
+			// or on which rankings admit a similarity floor.
+			SimilarityMin: similarityMin,
 			Since:         since,
 			Until:         until,
 			Domains:       doms,
@@ -219,6 +232,13 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		if s := r.Revision.Facets.Source; s != "" {
 			facets["sources"][s]++
 		}
+	}
+
+	// The estimate is built from the SAME facets value and the SAME manifest
+	// the non-estimate branch below returns, one statement apart, so the two
+	// cannot report different numbers for the same call.
+	if pageReq.EstimateOnly {
+		return toolJSON(estimateEnvelope(page, facets)), nil
 	}
 
 	return toolJSON(map[string]any{
