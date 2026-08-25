@@ -24,8 +24,30 @@ type Config struct {
 // Kept as a plain string (like Embedding.Provider) so this package stays
 // dependency-free; memory.PayloadMode is the typed vocabulary, and
 // memory.DefaultPayloadMode is the canonical default this must match.
+//
+// BudgetBytes / BudgetTokens are the deployment-level response ceilings for
+// recall and lookup ONLY, overridable per call by the arguments of the same
+// name. Both default to 0, meaning no ceiling.
+//
+// They deliberately do not reach memory_history / knowledge_history. Those
+// answer with a bare array unless the caller passes a paging knob, and a bare
+// array has nowhere to report truncation — so a configured ceiling there could
+// only either flip the response shape for every caller (breaking the shipped
+// web UI, which parses both routes as arrays) or silently drop revisions. A
+// per-call budget on a history read is still honored, and brings the envelope
+// that reports it.
+//
+// Zero is the deliberate default rather than a chosen number. A non-zero
+// default would start truncating every existing recall on the next deploy,
+// silently changing what every already-deployed agent receives — which is the
+// class of change this repo binds with tests elsewhere rather than ships as a
+// side effect. The mechanism ships here; turning it on is a deployment
+// decision with a visible config line behind it. A caller that wants a
+// bounded read without touching config passes the per-call argument.
 type ReadConfig struct {
-	PayloadMode string `yaml:"payload_mode"`
+	PayloadMode  string `yaml:"payload_mode"`
+	BudgetBytes  int    `yaml:"budget_bytes"`
+	BudgetTokens int    `yaml:"budget_tokens"`
 }
 
 // SynthesisConfig configures the LLM-backed answer synthesis path
@@ -112,6 +134,17 @@ func Normalize(cfg Config) Config {
 	// validation_error — the caller is present and can be told.
 	if !validPayloadModes[cfg.Read.PayloadMode] {
 		cfg.Read.PayloadMode = defaults.Read.PayloadMode
+	}
+	// A negative budget is meaningless and a zero one can only produce an
+	// empty page. Both normalize to "no ceiling" for the same reason a bad
+	// payload_mode falls back rather than failing the load: a typo in
+	// config.yaml must not take the service down. A bad per-call budget, by
+	// contrast, is a validation_error — the caller is present and can be told.
+	if cfg.Read.BudgetBytes < 0 {
+		cfg.Read.BudgetBytes = 0
+	}
+	if cfg.Read.BudgetTokens < 0 {
+		cfg.Read.BudgetTokens = 0
 	}
 	if cfg.Synthesis.Provider != "" {
 		if cfg.Synthesis.MaxTokens == 0 {

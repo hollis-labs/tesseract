@@ -347,7 +347,7 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 		t.Fatalf("expected TextContent")
 	}
 	var results []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
 		t.Fatalf("unmarshal recall: %v", err)
 	}
 	if len(results) == 0 {

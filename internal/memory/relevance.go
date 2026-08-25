@@ -17,12 +17,21 @@ const rrfK = 60.0
 // guidance: N≈50–100; 100 keeps RRF well-defined while bounding cost.
 const relevanceArmLimit = 100
 
-// relevanceRecall implements RankingRelevance: combines BM25 and cosine
+// relevanceOrdered implements RankingRelevance: combines BM25 and cosine
 // rankings via Reciprocal Rank Fusion, then multiplies by the same
 // modifiers activation mode uses (status, origin, confidence, recency,
 // activation). Embedder-optional: BM25-only path fires when no embedder
 // is configured so freshly-written memories surface immediately.
-func (s *Store) relevanceRecall(ctx context.Context, in RecallInput) ([]RecallResult, error) {
+//
+// It returns the complete fused ordering. Windowing and the reranker belong
+// to RecallPage, which is the only caller — the same split the other rankings
+// use in recallOrdered.
+//
+// Both arms are capped at relevanceArmLimit, so the sequence this returns is
+// bounded by the fused arm size rather than by the number of rows that match
+// the filters. A Total derived from it is a candidate count, not a corpus
+// count, and RecallPage's callers document it as such.
+func (s *Store) relevanceOrdered(ctx context.Context, in RecallInput) ([]RecallResult, error) {
 	if strings.TrimSpace(in.Query) == "" {
 		return nil, fmt.Errorf("%w: query is required for relevance ranking", ErrInvalidInput)
 	}
@@ -94,18 +103,6 @@ func (s *Store) relevanceRecall(ctx context.Context, in RecallInput) ([]RecallRe
 		}
 		return si > sj
 	})
-
-	if in.Limit > 0 && len(results) > in.Limit {
-		results = results[:in.Limit]
-	}
-
-	// Optional per-call reranker pass. Like the other recall modes,
-	// relevance recall does NOT reinforce activation/access_count —
-	// reinforcement is reserved for the deliberate-read get paths.
-	results, err = s.applyReranker(ctx, in, results)
-	if err != nil {
-		return nil, err
-	}
 
 	return results, nil
 }

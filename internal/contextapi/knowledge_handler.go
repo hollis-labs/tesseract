@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
@@ -121,6 +122,10 @@ func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Reques
 	if !requireNamespaceAccess(w, r, namespace) {
 		return
 	}
+	pr, ok := s.historyPageRequest(w, r)
+	if !ok {
+		return
+	}
 	revs, err := s.KnowledgeStore.GetHistory(r.Context(), namespace, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -130,5 +135,5 @@ func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, revs)
+	writeHistoryPage(w, revs, pr, memory.HistoryOrderingFingerprint(string(domains.Knowledge), namespace, key))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -65,8 +66,9 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	// ── memory_history ───────────────────────────────────────────────────────
 	a.addTool(s, mcp.NewTool("memory_history",
 		mcp.WithDescription(
-			"**Get the full revision history** for a keyed memory, newest-first.\n"+
+			"**Get the revision history** for a keyed memory, newest-first.\n"+
 				"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded and deprecated ones.\n"+
+				"• **Result shape:** a bare array by default. Pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and the response becomes `{results, manifest}` — see `manifest.truncated` and `manifest.next_cursor`.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you need to trace how a memory evolved, or inspect superseded content.\n"+
 				"• **Don't use this for:** just the current value (`memory_get`).\n"+
@@ -74,6 +76,10 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Memory namespace")),
 		mcp.WithString("memory_key", mcp.Required(), mcp.Description("Logical memory key")),
+		mcp.WithNumber("limit", mcp.Description(historyLimitArgDescription)),
+		mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
+		mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
+		mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -85,7 +91,8 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
-				"• **Result shape:** array of `{revision, score}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
+				"• **Result shape:** `{results, manifest}`. `results` is an array of `{revision, score}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
+				manifestResultShapeDescription+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
 				"• **Just-in-time pattern — recall → choose → hydrate.** Recall returns a projection, not the whole corpus: **recall** at the default `payload_mode` to see what exists, **choose** the few hits that matter, then **hydrate** each one by passing its `revision_id` to `memory_get_revision`. Do not reach for `payload_mode=full` to avoid the third step — a full recall of 30 hits can cost more context than the rest of your turn.\n"+
 				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode, so hydration is always available. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
@@ -104,8 +111,11 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence threshold")),
 		mcp.WithString("since", mcp.Description("RFC3339 timestamp lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 timestamp upper bound")),
-		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
+		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
 		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
+		mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
+		mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
+		mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -226,6 +236,11 @@ func (a *Adapter) handleMemoryHistory(ctx context.Context, req mcp.CallToolReque
 	namespace := req.GetString("namespace", "")
 	memoryKey := req.GetString("memory_key", "")
 
+	pr, errRes := a.resolveHistoryPageRequest(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+
 	revs, err := a.MemoryStore.GetHistory(ctx, namespace, memoryKey)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -233,7 +248,18 @@ func (a *Adapter) handleMemoryHistory(ctx context.Context, req mcp.CallToolReque
 		}
 		return nil, err
 	}
-	return toolJSON(revs), nil
+	if !pr.Engaged() {
+		return toolJSON(revs), nil
+	}
+	page, err := memory.PageRevisions(revs, pr,
+		memory.HistoryOrderingFingerprint(string(domains.Memory), namespace, memoryKey))
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalidCursor) {
+			return toolError("validation_error", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(page), nil
 }
 
 func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -242,6 +268,10 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 	}
 
 	payloadMode, errRes := a.resolvePayloadMode(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	pageReq, errRes := a.resolvePageRequest(req, payloadMode, a.DefaultBudget)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -306,11 +336,15 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 			Since:         since,
 			Until:         until,
 		},
-		Limit: int(req.GetFloat("limit", 0)),
 	}
 
-	results, err := a.MemoryStore.Recall(ctx, in)
+	// Limit rides on PageRequest, not RecallInput: the ceiling depends on
+	// payload_mode, and clamping it has to be reportable in the manifest.
+	page, err := a.MemoryStore.RecallPaged(ctx, in, pageReq)
 	if err != nil {
+		if errors.Is(err, memory.ErrInvalidCursor) {
+			return toolError("validation_error", err.Error()), nil
+		}
 		if errors.Is(err, memory.ErrSimilarityUnavailable) {
 			return toolError("similarity_unavailable", err.Error()), nil
 		}
@@ -319,7 +353,7 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		}
 		return nil, err
 	}
-	return toolJSON(memory.ProjectResults(results, payloadMode)), nil
+	return toolJSON(page), nil
 }
 
 func (a *Adapter) handleMemoryPromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

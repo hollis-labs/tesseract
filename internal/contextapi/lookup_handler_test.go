@@ -332,7 +332,7 @@ func TestMemoryRecallHTTP_PayloadModeProjection(t *testing.T) {
 			}
 
 			var results []lookupTestResult
-			if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+			if err := json.Unmarshal(httpRecallResultsJSON(t, rr.Body.Bytes()), &results); err != nil {
 				t.Fatalf("decode (raw=%s): %v", rr.Body.String(), err)
 			}
 			if len(results) != 1 {
@@ -381,7 +381,7 @@ func TestMemoryRecallHTTP_HonorsConfiguredDefault(t *testing.T) {
 
 	rr := postMemoryRecall(t, srv, `{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological"}`)
 	var results []lookupTestResult
-	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+	if err := json.Unmarshal(httpRecallResultsJSON(t, rr.Body.Bytes()), &results); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if results[0].PayloadMode != "keys" {

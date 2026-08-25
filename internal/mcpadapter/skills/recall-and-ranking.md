@@ -18,7 +18,7 @@ related: [memory, revisions]
 
 ## Result shape and `score`
 
-Every result is `{revision, score}`, best first. `memory_recall` returns the bare array; `tesseract_lookup` wraps it as `{results, facets}`.
+Both tools answer with an envelope. `memory_recall` returns `{results, manifest}`; `tesseract_lookup` returns `{results, facets, manifest}`. Inside `results`, every entry is `{revision, score}`, best first.
 
 How much of each result you get is set by `payload_mode`:
 
@@ -46,6 +46,45 @@ Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` resul
 Under `chronological` the field is omitted rather than set to a sort key. Ordering is already carried by array order plus `revision.created_at`, so a score there would only restate the timestamp in units no other mode uses. Read the order, or read `revision.created_at`.
 
 Do not threshold on `score` across modes, and do not persist it — it describes one ranking of one candidate set.
+
+## `manifest` — what you did not get
+
+Both tools carry a `manifest` next to `results`. **Never infer completeness from the array length** — the manifest is the only thing that tells you whether you got everything.
+
+| Field | Meaning |
+|---|---|
+| `results_total` | Rows that matched, before `limit` and any budget. Under `relevance` this is bounded by the per-arm candidate cap, so read it as a candidate count, not a corpus count. |
+| `results_returned` | Rows in this response. |
+| `bytes_returned` / `tokens_estimate` | Size of the `results` array — the quantity `budget_bytes` / `budget_tokens` bound. |
+| `truncated` | `false` means you got everything. Always present. |
+| `truncation_reason` | `budget_bytes`, `budget_tokens`, `limit`, or `payload_mode_limit_cap`. Empty when `truncated` is `false`. |
+| `next_cursor` | Pass it back as `cursor` to continue. `null` means nothing is left. |
+
+`truncated`, `truncation_reason` and `next_cursor` are three readings of one fact and never disagree.
+
+## Bounding a read
+
+- **`budget_bytes` / `budget_tokens`** cap the serialized `results` array. Omit for no ceiling (the deployment may set one). At least one result always comes back even if it alone exceeds the budget, so paging can still make progress.
+- **`limit`** is the page size: default 30, max 500 under `keys` and `summary`, **max 100 under `full`** — full carries bodies and costs roughly ten times as much per result. Asking for more is clamped, never silently: you get `truncation_reason: "payload_mode_limit_cap"` and a cursor, so the rest is reached by paging rather than by raising `limit`.
+
+## Paging
+
+Pass `manifest.next_cursor` back as `cursor`. Loop until `next_cursor` is `null`.
+
+A cursor is bound to the ordering that issued it. Resuming it after changing `ranking`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker is a `validation_error` — not a plausible-looking wrong page. Changing `payload_mode` or `limit` mid-page is fine; neither reorders anything.
+
+A cursor is an offset into a re-derived ordering, not a stable key. On a corpus that changes between pages — or under `activation`, whose scores move with wall-clock time — a row can be seen twice or missed. Within one pass over a settled corpus, paging is exact.
+
+Paging is not available together with a reranker: a reranker reorders within a page, so a position in the ranked ordering does not name a position in what was delivered. That combination is refused rather than silently mis-paged.
+
+### The linear log
+
+`ranking=chronological` + `payload_mode=summary` + `cursor` **is** the episodic log. There is no separate log tool because this composition already is one: strictly newest-first across page boundaries, every entry exactly once, terminating on `next_cursor: null`, at roughly 700 bytes per entry.
+
+```
+memory_recall namespaces=[...] ranking=chronological payload_mode=summary limit=200
+  -> read results, then repeat with cursor=manifest.next_cursor until it is null
+```
 
 ## When to use each
 

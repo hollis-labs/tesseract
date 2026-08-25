@@ -32,7 +32,8 @@ func recallShapeAdapter(t *testing.T) *Adapter {
 	return a
 }
 
-// callRecall runs memory_recall and decodes the bare result array.
+// callRecall runs memory_recall and decodes the result array out of the
+// envelope.
 func callRecall(t *testing.T, a *Adapter, args map[string]any) []map[string]any {
 	t.Helper()
 	req := mcp.CallToolRequest{}
@@ -46,7 +47,7 @@ func callRecall(t *testing.T, a *Adapter, args map[string]any) []map[string]any 
 		t.Fatalf("expected TextContent, got %T", res.Content[0])
 	}
 	var out []map[string]any
-	if err := json.Unmarshal([]byte(text.Text), &out); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, text.Text), &out); err != nil {
 		t.Fatalf("unmarshal recall (raw=%s): %v", text.Text, err)
 	}
 	if len(out) == 0 {

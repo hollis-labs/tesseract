@@ -126,7 +126,7 @@ func TestPayloadMode_RevisionIDAlwaysPresent(t *testing.T) {
 			a := projAdapter(t)
 			var out []map[string]any
 			raw := recallRaw(t, a, recallArgs(mode))
-			if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			if err := json.Unmarshal(recallResultsJSON(t, raw), &out); err != nil {
 				t.Fatalf("unmarshal: %v (raw=%s)", err, raw)
 			}
 			if len(out) == 0 {
@@ -200,7 +200,7 @@ func TestPayloadMode_ProjectedResultsCarryTheMarker(t *testing.T) {
 			a := projAdapter(t)
 			var out []map[string]any
 			raw := recallRaw(t, a, recallArgs(tc.mode))
-			if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			if err := json.Unmarshal(recallResultsJSON(t, raw), &out); err != nil {
 				t.Fatalf("unmarshal: %v (raw=%s)", err, raw)
 			}
 			got, _ := out[0]["payload_mode"].(string)
@@ -231,7 +231,7 @@ func TestPayloadMode_SummaryKeepsZeroConfidence(t *testing.T) {
 
 	var out []map[string]any
 	raw := recallRaw(t, a, recallArgs("summary"))
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, raw), &out); err != nil {
 		t.Fatalf("unmarshal: %v (raw=%s)", err, raw)
 	}
 	rev, ok := out[0]["revision"].(map[string]any)

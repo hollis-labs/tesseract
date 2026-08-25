@@ -17,8 +17,10 @@ Every write in Tesseract creates a new revision. The service never mutates exist
 ## Head vs. history
 
 - `memory_get` / `knowledge_get` — returns the current (latest, non-deprecated) revision for `(namespace, key)`.
-- `memory_history` / `knowledge_history` — returns the full revision chain, newest first.
+- `memory_history` / `knowledge_history` — returns the revision chain, newest first, as a **bare array**.
 - `memory_recall` with `revision_scope=timeline` — includes superseded revisions in ranking.
+
+To bound a history read, pass `limit`, `cursor`, `budget_bytes`, or `budget_tokens`. Any of them switches the response from the bare array to `{results, manifest}`, with the same manifest and cursor semantics `tesseract_skills recall-and-ranking` documents. Chains are shallow in practice, so this is a ceiling against unbounded growth rather than a routine knob.
 
 ## Supersede chains
 

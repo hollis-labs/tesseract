@@ -118,7 +118,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 		t.Fatalf("recall response unexpectedly large (%d bytes); vector may still be leaking", len(textContent.Text))
 	}
 	var results []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
 		t.Fatalf("unmarshal recall: %v", err)
 	}
 	if len(results) == 0 {
@@ -202,7 +202,7 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 		t.Fatalf("embedding_vector must not appear even with ranking=similarity")
 	}
 	var results []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(results) == 0 {
