@@ -38,6 +38,60 @@ type Adapter struct {
 	// Wired from config (read.payload_mode). Empty or unrecognized falls
 	// back to memory.DefaultPayloadMode.
 	DefaultPayloadMode memory.PayloadMode
+
+	// DefaultBudget is the response ceiling applied to memory_recall and
+	// tesseract_lookup when the call passes no budget_bytes / budget_tokens.
+	// Wired from config (read.budget_bytes, read.budget_tokens), which
+	// defaults both to 0 — no ceiling. contextapi.Server resolves the same
+	// two config fields for the HTTP peers.
+	DefaultBudget memory.Budget
+}
+
+// resolvePageRequest builds the shared paging/budget half of a recall or
+// lookup call from MCP arguments.
+//
+// Every knob here has a declared HTTP peer that must accept the same name,
+// validate identically, and resolve the same default. The two surfaces
+// therefore share memory.PageRequest and everything downstream of it; only
+// the argument decoding differs, and TestBudgetCursorParity_MCPvsHTTP
+// exercises both against the same store.
+func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.PayloadMode) (memory.PageRequest, *mcp.CallToolResult) {
+	pr := memory.PageRequest{
+		Cursor:      req.GetString("cursor", ""),
+		PayloadMode: mode,
+		Limit:       int(req.GetFloat("limit", 0)),
+		Budget:      a.DefaultBudget,
+	}
+
+	// A budget argument is read through a presence check rather than a
+	// default, so an explicit 0 is distinguishable from an absent field. It
+	// has to be: 0 is inside the type's range but outside its meaning, and a
+	// zero budget can only ever return one oversized row plus a truncation
+	// flag. Telling the caller is better than silently serving something
+	// they did not ask for or silently ignoring what they did.
+	for _, knob := range []struct {
+		name string
+		dst  *int
+	}{
+		{"budget_bytes", &pr.Budget.Bytes},
+		{"budget_tokens", &pr.Budget.Tokens},
+	} {
+		raw, ok := req.GetArguments()[knob.name]
+		if !ok || raw == nil {
+			continue
+		}
+		v, err := wholeNumberArg(req, knob.name, 0)
+		if err != nil {
+			return memory.PageRequest{}, toolError("validation_error", err.Error())
+		}
+		if v <= 0 {
+			return memory.PageRequest{}, toolError("validation_error",
+				knob.name+" must be greater than 0; omit it for no ceiling")
+		}
+		*knob.dst = v
+	}
+
+	return pr, nil
 }
 
 // resolvePayloadMode picks the projection for one recall/lookup call.
@@ -70,6 +124,39 @@ const payloadModeArgDescription = "How much of each result to return: " +
 	"`full` (everything, including payload.body and state). " +
 	"Default comes from server config (read.payload_mode). " +
 	"Under keys and summary each result carries `payload_mode`, so an absent body means withheld, not empty."
+
+// Shared parameter blurbs for the budget/cursor knobs. One string per knob so
+// the recall, lookup and history tools cannot drift apart, and so the HTTP
+// peers' field docs have a single thing to agree with.
+const (
+	cursorArgDescription = "Opaque resume token from a previous response's `manifest.next_cursor`. " +
+		"Omit to start at the beginning. A cursor is bound to the ordering it was issued for: " +
+		"resuming it after changing `ranking`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker " +
+		"is a validation_error, not a silently wrong page. Changing `payload_mode` or `limit` is fine — neither reorders anything."
+
+	budgetBytesArgDescription = "Max serialized bytes for the results array. " +
+		"Omit for no ceiling (default comes from server config read.budget_bytes). " +
+		"When it binds, the response carries `manifest.truncated: true`, `truncation_reason: \"budget_bytes\"`, and a `next_cursor`. " +
+		"At least one result is always returned even if it alone exceeds the budget, so paging can still make progress."
+
+	budgetTokensArgDescription = "Max estimated tokens for the results array (~4 chars per token). " +
+		"Omit for no ceiling (default comes from server config read.budget_tokens). " +
+		"When both budgets are set the tighter one binds and `truncation_reason` names it."
+
+	recallLimitArgDescription = "Max results per page (default 30). " +
+		"Max 500 under `payload_mode` keys or summary, 100 under full — full carries payload bodies and costs roughly ten times as much per result. " +
+		"Asking for more is clamped, never silently: the response reports `truncation_reason: \"payload_mode_limit_cap\"` and issues a `next_cursor`, " +
+		"so the rows past the cap are reached by paging rather than by raising this."
+
+	historyLimitArgDescription = "Max revisions to return (default: all, max 500). " +
+		"Passing it switches the response from a bare array to `{results, manifest}`. " +
+		"Chains are shallow today, so this is a ceiling against unbounded growth rather than a routine knob."
+
+	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +
+		"`bytes_returned`, `tokens_estimate`, `truncated`, `truncation_reason`, and `next_cursor`. " +
+		"Every field is always present: `truncated: false` means you got everything, and `next_cursor: null` means there is nothing left. " +
+		"Never infer completeness from the array length.\n"
+)
 
 // New creates an Adapter for the given store and optional capability token.
 func New(store *contextstore.Store, token string) *Adapter {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -41,17 +42,23 @@ type tesseractLookupRequest struct {
 	// indistinguishable from an empty one by shape alone — results carry
 	// `payload_mode` for exactly that reason.
 	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
+
+	// Cursor, BudgetBytes and BudgetTokens: peers of the MCP tesseract_lookup
+	// arguments of the same name. See pageArgs.
+	pageArgs
 }
 
 // tesseractLookupResponse wraps the recall results with a simple facet
 // histogram computed client-side from the result set. The histogram is
-// best-effort: it reflects only returned rows, not the full match set.
+// best-effort: it reflects only returned rows, not the full match set —
+// Manifest.ResultsTotal is the number to read for that.
 // Results is `any` because its shape depends on payload_mode: full mode
 // serializes []memory.RecallResult unchanged, while keys and summary
 // serialize []memory.ProjectedResult.
 type tesseractLookupResponse struct {
-	Results any          `json:"results"`
-	Facets  lookupFacets `json:"facets"`
+	Results  any             `json:"results"`
+	Facets   lookupFacets    `json:"facets"`
+	Manifest memory.Manifest `json:"manifest"`
 }
 
 type lookupFacets struct {
@@ -84,13 +91,16 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		}
 		payloadMode = req.PayloadMode
 	}
+	pr, ok := s.pageRequest(w, req.pageArgs, payloadMode, req.Limit)
+	if !ok {
+		return
+	}
 
 	in := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
 		Ranking:       req.Ranking,
 		Query:         req.Query,
-		Limit:         req.Limit,
 		Filters: memory.RecallFilters{
 			Origins:       req.Origins,
 			Statuses:      req.Statuses,
@@ -103,24 +113,17 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			FacetSources:  req.FacetSources,
 		},
 	}
-	results, err := s.MemoryStore.Recall(r.Context(), in)
+	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
 	if err != nil {
-		if errors.Is(err, memory.ErrSimilarityUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
-			return
-		}
-		if errors.Is(err, memory.ErrInvalidInput) {
-			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "lookup_failed", err.Error(), nil)
+		writeRecallError(w, err, "lookup_failed")
 		return
 	}
 	// Facets come from the unprojected results: the histogram describes what
-	// matched, not what was serialized.
+	// this page returned, not what was serialized.
 	writeJSON(w, http.StatusOK, tesseractLookupResponse{
-		Results: memory.ProjectResults(results, payloadMode),
-		Facets:  buildFacets(results),
+		Results:  page.Results,
+		Facets:   buildFacets(page.Kept),
+		Manifest: page.Manifest,
 	})
 }
 
@@ -133,6 +136,159 @@ func (s *Server) defaultPayloadMode() memory.PayloadMode {
 		return memory.DefaultPayloadMode
 	}
 	return mode
+}
+
+// pageArgs is the budget/cursor half of a read request body, shared verbatim
+// by POST /v1/memory/recall and POST /v1/tesseract/lookup so the two cannot
+// drift from each other or from their MCP peers.
+//
+// BudgetBytes / BudgetTokens are *int rather than int for the reason
+// memory.Budget documents: 0 sits inside the type's range but outside its
+// meaning, and `omitempty`-style conflation of "unset" with "zero" is the
+// defect that has already been fixed three times in this domain
+// (RecallResult.Score, synthesisSource.Score, Payload.Confidence). Absent
+// means "use the server default"; an explicit 0 or negative is a validation
+// error, matching the MCP side exactly.
+type pageArgs struct {
+	Cursor       string `json:"cursor,omitempty"`
+	BudgetBytes  *int   `json:"budget_bytes,omitempty"`
+	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+}
+
+// pageRequest resolves the shared knobs against server config and the
+// caller's payload mode. It writes its own 400 and returns ok=false on an
+// invalid budget.
+func (s *Server) pageRequest(w http.ResponseWriter, a pageArgs, mode memory.PayloadMode, limit int) (memory.PageRequest, bool) {
+	pr := memory.PageRequest{
+		Cursor:      a.Cursor,
+		PayloadMode: mode,
+		Limit:       limit,
+		Budget: memory.Budget{
+			Bytes:  s.RuntimeConfig.Read.BudgetBytes,
+			Tokens: s.RuntimeConfig.Read.BudgetTokens,
+		},
+	}
+	for _, knob := range []struct {
+		name string
+		got  *int
+		dst  *int
+	}{
+		{"budget_bytes", a.BudgetBytes, &pr.Budget.Bytes},
+		{"budget_tokens", a.BudgetTokens, &pr.Budget.Tokens},
+	} {
+		if knob.got == nil {
+			continue
+		}
+		if *knob.got <= 0 {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				knob.name+" must be greater than 0; omit it for no ceiling", nil)
+			return memory.PageRequest{}, false
+		}
+		*knob.dst = *knob.got
+	}
+	return pr, true
+}
+
+// historyPageRequest builds the paging/budget half of a history read from
+// query parameters, mirroring the MCP history tools' arguments name for name.
+//
+// Presence is read with Query().Has rather than by comparing against a zero
+// default, so `?budget_bytes=0` is rejected on this surface exactly as an
+// explicit 0 is rejected on MCP. An absent parameter falls back to server
+// config, which is the same config field the MCP adapter reads.
+//
+// It writes its own 400 and returns ok=false on a malformed value.
+func (s *Server) historyPageRequest(w http.ResponseWriter, r *http.Request) (memory.PageRequest, bool) {
+	q := r.URL.Query()
+	pr := memory.PageRequest{
+		Cursor: q.Get("cursor"),
+		// History serializes bare Revisions; full is what the byte
+		// accounting must measure.
+		PayloadMode: memory.PayloadModeFull,
+		Budget: memory.Budget{
+			Bytes:  s.RuntimeConfig.Read.BudgetBytes,
+			Tokens: s.RuntimeConfig.Read.BudgetTokens,
+		},
+	}
+	// limit and the budgets differ deliberately on what a non-positive value
+	// means, and the two surfaces agree on the difference.
+	//
+	// limit ≤ 0 is "unspecified" and resolves to the default. That is the
+	// meaning RecallInput.Limit and ClampHistoryLimit have always had, and
+	// the one views_evaluate advertises ("0 = use selector or default"); a
+	// budget has no such precedent, and a zero budget can only produce an
+	// empty page, so there it is a caller mistake worth naming.
+	for _, knob := range []struct {
+		name         string
+		dst          *int
+		rejectNonPos bool
+	}{
+		{"limit", &pr.Limit, false},
+		{"budget_bytes", &pr.Budget.Bytes, true},
+		{"budget_tokens", &pr.Budget.Tokens, true},
+	} {
+		if !q.Has(knob.name) {
+			continue
+		}
+		v, err := strconv.Atoi(q.Get(knob.name))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				knob.name+" must be a whole number", nil)
+			return memory.PageRequest{}, false
+		}
+		if knob.rejectNonPos && v <= 0 {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				knob.name+" must be greater than 0; omit it for no ceiling", nil)
+			return memory.PageRequest{}, false
+		}
+		if v < 0 {
+			v = 0
+		}
+		*knob.dst = v
+	}
+	return pr, true
+}
+
+// writeHistoryPage serves one revision-history response on either history
+// route. When the caller engaged no paging knob it writes the bare array the
+// route has always returned — the shipped web UI parses both
+// GET /v1/memory/history and GET /v1/knowledge/history as arrays and its
+// bundle is not rebuilt here. Otherwise it writes the {results, manifest}
+// envelope.
+func writeHistoryPage(w http.ResponseWriter, revs []memory.Revision, pr memory.PageRequest, fingerprint string) {
+	if !pr.Engaged() {
+		writeJSON(w, http.StatusOK, revs)
+		return
+	}
+	page, err := memory.PageRevisions(revs, pr, fingerprint)
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalidCursor) {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// writeRecallError maps a store error from a paged read onto an HTTP status.
+// Shared so that an invalid cursor is a 400 with the same code on both the
+// recall and lookup routes, and on their MCP peers.
+func writeRecallError(w http.ResponseWriter, err error, failCode string) {
+	switch {
+	case errors.Is(err, memory.ErrInvalidCursor):
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+	// ErrEmbedderUnavailable, not the ErrSimilarityUnavailable alias: the two
+	// are the same value, but the alias is deprecated and this is new code.
+	// Renaming the alias itself is fenced to CW-20260825-0020.
+	case errors.Is(err, memory.ErrEmbedderUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
+	case errors.Is(err, memory.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+	default:
+		writeError(w, http.StatusInternalServerError, failCode, err.Error(), nil)
+	}
 }
 
 func buildFacets(results []memory.RecallResult) lookupFacets {

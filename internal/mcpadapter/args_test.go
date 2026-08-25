@@ -118,7 +118,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 	}
 	textContent := res.Content[0].(mcp.TextContent)
 	var results []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
 		t.Fatalf("unmarshal results (raw=%s): %v", textContent.Text, err)
 	}
 	if len(results) != 1 {

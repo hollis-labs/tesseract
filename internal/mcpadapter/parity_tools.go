@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -67,8 +68,9 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 
 		a.addTool(s, mcp.NewTool("knowledge_history",
 			mcp.WithDescription(
-				"**Fetch the full revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
+				"**Fetch the revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
 					"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded.\n"+
+					"• **Result shape:** a bare array by default. Pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and the response becomes `{results, manifest}`.\n"+
 					"• **Scope:** `memory:read`.\n"+
 					"• **Use this when:** you need to trace how a knowledge entry evolved (e.g. pointer churn, summary rewrites).\n"+
 					"• **Don't use this for:** just the current value (`knowledge_get`).\n"+
@@ -76,6 +78,10 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 			),
 			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
 			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key. Named memory_key for parity with memory tools.")),
+			mcp.WithNumber("limit", mcp.Description(historyLimitArgDescription)),
+			mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
+			mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
+			mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithDestructiveHintAnnotation(false),
@@ -192,6 +198,10 @@ func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRe
 	if namespace == "" || key == "" {
 		return toolError("validation_error", "namespace and memory_key are required"), nil
 	}
+	pr, errRes := a.resolvePageRequest(req, memory.PayloadModeFull)
+	if errRes != nil {
+		return errRes, nil
+	}
 	revs, err := a.KnowledgeStore.GetHistory(ctx, namespace, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -199,5 +209,16 @@ func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRe
 		}
 		return nil, err
 	}
-	return toolJSON(revs), nil
+	if !pr.Engaged() {
+		return toolJSON(revs), nil
+	}
+	page, err := memory.PageRevisions(revs, pr,
+		memory.HistoryOrderingFingerprint(string(domains.Knowledge), namespace, key))
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalidCursor) {
+			return toolError("validation_error", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(page), nil
 }

@@ -113,6 +113,10 @@ type memoryRecallRequest struct {
 	// vocabulary. The parity harness only asserts that the route exists —
 	// argument parity is on us.
 	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
+
+	// Cursor, BudgetBytes and BudgetTokens: peers of the MCP memory_recall
+	// arguments of the same name. See pageArgs.
+	pageArgs
 }
 
 func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +143,10 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		}
 		payloadMode = req.PayloadMode
 	}
+	pr, ok := s.pageRequest(w, req.pageArgs, payloadMode, req.Limit)
+	if !ok {
+		return
+	}
 
 	in := memory.RecallInput{
 		Namespaces:    req.Namespaces,
@@ -146,22 +154,13 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		Ranking:       req.Ranking,
 		Query:         req.Query,
 		Filters:       req.Filters,
-		Limit:         req.Limit,
 	}
-	results, err := s.MemoryStore.Recall(r.Context(), in)
+	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
 	if err != nil {
-		if errors.Is(err, memory.ErrSimilarityUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
-			return
-		}
-		if errors.Is(err, memory.ErrInvalidInput) {
-			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "recall_failed", err.Error(), nil)
+		writeRecallError(w, err, "recall_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, memory.ProjectResults(results, payloadMode))
+	writeJSON(w, http.StatusOK, page)
 }
 
 // handleMemoryGetRevision serves GET /v1/memory/revisions/{id}.
@@ -228,6 +227,10 @@ func (s *Server) handleMemoryHistory(w http.ResponseWriter, r *http.Request) {
 	if !requireNamespaceAccess(w, r, ns) {
 		return
 	}
+	pr, ok := s.historyPageRequest(w, r)
+	if !ok {
+		return
+	}
 	revs, err := s.MemoryStore.GetHistory(r.Context(), ns, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -237,7 +240,7 @@ func (s *Server) handleMemoryHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, revs)
+	writeHistoryPage(w, revs, pr, memory.HistoryOrderingFingerprint(string(domains.Memory), ns, key))
 }
 
 type memoryDeprecateRequest struct {

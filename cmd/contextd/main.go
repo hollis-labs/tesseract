@@ -265,6 +265,10 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	adapter.MemoryStore = mem.Store
 	adapter.KnowledgeStore = knowledge.New(mem.Store)
 	adapter.DefaultPayloadMode = memory.PayloadMode(tesseractCfg.Read.PayloadMode)
+	adapter.DefaultBudget = memory.Budget{
+		Bytes:  tesseractCfg.Read.BudgetBytes,
+		Tokens: tesseractCfg.Read.BudgetTokens,
+	}
 	// Wire a slog logger that writes to stderr so the go-mcp-sanitize warn
 	// telemetry surfaces in contextd logs without colliding with the stdout
 	// MCP protocol stream.
