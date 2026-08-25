@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 
 	_ "modernc.org/sqlite"
 )
@@ -35,7 +36,7 @@ func runMigrateNamespaces(ctx context.Context, defaultDB string, args []string, 
 	// Open the DB directly (not via contextstore.Open) so a migration run
 	// against an arbitrary file copy doesn't try to materialize the workspace
 	// layout side-effects.
-	db, err := sql.Open("sqlite", *dbPath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	db, err := sql.Open("sqlite", sqlitedsn.DSN(*dbPath, "journal_mode(WAL)"))
 	if err != nil {
 		fmt.Fprintf(stderr, "error: open db: %v\n", err)
 		return 1

@@ -14,6 +14,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 	_ "modernc.org/sqlite"
 )
 
@@ -27,8 +28,7 @@ func main() {
 		log.Fatalf("resolve layout: %v", err)
 	}
 
-	queueDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", filepath.Join(layout.StateDir(), "queue.db"))
-	qdb, err := sql.Open("sqlite", queueDSN)
+	qdb, err := sql.Open("sqlite", sqlitedsn.DSN(filepath.Join(layout.StateDir(), "queue.db")))
 	if err != nil {
 		log.Fatalf("open queue db: %v", err)
 	}

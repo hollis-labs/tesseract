@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -231,8 +233,7 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", cfg.DBPath)
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", sqlitedsn.DSN(cfg.DBPath))
 	if err != nil {
 		return nil, err
 	}

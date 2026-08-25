@@ -16,6 +16,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 )
 
 // memorySubsystem holds the components wired up by setupMemorySubsystem.
@@ -53,8 +54,7 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		return nil, fmt.Errorf("mkdir queue db dir: %w", err)
 	}
 	queueDBPath := filepath.Join(queueDBDir, "queue.db")
-	queueDBDSN := fmt.Sprintf("file:%s?_busy_timeout=5000&_fk=1", queueDBPath)
-	queueDB, err := sql.Open("sqlite", queueDBDSN)
+	queueDB, err := sql.Open("sqlite", sqlitedsn.DSN(queueDBPath))
 	if err != nil {
 		return nil, fmt.Errorf("open queue db: %w", err)
 	}
