@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -97,6 +98,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **`estimate_only`:** size a read before paying for it. Returns `{manifest, estimate_only: true}` with no `results` key — the counts and byte totals are exactly what the same call without it returns under the same `payload_mode`.\n"+
 				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Just-in-time pattern — recall → choose → hydrate.** Recall returns a projection, not the whole corpus: **recall** at the default `payload_mode` to see what exists, **choose** the few hits that matter, then **hydrate** each one by passing its `revision_id` to `memory_get_revision`. Do not reach for `payload_mode=full` to avoid the third step — a full recall of 30 hits can cost more context than the rest of your turn.\n"+
+				touchLoopDescription+
 				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode, so hydration is always available. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match memories for a query or the top-of-mind memories without a query.\n"+
@@ -147,6 +149,40 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleMemoryPromote)
+
+	// ── tesseract_touch ──────────────────────────────────────────────────────
+	//
+	// A tool rather than a knob on recall, against the general knobs-over-tools
+	// preference, for one reason: it is a write from a read context that must
+	// happen AFTER the reasoning. A `touch: true` flag on recall would reinforce
+	// at the moment the ranker made its guess, which is what recall.go correctly
+	// refuses to do. The timing is the whole point.
+	a.addTool(s, mcp.NewTool("tesseract_touch",
+		mcp.WithDescription(
+			"**Report which recalled entries actually informed your work.** The closing step of `memory_recall` / `tesseract_lookup` → use → touch.\n"+
+				"• **Kind of content:** none returned. Answers `{touched, not_found}` — `touched` is how many distinct memories were reinforced, `not_found` lists revision IDs that resolved to nothing.\n"+
+				"• **Scope:** `memory:read`. It writes, but what it writes is the deliberate-read signal `memory_get` already emits on every call; a read-only agent that could not close the loop would leave the loop open.\n"+
+				"• **Use this when:** you have finished reasoning over a recall or lookup result and know which hits shaped the turn. **Call it after the work, not after the search.** Recall deliberately does not reinforce — being returned is the ranker's guess. Touch is you telling it the guess was right, and it is the only input activation has.\n"+
+				"• **Touch only what genuinely shaped the turn.** Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.\n"+
+				"• **Don't use this for:** everything you recalled, everything you skimmed, anything you merely saw in a result list, or as a way to pin a memory you want ranked highly. Reinforcement is asymptotic — touching more does not push a memory past where a freshly written one already sits, so there is nothing to win by inflating.\n"+
+				"• **Effect per distinct memory:** `activation` moves a fixed fraction of the way toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once.\n"+
+				"• **Works across domains:** memory and knowledge revision IDs both resolve, so a `tesseract_lookup` result can be reported in one call.\n"+
+				"• **Deeper:** `tesseract_skills memory` for the worked loop; `tesseract_skills recall-and-ranking` for how activation ranks.",
+		),
+		mcp.WithString("revision_ids", mcp.Required(), mcp.Description(
+			"JSON array of `revision_id` strings from a recall, lookup, or history result "+
+				"(e.g. [\"01HX...\",\"01HY...\"]). Every result carries `revision_id` under every `payload_mode`, "+
+				"so this is always available without a full read. "+
+				"Unknown IDs come back in `not_found` rather than failing the call, so a partly-stale set is safe to send. "+
+				"At most "+strconv.Itoa(memory.MaxTouchRevisions)+" per call — a request-size bound, not a budget to spend: "+
+				"a turn that genuinely used that many memories is rare, and the guidance above still applies well below the cap.")),
+		mcp.WithReadOnlyHintAnnotation(false),
+		// Not idempotent: each call is a fresh report of use, and reinforcement
+		// accumulates across calls even though it collapses within one.
+		mcp.WithIdempotentHintAnnotation(false),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
+	), a.handleTesseractTouch)
 
 	// ── memory_deprecate ─────────────────────────────────────────────────────
 	a.addTool(s, mcp.NewTool("memory_deprecate",
@@ -377,6 +413,34 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		return toolJSON(estimateEnvelope(page, nil)), nil
 	}
 	return toolJSON(page), nil
+}
+
+// handleTesseractTouch backs the tesseract_touch tool. Scope is memory:read
+// rather than memory:write on purpose — see the tool description.
+//
+// The batch cap is enforced by the store rather than restated here, so this door
+// and its HTTP peer refuse the same size with the same message by construction.
+func (a *Adapter) handleTesseractTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+		return res, nil
+	}
+
+	revisionIDs, present, err := parseStringArrayArg(req, "revision_ids")
+	if err != nil {
+		return toolError("validation_error", "revision_ids "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+	}
+	if !present {
+		return toolError("validation_error", "revision_ids is required"), nil
+	}
+
+	res, err := a.MemoryStore.TouchRevisions(ctx, revisionIDs)
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalidInput) {
+			return toolError("validation_error", err.Error()), nil
+		}
+		return nil, err
+	}
+	return toolJSON(res), nil
 }
 
 func (a *Adapter) handleMemoryPromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

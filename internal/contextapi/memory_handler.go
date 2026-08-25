@@ -317,6 +317,46 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// memoryTouchRequest is the body of POST /v1/memory/touch, the HTTP peer of the
+// tesseract_touch MCP tool. Field name and semantics are the tool's argument;
+// the two are asserted equal in tests/parity.
+type memoryTouchRequest struct {
+	RevisionIDs []string `json:"revision_ids"`
+}
+
+// handleMemoryTouch serves POST /v1/memory/touch: the caller reporting which
+// recalled revisions actually informed its work.
+//
+// The batch cap and the dedup rules live in the store, not here, so this door and
+// the MCP tool cannot drift on either — both surface memory.ErrInvalidInput as a
+// validation_error with the store's own message.
+//
+// No namespace check: the request names revision IDs, not namespaces, exactly as
+// GET /v1/memory/revisions/{id} does — the other route that reinforces by
+// revision ID. It is gated by authorizeMutatingRequest in the router because it
+// is a POST that changes state; that gate authenticates rather than checking a
+// write scope, so a read-only caller can still close the loop.
+func (s *Server) handleMemoryTouch(w http.ResponseWriter, r *http.Request) {
+	if s.memoryStoreUnavailable(w) {
+		return
+	}
+	var req memoryTouchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+		return
+	}
+	res, err := s.MemoryStore.TouchRevisions(r.Context(), req.RevisionIDs)
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "touch_failed", err.Error(), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 type memoryPromoteRequest struct {
 	SourceNamespace string `json:"source_namespace"`
 	SourceMemoryID  string `json:"source_memory_id"`

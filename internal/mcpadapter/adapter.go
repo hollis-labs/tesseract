@@ -347,6 +347,18 @@ const (
 		"It is worth most where a read would be cut short: under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would. " +
 		"`manifest.next_cursor` from an estimate is a valid cursor for the real read — this changes what is serialized, never which rows match or in what order."
 
+	// touchLoopDescription states the reinforcement contract on the two tools
+	// that return ranked results. Shared so they cannot describe the loop
+	// differently, and phrased as the default workflow rather than as an option,
+	// because an agent that reads it as optional will not do it — and a
+	// reinforcement signal nobody sends is the state this loop exists to leave.
+	//
+	// The under- vs over-reporting sentence is caller guidance the ranking
+	// depends on and is worded to be read as a rule, not a preference.
+	touchLoopDescription = "• **Results are unreinforced until you touch them.** Recall does not bump `activation` — being returned by a search is the ranker's guess about what you need, and letting a guess reinforce itself is how popular-because-returned beats actually-useful within a few cycles. " +
+		"So the loop has three steps, not two: **recall → use → `tesseract_touch`**. When you have finished reasoning, pass the `revision_id`s that actually shaped the turn to `tesseract_touch`. That is what tells the ranking your guess was right, and it is the only input activation has. " +
+		"Touch only what genuinely shaped the turn. **Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.**\n"
+
 	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +
 		"`bytes_returned`, `tokens_estimate`, `truncated`, `truncation_reason`, and `next_cursor`. " +
 		"Every field is always present: `truncated: false` means you got everything, and `next_cursor: null` means there is nothing left. " +

@@ -150,6 +150,14 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRevisionByID: %v", err)
 	}
+	// Park below the ceiling. A fresh memory starts at the 1.0 default, which is
+	// also the activation ceiling and a fixed point of the reinforcement curve,
+	// so an increase is not observable there. See
+	// internal/memory/activation_curve_test.go.
+	if _, err := a.MemoryStore.DB().ExecContext(context.Background(),
+		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, memRev.MemoryID); err != nil {
+		t.Fatalf("park at floor: %v", err)
+	}
 	before, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
 	if err != nil {
 		t.Fatalf("GetState before: %v", err)
