@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/go-mcp/budget"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -403,6 +404,20 @@ func TestMCPHistory_ZeroBudgetIsValidationError(t *testing.T) {
 	})
 	if !strings.Contains(raw, "validation_error") {
 		t.Errorf("history accepted budget_bytes=0; raw=%s", raw)
+	}
+}
+
+// memory.EstimateTokens mirrors go-mcp/budget.EstimateTokens over an int
+// instead of a []byte, so a byte count already computed does not have to be
+// re-marshaled to be converted. Two implementations of one heuristic can
+// drift; this binds them so they cannot. Same pattern as
+// TestConfigDefaultMatchesMemoryDefault binding the payload_mode defaults.
+func TestEstimateTokensMatchesGoMCPBudget(t *testing.T) {
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 7, 8, 9, 100, 4095, 4096, 4097, 1559859} {
+		want := budget.EstimateTokens(make([]byte, n))
+		if got := memory.EstimateTokens(n); got != want {
+			t.Errorf("memory.EstimateTokens(%d) = %d, budget.EstimateTokens = %d", n, got, want)
+		}
 	}
 }
 
