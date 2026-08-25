@@ -413,6 +413,141 @@ func assertFacetIdentity(t *testing.T, mode string, est, actual estimateFacets) 
 	}
 }
 
+// The identity must hold where a pre-flight is worth most: under a budget that
+// actually binds.
+//
+// TestEstimateOnly_ExactIdentityPerPayloadMode runs unbounded, where
+// `truncated` is false, `truncation_reason` is "" and `next_cursor` is null on
+// both sides — three of the manifest's seven fields compared at their zero
+// values. Those are exactly the fields an agent reads an estimate FOR: the
+// whole point is learning "this read would be cut short, and here is where to
+// resume" before paying for it. An identity asserted only where they are
+// trivial leaves the interesting half unchecked.
+//
+// Budgets are chosen relative to the measured unbounded size rather than
+// hardcoded, so the case cannot quietly stop binding when the fixture changes.
+func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
+	for _, tool := range []struct{ name, route, ns string }{
+		{"memory_recall", "/v1/memory/recall", estNSJSON},
+		{"tesseract_lookup", "/v1/tesseract/lookup", estBothJSON},
+	} {
+		for _, mode := range []string{"keys", "summary", "full"} {
+			t.Run(tool.name+"/payload_mode="+mode, func(t *testing.T) {
+				a, srv := estimateSurfaces(t)
+
+				unbounded := decodeEnvelope(t, estCall(t, a, tool.name, map[string]any{
+					"namespaces": tool.ns, "ranking": "chronological", "payload_mode": mode,
+				}))
+				if unbounded.Manifest.BytesReturned == 0 || unbounded.Manifest.ResultsReturned < 2 {
+					t.Fatalf("fixture is too small to cut under payload_mode=%s: %+v",
+						mode, unbounded.Manifest)
+				}
+				// A third of the full array: big enough to admit a row, small
+				// enough that it cannot admit them all.
+				budget := unbounded.Manifest.BytesReturned / 3
+
+				args := func(estimate bool) map[string]any {
+					m := map[string]any{
+						"namespaces": tool.ns, "ranking": "chronological",
+						"payload_mode": mode, "budget_bytes": float64(budget),
+					}
+					if estimate {
+						m["estimate_only"] = true
+					}
+					return m
+				}
+				body := func(estimate bool) string {
+					b := `{"namespaces":` + tool.ns + `,"ranking":"chronological","payload_mode":"` +
+						mode + `","budget_bytes":` + itoa(budget)
+					if estimate {
+						b += `,"estimate_only":true`
+					}
+					return b + `}`
+				}
+
+				actual := decodeEnvelope(t, estCall(t, a, tool.name, args(false)))
+
+				// ── Non-vacuity: the budget must have BOUND ────────────────
+				// Without this the whole case degenerates into the unbounded
+				// one the other test already covers.
+				if !actual.Manifest.Truncated {
+					t.Fatalf("budget_bytes=%d did not bind under payload_mode=%s (%+v); "+
+						"this case is meant to compare a TRUNCATED envelope and is "+
+						"otherwise a duplicate of the unbounded identity test",
+						budget, mode, actual.Manifest)
+				}
+				if actual.Manifest.TruncationReason != memory.TruncationBudgetBytes {
+					t.Fatalf("expected truncation_reason %q, got %q",
+						memory.TruncationBudgetBytes, actual.Manifest.TruncationReason)
+				}
+				if actual.Manifest.NextCursor == nil {
+					t.Fatalf("a truncated read issued no next_cursor: %+v", actual.Manifest)
+				}
+				if actual.Manifest.ResultsReturned >= unbounded.Manifest.ResultsReturned {
+					t.Fatalf("budget kept %d of %d rows; nothing was withheld",
+						actual.Manifest.ResultsReturned, unbounded.Manifest.ResultsReturned)
+				}
+
+				est := decodeEnvelope(t, estCall(t, a, tool.name, args(true)))
+				if got, want := manifestKey(t, est.Manifest), manifestKey(t, actual.Manifest); got != want {
+					t.Errorf("under a binding budget the estimate is not the identity of the "+
+						"real read (payload_mode=%s):\nestimate: %s\n    real: %s", mode, got, want)
+				}
+				if est.Results != nil {
+					t.Errorf("truncated estimate emitted a results key: %s", string(est.Results))
+				}
+				if actual.Facets != nil {
+					if est.Facets == nil {
+						t.Fatal("the truncated read carries facets but its estimate does not")
+					}
+					// The histogram describes the KEPT rows, so a budget that
+					// cut the page must be reflected in it too.
+					assertFacetIdentity(t, mode+"/budget", *est.Facets, *actual.Facets)
+				}
+
+				// ── The same, through the HTTP door ───────────────────────
+				codeReal, bodyReal := callRoute(t, srv, tool.route, body(false))
+				if codeReal != http.StatusOK {
+					t.Fatalf("HTTP %s truncated read: %d %s", tool.route, codeReal, bodyReal)
+				}
+				codeEst, bodyEst := callRoute(t, srv, tool.route, body(true))
+				if codeEst != http.StatusOK {
+					t.Fatalf("HTTP %s truncated estimate: %d %s", tool.route, codeEst, bodyEst)
+				}
+				httpReal := decodeEnvelope(t, bodyReal)
+				httpEst := decodeEnvelope(t, bodyEst)
+				if !httpReal.Manifest.Truncated {
+					t.Fatalf("HTTP budget did not bind under payload_mode=%s: %+v",
+						mode, httpReal.Manifest)
+				}
+				if got, want := manifestKey(t, httpEst.Manifest), manifestKey(t, httpReal.Manifest); got != want {
+					t.Errorf("HTTP truncated estimate is not the identity of the real read "+
+						"(payload_mode=%s):\nestimate: %s\n    real: %s", mode, got, want)
+				}
+				if got, want := manifestKey(t, est.Manifest), manifestKey(t, httpEst.Manifest); got != want {
+					t.Errorf("the doors disagree about a truncated estimate (payload_mode=%s):\n"+
+						" MCP: %s\nHTTP: %s", mode, got, want)
+				}
+
+				// The cursor a TRUNCATED estimate issued must resume the real
+				// read — the claim that makes a pre-flight actionable rather
+				// than merely informative.
+				resumed := decodeEnvelope(t, estCall(t, a, tool.name, map[string]any{
+					"namespaces": tool.ns, "ranking": "chronological", "payload_mode": mode,
+					"cursor": *est.Manifest.NextCursor,
+				}))
+				if resumed.Results == nil {
+					t.Errorf("a truncated estimate's cursor did not resume a real read")
+				}
+				if resumed.Manifest.ResultsReturned == 0 {
+					t.Errorf("resuming a truncated estimate's cursor returned no rows: %+v",
+						resumed.Manifest)
+				}
+			})
+		}
+	}
+}
+
 // An estimate must not change what a subsequent real read returns, and the
 // cursor it issues must be usable. estimate_only is a serialization knob, and
 // the claim that it "changes what is serialized, never which rows match or in
@@ -723,6 +858,44 @@ func TestSimilarityMin_ZeroIsAFloorNotAnAbsence(t *testing.T) {
 		t.Errorf("similarity_min=0.0 returned %d rows; absent returned %d of which %d "+
 			"scored below zero, so a floor of zero should return %d",
 			len(atZero), len(absent), len(negative), len(absent)-len(negative))
+	}
+
+	// ── The prose that describes this boundary, pinned where it is measured ──
+	//
+	// memory.SimilarityMinBoundaryRule is the ONE statement of these
+	// semantics; the tool description and the fingerprint guard's failure
+	// message both render it. Consolidating removed the drift BETWEEN copies
+	// but not the risk that the single copy is itself wrong — and a guard that
+	// only checks the description CONTAINS the rule is tautological, because
+	// rewording the rule rewords both sides together and nothing fails.
+	//
+	// So the rule's load-bearing phrases are asserted here, in the test that
+	// just measured the behavior they describe, rather than beside the
+	// description. Rewording the rule into a `>` floor fails next to the
+	// evidence that the floor is `>=`.
+	for _, phrase := range []string{
+		"inclusive",
+		"keeps those at exactly 0",
+		"BELOW 0",
+	} {
+		if !strings.Contains(memory.SimilarityMinBoundaryRule, phrase) {
+			t.Errorf("memory.SimilarityMinBoundaryRule no longer says %q, but the behavior "+
+				"measured above is unchanged: a floor of 0.0 kept %d row(s) scoring exactly 0 "+
+				"and dropped %d scoring below it.\nIf the semantics genuinely changed, change "+
+				"this test and the floor together. If only the wording changed, restore the "+
+				"claim.\nrule: %s",
+				phrase, len(zero), len(negative), memory.SimilarityMinBoundaryRule)
+		}
+	}
+	// The wording that was wrong twice. "orthogonal" is how both bad drafts
+	// described the rows a 0.0 floor removes; it removes the OPPOSED ones and
+	// keeps the orthogonal ones, as the loop above just proved.
+	if strings.Contains(memory.SimilarityMinBoundaryRule, "orthogonal") {
+		t.Errorf("memory.SimilarityMinBoundaryRule describes the floor in terms of "+
+			"'orthogonal' results. That framing was wrong in both earlier drafts: a 0.0 "+
+			"floor KEEPS orthogonal rows (score exactly 0) and drops only opposed ones "+
+			"(score below 0) — measured just now as %d kept, %d dropped.\nrule: %s",
+			len(zero), len(negative), memory.SimilarityMinBoundaryRule)
 	}
 }
 
@@ -1179,8 +1352,17 @@ func TestNewKnobDescriptions_ClaimsMatchBehavior(t *testing.T) {
 		// nit: a first draft of this description said a floor of 0.0 drops
 		// orthogonal results, which is what a `>` floor would do. The code
 		// implements `>=`, so the prose described a tool that does not exist.
-		{"similarity_min states the boundary is inclusive", similarityMinArgDescription, "The floor is inclusive"},
-		{"similarity_min says 0.0 drops the negatives", similarityMinArgDescription, "drops every result with a NEGATIVE score"},
+		// The rule now has ONE statement in the store, and this pins that the
+		// description renders it rather than paraphrasing it back into drift.
+		{"similarity_min renders the store's boundary rule", similarityMinArgDescription, memory.SimilarityMinBoundaryRule},
+		// R2: the facet asymmetry must be explained where a CALLER can see it,
+		// not only in a Go doc comment. Both the shapes and the reason.
+		{"estimate_only names memory_recall's shape", estimateOnlyArgDescription, "`memory_recall` answers `{manifest, estimate_only: true}`"},
+		{"estimate_only names tesseract_lookup's shape", estimateOnlyArgDescription, "`tesseract_lookup` answers `{facets, manifest, estimate_only: true}`"},
+		{"estimate_only says WHY the shapes differ", estimateOnlyArgDescription, "The shapes differ because"},
+		{"estimate_only states the never-a-field-the-read-cannot-return rule", estimateOnlyArgDescription, "never a field that read cannot return"},
+		// The truncation claim, exercised by TestEstimateOnly_IdentityUnderABindingBudget.
+		{"estimate_only claims the truncation envelope", estimateOnlyArgDescription, "`truncated`, `truncation_reason` and `next_cursor` the real read would"},
 		// The applicability rule — TestSimilarityMin_RefusedWhereThereIsNoSimilarity.
 		{"similarity_min names ranking=similarity", similarityMinArgDescription, "`ranking=similarity`"},
 		{"similarity_min names search_mode=semantic", similarityMinArgDescription, "`search_mode=semantic`"},

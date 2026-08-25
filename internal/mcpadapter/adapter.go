@@ -318,8 +318,10 @@ const (
 	similarityMinArgDescription = "Floor on cosine similarity between your query and each result. " +
 		"Results scoring below it are dropped before `limit` applies, so this narrows the qualifying set rather than thinning a page of it. " +
 		"Range [-1, 1]; anything outside is a validation_error. " +
-		"The floor is inclusive: a result clears it at a score equal to it, matching `confidence_min`. " +
-		"Omit for no floor — 0.0 is NOT the same as omitting it: a floor of 0.0 drops every result with a NEGATIVE score (opposed to your query) while keeping those at exactly 0, and omitting it keeps the negative ones too. " +
+		// Rendered from the store's own statement of the rule rather than
+		// restated here, so this description and the fingerprint guard's
+		// failure message cannot describe two different floors.
+		"Omit for no floor — 0.0 is NOT the same as omitting it: " + memory.SimilarityMinBoundaryRule + ". " +
 		"Only honored where cosine similarity is the score: `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`. " +
 		"Passing it under any other combination — including the default `search_mode=hybrid`, whose score is an RRF fusion rather than a similarity — is a validation_error rather than a silently ignored knob. " +
 		"NOT the same as `confidence_min`, which filters on the confidence the memory's author recorded when writing it; a result can match your query closely and still have been written tentatively."
@@ -328,10 +330,21 @@ const (
 	// claim — that the numbers equal what the same call without it returns —
 	// is the one an agent will act on, so it is stated as the exact identity it
 	// is rather than as an approximation.
+	//
+	// The shape rule is stated here, in the description, and not only in
+	// estimateEnvelope's Go doc: the two tools return DIFFERENT estimate
+	// shapes, and a caller comparing them can see that difference but cannot
+	// see a comment. Leaving the reason to a source file is what makes a caller
+	// infer one, and the inference available ("memory_recall's estimate is
+	// missing something") is the wrong one.
 	estimateOnlyArgDescription = "Return the envelope describing the results without the results themselves — the pre-flight for deciding whether to spend context on a read. " +
-		"The response is `{manifest, estimate_only: true}` with no `results` key at all; an absent array means withheld, never empty. " +
-		"The numbers are exact, not approximate: `results_total`, `results_returned`, `bytes_returned` and `tokens_estimate` are the same values the identical call WITHOUT this argument reports, under the same `payload_mode`. " +
+		"The response is the envelope THIS tool returns, minus `results`: `memory_recall` answers `{manifest, estimate_only: true}`, and `tesseract_lookup` answers `{facets, manifest, estimate_only: true}`. " +
+		"The shapes differ because `tesseract_lookup` returns a facet histogram on a normal read and `memory_recall` does not — an estimate reports exactly what its own read would report and never a field that read cannot return, which is what makes every number in it checkable against the real call. " +
+		"Reach for `tesseract_lookup` when you want the histogram sized too. " +
+		"There is no `results` key at all in either shape; an absent array means withheld, never empty. " +
+		"The numbers are exact, not approximate: `results_total`, `results_returned`, `bytes_returned` and `tokens_estimate` — and every facet count, where the tool has facets — are the same values the identical call WITHOUT this argument reports, under the same `payload_mode`. " +
 		"Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at. " +
+		"It is worth most where a read would be cut short: under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would. " +
 		"`manifest.next_cursor` from an estimate is a valid cursor for the real read — this changes what is serialized, never which rows match or in what order."
 
 	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +

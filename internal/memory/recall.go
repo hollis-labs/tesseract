@@ -683,6 +683,25 @@ func similarityScore(rev Revision, queryVec []float32) float64 {
 	return embedding.CosineSimilarity(queryVec, rev.EmbeddingVector)
 }
 
+// SimilarityMinBoundaryRule states the similarity floor's boundary semantics
+// ONCE, so every surface that explains the floor renders this string rather
+// than restating it in its own words.
+//
+// It exists because a restatement already went wrong twice in one lane. A first
+// draft of the MCP argument description, and the failure message in the
+// fingerprint guard, both said a floor of 0.0 "drops every orthogonal and
+// opposed result" — which is what a `>` floor would do. The code implements
+// `>=`, so the prose described a tool that does not exist.
+//
+// Rendering rather than restating is the same treatment SearchModeVocabulary
+// gets, and for a sharper reason here: the description-accuracy guard scans
+// tool descriptions, so it structurally cannot see a claim that lives in a
+// test's failure text. A wrong sentence is worst at failure time, when someone
+// reads it while forming a hypothesis about what just broke.
+const SimilarityMinBoundaryRule = "the floor is inclusive — a result clears it at a score equal to it, " +
+	"as confidence_min does — so a floor of 0.0 drops only results scoring BELOW 0 " +
+	"(opposed to the query) and keeps those at exactly 0, while omitting the floor keeps the negative ones too"
+
 // cosineIsTheOrderingSignal reports whether this call scores its results by
 // cosine similarity against the query — the precondition for similarity_min
 // to mean anything. It expects in to have been through resolveRecallDefaults.

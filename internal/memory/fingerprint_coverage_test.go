@@ -267,10 +267,14 @@ func TestFingerprint_DistinguishesAbsentFromZeroFloor(t *testing.T) {
 	atHalf := withFloor(&half)
 
 	if absent == atZero {
+		// Rendered from memory.SimilarityMinBoundaryRule rather than restated:
+		// an earlier version of this very message described a `>` floor, and a
+		// failure message is the worst place for prose that is wrong, because
+		// it is read while forming a hypothesis about what broke.
 		t.Errorf("similarity_min absent and similarity_min=0.0 fingerprint identically (%s).\n"+
-			"They are different queries: a floor of 0.0 drops every orthogonal and opposed "+
-			"result, while an absent floor keeps them. A cursor must not carry between them.",
-			absent)
+			"They are different queries — %s — so they select different candidate sets "+
+			"and a cursor must not carry between them.",
+			absent, memory.SimilarityMinBoundaryRule)
 	}
 	// The positive control for the assertion above: the fingerprint does move
 	// for a floor it certainly reads, so a passing zero-case is evidence about
