@@ -44,7 +44,7 @@ func seedKnowledgeWithTags(t *testing.T, srv *Server, ns, key, summary string, t
 	_, err := srv.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
 		Namespace: ns,
 		Key:       key,
-		Kind:      "session-close",
+		Kind:      "session_close",
 		Source:    "agent",
 		Pointer:   memory.Pointer{Scheme: "nil", Locator: "session-close"},
 		Summary:   summary,

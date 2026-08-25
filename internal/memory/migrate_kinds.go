@@ -25,34 +25,10 @@ import (
 // carries no facet columns — so the apply is a SINGLE statement, unlike the
 // namespace migration's state+revisions pair.
 
-// knowledgeKindVocabulary is the target `facet_kind` vocabulary for the
-// knowledge domain that this migration normalizes toward.
-//
-// It is the taxonomy locked 2026-05-14 (nine kinds) plus two kinds promoted
-// to canonical because a shipped producer emits them systematically:
-// `mcp_server` (slug-normalized from `mcp-server` to match enum style) and
-// `investigation`.
-//
-// IMPORTANT: this set is the MIGRATION TARGET, not a write-path enum. It says
-// which values this migration considers already-conformant; it does not
-// validate or reject anything on write. Which subset the knowledge write path
-// enforces is a separate decision made at the enforcement step — in
-// particular `playbook` is carried in the vocabulary here despite having zero
-// producers in the corpus, and whether it belongs in an enforced set is not
-// decided by this file.
-var knowledgeKindVocabulary = map[string]struct{}{
-	"session_close":     {},
-	"project_canonical": {},
-	"playbook":          {},
-	"doc":               {},
-	"package":           {},
-	"learning":          {},
-	"handoff":           {},
-	"note":              {},
-	"pointer":           {},
-	"mcp_server":        {},
-	"investigation":     {},
-}
+// The vocabulary this migration normalizes toward is the canonical set in
+// kinds.go — the same set the knowledge write path enforces. Keeping one
+// definition is what makes "migrate, then enforce" coherent: the migration
+// cannot leave behind a value the write path would reject.
 
 // kindMapping is the replacement for one off-vocabulary kind.
 type kindMapping struct {
@@ -141,7 +117,7 @@ const kindCountQuery = `
 	GROUP BY COALESCE(facet_kind, '')`
 
 // BuildKindMigrationPlan scans the knowledge domain for `facet_kind` values
-// outside knowledgeKindVocabulary and returns the rewrite plan. It does NOT
+// outside canonicalKnowledgeKinds and returns the rewrite plan. It does NOT
 // mutate the database — pass the plan to ApplyKindMigration to do that.
 //
 // Every revision carrying an off-vocabulary value is planned, not just current
@@ -149,12 +125,12 @@ const kindCountQuery = `
 // would otherwise still surface an off-vocabulary kind through a
 // revision-scoped read.
 func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan, error) {
-	vocab := sortedKeys(knowledgeKindVocabulary)
+	vocab := sortedKeys(canonicalKnowledgeKinds)
 
 	// Guard against a mapping table that points outside the vocabulary — that
 	// would migrate rows to a value the next step would reject.
 	for old, m := range kindMigrations {
-		if _, ok := knowledgeKindVocabulary[m.NewKind]; !ok {
+		if _, ok := canonicalKnowledgeKinds[m.NewKind]; !ok {
 			return KindMigrationPlan{}, fmt.Errorf("mapping %q -> %q targets a kind outside the vocabulary", old, m.NewKind)
 		}
 	}
@@ -189,7 +165,7 @@ func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan,
 		r.IsHead = isHead != 0
 
 		// Already conformant — not part of the migration.
-		if _, conformant := knowledgeKindVocabulary[r.OldKind]; conformant {
+		if _, conformant := canonicalKnowledgeKinds[r.OldKind]; conformant {
 			continue
 		}
 
@@ -243,7 +219,7 @@ func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan)
 		return 0, fmt.Errorf("plan has %d unmapped off-vocabulary kind(s); resolve before applying", len(plan.Unmapped))
 	}
 	for _, row := range plan.Rows {
-		if _, ok := knowledgeKindVocabulary[row.NewKind]; !ok {
+		if _, ok := canonicalKnowledgeKinds[row.NewKind]; !ok {
 			return 0, fmt.Errorf("row %s targets kind %q outside the vocabulary", row.RevisionID, row.NewKind)
 		}
 	}
@@ -289,11 +265,6 @@ func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan)
 	return revisionUpdates, nil
 }
 
-// KnowledgeKindVocabulary returns the sorted target kind vocabulary. Exported
-// for the CLI summary and for tests; see the note on
-// knowledgeKindVocabulary — this is a migration target, not a write-path enum.
-func KnowledgeKindVocabulary() []string { return sortedKeys(knowledgeKindVocabulary) }
-
 // Digest is a stable fingerprint of exactly what this plan would do. It covers
 // every row's (revision_id, old_kind, new_kind) and every unmapped kind, so it
 // changes if a row is added, removed, or remapped.
@@ -334,7 +305,7 @@ func CountNonConformantKinds(ctx context.Context, db *sql.DB) (int, error) {
 		if scanErr := rows.Scan(&kind, &n); scanErr != nil {
 			return 0, fmt.Errorf("scan kind count: %w", scanErr)
 		}
-		if _, conformant := knowledgeKindVocabulary[kind]; !conformant {
+		if _, conformant := canonicalKnowledgeKinds[kind]; !conformant {
 			total += n
 		}
 	}

@@ -3,11 +3,14 @@ package knowledge_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
+	"github.com/hollis-labs/tesseract/internal/mcpadapter/skills"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -63,6 +66,113 @@ func TestWrite_MissingKindRejected(t *testing.T) {
 	}
 	if !errors.Is(err, memory.ErrInvalidInput) {
 		t.Errorf("err = %v, want ErrInvalidInput wrap", err)
+	}
+}
+
+func TestWrite_UnknownKindRejected(t *testing.T) {
+	s := newTestStore(t)
+	for _, kind := range []string{
+		"deployment_record", // never in the vocabulary
+		"mcp-server",        // the retired hyphenated slug
+		"issue/bug",         // the retired Torque-domain kind
+		"Doc",               // case matters
+		"session close",     // whitespace is not a separator
+	} {
+		in := validInput()
+		in.Kind = kind
+		_, err := s.Write(context.Background(), in)
+		if err == nil {
+			t.Errorf("kind %q: expected rejection", kind)
+			continue
+		}
+		if !errors.Is(err, memory.ErrInvalidInput) {
+			t.Errorf("kind %q: err = %v, want ErrInvalidInput wrap", kind, err)
+		}
+		// The rejection must name the allowed set — a caller that guessed
+		// wrong should not have to go read the source to find the right value.
+		for _, want := range []string{"doc", "session_close", "mcp_server", "investigation"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("kind %q: error %q does not name allowed kind %q", kind, err, want)
+			}
+		}
+	}
+}
+
+// TestWrite_EveryCanonicalKindAccepted is the converse of the rejection test:
+// enforcement must not make any canonical kind unwritable. The three
+// unpopulated kinds (playbook, learning, handoff) matter most here — they have
+// no corpus entries, so nothing else would catch it if they were excluded.
+func TestWrite_EveryCanonicalKindAccepted(t *testing.T) {
+	s := newTestStore(t)
+	vocab := memory.KnowledgeKindVocabulary()
+	if len(vocab) != 11 {
+		t.Fatalf("vocabulary size = %d, want 11; got %v", len(vocab), vocab)
+	}
+	for i, kind := range vocab {
+		in := validInput()
+		in.Kind = kind
+		in.Key = fmt.Sprintf("vocab.probe.%d", i)
+		rev, err := s.Write(context.Background(), in)
+		if err != nil {
+			t.Errorf("canonical kind %q rejected: %v", kind, err)
+			continue
+		}
+		if rev.Facets.Kind != kind {
+			t.Errorf("stored kind = %q, want %q", rev.Facets.Kind, kind)
+		}
+	}
+}
+
+// TestWrite_MissingKindNamesAllowedSet keeps the empty-kind rejection as
+// informative as the unknown-kind one.
+func TestWrite_MissingKindNamesAllowedSet(t *testing.T) {
+	s := newTestStore(t)
+	in := validInput()
+	in.Kind = ""
+	_, err := s.Write(context.Background(), in)
+	if err == nil {
+		t.Fatal("expected error for missing kind")
+	}
+	if !strings.Contains(err.Error(), "playbook") {
+		t.Errorf("error %q does not name the allowed set", err)
+	}
+}
+
+// TestShippedSkillsMatchEnforcedVocabulary keeps the enforced enum and the
+// shipped agent-facing docs from drifting apart. An agent reads the skill to
+// learn what it may write; if the two disagree, the skill teaches a value the
+// write path rejects. Asserted rather than reviewed, because this is exactly
+// the drift that produced the off-vocabulary rows in the first place.
+func TestShippedSkillsMatchEnforcedVocabulary(t *testing.T) {
+	vocab := memory.KnowledgeKindVocabulary()
+
+	// facets-and-kinds documents each kind as a table row; knowledge.md lists
+	// them inline. Checking the table row specifically matters: a bare
+	// "appears somewhere" check is satisfied by an incidental prose mention,
+	// so it would not notice a kind dropping out of the actual table.
+	rowFor := map[string]func(string) string{
+		"facets-and-kinds": func(k string) string { return "| `" + k + "` |" },
+		"knowledge":        func(k string) string { return "`" + k + "`" },
+	}
+
+	for _, name := range []string{"facets-and-kinds", "knowledge"} {
+		body, err := skills.Get(name)
+		if err != nil {
+			t.Fatalf("skills.Get(%s): %v", name, err)
+		}
+		for _, kind := range vocab {
+			if !strings.Contains(body, rowFor[name](kind)) {
+				t.Errorf("skill %q does not document canonical kind %q", name, kind)
+			}
+		}
+		// Values the vocabulary rejects must not appear as guidance. The
+		// hyphenated forms matter most: hyphen advice is what produced a
+		// hyphenated kind in the corpus.
+		for _, stale := range []string{"`mcp-server`", "`issue/bug`", "`decision-record`", "`session-close`"} {
+			if strings.Contains(body, stale) {
+				t.Errorf("skill %q still presents %s, which knowledge_write rejects", name, stale)
+			}
+		}
 	}
 }
 
