@@ -133,7 +133,7 @@ func TestMemoryGet_NotFound(t *testing.T) {
 func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -157,7 +157,7 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespace":  "user/chrispian/memory",
+		"namespace":  "user/chrispian/memory/notes",
 		"memory_key": "user.prefs",
 	}
 	if _, err := a.handleMemoryGet(context.Background(), req); err != nil {
@@ -183,7 +183,7 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 func TestMemoryGetRevision_ReinforcesAccess(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -227,7 +227,7 @@ func TestMemoryGetRevision_ReinforcesAccess(t *testing.T) {
 func TestMemoryRecall_DoesNotReinforceAccess(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	body := writeViaHandler(t, a, map[string]any{
-		"namespace":       "user/chrispian/memory",
+		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "user.prefs",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -248,7 +248,7 @@ func TestMemoryRecall_DoesNotReinforceAccess(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"namespaces": []any{"user/chrispian/memory"},
+		"namespaces": []any{"user/chrispian/memory/notes"},
 		"ranking":    "activation",
 	}
 	if _, err := a.handleMemoryRecall(context.Background(), req); err != nil {
