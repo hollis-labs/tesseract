@@ -201,6 +201,16 @@ func TestBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 		{"malformed cursor",
 			map[string]any{"namespaces": ns, "cursor": "!!!"},
 			`{"namespaces":` + ns + `,"cursor":"!!!"}`},
+		// A fractional limit is a decode error on HTTP (json number into an
+		// int). MCP reads its numbers as float64, so without wholeNumberArg it
+		// would silently truncate 2.5 to 2 and return a 200 where HTTP returns
+		// a 400 — the CW-20260825-0003 divergence in a different knob.
+		{"fractional limit",
+			map[string]any{"namespaces": ns, "limit": 2.5},
+			`{"namespaces":` + ns + `,"limit":2.5}`},
+		{"fractional budget_bytes",
+			map[string]any{"namespaces": ns, "budget_bytes": 1024.5},
+			`{"namespaces":` + ns + `,"budget_bytes":1024.5}`},
 		{"cursor across a changed sort", nil, ""}, // filled in below
 	} {
 		if tc.args == nil {

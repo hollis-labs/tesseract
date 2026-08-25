@@ -59,8 +59,21 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 	pr := memory.PageRequest{
 		Cursor:      req.GetString("cursor", ""),
 		PayloadMode: mode,
-		Limit:       int(req.GetFloat("limit", 0)),
 		Budget:      a.DefaultBudget,
+	}
+
+	// limit goes through wholeNumberArg rather than a bare GetFloat: a
+	// fractional limit is a decode error on both HTTP peers (json into an
+	// int for recall/lookup, strconv.Atoi for the history routes), so
+	// silently truncating 2.5 to 2 here would make the same call succeed on
+	// one door and fail on the other. Non-positive stays "unspecified",
+	// matching RecallInput.Limit and both HTTP peers.
+	limit, err := wholeNumberArg(req, "limit", 0)
+	if err != nil {
+		return memory.PageRequest{}, toolError("validation_error", err.Error())
+	}
+	if limit > 0 {
+		pr.Limit = limit
 	}
 
 	// A budget argument is read through a presence check rather than a
