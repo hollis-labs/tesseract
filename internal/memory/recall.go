@@ -43,8 +43,25 @@ type RecallInput struct {
 	RevisionScope RevisionScope
 	Ranking       Ranking
 	Query         string
-	Filters       RecallFilters
-	Limit         int
+
+	// SearchMode selects which retrieval arms answer the query under
+	// RankingRelevance: hybrid (both, fused), lexical (BM25 only), or
+	// semantic (cosine only). Empty resolves to DefaultSearchMode.
+	//
+	// It lives here rather than in RecallFilters because it is not a filter:
+	// it does not narrow the candidate set by an attribute of a revision, it
+	// chooses which retrieval signal produces candidates at all. Putting it in
+	// RecallFilters would also put it in front of buildRecallFilters, which
+	// turns every field it is handed into a SQL WHERE fragment.
+	//
+	// It DOES change the ordered candidate set, so it is part of the cursor
+	// ordering fingerprint — see orderingKey. Because it sits outside
+	// RecallFilters, the reflection guard over that struct does not reach it;
+	// TestFingerprint_CoversEveryRecallInputField is the guard that does.
+	SearchMode SearchMode
+
+	Filters RecallFilters
+	Limit   int
 
 	// Offset skips the first N rows of the ordered result set before Limit
 	// is applied. It is how cursor paging is expressed to the store; surfaces
@@ -172,6 +189,9 @@ func resolveRecallDefaults(in RecallInput) RecallInput {
 			in.Ranking = RankingActivation
 		}
 	}
+	if in.SearchMode == "" {
+		in.SearchMode = DefaultSearchMode
+	}
 	if in.RevisionScope == "" {
 		in.RevisionScope = RevisionScopeCurrent
 	}
@@ -238,6 +258,35 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	}
 	if in.Limit > MaxRecallLimit {
 		in.Limit = MaxRecallLimit
+	}
+
+	// 2b. search_mode must be a value the retrieval path can honor.
+	//
+	// Both validations live here rather than on each surface, and that is the
+	// point: memory_recall, tesseract_lookup and both of their HTTP peers all
+	// funnel through this function, and all four already map ErrInvalidInput
+	// to their own validation error. One check therefore gives four doors the
+	// same vocabulary and the same message by construction, instead of four
+	// copies that agree until one of them is edited.
+	if !in.SearchMode.Valid() {
+		return RecallPageResult{}, fmt.Errorf(
+			"%w: search_mode must be one of %s, got %q",
+			ErrInvalidInput, strings.Join(SearchModeVocabulary(), "|"), string(in.SearchMode))
+	}
+	// lexical and semantic name arms of the relevance pipeline. Under any
+	// other ranking there are no arms to select, so honoring the argument is
+	// impossible and ignoring it would hand back a differently-ordered result
+	// set under the name the caller asked for. Refuse instead.
+	//
+	// Only a non-default mode conflicts: hybrid is what an omitted argument
+	// resolves to, so it must stay compatible with every ranking or every
+	// no-argument caller would start failing.
+	if in.SearchMode != SearchModeHybrid && in.Ranking != RankingRelevance {
+		return RecallPageResult{}, fmt.Errorf(
+			"%w: search_mode=%s selects a retrieval arm of ranking=relevance, but ranking=%s "+
+				"does not run retrieval arms — pass ranking=relevance (the default when a query "+
+				"is set) or drop search_mode",
+			ErrInvalidInput, string(in.SearchMode), string(in.Ranking))
 	}
 
 	// 3. Similarity ranking requires an embedder and a query.

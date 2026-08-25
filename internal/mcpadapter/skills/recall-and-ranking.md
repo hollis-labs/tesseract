@@ -1,13 +1,13 @@
 ---
 name: recall-and-ranking
-description: The four ranking modes — activation, chronological, similarity, relevance (RRF) — and when to use each.
+description: The four ranking modes — activation, chronological, similarity, relevance (RRF) — plus search_mode, and when to use each.
 scope_hint: memory:read
 related: [memory, revisions]
 ---
 
 # Recall and ranking
 
-`memory_recall` and `tesseract_lookup` share one ranking surface. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`.
+`memory_recall` and `tesseract_lookup` share one ranking surface. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
 
 ## Four modes
 
@@ -15,6 +15,37 @@ related: [memory, revisions]
 - **`chronological`** — newest first, no scoring. Use when you want a timeline or an audit-style scan.
 - **`similarity`** — pure cosine similarity between the query embedding and each candidate's stored vector. Requires `query` to be set and target revisions to be embedded. Unembedded revisions are silently skipped.
 - **`relevance`** — RRF fusion of BM25 (keyword) and cosine (semantic). Best default for "search for this topic." Surfaces fresh, pre-embedding memories via the BM25 arm that similarity-only would miss.
+
+## `search_mode` — which signal answers the query
+
+`relevance` runs two retrieval arms and fuses them. `search_mode` says how many of them to run. It applies **only** under `ranking=relevance`; passing it with another ranking is a `validation_error`.
+
+| `search_mode` | What runs | Ordered by |
+|---|---|---|
+| `hybrid` | BM25 + cosine, fused by RRF, then weighted by status, origin, confidence, recency and activation | fused score |
+| `lexical` | BM25 alone | `bm25()` — raw match strength, no weighting |
+| `semantic` | cosine alone | cosine similarity |
+
+The default is `hybrid`, which is what every caller got before the knob existed.
+
+**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a namespace. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
+
+**What `lexical` binds is a punctuation-joined run**, as an adjacent phrase: `CW-20260519-0032` finds the entry containing that identifier, not the entries that mention `CW`, `20260519` and `0032` in unrelated places.
+
+**What it does not do is multi-word phrase search.** Space-separated words are each *required to appear*, not required to appear together:
+
+| query | rows | what it is |
+|---|---|---|
+| `sqlite NOT NULL` under `lexical` | 2 | the three words, anywhere |
+| the phrase `"NOT NULL"` | 6 | not expressible here |
+
+Whitespace carries no signal about which of those a caller meant, so neither is inferred. If you need the phrase, `lexical` is not the tool yet — say so rather than reading an empty result as absence.
+
+Two more things `lexical` does differently from `hybrid`: `AND`, `OR` and `NOT` are matched as **literal words**, not operators (under `hybrid` they *are* operators); and a query containing a non-ASCII letter is a `validation_error` rather than an empty page, because lexical tokens are `[A-Za-z0-9_]` only and no lexical query can name the token the index actually holds. A query of only punctuation is refused for the same reason.
+
+`lexical` results carry **no `score`**. Order is the signal — `bm25()` is lower-is-better, and reporting it in a field that is higher-is-better everywhere else would invert its meaning for one mode.
+
+**Reach for `semantic` when you know the corpus will not use your words.** It is a `similarity_unavailable` error when no embedder is configured — it never quietly falls back to keyword matching, because keyword results labeled semantic are worse than being told. `hybrid` does fall back to its BM25 arm in that situation, which is how freshly-written, not-yet-embedded memories stay reachable.
 
 ## Result shape and `score`
 
@@ -41,6 +72,8 @@ Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` resul
 | `activation` | activation strength — recency x reinforcement x confidence |
 | `similarity` | cosine similarity between query and revision embeddings; legitimately 0 (orthogonal) or negative (opposite) |
 | `relevance` | RRF-fused BM25 + cosine, weighted by status, origin, confidence, recency, and activation |
+| `relevance` + `search_mode=semantic` | cosine similarity only |
+| `relevance` + `search_mode=lexical` | **absent** |
 | `chronological` | **absent** |
 
 Under `chronological` the field is omitted rather than set to a sort key. Ordering is already carried by array order plus `revision.created_at`, so a score there would only restate the timestamp in units no other mode uses. Read the order, or read `revision.created_at`.
@@ -71,7 +104,7 @@ Both tools carry a `manifest` next to `results`. **Never infer completeness from
 
 Pass `manifest.next_cursor` back as `cursor`. Loop until `next_cursor` is `null`.
 
-A cursor is bound to the ordering that issued it. Resuming it after changing `ranking`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker is a `validation_error` — not a plausible-looking wrong page. Changing `payload_mode` or `limit` mid-page is fine; neither reorders anything.
+A cursor is bound to the ordering that issued it. Resuming it after changing `ranking`, `search_mode`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker is a `validation_error` — not a plausible-looking wrong page. Changing `payload_mode` or `limit` mid-page is fine; neither reorders anything.
 
 A cursor is an offset into a re-derived ordering, not a stable key. On a corpus that changes between pages — or under `activation`, whose scores move with wall-clock time — a row can be seen twice or missed. Within one pass over a settled corpus, paging is exact.
 
@@ -91,6 +124,10 @@ memory_recall namespaces=[...] ranking=chronological payload_mode=summary limit=
 | Question | Ranking |
 |---|---|
 | "What do I know about X?" | `relevance` |
+| "Where did we record CW-20260519-0032?" | `relevance` + `search_mode=lexical` |
+| "Which entries mention `fetchBM25Candidates`?" | `relevance` + `search_mode=lexical` |
+| "Find this exact multi-word error message." | not yet — `lexical` requires the words, not the phrase |
+| "Something about retries backing off, I forget the wording." | `relevance` + `search_mode=semantic` |
 | "What are the most active memories right now?" | `activation` |
 | "Show me the last 10 entries in this namespace." | `chronological` |
 | "Find semantically similar memories to this text." | `similarity` |

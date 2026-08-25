@@ -128,6 +128,13 @@ func TestFingerprint_CoversQueryShape(t *testing.T) {
 			in.Query = "something"
 			return in
 		}},
+		// SearchMode alone, with nothing else touched: the mutation must be
+		// the only thing that could move the fingerprint, or the case passes
+		// for the wrong reason.
+		{"SearchMode", func(in memory.RecallInput) memory.RecallInput {
+			in.SearchMode = memory.SearchModeLexical
+			return in
+		}},
 		{"Reranker", func(in memory.RecallInput) memory.RecallInput {
 			in.Reranker = "x"
 			return in
@@ -143,6 +150,82 @@ func TestFingerprint_CoversQueryShape(t *testing.T) {
 				t.Errorf("changing %s did not change the ordering fingerprint", tc.name)
 			}
 		})
+	}
+}
+
+// recallInputFingerprintExclusions names the RecallInput fields that must NOT
+// be enumerated by the reflection guard below, each with the reason. Anything
+// not listed here has to move the fingerprint.
+//
+// This is the list a future lane has to argue with. Adding a field to it is a
+// claim that the field cannot change the ordered candidate sequence — which is
+// checkable — rather than a way to make a failing test pass.
+var recallInputFingerprintExclusions = map[string]string{
+	"Filters": "covered field-by-field by TestFingerprint_CoversEveryRecallFilter, " +
+		"which reflects over RecallFilters itself",
+	"Limit":  "windows the sequence rather than determining it; TestFingerprint_ExcludesWindowing pins it OUT",
+	"Offset": "the position the cursor itself carries; TestFingerprint_ExcludesWindowing pins it OUT",
+}
+
+// Every RecallInput field outside Filters must change the ordering
+// fingerprint, enumerated structurally rather than by hand.
+//
+// TestFingerprint_CoversQueryShape lists those fields by name, and a list
+// cannot notice a field nobody added it to: CW-20260825-0006 put SearchMode on
+// RecallInput — a knob that selects which retrieval arms run, so it changes
+// both which rows are candidates and their order — and the hand-written list
+// went on passing with it absent. Reflection closes that the same way
+// TestFingerprint_CoversEveryRecallFilter closed it for RecallFilters after
+// PointerHealth slipped through.
+//
+// The two tests are kept side by side rather than merged: this one catches a
+// field the moment it lands, and the named one documents what each field means
+// for the ordering. Losing either loses something.
+func TestFingerprint_CoversEveryRecallInputField(t *testing.T) {
+	base := memory.RecallInput{
+		Namespaces: []string{"user/chrispian/memory/notes"},
+		Ranking:    memory.RankingChronological,
+	}
+	baseline := memory.RecallOrderingFingerprint(base)
+
+	it := reflect.TypeOf(memory.RecallInput{})
+	// An exclusion for a field that no longer exists is a guard with a hole in
+	// it: the field was renamed and its coverage silently lapsed.
+	for name := range recallInputFingerprintExclusions {
+		if _, ok := it.FieldByName(name); !ok {
+			t.Errorf("recallInputFingerprintExclusions names %q, which RecallInput no longer has — "+
+				"remove the entry, or point it at the field's new name", name)
+		}
+	}
+
+	covered := 0
+	for i := 0; i < it.NumField(); i++ {
+		field := it.Field(i)
+		if field.PkgPath != "" {
+			continue // unexported: not part of the caller-visible query
+		}
+		if _, skip := recallInputFingerprintExclusions[field.Name]; skip {
+			continue
+		}
+		covered++
+		t.Run(field.Name, func(t *testing.T) {
+			probe := reflect.New(it).Elem()
+			probe.Set(reflect.ValueOf(base))
+			f := probe.FieldByName(field.Name)
+			f.Set(nonZero(t, f, field.Name))
+
+			if got := memory.RecallOrderingFingerprint(probe.Interface().(memory.RecallInput)); got == baseline {
+				t.Errorf("changing RecallInput.%s did not change the ordering fingerprint.\n"+
+					"A cursor issued before the change will be silently accepted after it, and the "+
+					"caller gets rows from a different candidate set with no error.\n"+
+					"Add %s to orderingKey and RecallOrderingFingerprint in paging.go — or, if it "+
+					"genuinely cannot reorder anything, to recallInputFingerprintExclusions with the reason.",
+					field.Name, field.Name)
+			}
+		})
+	}
+	if covered == 0 {
+		t.Fatal("every RecallInput field was excluded; this guard is not testing anything")
 	}
 }
 

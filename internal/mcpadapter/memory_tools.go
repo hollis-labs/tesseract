@@ -104,6 +104,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of memory namespace strings. Use typed form user/{id}/memory/{type} (e.g. [\"user/chrispian/memory/decisions\"]) or the legacy/prefix form user/{id}/memory (e.g. [\"user/chrispian/memory\"]) to span every typed sub-namespace under that scope. Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
 		mcp.WithString("revision_scope", mcp.Description("current or timeline (default: current)")),
 		mcp.WithString("ranking", mcp.Description("activation, chronological, similarity, or relevance (default: relevance when query is set, else activation)")),
+		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
 		mcp.WithString("query", mcp.Description("Semantic query string (required for similarity or relevance ranking)")),
 		mcp.WithString("origins", mcp.Description("JSON array of origin filter values")),
 		mcp.WithString("statuses", mcp.Description("JSON array of status filter values")),
@@ -327,7 +328,13 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		Namespaces:    namespaces,
 		RevisionScope: memory.RevisionScope(req.GetString("revision_scope", "")),
 		Ranking:       memory.Ranking(req.GetString("ranking", "")),
-		Query:         req.GetString("query", ""),
+		// Passed through unvalidated on purpose: RecallPaged validates it and
+		// returns ErrInvalidInput, which the switch below maps to
+		// validation_error. The HTTP peer passes it through the same way, so
+		// both doors reject the same values with the same message by
+		// construction rather than by two copies agreeing.
+		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
+		Query:      req.GetString("query", ""),
 		Filters: memory.RecallFilters{
 			Origins:       origins,
 			Statuses:      statuses,
