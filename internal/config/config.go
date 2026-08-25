@@ -26,8 +26,16 @@ type Config struct {
 // memory.DefaultPayloadMode is the canonical default this must match.
 //
 // BudgetBytes / BudgetTokens are the deployment-level response ceilings for
-// recall and lookup, overridable per call by the arguments of the same name.
-// Both default to 0, meaning no ceiling.
+// recall and lookup ONLY, overridable per call by the arguments of the same
+// name. Both default to 0, meaning no ceiling.
+//
+// They deliberately do not reach memory_history / knowledge_history. Those
+// answer with a bare array unless the caller passes a paging knob, and a bare
+// array has nowhere to report truncation — so a configured ceiling there could
+// only either flip the response shape for every caller (breaking the shipped
+// web UI, which parses both routes as arrays) or silently drop revisions. A
+// per-call budget on a history read is still honored, and brings the envelope
+// that reports it.
 //
 // Zero is the deliberate default rather than a chosen number. A non-zero
 // default would start truncating every existing recall on the next deploy,

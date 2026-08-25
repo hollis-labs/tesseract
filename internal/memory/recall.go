@@ -202,6 +202,17 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	if in.Offset < 0 {
 		return RecallPageResult{}, fmt.Errorf("%w: offset must not be negative", ErrInvalidInput)
 	}
+	// Same reason RecallPaged refuses a reranker outright: applyReranker
+	// reorders the window and RerankerTopK truncates it, so the rows returned
+	// are not a prefix of the rows the offset consumed. Walking offsets by
+	// hand over a reranked recall skips and repeats rows. Offset 0 is the
+	// unpaged case and stays allowed — that is the path Recall uses.
+	if in.Offset > 0 && in.Reranker != "" {
+		return RecallPageResult{}, fmt.Errorf(
+			"%w: reranker %q cannot be combined with a non-zero offset — the reranker "+
+				"reorders within the window, so an offset does not name a stable position",
+			ErrInvalidInput, in.Reranker)
+	}
 
 	// 2. Apply defaults.
 	in = resolveRecallDefaults(in)

@@ -47,19 +47,23 @@ type Adapter struct {
 	DefaultBudget memory.Budget
 }
 
-// resolvePageRequest builds the shared paging/budget half of a recall or
-// lookup call from MCP arguments.
+// resolvePageRequest builds the shared paging/budget half of a read call from
+// MCP arguments.
+//
+// defaultBudget is the ceiling to apply when the call passes no budget of its
+// own. Recall and lookup pass the config-wired a.DefaultBudget; the history
+// tools pass the zero Budget — see resolveHistoryPageRequest.
 //
 // Every knob here has a declared HTTP peer that must accept the same name,
 // validate identically, and resolve the same default. The two surfaces
 // therefore share memory.PageRequest and everything downstream of it; only
 // the argument decoding differs, and TestBudgetCursorParity_MCPvsHTTP
 // exercises both against the same store.
-func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.PayloadMode) (memory.PageRequest, *mcp.CallToolResult) {
+func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.PayloadMode, defaultBudget memory.Budget) (memory.PageRequest, *mcp.CallToolResult) {
 	pr := memory.PageRequest{
 		Cursor:      req.GetString("cursor", ""),
 		PayloadMode: mode,
-		Budget:      a.DefaultBudget,
+		Budget:      defaultBudget,
 	}
 
 	// limit goes through wholeNumberArg rather than a bare GetFloat: a
@@ -105,6 +109,28 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 	}
 
 	return pr, nil
+}
+
+// resolveHistoryPageRequest builds the paging half of a memory_history or
+// knowledge_history call.
+//
+// It differs from the recall path in exactly one way, and the difference is
+// load-bearing: the server-configured budget is NOT applied. History answers
+// with a bare array unless the caller engages a knob, and a bare array has
+// nowhere to report truncation — so a deployment-level ceiling there could
+// only either flip the response shape for every caller (breaking the shipped
+// web UI, whose bundle is not rebuilt here) or silently drop revisions with no
+// manifest to say so. Neither is acceptable, so read.budget_bytes and
+// read.budget_tokens are a recall/lookup ceiling only.
+//
+// A caller that passes budget_bytes on a history call still gets it honored,
+// and gets the envelope that reports what it did.
+//
+// PayloadModeFull is passed because history serializes bare Revisions; it
+// selects nothing here beyond making the byte accounting measure the shape
+// actually written.
+func (a *Adapter) resolveHistoryPageRequest(req mcp.CallToolRequest) (memory.PageRequest, *mcp.CallToolResult) {
+	return a.resolvePageRequest(req, memory.PayloadModeFull, memory.Budget{})
 }
 
 // resolvePayloadMode picks the projection for one recall/lookup call.

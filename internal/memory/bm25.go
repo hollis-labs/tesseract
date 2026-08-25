@@ -110,8 +110,19 @@ func sanitizeBM25Query(q string) string {
 // fetchBM25Candidates returns up to n memory_revisions matching the
 // query via FTS5 MATCH, subject to the same filters as fetchCandidates.
 // Results are ordered best-first by FTS5 bm25(), which returns lower
-// values for more relevant documents. Returns an empty slice if the
-// query is empty after sanitization or if n <= 0 reduces to the default.
+// values for more relevant documents, then by revision_id. Returns an
+// empty slice if the query is empty after sanitization or if n <= 0
+// reduces to the default.
+//
+// The revision_id tiebreak makes this a total order, which matters at the
+// LIMIT boundary: without it, WHICH rows survive the arm cut is not
+// determined by construction when bm25 scores tie there, so the same query
+// could feed RRF a different candidate set. That is the defect class fixed
+// in the Go comparators (sortRecallResults); this is the SQL half of it,
+// and it sits on the relevance path — which resolveRecallDefaults makes the
+// default for any query-bearing recall. Deterministic in practice on the
+// current storage layout, so this is a correction by construction rather
+// than a fix for observed breakage.
 //
 // Status filtering is applied at query time (WHERE r.status IN (...)),
 // not via trigger-side exclusion, so freshly-deprecated revisions remain
@@ -136,14 +147,14 @@ FROM memory_revisions_fts fts
 INNER JOIN memory_revisions r ON r.rowid = fts.rowid
 INNER JOIN memory_state s ON s.current_revision = r.revision_id
 WHERE memory_revisions_fts MATCH ? AND ` + whereClause + `
-ORDER BY bm25(memory_revisions_fts)
+ORDER BY bm25(memory_revisions_fts), r.revision_id
 LIMIT ?`
 	case RevisionScopeTimeline:
 		sqlText = `SELECT ` + recallRevisionColumns + `
 FROM memory_revisions_fts fts
 INNER JOIN memory_revisions r ON r.rowid = fts.rowid
 WHERE memory_revisions_fts MATCH ? AND ` + whereClause + `
-ORDER BY bm25(memory_revisions_fts)
+ORDER BY bm25(memory_revisions_fts), r.revision_id
 LIMIT ?`
 	default:
 		return nil, fmt.Errorf("unknown revision scope %q", in.RevisionScope)

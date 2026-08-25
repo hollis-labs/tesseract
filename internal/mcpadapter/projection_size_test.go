@@ -8,19 +8,25 @@ package mcpadapter
 // SLICE those figures describe is recorded next to them. A recall byte count
 // is meaningless without its namespace set, ranking, and limit.
 //
-//	cp ~/.local/share/tesseract/workspaces/default/main.db \
-//	   /tmp/tessmeasure/data/index/context.db
+//	mkdir -p /tmp/tessmeasure/data/index
+//	sqlite3 -readonly ~/.local/share/tesseract/workspaces/default/main.db \
+//	  ".backup /tmp/tessmeasure/data/index/context.db"
 //	TESS_MEASURE_DB=/tmp/tessmeasure \
 //	  go test ./internal/mcpadapter/ -run TestProjectionSize -v
 //
-// Copy the DB first: contextstore.Open runs migrations, so pointing this at
-// a live workspace would mutate it. A plain `cp` of a live workspace copies
-// main.db WITHOUT its -wal sidecar and silently under-reports the corpus;
-// take the snapshot with
+// Snapshot the DB first, and snapshot it with `.backup` — not `cp`.
 //
-//	sqlite3 -readonly <live>/main.db ".backup <dest>/data/index/context.db"
+// contextstore.Open runs migrations, so pointing this at a live workspace
+// would mutate it. `.backup` over a read-only connection leaves the source
+// untouched (verified: mtimes on main.db, -wal and -shm are unchanged after).
 //
-// which is consistent and leaves the source untouched.
+// `cp main.db` is worse than it looks: it copies the file WITHOUT its -wal
+// sidecar, so every committed row still sitting in the write-ahead log is
+// silently missing. Measured against this workspace, `cp` reported 1622
+// revisions and 2,892,188 body bytes where `.backup` reported 1639 and
+// 2,955,792 — 17 revisions and 63,604 bytes invisible, with no error and no
+// warning. A figure derived from a `cp` snapshot is not reproducible, and
+// nothing about the output says so.
 //
 // Override the slice with TESS_MEASURE_NS (comma-separated) and
 // TESS_MEASURE_RANKING. Both are echoed in the output.

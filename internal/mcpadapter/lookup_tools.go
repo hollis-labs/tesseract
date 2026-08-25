@@ -61,7 +61,7 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 	if modeErr != nil {
 		return modeErr, nil
 	}
-	pageReq, pageErr := a.resolvePageRequest(req, payloadMode)
+	pageReq, pageErr := a.resolvePageRequest(req, payloadMode, a.DefaultBudget)
 	if pageErr != nil {
 		return pageErr, nil
 	}

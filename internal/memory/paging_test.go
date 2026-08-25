@@ -121,11 +121,12 @@ func TestCursor_InvalidAcrossAChangedSort(t *testing.T) {
 			c.Filters.Domains = []domains.Domain{domains.Knowledge}
 			return c
 		}()},
-		{"reranker", func() memory.RecallInput {
-			c := base
-			c.Reranker = "some-reranker"
-			return c
-		}()},
+		// No "reranker" case here: RecallPaged refuses a reranker outright
+		// before it reaches the fingerprint (TestRecallPaged_RefusesAReranker),
+		// so it can never reach this comparison. Reranker and RerankerTopK
+		// stay IN the fingerprint as defense in depth — they do determine the
+		// ordering, so if that refusal is ever relaxed the fingerprint must
+		// already account for them.
 	}
 	for _, tc := range changed {
 		t.Run(tc.name, func(t *testing.T) {
@@ -342,16 +343,24 @@ func TestCursor_PagesEveryRowExactlyOnce(t *testing.T) {
 // unordered SQL produced, and an offset would then skip one row and repeat
 // another with nothing in the response to indicate it.
 //
-// Asserting only that two identical calls agree is NOT enough to prove this —
-// SQLite returns rows in a stable physical order for an unchanged database and
-// sort.Slice is deterministic for a given input permutation, so a comparator
-// with no tiebreaker passes that test while still being a partial order. What
-// makes the assertion real is forcing genuine ties and then requiring the
-// SPECIFIC order the tiebreaker imposes.
+// ⚠ This test does NOT prove that, and neither does the one below it. Deleting
+// the revision_id tiebreaker from sortRecallResults leaves both of them GREEN.
+// The reason is specific: fetchCandidates returns rows in rowid order,
+// revision_ids are ULIDs that increase with insertion, so SQLite's natural
+// order ALREADY equals the tiebreak order — there is nothing for the
+// tiebreaker to correct, and forcing ties does not change that. sort.Slice is
+// deterministic for a given input permutation, so repeating the call does not
+// help either.
 //
-// Under activation, rows written from the same template tie exactly: the score
-// is activation x status x confidence x origin x recency, and every factor is
-// equal across them. The tiebreaker orders ties by ascending revision_id.
+// The tiebreaker is proven in TestSortRecallResults_* (internal/memory/
+// sort_internal_test.go), which feeds the comparator a SHUFFLED input — the
+// one thing this layer cannot do. Deleting the tiebreaker fails those five
+// subtests.
+//
+// What these two DO cover is the store pipeline end to end at a point where
+// ties genuinely exist: that recall over a tied set returns every row, in a
+// stable order, and does not drop or duplicate any. That is worth having; it
+// is just not the tiebreaker's guarantee.
 func TestRecall_TiedRowsOrderByRevisionID(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -389,9 +398,12 @@ func TestRecall_TiedRowsOrderByRevisionID(t *testing.T) {
 	}
 }
 
-// The chronological comparator needs the same property. created_at is
-// nanosecond-precision so sequential writes never collide naturally; forcing
-// the collision in SQL is the only way to exercise the tiebreaker at all.
+// Same coverage on the chronological path, with the same caveat as above:
+// this exercises the pipeline over a tied set, it does not prove the
+// tiebreaker (deleting it leaves this green — see TestSortRecallResults_*).
+// created_at is nanosecond-precision, so sequential writes never collide
+// naturally; the collision has to be forced in SQL to reach the tied branch
+// of the comparator at all.
 func TestRecall_TiedTimestampsOrderByRevisionID(t *testing.T) {
 	ms, db, cleanup := newPagingStore(t)
 	defer cleanup()
@@ -430,8 +442,9 @@ func TestRecall_TiedTimestampsOrderByRevisionID(t *testing.T) {
 	}
 }
 
-// And with ties present, paging must still cover every row exactly once —
-// the property the tiebreaker exists to protect.
+// And with ties present, paging must still cover every row exactly once. This
+// is the end-to-end consequence the tiebreaker exists to protect — though, per
+// the caveat above, it stays green without it on this storage layout.
 func TestCursor_PagesTiedRowsExactlyOnce(t *testing.T) {
 	ms, db, cleanup := newPagingStore(t)
 	defer cleanup()
@@ -993,6 +1006,118 @@ func TestPageRequest_EngagedOnlyWhenAKnobIsPassed(t *testing.T) {
 				t.Errorf("Engaged() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// ── Reranker and paging ──────────────────────────────────────────────────────
+
+// registerReverseReranker installs a reranker that reverses its window.
+//
+// Any reordering breaks the invariant the envelope's arithmetic rests on —
+// that the rows delivered are a PREFIX of the rows consumed. An identity
+// reranker does not, which is why it is the wrong probe here: with limit=4 and
+// topK=2 an identity reranker delivers rows 0-1 of every window and paging
+// happens to come out right, so it would pass while testing nothing.
+func registerReverseReranker(ms *memory.Store, name string) {
+	ms.RegisterReranker(name, memory.RerankerFunc(
+		func(_ context.Context, _ string, c []memory.Revision, _ int) ([]memory.Revision, error) {
+			out := make([]memory.Revision, 0, len(c))
+			for i := len(c) - 1; i >= 0; i-- {
+				out = append(out, c[i])
+			}
+			return out, nil
+		}))
+}
+
+// A reranker reorders within a page and RerankerTopK truncates it, so a
+// position in the ranked ordering does not name a position in what was
+// delivered. Paging it delivered 8 of 10 rows, 2 of them twice, 2 never — and
+// reported truncated:false on the final page, which is exactly the lie
+// Truncated exists to prevent. The combination is refused rather than
+// half-supported.
+func TestRecallPaged_RefusesAReranker(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	seedN(t, ms, 10)
+	registerReverseReranker(ms, "reverse")
+
+	in := recallInput("user/chrispian/memory/notes")
+	in.Reranker = "reverse"
+	in.RerankerTopK = 2
+
+	_, err := ms.RecallPaged(context.Background(), in,
+		memory.PageRequest{Limit: 4, PayloadMode: memory.PayloadModeKeys})
+	if !errors.Is(err, memory.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+	for _, want := range []string{"reverse", "cursor paging", "Recall"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q, so the caller cannot act on it: %v", want, err)
+		}
+	}
+
+	// Refused even without RerankerTopK: reordering alone is enough to break
+	// the prefix invariant once a budget can cut inside the window.
+	in.RerankerTopK = 0
+	if _, err := ms.RecallPaged(context.Background(), in,
+		memory.PageRequest{Limit: 4, PayloadMode: memory.PayloadModeKeys}); !errors.Is(err, memory.ErrInvalidInput) {
+		t.Errorf("reranker without topK was accepted: %v", err)
+	}
+}
+
+// Hand-rolled offset paging over a reranked recall has the same defect, so
+// RecallPage refuses it too. Offset 0 is the unpaged case and stays allowed —
+// that is the path Recall uses.
+func TestRecallPage_RefusesARerankerAtNonZeroOffset(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	seedN(t, ms, 10)
+	registerReverseReranker(ms, "reverse")
+
+	in := recallInput("user/chrispian/memory/notes")
+	in.Reranker = "reverse"
+	in.Limit = 4
+
+	in.Offset = 4
+	if _, err := ms.RecallPage(context.Background(), in); !errors.Is(err, memory.ErrInvalidInput) {
+		t.Errorf("offset 4 with a reranker was accepted: %v", err)
+	}
+
+	in.Offset = 0
+	if _, err := ms.RecallPage(context.Background(), in); err != nil {
+		t.Errorf("offset 0 with a reranker must still work: %v", err)
+	}
+}
+
+// The refusal must not cost the reranker its actual job. Unpaged reranked
+// recall goes through Recall, not RecallPaged, and is unchanged.
+func TestRecall_RerankerStillWorksUnpaged(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	seedN(t, ms, 6)
+	registerReverseReranker(ms, "reverse")
+
+	in := recallInput("user/chrispian/memory/notes")
+	in.Limit = 6
+	plain, err := ms.Recall(context.Background(), in)
+	if err != nil {
+		t.Fatalf("plain recall: %v", err)
+	}
+
+	in.Reranker = "reverse"
+	reranked, err := ms.Recall(context.Background(), in)
+	if err != nil {
+		t.Fatalf("reranked recall: %v", err)
+	}
+	if len(reranked) != len(plain) {
+		t.Fatalf("reranked returned %d rows, plain returned %d", len(reranked), len(plain))
+	}
+	for i := range plain {
+		want := plain[len(plain)-1-i].Revision.RevisionID
+		if reranked[i].Revision.RevisionID != want {
+			t.Fatalf("position %d: got %s, want %s — the reranker is not being applied",
+				i, reranked[i].Revision.RevisionID, want)
+		}
 	}
 }
 

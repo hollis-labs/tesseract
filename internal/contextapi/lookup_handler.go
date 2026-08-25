@@ -194,8 +194,15 @@ func (s *Server) pageRequest(w http.ResponseWriter, a pageArgs, mode memory.Payl
 //
 // Presence is read with Query().Has rather than by comparing against a zero
 // default, so `?budget_bytes=0` is rejected on this surface exactly as an
-// explicit 0 is rejected on MCP. An absent parameter falls back to server
-// config, which is the same config field the MCP adapter reads.
+// explicit 0 is rejected on MCP.
+//
+// The server-configured budget is deliberately NOT applied here, matching
+// resolveHistoryPageRequest on the MCP side. History answers with a bare array
+// unless the caller engages a knob, and a bare array has nowhere to report
+// truncation — so a deployment-level ceiling could only either flip the shape
+// for every caller (breaking frontend/src/api/client.ts and the fenced
+// internal/webui/dist bundle) or silently drop revisions. read.budget_bytes
+// and read.budget_tokens are a recall/lookup ceiling only.
 //
 // It writes its own 400 and returns ok=false on a malformed value.
 func (s *Server) historyPageRequest(w http.ResponseWriter, r *http.Request) (memory.PageRequest, bool) {
@@ -205,10 +212,6 @@ func (s *Server) historyPageRequest(w http.ResponseWriter, r *http.Request) (mem
 		// History serializes bare Revisions; full is what the byte
 		// accounting must measure.
 		PayloadMode: memory.PayloadModeFull,
-		Budget: memory.Budget{
-			Bytes:  s.RuntimeConfig.Read.BudgetBytes,
-			Tokens: s.RuntimeConfig.Read.BudgetTokens,
-		},
 	}
 	// limit and the budgets differ deliberately on what a non-positive value
 	// means, and the two surfaces agree on the difference.

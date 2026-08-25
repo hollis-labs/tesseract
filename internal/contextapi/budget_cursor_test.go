@@ -367,6 +367,105 @@ func TestKnowledgeHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 	}
 }
 
+// A configured budget must leave history's response SHAPE untouched.
+//
+// read.budget_bytes is a deployment-level setting this ticket introduced. When
+// historyPageRequest seeded PageRequest.Budget from it, Budget.Set() made
+// PageRequest.Engaged() true for every caller — including ones passing no
+// knobs — flipping both history routes from a bare array to {results,
+// manifest}. That is a pure shape break with no rows withheld, and it breaks
+// frontend/src/api/client.ts:544 and :564 plus the fenced internal/webui/dist
+// bundle that consumes them.
+//
+// The budget below is 10 MB against a 4-revision history, chosen so it can
+// withhold nothing: any change in the response is the config's shape effect
+// and nothing else.
+func TestMemoryHistoryHTTP_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
+	srv := newLookupServer(t)
+	seedHistory(t, srv, 4)
+
+	var arr []json.RawMessage
+	base := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key")
+	if err := json.Unmarshal(base.Body.Bytes(), &arr); err != nil {
+		t.Fatalf("baseline is not a bare array: %v", err)
+	}
+	baseline := base.Body.String()
+
+	srv.RuntimeConfig = config.Defaults()
+	srv.RuntimeConfig.Read.BudgetBytes = 10 << 20
+	srv.RuntimeConfig.Read.BudgetTokens = 10 << 20
+
+	withBudget := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key")
+	if withBudget.Code != http.StatusOK {
+		t.Fatalf("status = %d; body = %s", withBudget.Code, withBudget.Body.String())
+	}
+	if err := json.Unmarshal(withBudget.Body.Bytes(), &arr); err != nil {
+		t.Fatalf("a configured budget flipped history's shape: %v\nbody=%s",
+			err, withBudget.Body.String())
+	}
+	if withBudget.Body.String() != baseline {
+		t.Errorf("a configured budget changed the response byte-for-byte:\n before: %s\n  after: %s",
+			baseline, withBudget.Body.String())
+	}
+
+	// Knowledge history is the same route family and the same UI consumer.
+	seedKnowledge(t, srv)
+	kreq := httptest.NewRequest(http.MethodGet,
+		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&memory_key=go-providers", nil)
+	krr := httptest.NewRecorder()
+	srv.ServeHTTP(krr, kreq)
+	if krr.Code == http.StatusOK {
+		if err := json.Unmarshal(krr.Body.Bytes(), &arr); err != nil {
+			t.Errorf("a configured budget flipped knowledge history's shape: %v\nbody=%s",
+				err, krr.Body.String())
+		}
+	}
+
+	// A PER-CALL budget still engages the envelope — the knob works, it is
+	// only the deployment-level default that must not change shape.
+	perCall := getHistory(t, srv,
+		"namespace=user/chrispian/memory/notes&memory_key=hist.key&budget_bytes=400")
+	if _, ok := tryHTTPManifest(perCall.Body.Bytes()); !ok {
+		t.Errorf("a per-call budget did not engage the envelope; body = %s", perCall.Body.String())
+	}
+}
+
+// The recall/lookup side must keep honoring the configured budget — the fix
+// above narrowed it to those two surfaces, it did not disable it.
+func TestConfiguredBudgetStillAppliesToRecallAndLookup(t *testing.T) {
+	srv := newLookupServer(t)
+	seedBudgetRows(t, srv, 8)
+
+	base := httpManifest(t, postMemoryRecall(t, srv,
+		`{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological","payload_mode":"summary"}`).Body.Bytes())
+
+	srv.RuntimeConfig = config.Defaults()
+	srv.RuntimeConfig.Read.BudgetBytes = base.BytesReturned / 3
+
+	recall := httpManifest(t, postMemoryRecall(t, srv,
+		`{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological","payload_mode":"summary"}`).Body.Bytes())
+	if !recall.Truncated || recall.TruncationReason != memory.TruncationBudgetBytes {
+		t.Errorf("recall stopped honoring read.budget_bytes: %+v", recall)
+	}
+
+	lookup := httpManifest(t, postLookup(t, srv,
+		`{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological","payload_mode":"summary"}`).Body.Bytes())
+	if !lookup.Truncated || lookup.TruncationReason != memory.TruncationBudgetBytes {
+		t.Errorf("lookup stopped honoring read.budget_bytes: %+v", lookup)
+	}
+}
+
+// tryHTTPManifest reports whether a response is an envelope at all.
+func tryHTTPManifest(raw []byte) (memory.Manifest, bool) {
+	var env struct {
+		Manifest *memory.Manifest `json:"manifest"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil || env.Manifest == nil {
+		return memory.Manifest{}, false
+	}
+	return *env.Manifest, true
+}
+
 func TestMemoryHistoryHTTP_MalformedKnobsAre400(t *testing.T) {
 	srv := newLookupServer(t)
 	seedHistory(t, srv, 2)

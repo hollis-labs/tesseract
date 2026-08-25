@@ -245,6 +245,12 @@ func EncodeCursor(offset int, fingerprint string) string {
 // reorder, and limit only sets where pages break. Binding them would reject
 // legitimate paging (browsing under keys, then continuing under summary; or
 // paging the same query with a smaller page size) with no correctness gain.
+//
+// Reranker and RerankerTopK ARE in the fingerprint, even though RecallPaged
+// refuses a reranker before any cursor is issued or checked. They belong to
+// the ordering, so if that refusal is ever lifted for a rerank-then-page
+// design, the fingerprint must already account for them rather than have to
+// remember to.
 func DecodeCursor(raw, fingerprint string) (int, error) {
 	if raw == "" {
 		return 0, nil
@@ -492,15 +498,26 @@ type PageRequest struct {
 	Limit int
 }
 
-// Engaged reports whether the caller asked for any bounded-read behavior.
+// Engaged reports whether THE CALLER asked for any bounded-read behavior.
 //
 // The history surfaces use it to decide between their historical bare-array
 // response and the envelope: GET /v1/memory/history and
 // GET /v1/knowledge/history are parsed as bare arrays by the shipped web UI,
 // whose bundle (internal/webui/dist) is not regenerated here, so an
-// unconditional envelope would break it. A caller that passes none of these
-// knobs gets exactly the response it got before; one that passes any of them
-// has asked for a bounded read and gets the manifest that describes it.
+// unconditional envelope would break it.
+//
+// Every field it reads must therefore come from the CALL, never from server
+// config. That is not obvious and it has already been got wrong once: seeding
+// Budget from read.budget_bytes made a deployment-level setting flip both
+// history routes to the envelope for every caller, including ones passing no
+// knobs at all — a pure shape break, with no rows withheld, that broke the
+// shipped UI. The fix is upstream of here: the history surfaces resolve
+// PageRequest.Budget from the call only (see resolveHistoryBudget's callers),
+// so a configured budget can never make Engaged true on its own.
+//
+// A caller that passes none of these knobs gets exactly the response it got
+// before; one that passes any of them has asked for a bounded read and gets
+// the manifest that describes it.
 func (p PageRequest) Engaged() bool {
 	return p.Cursor != "" || p.Limit > 0 || p.Budget.Set()
 }
@@ -533,6 +550,40 @@ type PagedRevisions struct {
 // It is never absorbed into an empty page — the whole point of fingerprinting
 // a cursor is that resuming the wrong ordering must be loud.
 func (s *Store) RecallPaged(ctx context.Context, in RecallInput, pr PageRequest) (PagedRecall, error) {
+	// A reranker and a cursor cannot both be honored, so the combination is
+	// refused rather than half-supported.
+	//
+	// applyReranker reorders the window and then, when RerankerTopK is set,
+	// cuts it. Both break the invariant this envelope's arithmetic rests on:
+	// that the rows DELIVERED are a prefix of the rows CONSUMED. Once they are
+	// not, advancing the cursor by results_returned skips rows and repeats
+	// others, and the last page reports truncated:false while rows were never
+	// delivered at all — the exact lie Truncated exists to prevent. Measured
+	// on 10 rows with limit=4, topK=2 and an order-reversing reranker: 8 of 10
+	// delivered, 2 twice, 2 never, final truncated:false.
+	//
+	// Advancing by consumed instead does not rescue it. A budget cut inside a
+	// reordered window keeps an arbitrary subset of the consumed range, so no
+	// single offset names where to resume. And with RerankerTopK below the
+	// page size, WHICH rows a caller ever sees depends on its page size —
+	// that is not a paging contract at all.
+	//
+	// The coherent version of this feature is rerank-then-page: rerank the
+	// whole ordered set before windowing. That is a different operation with a
+	// different cost profile, and it would change what Recall does today, so
+	// it is left as a follow-up rather than smuggled in here.
+	//
+	// Unpaged reranked recall is untouched: Recall goes through RecallPage,
+	// not through here.
+	if in.Reranker != "" {
+		return PagedRecall{}, fmt.Errorf(
+			"%w: reranker %q cannot be combined with cursor paging — a reranker reorders "+
+				"(and RerankerTopK truncates) within a page, so a position in the ranked "+
+				"ordering does not name a position in what was delivered; use Recall for a "+
+				"single reranked result set",
+			ErrInvalidInput, in.Reranker)
+	}
+
 	fingerprint := RecallOrderingFingerprint(in)
 
 	offset, err := DecodeCursor(pr.Cursor, fingerprint)

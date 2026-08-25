@@ -236,9 +236,7 @@ func (a *Adapter) handleMemoryHistory(ctx context.Context, req mcp.CallToolReque
 	namespace := req.GetString("namespace", "")
 	memoryKey := req.GetString("memory_key", "")
 
-	// History has no payload_mode; PayloadModeFull is passed only so the
-	// budget accounting measures the shape actually serialized.
-	pr, errRes := a.resolvePageRequest(req, memory.PayloadModeFull)
+	pr, errRes := a.resolveHistoryPageRequest(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -273,7 +271,7 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 	if errRes != nil {
 		return errRes, nil
 	}
-	pageReq, errRes := a.resolvePageRequest(req, payloadMode)
+	pageReq, errRes := a.resolvePageRequest(req, payloadMode, a.DefaultBudget)
 	if errRes != nil {
 		return errRes, nil
 	}

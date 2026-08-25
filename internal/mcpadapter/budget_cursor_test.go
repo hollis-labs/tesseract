@@ -385,6 +385,86 @@ func TestMCPHistory_BareArrayUntilAKnobIsPassed(t *testing.T) {
 	}
 }
 
+// The MCP half of the same contract: a.DefaultBudget is wired from
+// read.budget_bytes, and seeding PageRequest.Budget from it made
+// PageRequest.Engaged() true for callers who passed no knobs, flipping both
+// history tools to the envelope. The budget below is 10 MB against a
+// 4-revision history so it can withhold nothing — any change is the config's
+// shape effect alone.
+func TestMCPHistory_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+	var last string
+	for i := 0; i < 4; i++ {
+		res := writeViaHandler(t, a, map[string]any{
+			"namespace":       "user/chrispian/memory/notes",
+			"memory_key":      "hist.key",
+			"supersedes":      last,
+			"author_agent_id": "claude",
+			"trigger":         "explicit",
+			"session_id":      "sess-hist",
+			"origin":          "user",
+			"confidence":      0.9,
+			"payload_summary": "history probe",
+		})
+		last, _ = res["revision_id"].(string)
+	}
+
+	args := map[string]any{
+		"namespace":  "user/chrispian/memory/notes",
+		"memory_key": "hist.key",
+	}
+	baseline := callTool(t, a.handleMemoryHistory, args)
+	var arr []json.RawMessage
+	if err := json.Unmarshal([]byte(baseline), &arr); err != nil {
+		t.Fatalf("baseline is not a bare array: %v", err)
+	}
+
+	a.DefaultBudget = memory.Budget{Bytes: 10 << 20, Tokens: 10 << 20}
+	withBudget := callTool(t, a.handleMemoryHistory, args)
+	if err := json.Unmarshal([]byte(withBudget), &arr); err != nil {
+		t.Fatalf("a configured budget flipped memory_history's shape: %v\nraw=%s", err, withBudget)
+	}
+	if withBudget != baseline {
+		t.Errorf("a configured budget changed the response byte-for-byte:\n before: %s\n  after: %s",
+			baseline, withBudget)
+	}
+
+	// A per-call budget still engages the envelope.
+	perCall := map[string]any{}
+	for k, v := range args {
+		perCall[k] = v
+	}
+	perCall["budget_bytes"] = float64(400)
+	if _, ok := tryManifest([]byte(callTool(t, a.handleMemoryHistory, perCall))); !ok {
+		t.Error("a per-call budget did not engage the envelope on memory_history")
+	}
+}
+
+// Narrowing the config budget to recall/lookup must not have disabled it there.
+func TestMCPRecall_ConfiguredBudgetStillApplies(t *testing.T) {
+	a := budgetAdapter(t, 8)
+	base := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+		"namespaces":   `["user/chrispian/memory/notes"]`,
+		"ranking":      "chronological",
+		"payload_mode": "summary",
+	}))
+
+	a.DefaultBudget = memory.Budget{Bytes: base.BytesReturned / 3}
+	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+		"memory_recall":    a.handleMemoryRecall,
+		"tesseract_lookup": a.handleTesseractLookup,
+	} {
+		m := recallManifest(t, callTool(t, fn, map[string]any{
+			"namespaces":   `["user/chrispian/memory/notes"]`,
+			"ranking":      "chronological",
+			"payload_mode": "summary",
+		}))
+		if !m.Truncated || m.TruncationReason != memory.TruncationBudgetBytes {
+			t.Errorf("%s stopped honoring the configured budget: %+v", name, m)
+		}
+	}
+}
+
 func TestMCPHistory_ZeroBudgetIsValidationError(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 	writeViaHandler(t, a, map[string]any{

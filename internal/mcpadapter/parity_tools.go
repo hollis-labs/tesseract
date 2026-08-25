@@ -198,7 +198,7 @@ func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRe
 	if namespace == "" || key == "" {
 		return toolError("validation_error", "namespace and memory_key are required"), nil
 	}
-	pr, errRes := a.resolvePageRequest(req, memory.PayloadModeFull)
+	pr, errRes := a.resolveHistoryPageRequest(req)
 	if errRes != nil {
 		return errRes, nil
 	}
