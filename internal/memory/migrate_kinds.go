@@ -2,7 +2,9 @@ package memory
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -91,7 +93,7 @@ type KindMigrationRow struct {
 
 // KindMigrationUnmapped is an off-vocabulary kind with no entry in
 // kindMigrations. Its presence in a plan refuses the apply — it is the
-// kind-migration analogue of the namespace migration's collision check.
+// kind-migration counterpart of the namespace migration's collision check.
 type KindMigrationUnmapped struct {
 	Kind        string   `json:"kind"`
 	Count       int      `json:"count"`
@@ -114,6 +116,30 @@ type KindMigrationPlan struct {
 // row is off-vocabulary and unmappable, so it surfaces under Unmapped.
 const nullKindLabel = "(null)"
 
+// kindScanFilter is the SQL predicate selecting candidate rows. Conformance
+// against the vocabulary is applied in Go, so this stays constant.
+const kindScanFilter = `r.domain = 'knowledge'`
+
+// kindScanQuery is the constant scan. Every knowledge revision is read and
+// filtered in Go; the corpus is small and a one-shot migration gains nothing
+// from pushing the vocabulary into the query.
+const kindScanQuery = `
+	SELECT r.revision_id, r.memory_id, r.namespace, COALESCE(r.memory_key, ''),
+	       COALESCE(r.facet_kind, ''), (s.memory_id IS NOT NULL)
+	FROM memory_revisions r
+	LEFT JOIN memory_state s ON s.current_revision = r.revision_id
+	WHERE ` + kindScanFilter + `
+	ORDER BY r.facet_kind, r.namespace, r.memory_key`
+
+// kindCountQuery aggregates kinds for the post-apply conformance check. It is
+// a deliberately different code path from the per-row scan above, so the two
+// measurements can disagree if either is wrong.
+const kindCountQuery = `
+	SELECT COALESCE(facet_kind, ''), COUNT(*)
+	FROM memory_revisions
+	WHERE domain = 'knowledge'
+	GROUP BY COALESCE(facet_kind, '')`
+
 // BuildKindMigrationPlan scans the knowledge domain for `facet_kind` values
 // outside knowledgeKindVocabulary and returns the rewrite plan. It does NOT
 // mutate the database — pass the plan to ApplyKindMigration to do that.
@@ -133,30 +159,24 @@ func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan,
 		}
 	}
 
-	// NULL is not matched by NOT IN, so it is called out explicitly; the empty
-	// string is caught by NOT IN since '' is not a vocabulary member.
-	filter := `r.domain = 'knowledge' AND (r.facet_kind IS NULL OR r.facet_kind NOT IN (` +
-		placeholders(len(vocab)) + `))`
-	args := make([]any, 0, len(vocab))
-	for _, k := range vocab {
-		args = append(args, k)
-	}
-
-	rows, err := db.QueryContext(ctx, `
-		SELECT r.revision_id, r.memory_id, r.namespace, COALESCE(r.memory_key, ''),
-		       COALESCE(r.facet_kind, ''), (s.memory_id IS NOT NULL)
-		FROM memory_revisions r
-		LEFT JOIN memory_state s ON s.current_revision = r.revision_id
-		WHERE `+filter+`
-		ORDER BY r.facet_kind, r.namespace, r.memory_key`, args...) // nolint:gosec // placeholders only
+	// The scan SQL is a compile-time constant: the vocabulary is applied in Go
+	// rather than as a generated `NOT IN (?,?,...)` list. That keeps the query
+	// free of any string concatenation (no G202 suppression to get wrong) and
+	// sidesteps the NULL-vs-NOT-IN subtlety — a NULL or empty facet_kind is
+	// simply not a vocabulary member and falls out as off-vocabulary.
+	rows, err := db.QueryContext(ctx, kindScanQuery)
 	if err != nil {
-		return KindMigrationPlan{}, fmt.Errorf("scan off-vocabulary rows: %w", err)
+		return KindMigrationPlan{}, fmt.Errorf("scan knowledge rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	plan := KindMigrationPlan{
+		// Non-nil so the JSON form is always a list — a machine consumer can
+		// call len() on it without a nil check.
+		Rows:         []KindMigrationRow{},
+		Unmapped:     []KindMigrationUnmapped{},
 		Vocabulary:   vocab,
-		SourceFilter: strings.Join(strings.Fields(filter), " "),
+		SourceFilter: strings.Join(strings.Fields(kindScanFilter), " "),
 	}
 	unmapped := map[string][]string{}
 
@@ -167,6 +187,11 @@ func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan,
 			return KindMigrationPlan{}, fmt.Errorf("scan row: %w", err)
 		}
 		r.IsHead = isHead != 0
+
+		// Already conformant — not part of the migration.
+		if _, conformant := knowledgeKindVocabulary[r.OldKind]; conformant {
+			continue
+		}
 
 		mapping, ok := kindMigrations[r.OldKind]
 		if !ok {
@@ -238,7 +263,7 @@ func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan)
 	if err != nil {
 		return 0, fmt.Errorf("prepare kind update: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	var stale []string
 	for _, row := range plan.Rows {
@@ -268,3 +293,53 @@ func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan)
 // for the CLI summary and for tests; see the note on
 // knowledgeKindVocabulary — this is a migration target, not a write-path enum.
 func KnowledgeKindVocabulary() []string { return sortedKeys(knowledgeKindVocabulary) }
+
+// Digest is a stable fingerprint of exactly what this plan would do. It covers
+// every row's (revision_id, old_kind, new_kind) and every unmapped kind, so it
+// changes if a row is added, removed, or remapped.
+//
+// It exists so an approval can be bound to a specific plan: a reviewer reads a
+// dry-run, and the apply refuses unless the freshly built plan still digests to
+// the same value. A count alone cannot catch one row being swapped for another.
+func (p KindMigrationPlan) Digest() string {
+	lines := make([]string, 0, len(p.Rows)+len(p.Unmapped))
+	for _, r := range p.Rows {
+		lines = append(lines, "row\x00"+r.RevisionID+"\x00"+r.OldKind+"\x00"+r.NewKind)
+	}
+	for _, u := range p.Unmapped {
+		for _, id := range u.RevisionIDs {
+			lines = append(lines, "unmapped\x00"+id+"\x00"+u.Kind)
+		}
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+// CountNonConformantKinds returns how many knowledge revisions still carry a
+// facet_kind outside the vocabulary, measured by aggregate query rather than
+// by the per-row planner. It is the post-apply conformance check: the number
+// that should read zero once the migration has been applied.
+func CountNonConformantKinds(ctx context.Context, db *sql.DB) (int, error) {
+	rows, err := db.QueryContext(ctx, kindCountQuery)
+	if err != nil {
+		return 0, fmt.Errorf("count kinds: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	total := 0
+	for rows.Next() {
+		var kind string
+		var n int
+		if scanErr := rows.Scan(&kind, &n); scanErr != nil {
+			return 0, fmt.Errorf("scan kind count: %w", scanErr)
+		}
+		if _, conformant := knowledgeKindVocabulary[kind]; !conformant {
+			total += n
+		}
+	}
+	if rows.Err() != nil {
+		return 0, fmt.Errorf("iterate kind counts: %w", rows.Err())
+	}
+	return total, nil
+}

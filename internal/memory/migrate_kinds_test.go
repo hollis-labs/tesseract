@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
@@ -159,10 +160,10 @@ func TestApplyKindMigration_RewritesInPlacePreservingIdentity(t *testing.T) {
 	// Identity columns must be untouched — this is a metadata conformance
 	// change, not a superseding write.
 	var memIDAfter, nsAfter, keyAfter string
-	if err := db.QueryRow(
+	if readErr := db.QueryRow(
 		`SELECT memory_id, namespace, memory_key FROM memory_revisions WHERE revision_id = ?`, mcpRev,
-	).Scan(&memIDAfter, &nsAfter, &keyAfter); err != nil {
-		t.Fatalf("read identity after: %v", err)
+	).Scan(&memIDAfter, &nsAfter, &keyAfter); readErr != nil {
+		t.Fatalf("read identity after: %v", readErr)
 	}
 	if memIDAfter != memIDBefore || nsAfter != nsBefore || keyAfter != keyBefore {
 		t.Errorf("identity changed: (%s,%s,%s) -> (%s,%s,%s)",
@@ -171,8 +172,8 @@ func TestApplyKindMigration_RewritesInPlacePreservingIdentity(t *testing.T) {
 
 	// No new revisions were minted.
 	var revCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM memory_revisions WHERE domain = 'knowledge'`).Scan(&revCount); err != nil {
-		t.Fatalf("count revisions: %v", err)
+	if countErr := db.QueryRow(`SELECT COUNT(*) FROM memory_revisions WHERE domain = 'knowledge'`).Scan(&revCount); countErr != nil {
+		t.Fatalf("count revisions: %v", countErr)
 	}
 	if revCount != 2 {
 		t.Errorf("knowledge revision count = %d, want 2 (no new revisions minted)", revCount)
@@ -319,5 +320,138 @@ func TestBuildKindMigrationPlan_IgnoresMemoryDomain(t *testing.T) {
 	}
 	if !strings.Contains(plan.SourceFilter, "domain = 'knowledge'") {
 		t.Errorf("SourceFilter = %q, want it scoped to the knowledge domain", plan.SourceFilter)
+	}
+}
+
+func TestKindMigrationPlan_DigestBindsPlanContent(t *testing.T) {
+	ms, db := newKindFixture(t)
+	ctx := context.Background()
+
+	writeKnowledge(t, ms, "mcp.server.cerberus", "mcp-server")
+
+	first, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan: %v", err)
+	}
+	second, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan (second): %v", err)
+	}
+	if first.Digest() == "" {
+		t.Fatal("digest is empty")
+	}
+	if first.Digest() != second.Digest() {
+		t.Errorf("digest not stable across rebuilds: %s vs %s", first.Digest(), second.Digest())
+	}
+
+	// A row arriving after the plan was reviewed must change the digest.
+	writeKnowledge(t, ms, "mcp.server.nanite", "mcp-server")
+	third, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan (third): %v", err)
+	}
+	if third.Digest() == first.Digest() {
+		t.Error("digest unchanged after a new off-vocabulary row landed")
+	}
+
+	// An unmapped kind is part of the fingerprint too: it changes what the
+	// plan describes while leaving the mapped row count untouched, so a bare
+	// --expect-rows check would not notice it.
+	writeKnowledge(t, ms, "weird.thing", "totally_unknown_kind")
+	fourth, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan (fourth): %v", err)
+	}
+	if len(fourth.Rows) != len(third.Rows) {
+		t.Fatalf("row count = %d, want %d (unmapped rows are not plan rows)", len(fourth.Rows), len(third.Rows))
+	}
+	if fourth.Digest() == third.Digest() {
+		t.Error("digest unchanged after an unmapped kind appeared at equal row count")
+	}
+}
+
+func TestCountNonConformantKinds_AgreesWithPlanAndReachesZero(t *testing.T) {
+	ms, db := newKindFixture(t)
+	ctx := context.Background()
+
+	writeKnowledge(t, ms, "mcp.server.cerberus", "mcp-server")
+	writeKnowledge(t, ms, "mcp.server.nanite", "mcp-server")
+	writeKnowledge(t, ms, "issues.dropped-field", "issue/bug")
+	writeKnowledge(t, ms, "docs.some-doc", "doc")
+
+	before, err := memory.CountNonConformantKinds(ctx, db)
+	if err != nil {
+		t.Fatalf("CountNonConformantKinds: %v", err)
+	}
+	if before != 3 {
+		t.Errorf("non-conformant before = %d, want 3", before)
+	}
+
+	plan, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan: %v", err)
+	}
+	// The aggregate count and the per-row planner are separate code paths; on
+	// a fully mappable corpus they must agree.
+	if before != len(plan.Rows) {
+		t.Errorf("aggregate count %d disagrees with planner row count %d", before, len(plan.Rows))
+	}
+
+	if _, applyErr := memory.ApplyKindMigration(ctx, db, plan); applyErr != nil {
+		t.Fatalf("ApplyKindMigration: %v", applyErr)
+	}
+
+	after, err := memory.CountNonConformantKinds(ctx, db)
+	if err != nil {
+		t.Fatalf("CountNonConformantKinds (after): %v", err)
+	}
+	if after != 0 {
+		t.Errorf("non-conformant after apply = %d, want 0", after)
+	}
+}
+
+func TestCountNonConformantKinds_CountsUnmappableKinds(t *testing.T) {
+	ms, db := newKindFixture(t)
+	ctx := context.Background()
+
+	writeKnowledge(t, ms, "weird.thing", "totally_unknown_kind")
+	writeKnowledge(t, ms, "docs.some-doc", "doc")
+
+	// An unmapped kind is non-conformant even though it is never a plan row —
+	// otherwise the post-apply check could read zero with rows still stranded.
+	n, err := memory.CountNonConformantKinds(ctx, db)
+	if err != nil {
+		t.Fatalf("CountNonConformantKinds: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("non-conformant = %d, want 1", n)
+	}
+}
+
+func TestBuildKindMigrationPlan_EmptyPlanHasNonNilSlices(t *testing.T) {
+	ms, db := newKindFixture(t)
+	ctx := context.Background()
+
+	writeKnowledge(t, ms, "docs.some-doc", "doc")
+
+	plan, err := memory.BuildKindMigrationPlan(ctx, db)
+	if err != nil {
+		t.Fatalf("BuildKindMigrationPlan: %v", err)
+	}
+	if plan.Rows == nil {
+		t.Error("Rows is nil; JSON consumers expect a list")
+	}
+	if plan.Unmapped == nil {
+		t.Error("Unmapped is nil; JSON consumers expect a list")
+	}
+
+	blob, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"rows":[]`, `"unmapped":[]`} {
+		if !strings.Contains(string(blob), want) {
+			t.Errorf("JSON missing %s; got %s", want, blob)
+		}
 	}
 }
