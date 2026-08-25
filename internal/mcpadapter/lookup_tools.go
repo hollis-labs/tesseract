@@ -16,6 +16,8 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
+				"• **Result shape:** `{results: [{revision, score, state}], facets: {domains, kinds, sources}}`, best first.\n"+
+				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+

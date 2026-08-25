@@ -84,14 +84,15 @@ func (s *Store) relevanceRecall(ctx context.Context, in RecallInput) ([]RecallRe
 		ow := originWeights[rev.Origin]
 		rf := recencyFactor(st.LastAccessedAt, now)
 		final := score * sw * ow * rev.Confidence * rf * st.Activation
-		results = append(results, RecallResult{Revision: rev, Score: final, State: st})
+		results = append(results, RecallResult{Revision: rev, Score: scorePtr(final), State: st})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].Score == results[j].Score {
+		si, sj := scoreOf(results[i]), scoreOf(results[j])
+		if si == sj {
 			return results[i].Revision.RevisionID < results[j].Revision.RevisionID
 		}
-		return results[i].Score > results[j].Score
+		return si > sj
 	})
 
 	if in.Limit > 0 && len(results) > in.Limit {

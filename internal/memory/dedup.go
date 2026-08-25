@@ -31,8 +31,10 @@ func (s *Store) findSemanticMatch(ctx context.Context, namespace, memoryKey stri
 		return "", false, nil
 	}
 
+	// Similarity ranking always attaches a score; a missing one means the
+	// candidate carries no comparable signal, so treat it as no match.
 	top := results[0]
-	if top.Score < threshold {
+	if top.Score == nil || *top.Score < threshold {
 		return "", false, nil
 	}
 

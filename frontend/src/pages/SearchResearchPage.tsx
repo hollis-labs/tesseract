@@ -259,7 +259,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   const groupedByDomain = (results: TesseractLookupResultItem[]) => {
     const map = new Map<string, TesseractLookupResultItem[]>();
     for (const r of results) {
-      const d = r.Revision.domain;
+      const d = r.revision.domain;
       const arr = map.get(d) ?? [];
       arr.push(r);
       map.set(d, arr);
@@ -797,18 +797,18 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                             {items.map((r) => (
                               <button
-                                key={r.Revision.revision_id}
+                                key={r.revision.revision_id}
                                 type="button"
                                 className="hud-panel"
                                 onClick={() =>
-                                  r.Revision.memory_key &&
+                                  r.revision.memory_key &&
                                   onOpenItem?.(
-                                    r.Revision.domain,
-                                    r.Revision.namespace,
-                                    r.Revision.memory_key,
+                                    r.revision.domain,
+                                    r.revision.namespace,
+                                    r.revision.memory_key,
                                   )
                                 }
-                                disabled={!r.Revision.memory_key || !onOpenItem}
+                                disabled={!r.revision.memory_key || !onOpenItem}
                                 style={{
                                   padding: "0.6rem 0.75rem",
                                   textAlign: "left",
@@ -816,7 +816,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                   color: "inherit",
                                   width: "100%",
                                   cursor:
-                                    r.Revision.memory_key && onOpenItem ? "pointer" : "default",
+                                    r.revision.memory_key && onOpenItem ? "pointer" : "default",
                                 }}
                               >
                                 <div
@@ -834,7 +834,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                       color: "rgb(var(--primary))",
                                     }}
                                   >
-                                    {r.Revision.memory_key ?? "(no key)"}
+                                    {r.revision.memory_key ?? "(no key)"}
                                   </div>
                                   <div
                                     style={{
@@ -844,15 +844,15 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                       fontSize: "0.65rem",
                                     }}
                                   >
-                                    <StatusBadge status={r.Revision.status} />
-                                    {r.Score !== undefined && (
+                                    <StatusBadge status={r.revision.status} />
+                                    {r.score !== undefined && (
                                       <span
                                         style={{
                                           fontFamily: "var(--font-mono)",
                                           color: "rgb(var(--muted))",
                                         }}
                                       >
-                                        score {r.Score.toFixed(3)}
+                                        score {r.score.toFixed(3)}
                                       </span>
                                     )}
                                     <span
@@ -861,7 +861,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                         color: "rgb(var(--muted))",
                                       }}
                                     >
-                                      conf {r.Revision.confidence.toFixed(2)}
+                                      conf {r.revision.confidence.toFixed(2)}
                                     </span>
                                   </div>
                                 </div>
@@ -872,7 +872,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                     lineHeight: 1.4,
                                   }}
                                 >
-                                  {r.Revision.payload.summary || "(no summary)"}
+                                  {r.revision.payload.summary || "(no summary)"}
                                 </div>
                                 <div
                                   style={{
@@ -885,7 +885,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                   }}
                                 >
                                   <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
-                                    {r.Revision.tags.slice(0, 5).map((t) => (
+                                    {r.revision.tags.slice(0, 5).map((t) => (
                                       <button
                                         type="button"
                                         key={t}
@@ -925,7 +925,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                       color: "rgb(var(--muted))",
                                     }}
                                   >
-                                    {r.Revision.namespace}
+                                    {r.revision.namespace}
                                   </span>
                                 </div>
                               </button>

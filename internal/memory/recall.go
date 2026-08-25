@@ -75,12 +75,39 @@ type RecallFilters struct {
 	FacetSources []string
 }
 
-// RecallResult pairs a revision with its computed score and the parent state.
+// RecallResult pairs a revision with its ranking score and the parent state.
+//
+// Score is ranking-relative: it is comparable only against other results in
+// the same response, and its units differ per ranking mode —
+//
+//	activation   activation strength (recency x reinforcement x confidence)
+//	similarity   cosine similarity between query and revision embeddings
+//	relevance    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	chronological  no score — nil
+//
+// Under chronological ranking the field has no job: ordering is already
+// carried by array order plus Revision.CreatedAt, so a score there could only
+// restate the sort key in units nothing else uses. It is a pointer rather
+// than a bare float64 so that "no score" stays distinguishable from a real
+// zero — cosine similarity is legitimately 0 (orthogonal) or negative.
 type RecallResult struct {
-	Revision Revision
-	Score    float64
-	State    State
+	Revision Revision `json:"revision"`
+	Score    *float64 `json:"score,omitempty"`
+	State    State    `json:"state"`
 }
+
+// scoreOf reads a result's score, treating an absent score as zero. Used for
+// ordering and threshold comparisons inside the package; callers that need to
+// tell "no score" from "zero score" must check Score == nil themselves.
+func scoreOf(r RecallResult) float64 {
+	if r.Score == nil {
+		return 0
+	}
+	return *r.Score
+}
+
+// scorePtr boxes a computed score for RecallResult.Score.
+func scorePtr(v float64) *float64 { return &v }
 
 const defaultRecallLimit = 30
 const maxRecallLimit = 500
@@ -182,25 +209,29 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 	results := make([]RecallResult, 0, len(candidates))
 	for _, rev := range candidates {
 		st := states[rev.MemoryID]
-		var score float64
+		rr := RecallResult{Revision: rev, State: st}
 		switch in.Ranking {
 		case RankingActivation:
-			score = activationScore(rev, st, now)
-		case RankingChronological:
-			score = float64(chronologicalKey(rev))
+			rr.Score = scorePtr(activationScore(rev, st, now))
 		case RankingSimilarity:
-			score = similarityScore(rev, queryVec)
+			rr.Score = scorePtr(similarityScore(rev, queryVec))
+		case RankingChronological:
+			// No score. Ordering is carried by array order plus
+			// Revision.CreatedAt; the sort below uses the timestamp
+			// directly rather than smuggling it through Score.
 		}
-		results = append(results, RecallResult{
-			Revision: rev,
-			Score:    score,
-			State:    st,
-		})
+		results = append(results, rr)
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
+	if in.Ranking == RankingChronological {
+		sort.SliceStable(results, func(i, j int) bool {
+			return chronologicalKey(results[i].Revision) > chronologicalKey(results[j].Revision)
+		})
+	} else {
+		sort.Slice(results, func(i, j int) bool {
+			return scoreOf(results[i]) > scoreOf(results[j])
+		})
+	}
 
 	// Filter out unembedded revisions for similarity ranking. We check
 	// for embedding presence rather than score > 0 because cosine similarity

@@ -73,9 +73,9 @@ export function DashboardPage({ health, onNavigate }: Props) {
     let reviewed = 0;
     let pendingReview = 0;
     for (const item of res.results) {
-      if (item.Revision.confidence < 0.8) lowConfidence++;
-      if (item.Revision.status === "reviewed") reviewed++;
-      if (item.Revision.status === "draft" || item.Revision.status === "reviewed") pendingReview++;
+      if (item.revision.confidence < 0.8) lowConfidence++;
+      if (item.revision.status === "reviewed") reviewed++;
+      if (item.revision.status === "draft" || item.revision.status === "reviewed") pendingReview++;
     }
     return { lowConfidence, reviewed, pendingReview };
   }, [namespaceData]);

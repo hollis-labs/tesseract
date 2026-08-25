@@ -16,6 +16,23 @@ related: [memory, revisions]
 - **`similarity`** — pure cosine similarity between the query embedding and each candidate's stored vector. Requires `query` to be set and target revisions to be embedded. Unembedded revisions are silently skipped.
 - **`relevance`** — RRF fusion of BM25 (keyword) and cosine (semantic). Best default for "search for this topic." Surfaces fresh, pre-embedding memories via the BM25 arm that similarity-only would miss.
 
+## Result shape and `score`
+
+Every result is `{revision, score, state}`, best first. `memory_recall` returns the bare array; `tesseract_lookup` wraps it as `{results, facets}`.
+
+`score` is **ranking-relative** — comparable against other results in the same response, and meaningless across responses or across modes. Its meaning per mode:
+
+| Ranking | `score` |
+|---|---|
+| `activation` | activation strength — recency x reinforcement x confidence |
+| `similarity` | cosine similarity between query and revision embeddings; legitimately 0 (orthogonal) or negative (opposite) |
+| `relevance` | RRF-fused BM25 + cosine, weighted by status, origin, confidence, recency, and activation |
+| `chronological` | **absent** |
+
+Under `chronological` the field is omitted rather than set to a sort key. Ordering is already carried by array order plus `revision.created_at`, so a score there would only restate the timestamp in units no other mode uses. Read the order, or read `revision.created_at`.
+
+Do not threshold on `score` across modes, and do not persist it — it describes one ranking of one candidate set.
+
 ## When to use each
 
 | Question | Ranking |

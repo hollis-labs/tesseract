@@ -124,7 +124,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 tagged result, got %d", len(results))
 	}
-	rev, _ := results[0]["Revision"].(map[string]any)
+	rev, _ := results[0]["revision"].(map[string]any)
 	if rev["memory_key"] != "tagged.one" {
 		t.Errorf("filter returned wrong row: %v", results[0])
 	}

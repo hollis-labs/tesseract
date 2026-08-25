@@ -93,6 +93,54 @@ func TestRecall_ChronologicalOrdering(t *testing.T) {
 	if results[1].Revision.RevisionID != rev2.RevisionID {
 		t.Errorf("expected second newest second, got %s", results[1].Revision.RevisionID)
 	}
+
+	// Chronological ranking carries no score. Ordering is already the
+	// answer, and the old behavior — a raw CreatedAt.UnixNano() in a
+	// float64 field whose other modes hold cosine values — made `score`
+	// mean two incompatible things depending on a mode flag.
+	for i, r := range results {
+		if r.Score != nil {
+			t.Errorf("result[%d] carries score=%v; chronological ranking must omit it", i, *r.Score)
+		}
+	}
+}
+
+// TestRecall_ScorePresenceByRanking locks the per-mode score contract:
+// activation and similarity attach a score, chronological does not.
+func TestRecall_ScorePresenceByRanking(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	if _, err := ms.WriteRevision(context.Background(), sampleInput("scored.a")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cases := []struct {
+		ranking   memory.Ranking
+		wantScore bool
+	}{
+		{memory.RankingActivation, true},
+		{memory.RankingChronological, false},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.ranking), func(t *testing.T) {
+			results, err := ms.Recall(context.Background(), memory.RecallInput{
+				Namespaces: []string{"user/chrispian/memory/notes"},
+				Ranking:    tc.ranking,
+			})
+			if err != nil {
+				t.Fatalf("Recall: %v", err)
+			}
+			if len(results) == 0 {
+				t.Fatal("expected at least one result")
+			}
+			for i, r := range results {
+				if got := r.Score != nil; got != tc.wantScore {
+					t.Errorf("result[%d] score present = %v, want %v", i, got, tc.wantScore)
+				}
+			}
+		})
+	}
 }
 
 func TestRecall_MultiNamespace(t *testing.T) {
@@ -523,16 +571,19 @@ func TestRecall_SimilarityRanking(t *testing.T) {
 
 	// Both should have positive scores (mock embedder returns same vector).
 	for i, r := range results {
-		if r.Score <= 0 {
-			t.Errorf("result[%d] score=%f, expected > 0", i, r.Score)
+		if r.Score == nil {
+			t.Fatalf("result[%d] has no score; similarity ranking must attach one", i)
+		}
+		if *r.Score <= 0 {
+			t.Errorf("result[%d] score=%f, expected > 0", i, *r.Score)
 		}
 	}
 
 	// Scores should be sorted descending.
 	for i := 1; i < len(results); i++ {
-		if results[i].Score > results[i-1].Score {
+		if *results[i].Score > *results[i-1].Score {
 			t.Errorf("results not sorted: score[%d]=%f > score[%d]=%f",
-				i, results[i].Score, i-1, results[i-1].Score)
+				i, *results[i].Score, i-1, *results[i-1].Score)
 		}
 	}
 }

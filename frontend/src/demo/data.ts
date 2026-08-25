@@ -775,7 +775,7 @@ export const demo = {
   tesseractLookup(req: TesseractLookupRequest): TesseractLookupResponse {
     const limit = req.limit ?? 15;
     const items = MOCK_RECORDS.slice(0, limit).map((r, i) => ({
-      Revision: {
+      revision: {
         revision_id: `01DEMO${i.toString().padStart(2, "0")}`,
         memory_id: r.record_id,
         domain: r.namespace.includes("/knowledge") ? ("knowledge" as const) : ("memory" as const),
@@ -792,11 +792,11 @@ export const demo = {
             typeof r.payload === "object" ? JSON.stringify(r.payload, null, 2) : String(r.payload),
         },
       },
-      Score: 0.9 - i * 0.05,
+      score: 0.9 - i * 0.05,
     }));
     const facets: { domains: { [k: string]: number } } = { domains: {} };
     for (const it of items) {
-      facets.domains[it.Revision.domain] = (facets.domains[it.Revision.domain] ?? 0) + 1;
+      facets.domains[it.revision.domain] = (facets.domains[it.revision.domain] ?? 0) + 1;
     }
     return { facets, results: items };
   },

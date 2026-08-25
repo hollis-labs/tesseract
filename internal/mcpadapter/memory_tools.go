@@ -85,6 +85,8 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
+				"• **Result shape:** array of `{revision, score, state}`, best first.\n"+
+				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match memories for a query or the top-of-mind memories without a query.\n"+
 				"• **Don't use this for:** cross-domain search — `tesseract_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+

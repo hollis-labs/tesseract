@@ -50,7 +50,9 @@ type synthesisSource struct {
 	MemoryKey  string  `json:"memory_key,omitempty"`
 	Summary    string  `json:"summary"`
 	Confidence float64 `json:"confidence"`
-	Score      float64 `json:"score,omitempty"`
+	// Score mirrors memory.RecallResult.Score — ranking-relative, and
+	// absent when the ranking mode produces none.
+	Score *float64 `json:"score,omitempty"`
 }
 
 // synthesisCost reports per-call cost. Zero when ModelsDev lookup fails.

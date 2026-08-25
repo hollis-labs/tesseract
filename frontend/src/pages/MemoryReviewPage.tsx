@@ -100,15 +100,15 @@ function getReviewPriority(revision: MemoryRevision, threshold: number, score?: 
 }
 
 function isActionable(item: TesseractLookupResultItem, threshold: number): boolean {
-  return getReviewReasons(item.Revision, threshold).length > 0;
+  return getReviewReasons(item.revision, threshold).length > 0;
 }
 
 function isPromotable(item: TesseractLookupResultItem): boolean {
-  return isSessionNamespace(item.Revision.namespace) && item.Revision.status !== "deprecated";
+  return isSessionNamespace(item.revision.namespace) && item.revision.status !== "deprecated";
 }
 
 function canClarify(item: TesseractLookupResultItem): boolean {
-  return Boolean(item.Revision.memory_key);
+  return Boolean(item.revision.memory_key);
 }
 
 function formatTimestamp(iso: string): string {
@@ -124,9 +124,9 @@ function summarizeSelection(
   let promotable = 0;
   let deprecatable = 0;
   for (const item of items) {
-    if (!selected.has(item.Revision.revision_id)) continue;
+    if (!selected.has(item.revision.revision_id)) continue;
     if (isPromotable(item)) promotable++;
-    if (item.Revision.status !== "deprecated") deprecatable++;
+    if (item.revision.status !== "deprecated") deprecatable++;
   }
   return { total: selected.size, promotable, deprecatable };
 }
@@ -210,39 +210,39 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
       const latestDeprecatedByMemory = new Map<string, TesseractLookupResultItem>();
       for (const item of deprecated.results) {
-        const existing = latestDeprecatedByMemory.get(item.Revision.memory_id);
-        if (!existing || item.Revision.created_at > existing.Revision.created_at) {
-          latestDeprecatedByMemory.set(item.Revision.memory_id, item);
+        const existing = latestDeprecatedByMemory.get(item.revision.memory_id);
+        if (!existing || item.revision.created_at > existing.revision.created_at) {
+          latestDeprecatedByMemory.set(item.revision.memory_id, item);
         }
       }
 
       const merged = [...heads.results, ...latestDeprecatedByMemory.values()];
       const unique = new Map<string, QueueItem>();
       for (const item of merged) {
-        unique.set(item.Revision.revision_id, {
+        unique.set(item.revision.revision_id, {
           ...item,
-          reviewReasons: getReviewReasons(item.Revision, threshold),
-          reviewPriority: getReviewPriority(item.Revision, threshold, item.Score),
+          reviewReasons: getReviewReasons(item.revision, threshold),
+          reviewPriority: getReviewPriority(item.revision, threshold, item.score),
         });
       }
 
       const nextItems = Array.from(unique.values()).sort((a, b) => {
         if (b.reviewPriority !== a.reviewPriority) return b.reviewPriority - a.reviewPriority;
-        if ((b.Score ?? 0) !== (a.Score ?? 0)) return (b.Score ?? 0) - (a.Score ?? 0);
-        return b.Revision.created_at.localeCompare(a.Revision.created_at);
+        if ((b.score ?? 0) !== (a.score ?? 0)) return (b.score ?? 0) - (a.score ?? 0);
+        return b.revision.created_at.localeCompare(a.revision.created_at);
       });
       setItems(nextItems);
       setSelectedIds((prev) => {
         const next = new Set<string>();
-        const valid = new Set(nextItems.map((item) => item.Revision.revision_id));
+        const valid = new Set(nextItems.map((item) => item.revision.revision_id));
         prev.forEach((id) => {
           if (valid.has(id)) next.add(id);
         });
         return next;
       });
       setFocusedId((prev) => {
-        if (prev && nextItems.some((item) => item.Revision.revision_id === prev)) return prev;
-        return nextItems[0]?.Revision.revision_id ?? null;
+        if (prev && nextItems.some((item) => item.revision.revision_id === prev)) return prev;
+        return nextItems[0]?.revision.revision_id ?? null;
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -269,18 +269,18 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     const q = namespaceFilter.trim().toLowerCase();
     return items.filter((item) => {
       if (mode === "actionable" && !isActionable(item, threshold)) return false;
-      if (!includeDismissed && dismissedIds.has(item.Revision.revision_id)) return false;
-      if (activePreset === "lowConfidence" && item.Revision.confidence >= threshold) return false;
-      if (activePreset === "reviewed" && item.Revision.status !== "reviewed") return false;
+      if (!includeDismissed && dismissedIds.has(item.revision.revision_id)) return false;
+      if (activePreset === "lowConfidence" && item.revision.confidence >= threshold) return false;
+      if (activePreset === "reviewed" && item.revision.status !== "reviewed") return false;
       if (
         activePreset === "pendingReview" &&
-        item.Revision.status !== "draft" &&
-        item.Revision.status !== "reviewed"
+        item.revision.status !== "draft" &&
+        item.revision.status !== "reviewed"
       ) {
         return false;
       }
       if (q) {
-        const haystack = `${item.Revision.namespace} ${item.Revision.memory_key ?? ""} ${item.Revision.payload.summary}`.toLowerCase();
+        const haystack = `${item.revision.namespace} ${item.revision.memory_key ?? ""} ${item.revision.payload.summary}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
@@ -288,22 +288,22 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
   }, [dismissedIds, includeDismissed, items, mode, namespaceFilter, threshold]);
 
   const focusedItem = useMemo(
-    () => visibleItems.find((item) => item.Revision.revision_id === focusedId) ?? visibleItems[0] ?? null,
+    () => visibleItems.find((item) => item.revision.revision_id === focusedId) ?? visibleItems[0] ?? null,
     [focusedId, visibleItems],
   );
 
   useEffect(() => {
     if (!focusedItem) return;
-    setFocusedId(focusedItem.Revision.revision_id);
+    setFocusedId(focusedItem.revision.revision_id);
   }, [focusedItem]);
 
   useEffect(() => {
     if (!focusedItem) return;
-    setClarifyStatus(focusedItem.Revision.status === "deprecated" ? "reviewed" : focusedItem.Revision.status);
-    setClarifyConfidence(String(focusedItem.Revision.confidence.toFixed(2)));
-    setClarifySummary(focusedItem.Revision.payload.summary);
-    setClarifyBody(focusedItem.Revision.payload.body ?? "");
-  }, [focusedItem?.Revision.revision_id]);
+    setClarifyStatus(focusedItem.revision.status === "deprecated" ? "reviewed" : focusedItem.revision.status);
+    setClarifyConfidence(String(focusedItem.revision.confidence.toFixed(2)));
+    setClarifySummary(focusedItem.revision.payload.summary);
+    setClarifyBody(focusedItem.revision.payload.body ?? "");
+  }, [focusedItem?.revision.revision_id]);
 
   const counts = useMemo(() => {
     let draft = 0;
@@ -311,10 +311,10 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     let canonical = 0;
     let deprecated = 0;
     for (const item of visibleItems) {
-      if (item.Revision.status === "draft") draft++;
-      if (item.Revision.status === "reviewed") reviewed++;
-      if (item.Revision.status === "canonical") canonical++;
-      if (item.Revision.status === "deprecated") deprecated++;
+      if (item.revision.status === "draft") draft++;
+      if (item.revision.status === "reviewed") reviewed++;
+      if (item.revision.status === "canonical") canonical++;
+      if (item.revision.status === "deprecated") deprecated++;
     }
     return { draft, reviewed, canonical, deprecated };
   }, [visibleItems]);
@@ -334,7 +334,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
   };
 
   const toggleSelectAllVisible = () => {
-    const visibleIds = visibleItems.map((item) => item.Revision.revision_id);
+    const visibleIds = visibleItems.map((item) => item.revision.revision_id);
     const everySelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -363,7 +363,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
   const handleBulkDeprecate = async () => {
     const targets = visibleItems.filter(
-      (item) => selectedIds.has(item.Revision.revision_id) && item.Revision.status !== "deprecated",
+      (item) => selectedIds.has(item.revision.revision_id) && item.revision.status !== "deprecated",
     );
     if (targets.length === 0) {
       toast.error("Select at least one non-deprecated item to deprecate");
@@ -378,11 +378,11 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       const failures: string[] = [];
       for (const item of targets) {
         try {
-          await memoryDeprecate({ revision_id: item.Revision.revision_id });
+          await memoryDeprecate({ revision_id: item.revision.revision_id });
           ok++;
         } catch (err) {
           failures.push(
-            `${item.Revision.memory_key ?? item.Revision.revision_id}: ${err instanceof Error ? err.message : String(err)}`,
+            `${item.revision.memory_key ?? item.revision.revision_id}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -402,7 +402,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       toast.error("Target namespace and actor are required for promotion");
       return;
     }
-    const targets = visibleItems.filter((item) => selectedIds.has(item.Revision.revision_id) && isPromotable(item));
+    const targets = visibleItems.filter((item) => selectedIds.has(item.revision.revision_id) && isPromotable(item));
     if (targets.length === 0) {
       toast.error("Select at least one session-scoped item to promote");
       return;
@@ -414,8 +414,8 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       for (const item of targets) {
         try {
           const req: Parameters<typeof memoryPromote>[0] = {
-            source_namespace: item.Revision.namespace,
-            source_memory_id: item.Revision.memory_id,
+            source_namespace: item.revision.namespace,
+            source_memory_id: item.revision.memory_id,
             target_namespace: targetNamespace,
             actor_agent_id: actorAgentId,
           };
@@ -424,7 +424,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
           ok++;
         } catch (err) {
           failures.push(
-            `${item.Revision.memory_key ?? item.Revision.revision_id}: ${err instanceof Error ? err.message : String(err)}`,
+            `${item.revision.memory_key ?? item.revision.revision_id}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -453,22 +453,22 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     try {
       const parsedConfidence = parseFloat(clarifyConfidence);
       const req: Parameters<typeof memoryWrite>[0] = {
-        namespace: focusedItem.Revision.namespace,
-        supersedes: focusedItem.Revision.revision_id,
+        namespace: focusedItem.revision.namespace,
+        supersedes: focusedItem.revision.revision_id,
         status: clarifyStatus,
         author: {
           agent_id: author,
         },
         trigger: "manual",
-        confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : focusedItem.Revision.confidence,
-        tags: focusedItem.Revision.tags,
+        confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : focusedItem.revision.confidence,
+        tags: focusedItem.revision.tags,
         payload: {
           summary,
         },
       };
-      if (focusedItem.Revision.memory_key) req.memory_key = focusedItem.Revision.memory_key;
-      if (focusedItem.Revision.origin) req.origin = focusedItem.Revision.origin;
-      if (focusedItem.Revision.facets) req.facets = focusedItem.Revision.facets;
+      if (focusedItem.revision.memory_key) req.memory_key = focusedItem.revision.memory_key;
+      if (focusedItem.revision.origin) req.origin = focusedItem.revision.origin;
+      if (focusedItem.revision.facets) req.facets = focusedItem.revision.facets;
       if (clarifyVersion.trim()) req.author.agent_version = clarifyVersion.trim();
       if (clarifyBody.trim()) req.payload.body = clarifyBody.trim();
       await memoryWrite(req);
@@ -734,7 +734,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
               </div>
               <button type="button" className="hud-button-ghost" onClick={toggleSelectAllVisible}>
                 <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.Revision.revision_id)) ? <CheckSquare size={12} /> : <Square size={12} />}
+                  {visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.revision.revision_id)) ? <CheckSquare size={12} /> : <Square size={12} />}
                   Toggle All
                 </span>
               </button>
@@ -742,12 +742,12 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
             <div style={{ maxHeight: "calc(100vh - 320px)", overflow: "auto" }}>
               {visibleItems.map((item) => {
-                const active = focusedItem?.Revision.revision_id === item.Revision.revision_id;
-                const selected = selectedIds.has(item.Revision.revision_id);
-                const dismissed = dismissedIds.has(item.Revision.revision_id);
+                const active = focusedItem?.revision.revision_id === item.revision.revision_id;
+                const selected = selectedIds.has(item.revision.revision_id);
+                const dismissed = dismissedIds.has(item.revision.revision_id);
                 return (
                   <div
-                    key={item.Revision.revision_id}
+                    key={item.revision.revision_id}
                     style={{
                       padding: "0.85rem 0.9rem",
                       borderBottom: "1px solid rgba(var(--border) / 0.6)",
@@ -758,7 +758,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                     <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
                       <button
                         type="button"
-                        onClick={() => toggleSelection(item.Revision.revision_id)}
+                        onClick={() => toggleSelection(item.revision.revision_id)}
                         style={{
                           marginTop: "0.05rem",
                           border: "none",
@@ -773,24 +773,24 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
                       <button
                         type="button"
-                        onClick={() => setFocusedId(item.Revision.revision_id)}
+                        onClick={() => setFocusedId(item.revision.revision_id)}
                         style={{ flex: 1, background: "none", border: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}
                       >
                         <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.35rem" }}>
-                          <StatusBadge status={item.Revision.status} />
-                          {item.Revision.confidence < threshold ? (
-                            <StatusBadge status={`conf ${item.Revision.confidence.toFixed(2)}`} variant="warn" />
+                          <StatusBadge status={item.revision.status} />
+                          {item.revision.confidence < threshold ? (
+                            <StatusBadge status={`conf ${item.revision.confidence.toFixed(2)}`} variant="warn" />
                           ) : (
-                            <StatusBadge status={`conf ${item.Revision.confidence.toFixed(2)}`} variant="ok" />
+                            <StatusBadge status={`conf ${item.revision.confidence.toFixed(2)}`} variant="ok" />
                           )}
                           {dismissed && includeDismissed && <StatusBadge status="dismissed" variant="muted" />}
                         </div>
 
                         <div style={{ fontSize: "0.9rem", color: "rgb(var(--text))", marginBottom: "0.2rem" }}>
-                          {item.Revision.payload.summary}
+                          {item.revision.payload.summary}
                         </div>
                         <div style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-                          {item.Revision.namespace} / {item.Revision.memory_key ?? item.Revision.memory_id}
+                          {item.revision.namespace} / {item.revision.memory_key ?? item.revision.memory_id}
                         </div>
 
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.45rem" }}>
@@ -823,8 +823,8 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.8rem" }}>
                   <div>
                     <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.35rem" }}>
-                      <StatusBadge status={focusedItem.Revision.status} />
-                      {focusedItem.Revision.confidence < threshold ? (
+                      <StatusBadge status={focusedItem.revision.status} />
+                      {focusedItem.revision.confidence < threshold ? (
                         <span style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "rgb(var(--warn))", fontSize: "0.78rem" }}>
                           <AlertTriangle size={12} /> Low confidence
                         </span>
@@ -835,23 +835,23 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                       )}
                     </div>
                     <div style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>
-                      {focusedItem.Revision.payload.summary}
+                      {focusedItem.revision.payload.summary}
                     </div>
                     <div style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-                      {focusedItem.Revision.namespace} / {focusedItem.Revision.memory_key ?? focusedItem.Revision.memory_id}
+                      {focusedItem.revision.namespace} / {focusedItem.revision.memory_key ?? focusedItem.revision.memory_id}
                     </div>
                   </div>
 
                   <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {onOpenItem && focusedItem.Revision.memory_key && (
+                    {onOpenItem && focusedItem.revision.memory_key && (
                       <button
                         type="button"
                         className="hud-button-ghost"
                         onClick={() =>
                           onOpenItem(
-                            focusedItem.Revision.domain,
-                            focusedItem.Revision.namespace,
-                            focusedItem.Revision.memory_key!,
+                            focusedItem.revision.domain,
+                            focusedItem.revision.namespace,
+                            focusedItem.revision.memory_key!,
                           )
                         }
                       >
@@ -866,7 +866,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                       onClick={() => {
                         setDismissedIds((prev) => {
                           const next = new Set(prev);
-                          next.add(focusedItem.Revision.revision_id);
+                          next.add(focusedItem.revision.revision_id);
                           return next;
                         });
                         toast.success("Item dismissed from review queue");
@@ -906,22 +906,22 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                   <div className="hud-panel2" style={{ padding: "0.75rem" }}>
                     <div className="hud-label">Details</div>
                     <div style={{ display: "grid", gap: "0.35rem", fontSize: "0.78rem", color: "rgb(var(--muted))" }}>
-                      <div>Revision: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.Revision.revision_id}</span></div>
-                      <div>Memory: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.Revision.memory_id}</span></div>
-                      <div>Author: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.Revision.author.agent_id}</span></div>
-                      <div>Origin: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.Revision.origin ?? "unknown"}</span></div>
-                      <div>Created: <span style={{ color: "rgb(var(--text))" }}>{formatTimestamp(focusedItem.Revision.created_at)}</span></div>
-                      {focusedItem.Revision.supersedes && (
-                        <div>Supersedes: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.Revision.supersedes}</span></div>
+                      <div>Revision: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.revision_id}</span></div>
+                      <div>Memory: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.memory_id}</span></div>
+                      <div>Author: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.revision.author.agent_id}</span></div>
+                      <div>Origin: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.revision.origin ?? "unknown"}</span></div>
+                      <div>Created: <span style={{ color: "rgb(var(--text))" }}>{formatTimestamp(focusedItem.revision.created_at)}</span></div>
+                      {focusedItem.revision.supersedes && (
+                        <div>Supersedes: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.supersedes}</span></div>
                       )}
                     </div>
                   </div>
 
                   <div className="hud-panel2" style={{ padding: "0.75rem" }}>
                     <div className="hud-label">Tags</div>
-                    {focusedItem.Revision.tags.length > 0 ? (
+                    {focusedItem.revision.tags.length > 0 ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                        {focusedItem.Revision.tags.map((tag) => (
+                        {focusedItem.revision.tags.map((tag) => (
                           <span
                             key={tag}
                             style={{
@@ -944,8 +944,8 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
                 <div style={{ marginTop: "0.8rem" }}>
                   <div className="hud-label">Body</div>
-                  <div className="hud-panel2" style={{ padding: "0.75rem", minHeight: 90, whiteSpace: "pre-wrap", fontSize: "0.82rem", color: focusedItem.Revision.payload.body ? "rgb(var(--text))" : "rgb(var(--muted))" }}>
-                    {focusedItem.Revision.payload.body || "No body content on this revision."}
+                  <div className="hud-panel2" style={{ padding: "0.75rem", minHeight: 90, whiteSpace: "pre-wrap", fontSize: "0.82rem", color: focusedItem.revision.payload.body ? "rgb(var(--text))" : "rgb(var(--muted))" }}>
+                    {focusedItem.revision.payload.body || "No body content on this revision."}
                   </div>
                 </div>
 

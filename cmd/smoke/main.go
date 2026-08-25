@@ -89,7 +89,11 @@ func main() {
 			}
 			fmt.Printf("recall similarity returned %d result(s)\n", len(res))
 			for _, r := range res {
-				fmt.Printf("  - ns=%s key=%s score=%.4f summary=%q\n", r.Revision.Namespace, r.Revision.MemoryKey, r.Score, r.Revision.Payload.Summary)
+				score := "n/a"
+				if r.Score != nil {
+					score = fmt.Sprintf("%.4f", *r.Score)
+				}
+				fmt.Printf("  - ns=%s key=%s score=%s summary=%q\n", r.Revision.Namespace, r.Revision.MemoryKey, score, r.Revision.Payload.Summary)
 			}
 			return
 		}

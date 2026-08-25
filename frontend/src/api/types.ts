@@ -673,9 +673,12 @@ export interface TesseractLookupRequest {
 }
 
 export interface TesseractLookupResultItem {
-  Revision: MemoryRevision;
-  Score?: number;
-  State?: unknown;
+  revision: MemoryRevision;
+  // Ranking-relative; comparable only within one response. Absent under
+  // ranking=chronological, where order is carried by array order plus
+  // revision.created_at.
+  score?: number;
+  state?: unknown;
 }
 
 export interface TesseractLookupResponse {
