@@ -86,6 +86,11 @@ const (
 	//	limit=100   full   235,482   summary  62,320   keys  31,703
 	//	limit=500   full 1,559,859   summary 364,677   keys 154,884
 	//
+	// That slice is memory-domain, so no row carries a pointer facet and
+	// ProjectedResult.PointerHealth is omitted throughout. A knowledge slice
+	// with live pointers costs more under summary; re-derive with
+	// TESS_MEASURE_NS rather than scaling these.
+	//
 	// 500 under full is ~390K tokens by the 4-chars-per-token heuristic, which
 	// no caller can receive. Capping full at 100 puts its worst case in the
 	// same order as a large projected page rather than an order above it; keys
