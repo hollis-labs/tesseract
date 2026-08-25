@@ -1,0 +1,316 @@
+package memory
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// --- Knowledge kind taxonomy normalization -------------------------------
+//
+// This file is the kind-migration counterpart to the namespace migration in
+// migrate.go. It is deliberately a PARALLEL plan/apply pair rather than an
+// extension of MigrationRow: a namespace migration derives a corpus project
+// set and rewrites identity (namespace / memory_key / tags), while a kind
+// migration is a lookup table against a fixed vocabulary and rewrites one
+// non-identity column. The two share a shape (plan-then-apply, mutation-free
+// planning, single transaction, refusal before apply, counts for evidence)
+// but not a row struct.
+//
+// Scope note: `facet_kind` lives on `memory_revisions` only — `memory_state`
+// carries no facet columns — so the apply is a SINGLE statement, unlike the
+// namespace migration's state+revisions pair.
+
+// The vocabulary this migration normalizes toward is the canonical set in
+// kinds.go — the same set the knowledge write path enforces. Keeping one
+// definition is what makes "migrate, then enforce" coherent: the migration
+// cannot leave behind a value the write path would reject.
+
+// kindMapping is the replacement for one off-vocabulary kind.
+type kindMapping struct {
+	NewKind string
+	Reason  string
+}
+
+// kindMigrations maps each off-vocabulary `facet_kind` observed in the corpus
+// to its canonical replacement. A kind that is off-vocabulary and absent from
+// this map is reported as unmapped and BLOCKS the apply — leaving an unknown
+// value in place would strand those rows once the write path enforces the
+// vocabulary.
+var kindMigrations = map[string]kindMapping{
+	// Promoted to canonical (a shipped producer emits it systematically); the
+	// slug is normalized from hyphen to underscore to match enum style.
+	"mcp-server": {NewKind: "mcp_server", Reason: "promoted-to-canonical-slug-normalized-to-underscore"},
+	// Retired: issues are Torque-domain entities, not a Tesseract kind. The
+	// record itself stays as a generic knowledge note.
+	"issue/bug": {NewKind: "note", Reason: "retired-kind-torque-owns-issues-remapped-to-note"},
+}
+
+// KindMigrationRow is one row in the kind migration plan. It is keyed on
+// revision_id, not memory_id: `facet_kind` is a per-revision column, so
+// normalizing by memory_id would rewrite every revision of that memory
+// including ones that already hold a conformant value.
+type KindMigrationRow struct {
+	RevisionID string `json:"revision_id"`
+	MemoryID   string `json:"memory_id"`
+	Namespace  string `json:"namespace"`
+	MemoryKey  string `json:"memory_key"`
+	OldKind    string `json:"old_kind"`
+	NewKind    string `json:"new_kind"`
+	Reason     string `json:"reason"`
+	// IsHead reports whether this revision is the current head of its memory
+	// (memory_state.current_revision). Non-head rows are historical revisions.
+	IsHead bool `json:"is_head"`
+}
+
+// KindMigrationUnmapped is an off-vocabulary kind with no entry in
+// kindMigrations. Its presence in a plan refuses the apply — it is the
+// kind-migration counterpart of the namespace migration's collision check.
+type KindMigrationUnmapped struct {
+	Kind        string   `json:"kind"`
+	Count       int      `json:"count"`
+	RevisionIDs []string `json:"revision_ids"`
+}
+
+// KindMigrationPlan is the full set of `facet_kind` rewrites plus any
+// off-vocabulary kinds the planner could not map.
+type KindMigrationPlan struct {
+	Rows       []KindMigrationRow      `json:"rows"`
+	Unmapped   []KindMigrationUnmapped `json:"unmapped"`
+	Vocabulary []string                `json:"target_vocabulary"`
+	// HeadRows is how many of Rows are current heads; the remainder are
+	// historical revisions carrying the same off-vocabulary value.
+	HeadRows     int    `json:"head_rows"`
+	SourceFilter string `json:"source_filter"`
+}
+
+// nullKindLabel is how a NULL/empty facet_kind is rendered in a plan. Such a
+// row is off-vocabulary and unmappable, so it surfaces under Unmapped.
+const nullKindLabel = "(null)"
+
+// kindScanFilter is the SQL predicate selecting candidate rows. Conformance
+// against the vocabulary is applied in Go, so this stays constant.
+const kindScanFilter = `r.domain = 'knowledge'`
+
+// kindScanQuery is the constant scan. Every knowledge revision is read and
+// filtered in Go; the corpus is small and a one-shot migration gains nothing
+// from pushing the vocabulary into the query.
+const kindScanQuery = `
+	SELECT r.revision_id, r.memory_id, r.namespace, COALESCE(r.memory_key, ''),
+	       COALESCE(r.facet_kind, ''), (s.memory_id IS NOT NULL)
+	FROM memory_revisions r
+	LEFT JOIN memory_state s ON s.current_revision = r.revision_id
+	WHERE ` + kindScanFilter + `
+	ORDER BY r.facet_kind, r.namespace, r.memory_key`
+
+// kindCountQuery aggregates kinds for the post-apply conformance check. It is
+// a deliberately different code path from the per-row scan above, so the two
+// measurements can disagree if either is wrong.
+const kindCountQuery = `
+	SELECT COALESCE(facet_kind, ''), COUNT(*)
+	FROM memory_revisions
+	WHERE domain = 'knowledge'
+	GROUP BY COALESCE(facet_kind, '')`
+
+// BuildKindMigrationPlan scans the knowledge domain for `facet_kind` values
+// outside canonicalKnowledgeKinds and returns the rewrite plan. It does NOT
+// mutate the database — pass the plan to ApplyKindMigration to do that.
+//
+// Every revision carrying an off-vocabulary value is planned, not just current
+// heads: the value is invalid as a value, so a historical revision holding it
+// would otherwise still surface an off-vocabulary kind through a
+// revision-scoped read.
+func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan, error) {
+	vocab := sortedKeys(canonicalKnowledgeKinds)
+
+	// Guard against a mapping table that points outside the vocabulary — that
+	// would migrate rows to a value the next step would reject.
+	for old, m := range kindMigrations {
+		if _, ok := canonicalKnowledgeKinds[m.NewKind]; !ok {
+			return KindMigrationPlan{}, fmt.Errorf("mapping %q -> %q targets a kind outside the vocabulary", old, m.NewKind)
+		}
+	}
+
+	// The scan SQL is a compile-time constant: the vocabulary is applied in Go
+	// rather than as a generated `NOT IN (?,?,...)` list. That keeps the query
+	// free of any string concatenation (no G202 suppression to get wrong) and
+	// sidesteps the NULL-vs-NOT-IN subtlety — a NULL or empty facet_kind is
+	// simply not a vocabulary member and falls out as off-vocabulary.
+	rows, err := db.QueryContext(ctx, kindScanQuery)
+	if err != nil {
+		return KindMigrationPlan{}, fmt.Errorf("scan knowledge rows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	plan := KindMigrationPlan{
+		// Non-nil so the JSON form is always a list — a machine consumer can
+		// call len() on it without a nil check.
+		Rows:         []KindMigrationRow{},
+		Unmapped:     []KindMigrationUnmapped{},
+		Vocabulary:   vocab,
+		SourceFilter: strings.Join(strings.Fields(kindScanFilter), " "),
+	}
+	unmapped := map[string][]string{}
+
+	for rows.Next() {
+		var r KindMigrationRow
+		var isHead int
+		if err := rows.Scan(&r.RevisionID, &r.MemoryID, &r.Namespace, &r.MemoryKey, &r.OldKind, &isHead); err != nil {
+			return KindMigrationPlan{}, fmt.Errorf("scan row: %w", err)
+		}
+		r.IsHead = isHead != 0
+
+		// Already conformant — not part of the migration.
+		if _, conformant := canonicalKnowledgeKinds[r.OldKind]; conformant {
+			continue
+		}
+
+		mapping, ok := kindMigrations[r.OldKind]
+		if !ok {
+			label := r.OldKind
+			if label == "" {
+				label = nullKindLabel
+			}
+			unmapped[label] = append(unmapped[label], r.RevisionID)
+			continue
+		}
+		r.NewKind = mapping.NewKind
+		r.Reason = mapping.Reason
+		if r.IsHead {
+			plan.HeadRows++
+		}
+		plan.Rows = append(plan.Rows, r)
+	}
+	if rows.Err() != nil {
+		return KindMigrationPlan{}, fmt.Errorf("iterate rows: %w", rows.Err())
+	}
+
+	for kind, ids := range unmapped {
+		plan.Unmapped = append(plan.Unmapped, KindMigrationUnmapped{
+			Kind:        kind,
+			Count:       len(ids),
+			RevisionIDs: ids,
+		})
+	}
+	sort.Slice(plan.Unmapped, func(i, j int) bool { return plan.Unmapped[i].Kind < plan.Unmapped[j].Kind })
+
+	return plan, nil
+}
+
+// ApplyKindMigration runs the plan against the database in a single
+// transaction, updating `memory_revisions.facet_kind` in place. Revision IDs
+// and supersedes lineage are preserved — a taxonomy conformance change is the
+// allowed value set changing, not a new revision superseding an old one.
+//
+// Refusals (both leave the database untouched):
+//   - the plan carries unmapped off-vocabulary kinds;
+//   - a row's target kind is outside the vocabulary.
+//
+// The UPDATE is additionally guarded on the old kind, so a plan built against
+// a database that has since changed fails loudly as stale instead of writing
+// a mapping the caller never reviewed. Re-running after a successful apply is
+// a no-op: the rescan finds nothing off-vocabulary and the plan is empty.
+func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan) (revisionUpdates int, err error) {
+	if len(plan.Unmapped) > 0 {
+		return 0, fmt.Errorf("plan has %d unmapped off-vocabulary kind(s); resolve before applying", len(plan.Unmapped))
+	}
+	for _, row := range plan.Rows {
+		if _, ok := canonicalKnowledgeKinds[row.NewKind]; !ok {
+			return 0, fmt.Errorf("row %s targets kind %q outside the vocabulary", row.RevisionID, row.NewKind)
+		}
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.PrepareContext(ctx,
+		`UPDATE memory_revisions SET facet_kind = ? WHERE revision_id = ? AND facet_kind = ?`)
+	if err != nil {
+		return 0, fmt.Errorf("prepare kind update: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	var stale []string
+	for _, row := range plan.Rows {
+		res, exErr := stmt.ExecContext(ctx, row.NewKind, row.RevisionID, row.OldKind)
+		if exErr != nil {
+			return revisionUpdates, fmt.Errorf("update revision %s: %w", row.RevisionID, exErr)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			stale = append(stale, row.RevisionID)
+			continue
+		}
+		revisionUpdates += int(n)
+	}
+	if len(stale) > 0 {
+		return revisionUpdates, fmt.Errorf("plan is stale: %d row(s) no longer hold the planned old kind (%s); rebuild the plan",
+			len(stale), strings.Join(stale, ", "))
+	}
+
+	if cerr := tx.Commit(); cerr != nil {
+		return revisionUpdates, fmt.Errorf("commit: %w", cerr)
+	}
+	return revisionUpdates, nil
+}
+
+// Digest is a stable fingerprint of exactly what this plan would do. It covers
+// every row's (revision_id, old_kind, new_kind) and every unmapped kind, so it
+// changes if a row is added, removed, or remapped.
+//
+// It exists so an approval can be bound to a specific plan: a reviewer reads a
+// dry-run, and the apply refuses unless the freshly built plan still digests to
+// the same value. A count alone cannot catch one row being swapped for another.
+func (p KindMigrationPlan) Digest() string {
+	lines := make([]string, 0, len(p.Rows)+len(p.Unmapped))
+	for _, r := range p.Rows {
+		lines = append(lines, "row\x00"+r.RevisionID+"\x00"+r.OldKind+"\x00"+r.NewKind)
+	}
+	for _, u := range p.Unmapped {
+		for _, id := range u.RevisionIDs {
+			lines = append(lines, "unmapped\x00"+id+"\x00"+u.Kind)
+		}
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+// CountNonConformantKinds returns how many knowledge revisions still carry a
+// facet_kind outside the vocabulary, measured by aggregate query rather than
+// by the per-row planner. It is the post-apply conformance check: the number
+// that should read zero once the migration has been applied.
+func CountNonConformantKinds(ctx context.Context, db *sql.DB) (int, error) {
+	rows, err := db.QueryContext(ctx, kindCountQuery)
+	if err != nil {
+		return 0, fmt.Errorf("count kinds: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	total := 0
+	for rows.Next() {
+		var kind string
+		var n int
+		if scanErr := rows.Scan(&kind, &n); scanErr != nil {
+			return 0, fmt.Errorf("scan kind count: %w", scanErr)
+		}
+		if _, conformant := canonicalKnowledgeKinds[kind]; !conformant {
+			total += n
+		}
+	}
+	if rows.Err() != nil {
+		return 0, fmt.Errorf("iterate kind counts: %w", rows.Err())
+	}
+	return total, nil
+}

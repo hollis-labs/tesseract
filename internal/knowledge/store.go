@@ -27,8 +27,11 @@ func New(ms *memory.Store) *Store {
 }
 
 // WriteInput is the knowledge-write payload. All facet fields are required.
-// Kind/Source are free-form-but-controlled strings at this layer; upstream
-// callers (indexers, MCP tool) are expected to pick from a closed vocabulary.
+//
+// Kind is validated against the closed vocabulary in
+// memory.KnowledgeKindVocabulary — an unknown kind is rejected here rather
+// than left to caller discipline. Source remains a free-form-but-controlled
+// string; upstream callers are expected to pick from a conventional set.
 type WriteInput struct {
 	Namespace string
 	Key       string
@@ -58,7 +61,12 @@ type WriteInput struct {
 // revision (Domain will equal domains.Knowledge, Facets populated).
 func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, error) {
 	if in.Kind == "" {
-		return memory.Revision{}, fmt.Errorf("%w: facet.kind is required", memory.ErrInvalidInput)
+		return memory.Revision{}, fmt.Errorf("%w: facet.kind is required (allowed kinds: %s)",
+			memory.ErrInvalidInput, memory.KnowledgeKindList())
+	}
+	if !memory.IsCanonicalKnowledgeKind(in.Kind) {
+		return memory.Revision{}, fmt.Errorf("%w: facet.kind %q is not a canonical knowledge kind (allowed kinds: %s)",
+			memory.ErrInvalidInput, in.Kind, memory.KnowledgeKindList())
 	}
 	if in.Source == "" {
 		return memory.Revision{}, fmt.Errorf("%w: facet.source is required", memory.ErrInvalidInput)
