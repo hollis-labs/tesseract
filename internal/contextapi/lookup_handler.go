@@ -22,6 +22,13 @@ type tesseractLookupRequest struct {
 	Query         string               `json:"query,omitempty"`
 	Limit         int                  `json:"limit,omitempty"`
 
+	// SearchMode selects the retrieval arms under ranking=relevance:
+	// hybrid|lexical|semantic. Empty means hybrid. Peer of the MCP
+	// tesseract_lookup argument of the same name — same vocabulary, same
+	// default, same validation, because both hand the value to RecallPaged
+	// unmodified and it is RecallPaged that rejects it.
+	SearchMode memory.SearchMode `json:"search_mode,omitempty"`
+
 	Domains      []domains.Domain `json:"domains,omitempty"`
 	FacetKinds   []string         `json:"facet_kinds,omitempty"`
 	FacetSources []string         `json:"facet_sources,omitempty"`
@@ -116,6 +123,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
 		Ranking:       req.Ranking,
+		SearchMode:    req.SearchMode,
 		Query:         req.Query,
 		Filters: memory.RecallFilters{
 			Origins:       req.Origins,

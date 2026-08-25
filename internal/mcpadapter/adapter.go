@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
@@ -164,13 +165,33 @@ const payloadModeArgDescription = "How much of each result to return: " +
 	"Default comes from server config (read.payload_mode). " +
 	"Under keys and summary each result carries `payload_mode`, so an absent body means withheld, not empty."
 
+// searchModeArgDescription documents the retrieval-arm knob. Shared by
+// memory_recall and tesseract_lookup so the two cannot describe it differently,
+// and rendered from memory.SearchModeVocabulary so it cannot advertise a value
+// the store rejects.
+var searchModeArgDescription = "Which retrieval signal answers the query, under ranking=relevance: " +
+	strings.Join(memory.SearchModeVocabulary(), " | ") + " (default: hybrid). " +
+	"`hybrid` fuses keyword and semantic matching — the right default when you are describing a topic in your own words. " +
+	"`lexical` runs keyword (BM25) matching alone, ordered by match strength. " +
+	"Reach for it when you know the exact string you are looking for and fusion would only blur it: " +
+	"a ticket ID (CW-20260519-0032), a function or symbol name, a namespace, a literal error message. " +
+	"Semantic similarity is the wrong tool for an identifier — it returns things that MEAN something like your query, " +
+	"and an identifier means nothing, it only matches. " +
+	"Under `lexical` a punctuated token is matched as an adjacent phrase, so CW-20260519-0032 finds that ticket rather than " +
+	"documents mentioning CW, 20260519 and 0032 in unrelated places; `score` is absent because the order is the signal. " +
+	"`semantic` runs embedding (cosine) matching alone, ordered by similarity. " +
+	"Reach for it when you know the words in the corpus will NOT be the words in your query. " +
+	"It is a service_unavailable error when no embedder is configured — it never falls back to keyword matching, " +
+	"because getting keyword results labeled semantic is worse than being told. " +
+	"`lexical` and `semantic` require ranking=relevance (the default when a query is set); passing them with another ranking is a validation_error."
+
 // Shared parameter blurbs for the budget/cursor knobs. One string per knob so
 // the recall, lookup and history tools cannot drift apart, and so the HTTP
 // peers' field docs have a single thing to agree with.
 const (
 	cursorArgDescription = "Opaque resume token from a previous response's `manifest.next_cursor`. " +
 		"Omit to start at the beginning. A cursor is bound to the ordering it was issued for: " +
-		"resuming it after changing `ranking`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker " +
+		"resuming it after changing `ranking`, `search_mode`, `namespaces`, `revision_scope`, `query`, any filter, or the reranker " +
 		"is a validation_error, not a silently wrong page. Changing `payload_mode` or `limit` is fine — neither reorders anything."
 
 	budgetBytesArgDescription = "Max serialized bytes for the results array. " +

@@ -32,6 +32,7 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
 		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation)")),
+		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
 		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
 		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]")),
@@ -166,7 +167,10 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		Namespaces:    namespaces,
 		RevisionScope: memory.RevisionScope(req.GetString("revision_scope", "")),
 		Ranking:       memory.Ranking(req.GetString("ranking", "")),
-		Query:         req.GetString("query", ""),
+		// See handleMemoryRecall: validated by RecallPaged, not here, so this
+		// door and its HTTP peer cannot drift on the accepted vocabulary.
+		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
+		Query:      req.GetString("query", ""),
 		Filters: memory.RecallFilters{
 			Origins:       origins,
 			Statuses:      statuses,

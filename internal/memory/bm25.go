@@ -91,32 +91,133 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 	return where, args
 }
 
-// sanitizeBM25Query extracts alphanumeric + underscore tokens from the
-// user query so the FTS5 MATCH parser never sees its special characters
-// (`"`, `-`, `*`, `^`, `(`, `)`, `AND`/`OR`/`NOT`). Space-separated bare
-// tokens are treated by FTS5 as an implicit OR — recall-oriented, which
-// is what the BM25 arm wants: pull many candidates, let RRF sort them.
-func sanitizeBM25Query(q string) string {
-	var tokens []string
-	var cur strings.Builder
+// bm25Tokenize extracts the alphanumeric + underscore runs from a user query,
+// grouped the way whitespace groups them: one group per whitespace-separated
+// run of the input, holding the tokens that run contained.
+//
+// Grouping is what distinguishes the two query builders below. `CW-20260519-0032`
+// is a single whitespace-separated run holding three tokens, so it can be
+// rendered either as three independent terms or as one adjacency-bearing
+// phrase; `cursor paging` is two runs and can only be two terms.
+//
+// Everything outside [A-Za-z0-9_] is a separator, which is also what strips
+// every FTS5 MATCH metacharacter (`"`, `*`, `:`, `^`, `-`, `(`, `)`) before
+// the parser can see it. Note the consequence: the token set is ASCII-only, so
+// a query in a non-Latin script reduces to nothing and an accented word is
+// truncated at the accent. That is pre-existing behavior of the BM25 arm, not
+// introduced here.
+func bm25Tokenize(q string) [][]string {
+	var groups [][]string
+	var cur []string
+	var tok strings.Builder
+
+	flushTok := func() {
+		if tok.Len() > 0 {
+			cur = append(cur, tok.String())
+			tok.Reset()
+		}
+	}
+	flushGroup := func() {
+		flushTok()
+		if len(cur) > 0 {
+			groups = append(groups, cur)
+			cur = nil
+		}
+	}
+
 	for _, r := range q {
 		switch {
 		case r == '_',
 			r >= 'a' && r <= 'z',
 			r >= 'A' && r <= 'Z',
 			r >= '0' && r <= '9':
-			cur.WriteRune(r)
+			tok.WriteRune(r)
+		case r == ' ', r == '\t', r == '\n', r == '\r', r == '\v', r == '\f':
+			flushGroup()
 		default:
-			if cur.Len() > 0 {
-				tokens = append(tokens, cur.String())
-				cur.Reset()
-			}
+			// Punctuation inside a run: ends the token, keeps the group.
+			flushTok()
 		}
 	}
-	if cur.Len() > 0 {
-		tokens = append(tokens, cur.String())
+	flushGroup()
+	return groups
+}
+
+// quotePhrase renders tokens as one FTS5 phrase: `"a b c"`.
+//
+// Quoting is not cosmetic. Inside double quotes FTS5 treats AND, OR, NOT and
+// NEAR as ordinary tokens rather than as operators, which is what makes this
+// safe against arbitrary user input. Unquoted, a query whose first word is
+// "and" reaches MATCH as `AND ...` and SQLite answers `fts5: syntax error near
+// "AND"` — the whole recall fails. Unquoted "memory NOT recall" parses as a
+// NOT operator and silently answers a different question than the caller asked.
+//
+// No escaping of the tokens themselves is needed, and none is possible to get
+// wrong: bm25Tokenize emits only [A-Za-z0-9_], so a token can never contain
+// the `"` that would close the phrase early.
+func quotePhrase(tokens []string) string {
+	return `"` + strings.Join(tokens, " ") + `"`
+}
+
+// sanitizeBM25Query builds the recall-oriented MATCH expression used by the
+// hybrid arm: every token as its own single-token phrase, joined by FTS5's
+// implicit AND.
+//
+// The implicit operator between bare phrases in FTS5 is AND, not OR. Measured
+// against the live corpus (1,639 revisions, max created_at 2026-08-25T19:18:16Z):
+// `CW 20260519 0032` and `CW AND 20260519 AND 0032` both return 12 rows, while
+// `CW OR 20260519 OR 0032` returns 720.
+//
+// Per-token quoting is exactly ranking-neutral against the bare form it
+// replaces — a one-token phrase is the same query as a bare token — so the
+// hybrid arm's results and bm25 scores are unchanged. Verified on the same
+// corpus for two queries: `CW 20260519 0032` (12 rows) and
+// `memory recall ranking` (16 rows) each produce an identical ordered
+// (revision_id, bm25 score) sequence in both forms, 0 positions differing.
+// What quoting changes is only the failure modes described on quotePhrase.
+func sanitizeBM25Query(q string) string {
+	var phrases []string
+	for _, group := range bm25Tokenize(q) {
+		for _, tok := range group {
+			phrases = append(phrases, quotePhrase([]string{tok}))
+		}
 	}
-	return strings.Join(tokens, " ")
+	return strings.Join(phrases, " ")
+}
+
+// sanitizeBM25Phrase builds the precision-oriented MATCH expression used by
+// search_mode=lexical: each whitespace-separated run becomes ONE phrase, so
+// the tokens a punctuated identifier was built from must appear adjacent.
+//
+// This is the difference between finding a ticket ID and finding documents
+// that happen to mention its three pieces somewhere. Measured on the live
+// corpus (1,639 revisions, max created_at 2026-08-25T19:18:16Z), for the query
+// `CW-20260519-0032`, which appears in exactly one revision:
+//
+//	term form   `"CW" "20260519" "0032"`   12 rows; the true row ranks 5th
+//	phrase form `"CW 20260519 0032"`        1 row;  the true row ranks 1st
+//
+// Multiple runs still combine under implicit AND, so `CW-20260519-0032 cursor`
+// is "that identifier, in a document that also says cursor".
+func sanitizeBM25Phrase(q string) string {
+	var phrases []string
+	for _, group := range bm25Tokenize(q) {
+		phrases = append(phrases, quotePhrase(group))
+	}
+	return strings.Join(phrases, " ")
+}
+
+// bm25MatchExpr picks the MATCH expression for in's search mode.
+//
+// It is the single place the two builders are chosen between, so the lexical
+// entry point cannot acquire a different escaping story from the hybrid one:
+// both go through bm25Tokenize, and neither can emit a character the MATCH
+// parser treats as syntax.
+func bm25MatchExpr(in RecallInput) string {
+	if in.SearchMode == SearchModeLexical {
+		return sanitizeBM25Phrase(in.Query)
+	}
+	return sanitizeBM25Query(in.Query)
 }
 
 // fetchBM25Candidates returns up to n memory_revisions matching the
@@ -140,7 +241,7 @@ func sanitizeBM25Query(q string) string {
 // not via trigger-side exclusion, so freshly-deprecated revisions remain
 // indexed and callers can opt back in by widening the status filter.
 func (s *Store) fetchBM25Candidates(ctx context.Context, in RecallInput, n int) ([]Revision, error) {
-	ftsQuery := sanitizeBM25Query(in.Query)
+	ftsQuery := bm25MatchExpr(in)
 	if ftsQuery == "" {
 		return nil, nil
 	}

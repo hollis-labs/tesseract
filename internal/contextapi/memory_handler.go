@@ -104,6 +104,13 @@ type memoryRecallRequest struct {
 	Filters       memory.RecallFilters `json:"filters,omitempty"`
 	Limit         int                  `json:"limit,omitempty"`
 
+	// SearchMode selects the retrieval arms under ranking=relevance:
+	// hybrid|lexical|semantic. Empty means hybrid. Peer of the MCP
+	// memory_recall argument of the same name — same vocabulary, same
+	// default, same validation, because both hand the value to
+	// RecallPaged unmodified and it is RecallPaged that rejects it.
+	SearchMode memory.SearchMode `json:"search_mode,omitempty"`
+
 	// PayloadMode projects each result: keys|summary|full. Empty means the
 	// server default (read.payload_mode). Peer of the MCP memory_recall
 	// argument of the same name.
@@ -152,6 +159,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
 		Ranking:       req.Ranking,
+		SearchMode:    req.SearchMode,
 		Query:         req.Query,
 		Filters:       req.Filters,
 	}

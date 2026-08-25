@@ -241,9 +241,9 @@ func EncodeCursor(offset int, fingerprint string) string {
 // The fingerprint check is the reason a cursor is not just an integer. An
 // offset is a position in an ordering; resuming one ordering's offset into a
 // different ordering yields rows that look plausible and are wrong. Any
-// change to the inputs that determine the sequence — ranking, namespaces,
-// revision_scope, query, any filter, the reranker — changes the fingerprint
-// and makes the cursor an error rather than a silent misread.
+// change to the inputs that determine the sequence — ranking, search_mode,
+// namespaces, revision_scope, query, any filter, the reranker — changes the
+// fingerprint and makes the cursor an error rather than a silent misread.
 //
 // payload_mode and limit are deliberately NOT part of the fingerprint. Neither
 // changes the sequence: ProjectResults is a per-element map that cannot
@@ -294,6 +294,7 @@ type orderingKey struct {
 	RevisionScope string   `json:"scope"`
 	Ranking       string   `json:"rank"`
 	Query         string   `json:"q"`
+	SearchMode    string   `json:"search_mode"`
 	Origins       []string `json:"origins"`
 	Statuses      []string `json:"statuses"`
 	Tags          []string `json:"tags"`
@@ -323,6 +324,11 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		RevisionScope: string(in.RevisionScope),
 		Ranking:       string(in.Ranking),
 		Query:         in.Query,
+		// search_mode selects which retrieval arms run, so it changes both
+		// WHICH rows are candidates and in what order — a cursor issued under
+		// lexical and resumed under semantic would offset into a different
+		// sequence and return plausible, wrong rows with no error.
+		SearchMode:    string(in.SearchMode),
 		Origins:       sortedStringsFrom(in.Filters.Origins, func(o Origin) string { return string(o) }),
 		Statuses:      sortedStringsFrom(in.Filters.Statuses, func(s Status) string { return string(s) }),
 		Tags:          sortedCopy(in.Filters.Tags),
