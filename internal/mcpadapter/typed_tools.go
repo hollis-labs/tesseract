@@ -70,7 +70,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 
 func (a *Adapter) registerSessionTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_session_snapshot",
-		mcp.WithDescription("Write a structured session snapshot to Tesseract and auto-embed for semantic search. Combines typed_write + embed into one call with enforced session schema. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Write a structured session snapshot to Tesseract and auto-embed for semantic search. Combines `context_typed_write` + `context_embed` into one call with enforced session schema. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("Brief session summary (1-3 sentences)")),
