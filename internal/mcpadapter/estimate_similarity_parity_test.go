@@ -832,35 +832,76 @@ func TestSimilarityMin_RangeRejectedOnBothDoors(t *testing.T) {
 	}
 }
 
-// Both doors must produce the identical response for the identical floor. This
-// is the argument-parity assertion the route-existence harness cannot make.
+// Both doors must produce the identical response for the identical floor, on
+// BOTH tools. This is the argument-parity assertion the route-existence
+// harness cannot make.
+//
+// tesseract_lookup is covered as well as memory_recall because they decode the
+// argument through different structs — memoryRecallRequest declares it flat
+// beside `filters`, tesseractLookupRequest flattens every filter — so a knob
+// wired into one says nothing about the other. A mutation that dropped
+// similarity_min from the HTTP lookup route was not caught until this loop
+// covered both routes.
 func TestSimilarityMinParity_MCPvsHTTP(t *testing.T) {
 	a, srv := estimateSurfaces(t)
 
-	for _, floor := range []float64{0, 0.25, 0.5} {
-		t.Run("similarity_min="+ftoa(floor), func(t *testing.T) {
-			raw := estCall(t, a, "memory_recall", map[string]any{
-				"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
-				"payload_mode": "summary", "similarity_min": floor,
+	for _, tool := range []struct{ name, route, ns string }{
+		{"memory_recall", "/v1/memory/recall", estNSJSON},
+		{"tesseract_lookup", "/v1/tesseract/lookup", estBothJSON},
+	} {
+		for _, floor := range []float64{0, 0.25, 0.5} {
+			t.Run(tool.name+"/similarity_min="+ftoa(floor), func(t *testing.T) {
+				raw := estCall(t, a, tool.name, map[string]any{
+					"namespaces": tool.ns, "ranking": "similarity", "query": "alpha",
+					"payload_mode": "summary", "similarity_min": floor,
+				})
+				mcpM, ok := tryManifest([]byte(raw))
+				if !ok {
+					t.Fatalf("MCP returned no manifest: %s", raw)
+				}
+
+				code, body := callRoute(t, srv, tool.route,
+					`{"namespaces":`+tool.ns+`,"ranking":"similarity","query":"alpha",`+
+						`"payload_mode":"summary","similarity_min":`+ftoa(floor)+`}`)
+				if code != http.StatusOK {
+					t.Fatalf("HTTP %s: %d %s", tool.route, code, body)
+				}
+				httpM := decodeManifest(t, []byte(body))
+				sameManifest(t, tool.name+" similarity_min="+ftoa(floor), mcpM, httpM)
+
+				// Without this the parity comparison could be two identical
+				// responses to a floor that bound nothing.
+				if mcpM.ResultsReturned == 0 {
+					t.Fatalf("floor %v returned nothing; parity here is vacuous", floor)
+				}
+				// And the floor has to have REMOVED something at the tighter
+				// settings, or both doors are being compared unfiltered.
+				if floor > 0 && !mcpM.Truncated && mcpM.ResultsTotal == 0 {
+					t.Fatalf("floor %v produced an empty total; nothing is being compared", floor)
+				}
 			})
-			mcpM, ok := tryManifest([]byte(raw))
-			if !ok {
-				t.Fatalf("MCP returned no manifest: %s", raw)
-			}
+		}
 
-			code, body := callRoute(t, srv, "/v1/memory/recall",
-				`{"namespaces":`+estNSJSON+`,"ranking":"similarity","query":"alpha",`+
-					`"payload_mode":"summary","similarity_min":`+ftoa(floor)+`}`)
-			if code != http.StatusOK {
-				t.Fatalf("HTTP: %d %s", code, body)
+		// The binding check per tool: a tight floor must return strictly fewer
+		// rows than a floor that admits everything, through the HTTP door too.
+		t.Run(tool.name+"/floor binds on HTTP", func(t *testing.T) {
+			read := func(floor string) memory.Manifest {
+				code, body := callRoute(t, srv, tool.route,
+					`{"namespaces":`+tool.ns+`,"ranking":"similarity","query":"alpha",`+
+						`"payload_mode":"summary","similarity_min":`+floor+`}`)
+				if code != http.StatusOK {
+					t.Fatalf("HTTP %s floor=%s: %d %s", tool.route, floor, code, body)
+				}
+				return decodeManifest(t, []byte(body))
 			}
-			httpM := decodeManifest(t, []byte(body))
-			sameManifest(t, "similarity_min="+ftoa(floor), mcpM, httpM)
-
-			// Without this the parity comparison could be two identical
-			// responses to a floor that bound nothing.
-			if mcpM.ResultsReturned == 0 {
-				t.Fatalf("floor %v returned nothing; parity here is vacuous", floor)
+			loose, tight := read("-1"), read("0.9")
+			if loose.ResultsTotal == 0 {
+				t.Fatalf("floor -1 returned nothing on %s; the comparison is vacuous", tool.route)
+			}
+			if tight.ResultsTotal >= loose.ResultsTotal {
+				t.Errorf("on %s, similarity_min=0.9 matched %d rows and -1 matched %d; "+
+					"the floor is being dropped by this route",
+					tool.route, tight.ResultsTotal, loose.ResultsTotal)
 			}
 		})
 	}
@@ -969,6 +1010,75 @@ func TestSimilarityMin_NonNumericIsRejected(t *testing.T) {
 	})
 	if !strings.Contains(raw, "validation_error") {
 		t.Errorf("a string similarity_min was accepted: %s", raw)
+	}
+}
+
+// Both knobs must work across MEMORY AND KNOWLEDGE, not memory alone. That is
+// the point of putting them on recall rather than leaving them as
+// context-domain tools: context_estimate estimates over a context selector and
+// has no memory or knowledge equivalent, and context_rag_query's similarity
+// threshold reaches neither.
+//
+// The two domains share memory_revisions, so this is not a separate code path
+// — but "it should work" and "it does work" are different claims, and only one
+// of them is checkable.
+func TestNewKnobs_SpanMemoryAndKnowledge(t *testing.T) {
+	a, _ := estimateSurfaces(t)
+
+	base := map[string]any{
+		"namespaces": estBothJSON, "ranking": "relevance", "search_mode": "semantic",
+		"query": "alpha", "payload_mode": "summary", "limit": float64(50),
+	}
+	with := func(extra map[string]any) map[string]any {
+		out := map[string]any{}
+		for k, v := range base {
+			out[k] = v
+		}
+		for k, v := range extra {
+			out[k] = v
+		}
+		return out
+	}
+
+	unfiltered := decodeEnvelope(t, estCall(t, a, "tesseract_lookup", with(nil)))
+	if unfiltered.Facets == nil {
+		t.Fatal("lookup returned no facets")
+	}
+	// Non-vacuity: BOTH domains must be present, or a knob that silently
+	// dropped one of them would pass unnoticed.
+	for _, d := range []string{"memory", "knowledge"} {
+		if unfiltered.Facets.Domains[d] == 0 {
+			t.Fatalf("domain %q contributed no rows (%v); this test cannot show the "+
+				"knobs reach both domains", d, unfiltered.Facets.Domains)
+		}
+	}
+
+	// estimate_only over both domains, identity per facet.
+	est := decodeEnvelope(t, estCall(t, a, "tesseract_lookup",
+		with(map[string]any{"estimate_only": true})))
+	if est.Facets == nil {
+		t.Fatal("cross-domain estimate returned no facets")
+	}
+	assertFacetIdentity(t, "cross-domain", *est.Facets, *unfiltered.Facets)
+	if got, want := manifestKey(t, est.Manifest), manifestKey(t, unfiltered.Manifest); got != want {
+		t.Errorf("cross-domain estimate is not the identity of the real read:\n"+
+			"estimate: %s\n    real: %s", got, want)
+	}
+
+	// similarity_min over both domains: the floor must bind on rows from each.
+	scored := decodeScored(t, estCall(t, a, "tesseract_lookup", with(nil)))
+	if len(scored) < 3 {
+		t.Fatalf("cross-domain lookup returned %d rows; too few to floor", len(scored))
+	}
+	floor := (scored[0].Score + scored[len(scored)-1].Score) / 2
+	filtered := decodeEnvelope(t, estCall(t, a, "tesseract_lookup",
+		with(map[string]any{"similarity_min": floor})))
+	if filtered.Manifest.ResultsTotal >= unfiltered.Manifest.ResultsTotal {
+		t.Errorf("similarity_min=%v did not narrow the cross-domain set: %d vs %d",
+			floor, filtered.Manifest.ResultsTotal, unfiltered.Manifest.ResultsTotal)
+	}
+	if filtered.Manifest.ResultsTotal == 0 {
+		t.Errorf("similarity_min=%v removed everything; the floor is not discriminating", floor)
 	}
 }
 
