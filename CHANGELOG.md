@@ -8,9 +8,84 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-24
+
+Typed memory namespaces, an admin operations surface, and the XDG on-disk
+cutover. Consumers pinning `v0.7.x` should read the breaking-changes section
+before bumping: namespace strings, two MCP tool IDs, one HTTP route, and the
+default on-disk layout all changed.
+
+### Breaking changes
+
+- **Memory namespaces are now typed and fixed-depth.** `ParseNamespace` accepts
+  exactly three shapes — `user/{id}/memory/{type}`,
+  `user/{id}/project/{project_id}/memory/{type}`, and
+  `user/{id}/session/{session_id}/memory/{type}`. The segment-count rule went
+  from `len(parts) < 3 || len(parts) > 5` to `len(parts) != 4 && len(parts) != 6`,
+  so the legacy flat `user/{id}/memory` is rejected on write with
+  `wrong segment count (want 4 or 6, got N)`. `{type}` is validated against an
+  allowlist (`decisions`, `feedback`, `followups`, `learnings`, `limitations`,
+  `notes`, `outcomes`, `references`). **Recall is more permissive than write:**
+  the flat form is still accepted there as a *prefix*, spanning every typed
+  sub-namespace under that scope. Callers that construct namespace strings must
+  add a type segment; callers that only recall may not need to change.
+- **MCP tool IDs renamed:** `conduit_lookup` → `tesseract_lookup`,
+  `vanta_skills` → `tesseract_skills`. The other 40 tool IDs are unchanged.
+- **HTTP route renamed:** `/v1/conduit/lookup` → `/v1/tesseract/lookup`.
+- **On-disk layout moved to XDG roots** via `go-apppaths`. Data, state, cache and
+  config now resolve independently instead of nesting under one base directory.
+  `CONTEXTD_ROOT` is retired and kept alive by a **one-release deprecation shim**
+  that maps it onto all four `$XDG_*_HOME` vars; it is scheduled for removal in
+  the release after this one. Migrate to `$XDG_*_HOME`, or to `TESSERACT_DB_PATH`
+  / `TESSERACT_WORKSPACE` for the common cases. Run `contextd path` to see where
+  a given environment actually resolves.
+
+### Added
+
+- **Admin operations surface** — 15 new routes: `/v1/admin/setup`,
+  `/v1/admin/settings`, `/v1/admin/settings/preview`, `/v1/admin/settings/apply`,
+  `/v1/admin/storage`, `/v1/admin/queue`, `/v1/admin/queue/failures`,
+  `/v1/admin/queue/retry-failed`, `/v1/admin/queue/backfill`,
+  `/v1/admin/namespaces/preview`, `/v1/admin/namespaces/update`,
+  `/v1/admin/namespaces/history`, `/v1/admin/config/backup`,
+  `/v1/admin/config/backups`, `/v1/admin/config/restore` — with a matching
+  frontend admin dashboard.
+- **`contextd migrate-namespaces`** — one-shot cutover for the typed-namespace
+  grammar. Dry-run by default; `--apply` commits. Flags: `--db`, `--apply`,
+  `--json`, `--project-threshold`. Reports collisions and derives project tags
+  from the corpus rather than a hardcoded list.
+- **`contextd path`** — prints the resolved on-disk layout (go-apppaths roots,
+  active workspace, main DB, `config.yaml`, `records/`, `queue.db`). Honors every
+  override the daemon sees and never creates directories.
+- **Environment overrides** `TESSERACT_DB_PATH`, `TESSERACT_WORKSPACE`,
+  `TESSERACT_PLUGINS_DIR`, `TESSERACT_MEMORY_DECAY_INTERVAL`.
+- Type-aware promotion and namespace prefix-matching in recall, backing the
+  typed grammar above.
+
 ### Changed
 
 - **Activation reinforcement moved from search to deliberate reads.** `memory_recall` (every ranking mode, including relevance) no longer bumps `activation`, `access_count`, or `last_accessed_at` — being returned by a search is the ranker's guess, not a signal of importance, and reinforcing on recall created a self-reinforcing echo chamber. Reinforcement now fires only on the deliberate-read paths: `memory_get` / `GET /v1/memory/current` and `memory_get_revision` / `GET /v1/memory/revisions/{id}`. Activation **decay** is unchanged. New store methods `Store.GetCurrentReinforced` and `Store.GetRevisionByIDReinforced` back the reinforcing reads; the plain `GetCurrent` / `GetRevisionByID` stay non-reinforcing for internal callers (promotion, embedding, knowledge lookups). Consumers that depended on "recall reinforces activation" (notably Nanite) should flag this — hot-memory activation trails will now reflect deliberate reads only.
+
+- Frontend app shell adopted the `@hollis-labs/sysop-ui` kit (bumped to v0.6.2).
+- Repository prepared for the OSS beta: README rewritten, documentation
+  restructured under `docs/`, and stale internal task trees removed.
+
+### Fixed
+
+- **SQLite DSN pragmas were written in the wrong driver's dialect and never took
+  effect.** Connection strings used the mattn/go-sqlite3 spelling
+  (`_busy_timeout=`, `_fk=`) while the driver is `modernc.org/sqlite`, which
+  configures pragmas via `_pragma=name(value)` and silently ignores parameters it
+  does not recognize. Measured, the mattn form was equivalent to passing no
+  parameters at all: `busy_timeout` was 0 and `foreign_keys` was OFF on every
+  connection. So the declared `REFERENCES` clauses on `heads`, `embeddings` and
+  `memory_revisions` were inert, and concurrent writers failed immediately with
+  `SQLITE_BUSY` instead of waiting. Both pragmas are now applied on every
+  connection, and DSN construction is centralized in `internal/sqlitedsn` so the
+  dialect is stated once. Enabling foreign keys was checked against a copy of a
+  live store first: zero `foreign_key_check` violations.
+- `memory_write` and related MCP tools now accept a native JSON array for the
+  `tags` argument, not only a JSON-encoded string.
 
 ## [0.7.0] — 2026-05-15
 
@@ -392,7 +467,10 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/hollis-labs/tesseract/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/hollis-labs/tesseract/compare/v0.6.1...v0.7.0
+[0.6.0]: https://github.com/hollis-labs/tesseract/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/hollis-labs/tesseract/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/hollis-labs/tesseract/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/hollis-labs/tesseract/compare/v0.5.0...v0.5.1
