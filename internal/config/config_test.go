@@ -110,3 +110,48 @@ func TestSave_RoundTrip(t *testing.T) {
 		t.Fatalf("synthesis mismatch: got %+v want %+v", got.Synthesis, want.Synthesis)
 	}
 }
+
+// ── read.payload_mode (CW-20260825-0003) ─────────────────────────────────
+
+func TestReadPayloadMode_DefaultAndNormalize(t *testing.T) {
+	if got := config.Defaults().Read.PayloadMode; got != "summary" {
+		t.Errorf("Defaults().Read.PayloadMode = %q, want summary", got)
+	}
+
+	for _, tc := range []struct {
+		in   string
+		want string
+	}{
+		{"keys", "keys"},
+		{"summary", "summary"},
+		{"full", "full"},
+		{"", "summary"},      // unset falls back
+		{"brief", "summary"}, // a typo falls back rather than taking the service down
+		{"FULL", "summary"},  // the vocabulary is case-sensitive
+	} {
+		cfg := config.Defaults()
+		cfg.Read.PayloadMode = tc.in
+		if got := config.Normalize(cfg).Read.PayloadMode; got != tc.want {
+			t.Errorf("Normalize(read.payload_mode=%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// A configured payload_mode must survive a Save/Load round trip — the knob
+// is useless if the file it lives in cannot hold it.
+func TestReadPayloadMode_RoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.Defaults()
+	cfg.Read.PayloadMode = "full"
+
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Read.PayloadMode != "full" {
+		t.Errorf("Read.PayloadMode = %q after round trip, want full", got.Read.PayloadMode)
+	}
+}

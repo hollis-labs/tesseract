@@ -103,6 +103,16 @@ type memoryRecallRequest struct {
 	Query         string               `json:"query,omitempty"`
 	Filters       memory.RecallFilters `json:"filters,omitempty"`
 	Limit         int                  `json:"limit,omitempty"`
+
+	// PayloadMode projects each result: keys|summary|full. Empty means the
+	// server default (read.payload_mode). Peer of the MCP memory_recall
+	// argument of the same name.
+	//
+	// parity_test.go pairs memory_recall with this route and carries no
+	// waiver, so the two must agree on both the default and the accepted
+	// vocabulary. The parity harness only asserts that the route exists —
+	// argument parity is on us.
+	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
 }
 
 func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +129,17 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	payloadMode := s.defaultPayloadMode()
+	if req.PayloadMode != "" {
+		if !req.PayloadMode.Valid() {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				"payload_mode must be one of keys|summary|full, got "+string(req.PayloadMode), nil)
+			return
+		}
+		payloadMode = req.PayloadMode
+	}
+
 	in := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		RevisionScope: req.RevisionScope,
@@ -140,7 +161,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "recall_failed", err.Error(), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, results)
+	writeJSON(w, http.StatusOK, memory.ProjectResults(results, payloadMode))
 }
 
 // handleMemoryGetRevision serves GET /v1/memory/revisions/{id}.

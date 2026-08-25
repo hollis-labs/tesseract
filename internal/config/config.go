@@ -12,6 +12,20 @@ type Config struct {
 	Embedding EmbeddingConfig `yaml:"embedding"`
 	Dedup     DedupConfig     `yaml:"dedup"`
 	Synthesis SynthesisConfig `yaml:"synthesis"`
+	Read      ReadConfig      `yaml:"read"`
+}
+
+// ReadConfig configures how much of each record the recall/lookup read paths
+// return by default. Deployments differ: an agent-facing install wants the
+// condensed projection to protect its context budget, while a UI-facing or
+// archival install may want everything. Hence config, not a hardcoded answer.
+//
+// PayloadMode is one of keys|summary|full and is overridable per call.
+// Kept as a plain string (like Embedding.Provider) so this package stays
+// dependency-free; memory.PayloadMode is the typed vocabulary, and
+// memory.DefaultPayloadMode is the canonical default this must match.
+type ReadConfig struct {
+	PayloadMode string `yaml:"payload_mode"`
 }
 
 // SynthesisConfig configures the LLM-backed answer synthesis path
@@ -48,8 +62,16 @@ func Defaults() Config {
 		Dedup: DedupConfig{
 			SimilarityThreshold: 0.85,
 		},
+		Read: ReadConfig{
+			PayloadMode: "summary",
+		},
 	}
 }
+
+// validPayloadModes is the closed vocabulary accepted for Read.PayloadMode.
+// Mirrors memory.PayloadMode; duplicated rather than imported so that this
+// package keeps no dependency beyond the stdlib and yaml.
+var validPayloadModes = map[string]bool{"keys": true, "summary": true, "full": true}
 
 // Load reads a config file from path. If the file does not exist, returns
 // defaults. Partial configs are merged over defaults.
@@ -82,6 +104,14 @@ func Normalize(cfg Config) Config {
 	}
 	if cfg.Dedup.SimilarityThreshold == 0 {
 		cfg.Dedup.SimilarityThreshold = defaults.Dedup.SimilarityThreshold
+	}
+	// An unset or unrecognized payload_mode falls back to the default rather
+	// than failing the load: a typo in config.yaml must not take the service
+	// down, and serving "full" by surprise would silently defeat the budget
+	// this knob exists to protect. A bad per-call argument, by contrast, is a
+	// validation_error — the caller is present and can be told.
+	if !validPayloadModes[cfg.Read.PayloadMode] {
+		cfg.Read.PayloadMode = defaults.Read.PayloadMode
 	}
 	if cfg.Synthesis.Provider != "" {
 		if cfg.Synthesis.MaxTokens == 0 {

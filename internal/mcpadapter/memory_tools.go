@@ -85,8 +85,10 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
-				"• **Result shape:** array of `{revision, score, state}`, best first.\n"+
+				"• **Result shape:** array of `{revision, score}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
+				"• **Just-in-time pattern — recall → choose → hydrate.** Recall returns a projection, not the whole corpus: **recall** at the default `payload_mode` to see what exists, **choose** the few hits that matter, then **hydrate** each one by passing its `revision_id` to `memory_get_revision`. Do not reach for `payload_mode=full` to avoid the third step — a full recall of 30 hits can cost more context than the rest of your turn.\n"+
+				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode, so hydration is always available. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match memories for a query or the top-of-mind memories without a query.\n"+
 				"• **Don't use this for:** cross-domain search — `tesseract_lookup` spans memory + knowledge. Deterministic selection — use `context_view` / `views_evaluate`.\n"+
@@ -103,6 +105,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("since", mcp.Description("RFC3339 timestamp lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 timestamp upper bound")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default 30, max 500)")),
+		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -238,6 +241,11 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		return res, nil
 	}
 
+	payloadMode, errRes := a.resolvePayloadMode(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+
 	// Parse namespaces — accept both native array and stringified.
 	namespaces, _, err := parseStringArrayArg(req, "namespaces")
 	if err != nil {
@@ -311,7 +319,7 @@ func (a *Adapter) handleMemoryRecall(ctx context.Context, req mcp.CallToolReques
 		}
 		return nil, err
 	}
-	return toolJSON(results), nil
+	return toolJSON(memory.ProjectResults(results, payloadMode)), nil
 }
 
 func (a *Adapter) handleMemoryPromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

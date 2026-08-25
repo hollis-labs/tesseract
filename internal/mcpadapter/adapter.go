@@ -32,7 +32,44 @@ type Adapter struct {
 	MemoryStore       *memory.Store           // optional; nil disables memory_* tools
 	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_* tools
 	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
+
+	// DefaultPayloadMode is the projection applied to memory_recall and
+	// tesseract_lookup results when the call does not pass payload_mode.
+	// Wired from config (read.payload_mode). Empty or unrecognized falls
+	// back to memory.DefaultPayloadMode.
+	DefaultPayloadMode memory.PayloadMode
 }
+
+// resolvePayloadMode picks the projection for one recall/lookup call.
+//
+// Precedence is per-call argument, then the config-wired adapter default,
+// then memory.DefaultPayloadMode (D4). An explicit argument outside the
+// closed vocabulary is a validation_error rather than a silent fallback:
+// the caller is present and can be told, and quietly serving a different
+// projection than the one asked for is exactly the failure this knob's
+// contract has to avoid.
+func (a *Adapter) resolvePayloadMode(req mcp.CallToolRequest) (memory.PayloadMode, *mcp.CallToolResult) {
+	if raw := req.GetString("payload_mode", ""); raw != "" {
+		mode := memory.PayloadMode(raw)
+		if !mode.Valid() {
+			return "", toolError("validation_error", "payload_mode must be one of keys|summary|full, got "+raw)
+		}
+		return mode, nil
+	}
+	if a.DefaultPayloadMode.Valid() {
+		return a.DefaultPayloadMode, nil
+	}
+	return memory.DefaultPayloadMode, nil
+}
+
+// payloadModeArgDescription is the shared parameter blurb for the recall and
+// lookup tools. One string so the two surfaces cannot drift apart.
+const payloadModeArgDescription = "How much of each result to return: " +
+	"`keys` (identity only: revision_id, memory_id, domain, namespace, memory_key, created_at — the browse/enumerate shape), " +
+	"`summary` (keys + status, tags, confidence, payload.summary), or " +
+	"`full` (everything, including payload.body and state). " +
+	"Default comes from server config (read.payload_mode). " +
+	"Under keys and summary each result carries `payload_mode`, so an absent body means withheld, not empty."
 
 // New creates an Adapter for the given store and optional capability token.
 func New(store *contextstore.Store, token string) *Adapter {

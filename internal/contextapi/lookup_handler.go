@@ -30,14 +30,28 @@ type tesseractLookupRequest struct {
 	ConfidenceMin float64         `json:"confidence_min,omitempty"`
 	Since         *time.Time      `json:"since,omitempty"`
 	Until         *time.Time      `json:"until,omitempty"`
+
+	// PayloadMode projects each result: keys|summary|full. Empty means the
+	// server default (read.payload_mode). Peer of the MCP tesseract_lookup
+	// argument of the same name — same vocabulary, same semantics.
+	//
+	// A caller that intends to EDIT what it reads must pass "full"
+	// explicitly. Under a projected mode payload.body is withheld, and
+	// because Payload.Body carries `omitempty` a withheld body is
+	// indistinguishable from an empty one by shape alone — results carry
+	// `payload_mode` for exactly that reason.
+	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
 }
 
 // tesseractLookupResponse wraps the recall results with a simple facet
 // histogram computed client-side from the result set. The histogram is
 // best-effort: it reflects only returned rows, not the full match set.
+// Results is `any` because its shape depends on payload_mode: full mode
+// serializes []memory.RecallResult unchanged, while keys and summary
+// serialize []memory.ProjectedResult.
 type tesseractLookupResponse struct {
-	Results []memory.RecallResult `json:"results"`
-	Facets  lookupFacets          `json:"facets"`
+	Results any          `json:"results"`
+	Facets  lookupFacets `json:"facets"`
 }
 
 type lookupFacets struct {
@@ -59,6 +73,16 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		if !requireNamespaceAccess(w, r, ns) {
 			return
 		}
+	}
+
+	payloadMode := s.defaultPayloadMode()
+	if req.PayloadMode != "" {
+		if !req.PayloadMode.Valid() {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				"payload_mode must be one of keys|summary|full, got "+string(req.PayloadMode), nil)
+			return
+		}
+		payloadMode = req.PayloadMode
 	}
 
 	in := memory.RecallInput{
@@ -92,10 +116,23 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup_failed", err.Error(), nil)
 		return
 	}
+	// Facets come from the unprojected results: the histogram describes what
+	// matched, not what was serialized.
 	writeJSON(w, http.StatusOK, tesseractLookupResponse{
-		Results: results,
+		Results: memory.ProjectResults(results, payloadMode),
 		Facets:  buildFacets(results),
 	})
+}
+
+// defaultPayloadMode resolves the server-configured recall projection,
+// falling back to memory.DefaultPayloadMode when config is unset or carries
+// an unrecognized value.
+func (s *Server) defaultPayloadMode() memory.PayloadMode {
+	mode := memory.PayloadMode(s.RuntimeConfig.Read.PayloadMode)
+	if !mode.Valid() {
+		return memory.DefaultPayloadMode
+	}
+	return mode
 }
 
 func buildFacets(results []memory.RecallResult) lookupFacets {
