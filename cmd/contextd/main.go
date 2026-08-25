@@ -30,6 +30,7 @@ import (
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
 	"github.com/hollis-labs/tesseract/internal/webui"
 	_ "modernc.org/sqlite"
@@ -256,6 +257,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	adapter := mcpadapter.New(store, token)
 	adapter.MemoryStore = mem.Store
 	adapter.KnowledgeStore = knowledge.New(mem.Store)
+	adapter.DefaultPayloadMode = memory.PayloadMode(tesseractCfg.Read.PayloadMode)
 	// Wire a slog logger that writes to stderr so the go-mcp-sanitize warn
 	// telemetry surfaces in contextd logs without colliding with the stdout
 	// MCP protocol stream.

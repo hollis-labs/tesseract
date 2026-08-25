@@ -670,7 +670,17 @@ export interface TesseractLookupRequest {
   confidence_min?: number;
   since?: string;
   until?: string;
+  // How much of each result to return. Omit to take the server default
+  // (read.payload_mode, "summary" out of the box).
+  //
+  // A caller that lets the user EDIT what it reads must pass "full"
+  // explicitly. Under "summary" and "keys" revision.payload.body is
+  // withheld, and a component that prefills an editor from a withheld body
+  // would write back a revision missing it.
+  payload_mode?: PayloadMode;
 }
+
+export type PayloadMode = "keys" | "summary" | "full";
 
 export interface TesseractLookupResultItem {
   revision: MemoryRevision;
@@ -679,6 +689,14 @@ export interface TesseractLookupResultItem {
   // revision.created_at.
   score?: number;
   state?: unknown;
+  // Present only when the result was projected (payload_mode keys or
+  // summary); absent on full results.
+  //
+  // This is what distinguishes a withheld body from an empty one:
+  // revision.payload.body is omitted in both cases, so its absence alone
+  // says nothing. When payload_mode is present and not "full", treat the
+  // body as UNKNOWN, never as "".
+  payload_mode?: PayloadMode;
 }
 
 export interface TesseractLookupResponse {

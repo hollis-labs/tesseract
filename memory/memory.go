@@ -76,6 +76,19 @@ type RecallFilters = internal.RecallFilters
 // (opposite), so callers must nil-check before dereferencing.
 type RecallResult = internal.RecallResult
 
+// PayloadMode controls how much of each recall result is serialized:
+// keys (identity only), summary (identity + payload.summary), or full.
+type PayloadMode = internal.PayloadMode
+
+// ProjectedResult is the wire shape of a recall hit under keys or summary
+// projection. It always carries PayloadMode, so an absent body is
+// distinguishable from a body that is genuinely empty.
+type ProjectedResult = internal.ProjectedResult
+
+// ProjectedRevision is the identity-and-triage subset of a Revision that
+// survives keys and summary projection.
+type ProjectedRevision = internal.ProjectedRevision
+
 // Ranking determines how recall results are ordered.
 type Ranking = internal.Ranking
 
@@ -128,6 +141,11 @@ const (
 	RevisionScopeCurrent  = internal.RevisionScopeCurrent
 	RevisionScopeTimeline = internal.RevisionScopeTimeline
 
+	PayloadModeKeys    = internal.PayloadModeKeys
+	PayloadModeSummary = internal.PayloadModeSummary
+	PayloadModeFull    = internal.PayloadModeFull
+	DefaultPayloadMode = internal.DefaultPayloadMode
+
 	ScopeUnknown = internal.ScopeUnknown
 	ScopeUser    = internal.ScopeUser
 	ScopeProject = internal.ScopeProject
@@ -157,3 +175,7 @@ var ValidateKey = internal.ValidateKey
 
 // ParseNamespace parses a memory namespace string.
 var ParseNamespace = internal.ParseNamespace
+
+// ProjectResults renders recall results under a payload mode for
+// serialization. Full mode returns the results unchanged.
+var ProjectResults = internal.ProjectResults

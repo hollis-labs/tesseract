@@ -56,9 +56,14 @@ func callRecall(t *testing.T, a *Adapter, args map[string]any) []map[string]any 
 }
 
 // assertSnakeCaseResult checks one result object's key set.
-func assertSnakeCaseResult(t *testing.T, item map[string]any, wantScore bool) {
+//
+// CW-20260825-0003 added payload_mode projection, so `state` now rides only
+// on full-mode results. wantState carries that: the snake_case assertions
+// below still apply in every mode, and the extra key-set assertions are in
+// assertProjectedResult / the payload_mode tests rather than relaxed here.
+func assertSnakeCaseResult(t *testing.T, item map[string]any, wantScore, wantState bool) {
 	t.Helper()
-	for _, bad := range []string{"Revision", "Score", "State"} {
+	for _, bad := range []string{"Revision", "Score", "State", "PayloadMode"} {
 		if _, present := item[bad]; present {
 			t.Errorf("result carries PascalCase key %q; keys=%v", bad, keysOf(item))
 		}
@@ -66,8 +71,8 @@ func assertSnakeCaseResult(t *testing.T, item map[string]any, wantScore bool) {
 	if _, present := item["revision"]; !present {
 		t.Errorf("result missing snake_case key \"revision\"; keys=%v", keysOf(item))
 	}
-	if _, present := item["state"]; !present {
-		t.Errorf("result missing snake_case key \"state\"; keys=%v", keysOf(item))
+	if _, present := item["state"]; present != wantState {
+		t.Errorf("result state present = %v, want %v; keys=%v", present, wantState, keysOf(item))
 	}
 	if _, present := item["score"]; present != wantScore {
 		t.Errorf("result score present = %v, want %v; keys=%v", present, wantScore, keysOf(item))
@@ -91,13 +96,32 @@ func keysOf(m map[string]any) []string {
 	return out
 }
 
+// Snake-case is asserted in every payload_mode, not just the default: the
+// projected result is a different Go struct from RecallResult, so it can
+// regress to PascalCase independently.
 func TestMemoryRecall_ResultKeysAreSnakeCase(t *testing.T) {
-	a := recallShapeAdapter(t)
-	results := callRecall(t, a, map[string]any{
-		"namespaces": `["user/chrispian/memory/notes"]`,
-		"ranking":    "activation",
-	})
-	assertSnakeCaseResult(t, results[0], true)
+	for _, tc := range []struct {
+		mode      string
+		wantState bool
+	}{
+		{"keys", false},
+		{"summary", false},
+		{"full", true},
+		{"", false}, // config default — summary
+	} {
+		t.Run("mode="+tc.mode, func(t *testing.T) {
+			a := recallShapeAdapter(t)
+			args := map[string]any{
+				"namespaces": `["user/chrispian/memory/notes"]`,
+				"ranking":    "activation",
+			}
+			if tc.mode != "" {
+				args["payload_mode"] = tc.mode
+			}
+			results := callRecall(t, a, args)
+			assertSnakeCaseResult(t, results[0], true, tc.wantState)
+		})
+	}
 }
 
 // Under chronological ranking `score` is absent rather than carrying a raw
@@ -110,7 +134,26 @@ func TestMemoryRecall_ChronologicalOmitsScore(t *testing.T) {
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 	})
-	assertSnakeCaseResult(t, results[0], false)
+	assertSnakeCaseResult(t, results[0], false, false)
+}
+
+// The nil-score contract must survive projection: projected results copy
+// Score as a pointer, so a full-mode-only guard would miss a regression that
+// materializes a zero score in the projected path.
+func TestMemoryRecall_ChronologicalOmitsScore_EveryMode(t *testing.T) {
+	for _, mode := range []string{"keys", "summary", "full"} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			a := recallShapeAdapter(t)
+			results := callRecall(t, a, map[string]any{
+				"namespaces":   `["user/chrispian/memory/notes"]`,
+				"ranking":      "chronological",
+				"payload_mode": mode,
+			})
+			if _, present := results[0]["score"]; present {
+				t.Errorf("mode=%s: score present under chronological; keys=%v", mode, keysOf(results[0]))
+			}
+		})
+	}
 }
 
 func TestTesseractLookup_ResultKeysAreSnakeCase(t *testing.T) {
@@ -138,5 +181,7 @@ func TestTesseractLookup_ResultKeysAreSnakeCase(t *testing.T) {
 	if len(envelope.Results) == 0 {
 		t.Fatalf("expected at least one result, raw=%s", text.Text)
 	}
-	assertSnakeCaseResult(t, envelope.Results[0], true)
+	// No payload_mode argument — this exercises the config default, which is
+	// summary, so state is projected away.
+	assertSnakeCaseResult(t, envelope.Results[0], true, false)
 }

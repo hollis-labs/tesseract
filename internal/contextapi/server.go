@@ -1446,11 +1446,11 @@ func (s *Server) handleAdminSettingsApply(w http.ResponseWriter, r *http.Request
 		writeError(w, status, code, message, nil)
 		return
 	}
-	if err := config.Save(resp.ConfigFile, adminSettingsConfigToConfig(resp.Config)); err != nil {
+	if err := config.Save(resp.ConfigFile, adminSettingsConfigToConfig(s.effectiveRuntimeConfig(), resp.Config)); err != nil {
 		writeError(w, http.StatusInternalServerError, "config_write_failed", err.Error(), nil)
 		return
 	}
-	s.RuntimeConfig = adminSettingsConfigToConfig(resp.Config)
+	s.RuntimeConfig = adminSettingsConfigToConfig(s.effectiveRuntimeConfig(), resp.Config)
 	s.SynthesisConfig = s.RuntimeConfig.Synthesis
 	resp.Applied = true
 	writeJSON(w, http.StatusOK, resp)
@@ -1560,11 +1560,11 @@ func (s *Server) buildAdminSettingsMutationResponse(r *http.Request) (adminSetti
 		return adminSettingsMutationResponse{}, http.StatusInternalServerError, "config_file_unavailable", "config file path is not available"
 	}
 	current := adminSettingsConfigFromConfig(s.effectiveRuntimeConfig())
-	next = adminSettingsConfigFromConfig(adminSettingsConfigToConfig(next))
+	next = adminSettingsConfigFromConfig(adminSettingsConfigToConfig(s.effectiveRuntimeConfig(), next))
 	return adminSettingsMutationResponse{
 		ConfigFile:      configFile,
 		Config:          next,
-		Providers:       adminSettingsProvidersFromConfig(adminSettingsConfigToConfig(next), s),
+		Providers:       adminSettingsProvidersFromConfig(adminSettingsConfigToConfig(s.effectiveRuntimeConfig(), next), s),
 		ChangedFields:   adminSettingsChangedFields(current, next),
 		Warnings:        warnings,
 		RestartRequired: true,
@@ -1726,8 +1726,16 @@ func adminSettingsConfigFromConfig(cfg config.Config) adminSettingsConfigInfo {
 	}
 }
 
-func adminSettingsConfigToConfig(info adminSettingsConfigInfo) config.Config {
-	cfg := config.Defaults()
+// adminSettingsConfigToConfig folds the admin-editable fields in info onto
+// base.
+//
+// base matters: the admin settings surface exposes only a subset of
+// config.Config, so rebuilding from config.Defaults() here would silently
+// reset every section the surface does not know about — read.payload_mode
+// among them — on any settings apply. Folding onto the current config keeps
+// unexposed sections intact.
+func adminSettingsConfigToConfig(base config.Config, info adminSettingsConfigInfo) config.Config {
+	cfg := base
 	cfg.Embedding.Provider = strings.ToLower(strings.TrimSpace(info.EmbeddingProvider))
 	cfg.Embedding.Model = strings.TrimSpace(info.EmbeddingModel)
 	cfg.Dedup.SimilarityThreshold = info.DedupSimilarityThreshold
@@ -1776,7 +1784,7 @@ func validateAdminSettingsUpdate(info adminSettingsConfigInfo) (adminSettingsCon
 		info.SynthesisMaxTokens = 0
 		info.SynthesisTemperature = 0
 		info.SynthesisSystemPrompt = ""
-		return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(info)), []string{
+		return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(config.Defaults(), info)), []string{
 			"synthesis is disabled until a provider is configured and the matching API key is set",
 		}, nil
 	}
@@ -1793,7 +1801,7 @@ func validateAdminSettingsUpdate(info adminSettingsConfigInfo) (adminSettingsCon
 	warnings := []string{
 		"restart required for provider/runtime changes to take effect in the active daemon",
 	}
-	return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(info)), warnings, nil
+	return adminSettingsConfigFromConfig(adminSettingsConfigToConfig(config.Defaults(), info)), warnings, nil
 }
 
 func adminSettingsChangedFields(current, next adminSettingsConfigInfo) []string {

@@ -18,6 +18,8 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
 				"• **Result shape:** `{results: [{revision, score, state}], facets: {domains, kinds, sources}}`, best first.\n"+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
+				"• **Just-in-time pattern — recall → choose → hydrate.** Look up at the default `payload_mode` to see what exists, **choose** the few hits worth reading, then **hydrate** each by passing its `revision_id` to `memory_get_revision`. Reaching for `payload_mode=full` to skip the third step is how a single lookup eats a context window.\n"+
+				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. `facets` are always computed over the full match set, so projection never changes them. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you looked up without it.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
@@ -37,6 +39,7 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence")),
 		mcp.WithString("since", mcp.Description("RFC3339 lower bound")),
 		mcp.WithString("until", mcp.Description("RFC3339 upper bound")),
+		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -47,6 +50,11 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
 		return res, nil
+	}
+
+	payloadMode, modeErr := a.resolvePayloadMode(req)
+	if modeErr != nil {
+		return modeErr, nil
 	}
 
 	unmarshalStrings := func(field string) ([]string, *mcp.CallToolResult) {
@@ -149,6 +157,9 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		return nil, err
 	}
 
+	// Facets are computed from the unprojected results so that projection
+	// never changes the histogram — the counts describe what matched, not
+	// what was serialized.
 	facets := map[string]map[string]int{
 		"domains": {},
 		"kinds":   {},
@@ -167,7 +178,7 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 	}
 
 	return toolJSON(map[string]any{
-		"results": results,
+		"results": memory.ProjectResults(results, payloadMode),
 		"facets":  facets,
 	}), nil
 }

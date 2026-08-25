@@ -184,12 +184,22 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       const fetchLimit = Math.min(Math.max(baseLimit * 2, 100), 500);
       const domainFilter = domain === "both" ? undefined : [domain];
 
+      // payload_mode: "full" is required here, not an optimization.
+      //
+      // This page is an EDITOR: the clarify panel prefills its body field
+      // from revision.payload.body and writes the result back as a new
+      // revision. Under the server's default projection the body is
+      // withheld, the editor would prefill empty, and saving would publish
+      // a head revision with the body dropped — silently, since the write
+      // path is literal by design and simply records what it was given.
+      // A component that edits what it reads asks for the whole thing.
       const headReq: Parameters<typeof tesseractLookup>[0] = {
         namespaces: allNamespaces,
         ranking: "activation",
         revision_scope: "current",
         statuses: ["draft", "reviewed", "canonical"],
         limit: fetchLimit,
+        payload_mode: "full",
       };
       const deprecatedReq: Parameters<typeof tesseractLookup>[0] = {
         namespaces: allNamespaces,
@@ -197,6 +207,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
         revision_scope: "timeline",
         statuses: ["deprecated"],
         limit: Math.min(Math.max(Math.floor(baseLimit / 2), 40), 150),
+        payload_mode: "full",
       };
       if (domainFilter) {
         headReq.domains = domainFilter;
@@ -441,6 +452,20 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     if (!focusedItem) return;
     if (!canClarify(focusedItem)) {
       toast.error("Clarify/update currently requires a keyed memory");
+      return;
+    }
+    // Refuse to write back a body this page never received.
+    //
+    // loadQueue pins payload_mode: "full", so this should be unreachable —
+    // it is here so that losing that pin (a refactor, a new call site, a
+    // changed default) fails loudly instead of silently publishing a head
+    // revision with the body stripped. `payload.body` cannot carry this
+    // check itself: it is omitted both when withheld and when genuinely
+    // empty, so only the result's payload_mode marker distinguishes them.
+    if (focusedItem.payload_mode !== undefined && focusedItem.payload_mode !== "full") {
+      toast.error(
+        `This revision was loaded with payload_mode="${focusedItem.payload_mode}", so its body is not present. Refresh the queue before editing.`,
+      );
       return;
     }
     const author = clarifyAuthor.trim();

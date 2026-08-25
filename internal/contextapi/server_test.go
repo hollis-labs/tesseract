@@ -748,6 +748,45 @@ func TestAdminSettingsApplyEndpointWritesConfig(t *testing.T) {
 	}
 }
 
+// The admin settings surface exposes only a subset of config.Config. Applying
+// it must fold the edited fields onto the CURRENT config, not rebuild from
+// config.Defaults() — otherwise every section the surface does not know about
+// (read.payload_mode today, anything added later) is silently reset on any
+// settings save, in the file and in the live server.
+func TestAdminSettingsApplyPreservesUnexposedConfigSections(t *testing.T) {
+	srv, root := newTestServerWithRoot(t)
+	srv.ConfigFile = filepath.Join(root, "config.yaml")
+	srv.RuntimeConfig = config.Defaults()
+	srv.RuntimeConfig.Read.PayloadMode = "full" // not editable via admin settings
+
+	req := map[string]any{
+		"config": map[string]any{
+			"embedding_provider":         "openai",
+			"embedding_model":            "text-embedding-3-small",
+			"dedup_similarity_threshold": 0.93,
+		},
+	}
+	res := performJSON(t, srv, http.MethodPost, "/v1/admin/settings/apply", req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("apply status=%d body=%s", res.Code, res.Body.String())
+	}
+
+	got, err := config.Load(srv.ConfigFile)
+	if err != nil {
+		t.Fatalf("load written config: %v", err)
+	}
+	if got.Read.PayloadMode != "full" {
+		t.Errorf("written config read.payload_mode = %q, want full (reset by an unrelated settings apply)", got.Read.PayloadMode)
+	}
+	if srv.RuntimeConfig.Read.PayloadMode != "full" {
+		t.Errorf("runtime read.payload_mode = %q, want full", srv.RuntimeConfig.Read.PayloadMode)
+	}
+	// The edit itself must still land.
+	if got.Embedding.Model != "text-embedding-3-small" {
+		t.Errorf("embedding_model = %q, want text-embedding-3-small", got.Embedding.Model)
+	}
+}
+
 func TestAdminSettingsPreviewEndpointRejectsInvalidThreshold(t *testing.T) {
 	srv, root := newTestServerWithRoot(t)
 	srv.ConfigFile = filepath.Join(root, "config.yaml")
