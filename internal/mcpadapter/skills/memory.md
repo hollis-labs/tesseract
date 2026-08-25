@@ -46,7 +46,7 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 6. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
 7. **Deprecate** - `memory_deprecate` when a revision is wrong or outdated. Soft; history survives.
 
-**Reinforcement.** Deliberate reads — `memory_get` and `memory_get_revision` — reinforce a memory's `activation` and `access_count`. `memory_recall` does not: search results are guesses, so they don't count as "use." See `vanta_skills recall-and-ranking`.
+**Reinforcement.** Deliberate reads — `memory_get` and `memory_get_revision` — reinforce a memory's `activation` and `access_count`. `memory_recall` does not: search results are guesses, so they don't count as "use." See `tesseract_skills recall-and-ranking`.
 
 ## Keyed vs. unkeyed
 
