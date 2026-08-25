@@ -84,6 +84,13 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMigrateNamespaces(ctx, layout.MainDB(), args[1:], stdout, stderr)
 	}
 
+	// `migrate-knowledge-kinds` normalizes off-vocabulary knowledge
+	// `facet_kind` values in place. Same one-shot, direct-DB rationale as
+	// `migrate-namespaces` above.
+	if len(args) > 0 && args[0] == "migrate-knowledge-kinds" {
+		return runMigrateKnowledgeKinds(ctx, layout.MainDB(), args[1:], stdout, stderr)
+	}
+
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)

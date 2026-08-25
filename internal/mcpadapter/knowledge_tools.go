@@ -15,7 +15,7 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("knowledge_write",
 		mcp.WithDescription(
 			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
-				"• **Kind of content:** package / doc / note / pointer records with `kind`/`source`/`pointer` facets.\n"+
+				"• **Kind of content:** pointer-first reference records with `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** you are cataloging something that lives outside Tesseract (a file, URL, library, doc).\n"+
 				"• **Don't use this for:** agent-authored content with no external source — use `memory_write`. Generic records — use `context_write`.\n"+
@@ -23,7 +23,12 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
 		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision")),
-		mcp.WithString("kind", mcp.Required(), mcp.Description("Facet: the kind of entry (e.g. package, doc, note, pointer)")),
+		// The allowed set is rendered from the enforced vocabulary rather than
+		// restated, so this description cannot advertise a set the write path
+		// does not accept.
+		mcp.WithString("kind", mcp.Required(), mcp.Description(
+			"Facet: the kind of entry. Closed vocabulary — any other value is rejected. Allowed: "+
+				memory.KnowledgeKindList())),
 		mcp.WithString("source", mcp.Required(), mcp.Description("Facet: where this knowledge came from (e.g. filesystem, obsidian, nil, web, manual)")),
 		mcp.WithString("pointer_scheme", mcp.Required(), mcp.Description("Pointer scheme (e.g. file, http, https, obsidian, nil)")),
 		mcp.WithString("pointer_locator", mcp.Required(), mcp.Description("Pointer locator: scheme-specific address (path, URL, vault id, ...)")),
