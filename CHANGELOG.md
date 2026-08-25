@@ -29,9 +29,13 @@ default on-disk layout all changed.
   the flat form is still accepted there as a *prefix*, spanning every typed
   sub-namespace under that scope. Callers that construct namespace strings must
   add a type segment; callers that only recall may not need to change.
-- **MCP tool IDs renamed:** `conduit_lookup` → `tesseract_lookup`,
-  `vanta_skills` → `tesseract_skills`. The other 40 tool IDs are unchanged.
-- **HTTP route renamed:** `/v1/conduit/lookup` → `/v1/tesseract/lookup`.
+- **Two MCP tool IDs and one HTTP route were renamed onto the Tesseract
+  vocabulary.** The unified lookup tool is now `tesseract_lookup`, the skills
+  meta-tool is `tesseract_skills`, and the lookup route is
+  `/v1/tesseract/lookup`. The other 40 tool IDs are unchanged. Clients pinned
+  before v0.8.0 must update these three identifiers; the
+  [v0.8.0 release notes](https://github.com/hollis-labs/tesseract/releases/tag/v0.8.0)
+  carry the prior names.
 - **On-disk layout moved to XDG roots** via `go-apppaths`. Data, state, cache and
   config now resolve independently instead of nesting under one base directory.
   `CONTEXTD_ROOT` is retired and kept alive by a **one-release deprecation shim**

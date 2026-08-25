@@ -677,10 +677,10 @@ Parity means:
 - every mutating adapter reaches the same audit boundary
 - intentionally transport-specific operations are documented as such
 
-Compatibility names such as `contextd`, `/v1/conduit/lookup`,
-`conduit_lookup`, and the `vanta` MCP prefix may remain supported. Tesseract
-should nevertheless have one canonical product vocabulary so compatibility
-does not become permanent conceptual ambiguity.
+Tesseract carries one canonical product vocabulary. Every MCP tool ID and
+`/v1/*` route is named for Tesseract or for the domain it serves — `context`,
+`memory`, or `knowledge`. Adapters must not introduce an alternate vocabulary
+for an operation that already has one.
 
 ## Plugin and adapter model
 
@@ -943,12 +943,13 @@ Decay and queue workers are safe only when ownership and leasing are explicit.
 Embedded and daemon processes sharing a store need coordination or a clear
 single-authority rule.
 
-### Product naming carries compatibility history
+### Product naming is canonical at the surface, split underneath
 
-Tesseract is the canonical product name, while Vanta- and Conduit-derived
-binary, route, MCP, and Cerberus identifiers remain for compatibility. The
-public model should distinguish intentional compatibility aliases from current
-vocabulary so new integrations do not deepen the naming split.
+Tesseract is the product name, and the whole public surface uses it: MCP tool
+IDs, `/v1/*` routes, the Go module path, and the release artifacts. The split
+that remains is internal — the daemon binary is `contextd` and the packages
+under `internal/context*` name the Context domain. New integrations should
+target the public surface, where the vocabulary is already single.
 
 ## Boundary guidance
 
@@ -1005,8 +1006,9 @@ through a pointer, snapshot, explicit write, narrow adapter, or workflow.
     multi-writer operation a supported product requirement?
 13. Which extension classes are stable enough for the plugin SDK, and which
     should remain internal until their semantics settle?
-14. Which Vanta/Conduit compatibility names are permanent public contracts and
-    which are transitional aliases around Tesseract?
+14. Should the daemon binary and the `internal/context*` packages be renamed to
+    match the product, and what does that cost consumers who invoke the binary
+    directly?
 
 These questions refine the target architecture without changing the core
 direction: Tesseract is the portfolio's authority-aware persistence and
