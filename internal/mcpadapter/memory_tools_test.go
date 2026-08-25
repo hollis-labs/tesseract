@@ -154,9 +154,9 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 	// also the activation ceiling and a fixed point of the reinforcement curve,
 	// so an increase is not observable there. See
 	// internal/memory/activation_curve_test.go.
-	if _, err := a.MemoryStore.DB().ExecContext(context.Background(),
-		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, memRev.MemoryID); err != nil {
-		t.Fatalf("park at floor: %v", err)
+	if _, parkErr := a.MemoryStore.DB().ExecContext(context.Background(),
+		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, memRev.MemoryID); parkErr != nil {
+		t.Fatalf("park at floor: %v", parkErr)
 	}
 	before, err := a.MemoryStore.GetState(context.Background(), memRev.MemoryID)
 	if err != nil {

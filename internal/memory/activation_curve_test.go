@@ -383,7 +383,7 @@ func runDecayGap(t *testing.T, ms *memory.Store, memoryID string, gapHours int) 
 // applyActivationDecay multiplies the CURRENT stored activation by
 // exp(-elapsed*ln2/halfLifeHours) where elapsed is measured from
 // last_accessed_at — a baseline the pass never advances. Successive passes over
-// an untouched row therefore compound, and the realised half-life is far shorter
+// an untouched row therefore compound, and the realized half-life is far shorter
 // than the nominal 336 hours: the nominal figure is the half-life of a SINGLE
 // pass, not of wall-clock time.
 //

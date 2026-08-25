@@ -1,6 +1,6 @@
 ---
 name: memory
-description: When to use the memory domain - patterns, required fields, keyed vs. unkeyed.
+description: When to use the memory domain - the recall/use/touch loop, patterns, required fields, keyed vs. unkeyed.
 scope_hint: memory:read
 related: [namespaces, revisions, recall-and-ranking, promotion]
 ---
@@ -36,17 +36,45 @@ From the `memory_write` MCP declaration:
 
 Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; default `draft`), `author_version`, `tags` (JSON array), `ttl_seconds`, `payload_body`, `dedup` (`none`|`semantic`), `dedup_threshold`.
 
-## Core flow
+## The read loop: recall → use → touch
+
+**This is the default shape of a turn that consults memory, not one option among several.** Three steps, and the third is the one that is easy to skip and expensive to skip.
+
+```
+1. memory_recall namespaces=["user/chrispian/memory/decisions"] query="sqlite pragma handling" limit=10
+     -> {results: [{revision: {revision_id: "01HXA...", ...}, score}, ...], manifest}
+
+2. read the summaries, hydrate the two that look right:
+   memory_get_revision revision_id=01HXA...
+   memory_get_revision revision_id=01HXC...
+     -> full bodies; do the actual work of the turn
+
+3. now that you know which ones mattered:
+   tesseract_touch revision_ids=["01HXA..."]
+```
+
+Note what step 3 does **not** contain. Ten revisions came back, two were read, one actually shaped the answer — so one is what gets reported.
+
+**Why the third step exists at all.** `memory_recall` returns results **unreinforced**. Being returned by a search is the ranker's guess about what you need; if that guess reinforced itself, popular-because-returned would beat actually-useful within a few cycles. `tesseract_touch` is you telling the ranking, after the reasoning, which guesses were right. That is the only input activation has, and activation is the default ranking whenever you recall without a query.
+
+**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** There is nothing to win by inflating: reinforcement is asymptotic, so touching a memory repeatedly cannot push it past where a freshly written memory already sits.
+
+**When to call it.** After the work, not after the search. If you touch as soon as results arrive, you are reinforcing the guess at the moment it was made — the thing recall refuses to do, done manually.
+
+**What counts as one touch.** Each distinct memory named is reinforced once: `activation` moves a fixed fraction toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once. Revision IDs from `tesseract_lookup` work too — memory and knowledge both resolve.
+
+`memory_get` and `memory_get_revision` reinforce on their own, because resolving a known key or pulling a specific revision by ID is already a deliberate act. So step 2 above reinforces what you hydrated; step 3 is how you say which of those actually mattered, and how you report a memory whose summary alone was enough.
+
+## The other operations
 
 1. **Write** - `memory_write`.
-2. **Recall** - `memory_recall`. Default ranking is `relevance` (RRF) when `query` is set, otherwise `activation`. Other modes: `chronological`, `similarity`. See `tesseract_skills recall-and-ranking`.
-3. **Get head** - `memory_get` returns the current (non-deprecated) revision for `(namespace, memory_key)`.
-4. **Get revision** - `memory_get_revision` fetches by `revision_id`.
-5. **Get history** - `memory_history` returns the full revision chain for a keyed memory, newest first.
-6. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
-7. **Deprecate** - `memory_deprecate` when a revision is wrong or outdated. Soft; history survives.
+2. **Get head** - `memory_get` returns the current (non-deprecated) revision for `(namespace, memory_key)`. Reinforces.
+3. **Get revision** - `memory_get_revision` fetches by `revision_id`. Reinforces.
+4. **Get history** - `memory_history` returns the full revision chain for a keyed memory, newest first.
+5. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
+6. **Deprecate** - `memory_deprecate` when a revision is wrong or outdated. Soft; history survives.
 
-**Reinforcement.** Deliberate reads — `memory_get` and `memory_get_revision` — reinforce a memory's `activation` and `access_count`. `memory_recall` does not: search results are guesses, so they don't count as "use." See `tesseract_skills recall-and-ranking`.
+Recall's ranking modes — `relevance` (the default when `query` is set), `activation` (the default without one), `chronological`, `similarity` — are covered in `tesseract_skills recall-and-ranking`, along with everything that bounds a read.
 
 ## Keyed vs. unkeyed
 

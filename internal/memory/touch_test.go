@@ -158,6 +158,29 @@ func TestTouchRevisions_UnknownIDsReportedNotRaised(t *testing.T) {
 	}
 }
 
+// TestTouchRevisions_RepeatedUnknownIDReportedOnce is the guard the two dedup
+// tests above cannot provide.
+//
+// TouchRevisions dedups twice — once on revision ID, once on the memory each
+// resolves to — and for KNOWN IDs the second pass subsumes the first, so
+// removing the revision-level pass changes nothing observable there. It is the
+// UNKNOWN ID that separates them: without the revision-level dedup a stale ID
+// sent twice is reported twice, and a caller diffing not_found against what it
+// sent would see a phantom.
+func TestTouchRevisions_RepeatedUnknownIDReportedOnce(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	res, err := ms.TouchRevisions(ctx, []string{"01STALE", "01STALE", "01STALE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.NotFound) != 1 || res.NotFound[0] != "01STALE" {
+		t.Errorf("NotFound = %v for three copies of one stale ID, want [01STALE]", res.NotFound)
+	}
+}
+
 // TestTouchRevisions_EmptyIsANoop pairs with the case above as its positive
 // control: an empty request reports zero because there was nothing to do, and
 // the same shape from a non-empty request would be a bug.
