@@ -18,7 +18,21 @@ related: [memory, revisions]
 
 ## Result shape and `score`
 
-Every result is `{revision, score, state}`, best first. `memory_recall` returns the bare array; `tesseract_lookup` wraps it as `{results, facets}`.
+Every result is `{revision, score}`, best first. `memory_recall` returns the bare array; `tesseract_lookup` wraps it as `{results, facets}`.
+
+How much of each result you get is set by `payload_mode`:
+
+| `payload_mode` | Each result carries |
+|---|---|
+| `keys` | `revision.{revision_id, memory_id, domain, namespace, memory_key, created_at}` + `score`. The browse/enumerate shape. |
+| `summary` | `keys` + `revision.{status, tags, confidence}` + `revision.payload.summary`. The default. |
+| `full` | The whole revision including `revision.payload.body`, plus `state`. |
+
+The default comes from server config (`read.payload_mode`); pass `payload_mode` to override it per call. `state` — activation, access counts, `current_revision` — rides **only** on `full`.
+
+Work just-in-time: **recall → choose → hydrate.** Recall at the default to see what exists, pick the few hits that matter, then pass each `revision_id` to `memory_get_revision`. `revision_id` is present in every mode, so hydration is always available. Reaching for `payload_mode=full` to skip the third step is how one recall eats a context window.
+
+Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` results do not. That marker matters when you intend to **edit** what you read: `payload.body` is omitted both when it was withheld by projection and when it is genuinely empty, so the marker is the only thing that tells them apart. If it is present and not `full`, treat the body as unknown — re-request with `payload_mode=full` or hydrate by id. Never write back a body you never received.
 
 `score` is **ranking-relative** — comparable against other results in the same response, and meaningless across responses or across modes. Its meaning per mode:
 

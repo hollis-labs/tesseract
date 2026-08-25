@@ -16,10 +16,11 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
-				"• **Result shape:** `{results: [{revision, score, state}], facets: {domains, kinds, sources}}`, best first.\n"+
+				"• **Result shape:** `{results: [{revision, score}], facets: {domains, kinds, sources}}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
 				"• **Just-in-time pattern — recall → choose → hydrate.** Look up at the default `payload_mode` to see what exists, **choose** the few hits worth reading, then **hydrate** each by passing its `revision_id` to `memory_get_revision`. Reaching for `payload_mode=full` to skip the third step is how a single lookup eats a context window.\n"+
-				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. `facets` are always computed over the full match set, so projection never changes them. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you looked up without it.\n"+
+				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you looked up without it.\n"+
+				"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
 				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
@@ -157,9 +158,11 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		return nil, err
 	}
 
-	// Facets are computed from the unprojected results so that projection
-	// never changes the histogram — the counts describe what matched, not
-	// what was serialized.
+	// Facets are counted from the unprojected results, so payload_mode never
+	// changes them. They are still best-effort: Recall truncates to Limit
+	// before returning (recall.go, step 6), so these counts describe the
+	// RETURNED rows, not the full match set — same caveat the HTTP peer
+	// documents at lookup_handler.go.
 	facets := map[string]map[string]int{
 		"domains": {},
 		"kinds":   {},

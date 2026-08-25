@@ -682,21 +682,55 @@ export interface TesseractLookupRequest {
 
 export type PayloadMode = "keys" | "summary" | "full";
 
-export interface TesseractLookupResultItem {
+// The identity subset of a revision that survives keys/summary projection.
+// Everything a projected mode may withhold is optional here — that is the
+// point of the type. Do not widen these back to required: the compiler
+// refusing `revision.author.agent_id` on a possibly-projected result is the
+// only thing that catches a projection bug before it reaches a user.
+export interface ProjectedMemoryRevision {
+  revision_id: string;
+  memory_id: string;
+  domain: "memory" | "knowledge";
+  namespace: string;
+  memory_key?: string;
+  created_at: string;
+  // summary mode only
+  status?: MemoryStatus;
+  tags?: string[];
+  confidence?: number;
+  payload?: MemoryPayload;
+}
+
+// A lookup/recall result comes back in one of two shapes, discriminated by
+// the presence of `payload_mode`: absent means a full RecallResult, present
+// means the server projected it.
+export interface FullLookupResultItem {
   revision: MemoryRevision;
   // Ranking-relative; comparable only within one response. Absent under
   // ranking=chronological, where order is carried by array order plus
   // revision.created_at.
   score?: number;
   state?: unknown;
-  // Present only when the result was projected (payload_mode keys or
-  // summary); absent on full results.
-  //
-  // This is what distinguishes a withheld body from an empty one:
-  // revision.payload.body is omitted in both cases, so its absence alone
-  // says nothing. When payload_mode is present and not "full", treat the
-  // body as UNKNOWN, never as "".
-  payload_mode?: PayloadMode;
+  // The discriminant: never set on a full result.
+  payload_mode?: undefined;
+}
+
+export interface ProjectedLookupResultItem {
+  revision: ProjectedMemoryRevision;
+  score?: number;
+  // Always set on a projected result. This is what distinguishes a withheld
+  // body from an empty one: revision.payload.body is omitted in both cases,
+  // so its absence alone says nothing.
+  payload_mode: "keys" | "summary";
+}
+
+export type TesseractLookupResultItem = FullLookupResultItem | ProjectedLookupResultItem;
+
+// Narrows a result to the full shape. Callers that need to READ a body — and
+// especially any caller that will write one back — must narrow before
+// touching revision.payload.body, revision.author, or state.
+export function isFullLookupResult(item: TesseractLookupResultItem): item is FullLookupResultItem {
+  return item.payload_mode === undefined;
 }
 
 export interface TesseractLookupResponse {

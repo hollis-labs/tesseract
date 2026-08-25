@@ -293,8 +293,139 @@ func TestTesseractLookup_InvalidPayloadModeIsValidationError(t *testing.T) {
 	}
 }
 
-// Facets describe what matched, not what was serialized, so projection must
-// not change them.
+// ── POST /v1/memory/recall is memory_recall's declared HTTP peer ─────────
+//
+// parity_test.go pairs them with no waiver, so they must agree on the
+// payload_mode vocabulary AND on the default. The parity harness only
+// asserts route existence, so argument parity needs its own guard: without
+// these, an HTTP caller asking for keys silently receives full bodies.
+
+func postMemoryRecall(t *testing.T, srv *Server, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/recall", bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestMemoryRecallHTTP_PayloadModeProjection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		mode     string
+		wantBody bool
+	}{
+		{"keys", `,"payload_mode":"keys"`, false},
+		{"summary", `,"payload_mode":"summary"`, false},
+		{"full", `,"payload_mode":"full"`, true},
+		{"server default", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newLookupServer(t)
+			seedMemoryWithBody(t, srv)
+
+			rr := postMemoryRecall(t, srv, `{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological"`+tc.mode+`}`)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d; body = %s", rr.Code, rr.Body.String())
+			}
+			if got := strings.Contains(rr.Body.String(), lookupBodySentinel); got != tc.wantBody {
+				t.Errorf("body sentinel present = %v, want %v; raw=%s", got, tc.wantBody, rr.Body.String())
+			}
+
+			var results []lookupTestResult
+			if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+				t.Fatalf("decode (raw=%s): %v", rr.Body.String(), err)
+			}
+			if len(results) != 1 {
+				t.Fatalf("want 1 result, got %d", len(results))
+			}
+			if results[0].Revision.RevisionID == "" {
+				t.Error("revision_id absent; hydration by ID is impossible")
+			}
+			wantMarker := ""
+			if !tc.wantBody {
+				wantMarker = "summary"
+				if tc.mode == `,"payload_mode":"keys"` {
+					wantMarker = "keys"
+				}
+			}
+			if results[0].PayloadMode != wantMarker {
+				t.Errorf("payload_mode marker = %q, want %q", results[0].PayloadMode, wantMarker)
+			}
+		})
+	}
+}
+
+// The HTTP peer must reject an unknown mode rather than decode it away.
+// encoding/json is non-strict by default, so an unvalidated field silently
+// becomes "" and the caller gets a projection it did not ask for.
+func TestMemoryRecallHTTP_InvalidPayloadModeIsValidationError(t *testing.T) {
+	srv := newLookupServer(t)
+	seedMemory(t, srv)
+
+	rr := postMemoryRecall(t, srv, `{"namespaces":["user/chrispian/memory/notes"],"payload_mode":"bogus"}`)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "keys|summary|full") {
+		t.Errorf("error does not state the accepted vocabulary; body = %s", rr.Body.String())
+	}
+}
+
+// The declared peer pair must share a default, not just a vocabulary. A
+// server whose config says "keys" must project HTTP recall to keys too.
+func TestMemoryRecallHTTP_HonorsConfiguredDefault(t *testing.T) {
+	srv := newLookupServer(t)
+	srv.RuntimeConfig = config.Defaults()
+	srv.RuntimeConfig.Read.PayloadMode = "keys"
+	seedMemoryWithBody(t, srv)
+
+	rr := postMemoryRecall(t, srv, `{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological"}`)
+	var results []lookupTestResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if results[0].PayloadMode != "keys" {
+		t.Errorf("payload_mode marker = %q, want keys (config default not honored)", results[0].PayloadMode)
+	}
+	if results[0].Revision.Payload != nil {
+		t.Errorf("keys mode carried a payload object: %+v", results[0].Revision.Payload)
+	}
+}
+
+// Facets count the RETURNED rows, not the full match set — recall truncates
+// to limit before the handler sees the results. This pins the documented
+// behavior so the tool description cannot drift back to claiming otherwise.
+func TestTesseractLookup_FacetsCountReturnedRowsOnly(t *testing.T) {
+	srv := newLookupServer(t)
+	for i := 0; i < 5; i++ {
+		_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+			Namespace:  "user/chrispian/memory/notes",
+			MemoryKey:  "facet.probe." + string(rune('a'+i)),
+			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:    memory.TriggerExplicit,
+			SessionID:  "manual:01HZ",
+			Origin:     memory.OriginUser,
+			Confidence: 0.9,
+			Status:     memory.StatusCanonical,
+			Payload:    memory.Payload{Summary: "facet probe"},
+		})
+		if err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	rr := postLookup(t, srv, `{"namespaces":["user/chrispian/memory/notes"],"ranking":"chronological","limit":2}`)
+	resp := decodeLookup(t, rr.Body.Bytes())
+	if len(resp.Results) != 2 {
+		t.Fatalf("want 2 results, got %d", len(resp.Results))
+	}
+	if resp.Facets.Domains["memory"] != 2 {
+		t.Errorf("facets.domains.memory = %d, want 2 (facets must count returned rows, not the 5 that matched)",
+			resp.Facets.Domains["memory"])
+	}
+}
+
+// Facets describe what was returned, and projection must not change them.
 func TestTesseractLookup_FacetsUnaffectedByProjection(t *testing.T) {
 	var counts []map[string]int
 	for _, mode := range []string{"keys", "summary", "full"} {

@@ -1779,6 +1779,14 @@ func validateAdminSettingsUpdate(info adminSettingsConfigInfo) (adminSettingsCon
 	if info.SynthesisProvider != "" && info.SynthesisProvider != "openai" && info.SynthesisProvider != "anthropic" {
 		return info, nil, errors.New("synthesis_provider must be empty, openai, or anthropic")
 	}
+	// The two folds below pass config.Defaults() rather than the live config
+	// on purpose, and unlike the apply path that difference is safe: these
+	// round-trip through adminSettingsConfigFromConfig only to normalize the
+	// admin-editable fields, and the config.Config they build is discarded
+	// immediately. No unexposed section can escape, so there is nothing to
+	// preserve. Threading the live config here would also be wrong —
+	// validateAdminSettingsUpdate is a pure function of its input, and
+	// reading server state would make preview results depend on load order.
 	if info.SynthesisProvider == "" {
 		info.SynthesisModel = ""
 		info.SynthesisMaxTokens = 0

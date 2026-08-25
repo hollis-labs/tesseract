@@ -844,7 +844,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                       fontSize: "0.65rem",
                                     }}
                                   >
-                                    <StatusBadge status={r.revision.status} />
+                                    {r.revision.status !== undefined && <StatusBadge status={r.revision.status} />}
                                     {r.score !== undefined && (
                                       <span
                                         style={{
@@ -861,7 +861,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                         color: "rgb(var(--muted))",
                                       }}
                                     >
-                                      conf {r.revision.confidence.toFixed(2)}
+                                      conf {r.revision.confidence?.toFixed(2) ?? "—"}
                                     </span>
                                   </div>
                                 </div>
@@ -872,7 +872,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                     lineHeight: 1.4,
                                   }}
                                 >
-                                  {r.revision.payload.summary || "(no summary)"}
+                                  {r.revision.payload?.summary || "(no summary)"}
                                 </div>
                                 <div
                                   style={{
@@ -885,7 +885,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                   }}
                                 >
                                   <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
-                                    {r.revision.tags.slice(0, 5).map((t) => (
+                                    {(r.revision.tags ?? []).slice(0, 5).map((t) => (
                                       <button
                                         type="button"
                                         key={t}

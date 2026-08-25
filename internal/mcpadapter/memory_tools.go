@@ -85,7 +85,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Ranked recall across namespaces.** Multi-knob: activation / chronological / similarity / relevance.\n"+
 				"• **Kind of content:** ranked list of memory revisions matching namespaces + filters.\n"+
-				"• **Result shape:** array of `{revision, score, state}`, best first.\n"+
+				"• **Result shape:** array of `{revision, score}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
 				"• **Just-in-time pattern — recall → choose → hydrate.** Recall returns a projection, not the whole corpus: **recall** at the default `payload_mode` to see what exists, **choose** the few hits that matter, then **hydrate** each one by passing its `revision_id` to `memory_get_revision`. Do not reach for `payload_mode=full` to avoid the third step — a full recall of 30 hits can cost more context than the rest of your turn.\n"+
 				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode, so hydration is always available. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+

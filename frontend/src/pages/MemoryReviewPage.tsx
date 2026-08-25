@@ -21,7 +21,8 @@ import {
   memoryPromote,
   memoryWrite,
 } from "../api/client";
-import type { TesseractLookupResultItem, MemoryRevision, MemoryStatus } from "../api/types";
+import { isFullLookupResult } from "../api/types";
+import type { FullLookupResultItem, MemoryRevision, MemoryStatus } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -36,7 +37,12 @@ interface Props {
   initialPreset?: ReviewPreset | undefined;
 }
 
-interface QueueItem extends TesseractLookupResultItem {
+// Extends the FULL result shape, not the union. Everything this page renders
+// — author, status, confidence, payload.body — exists only on a full result,
+// and loadQueue narrows to that shape before building any QueueItem. Widening
+// this to TesseractLookupResultItem would let a projected result reach the
+// render path, where it throws on the first missing field.
+interface QueueItem extends FullLookupResultItem {
   reviewReasons: string[];
   reviewPriority: number;
 }
@@ -99,15 +105,15 @@ function getReviewPriority(revision: MemoryRevision, threshold: number, score?: 
   return priority;
 }
 
-function isActionable(item: TesseractLookupResultItem, threshold: number): boolean {
+function isActionable(item: FullLookupResultItem, threshold: number): boolean {
   return getReviewReasons(item.revision, threshold).length > 0;
 }
 
-function isPromotable(item: TesseractLookupResultItem): boolean {
+function isPromotable(item: FullLookupResultItem): boolean {
   return isSessionNamespace(item.revision.namespace) && item.revision.status !== "deprecated";
 }
 
-function canClarify(item: TesseractLookupResultItem): boolean {
+function canClarify(item: FullLookupResultItem): boolean {
   return Boolean(item.revision.memory_key);
 }
 
@@ -219,15 +225,33 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
         tesseractLookup(deprecatedReq),
       ]);
 
-      const latestDeprecatedByMemory = new Map<string, TesseractLookupResultItem>();
-      for (const item of deprecated.results) {
+      // Narrow to full results at the boundary, before anything downstream
+      // can touch a field a projection would have withheld.
+      //
+      // Both requests pin payload_mode: "full", so nothing should be dropped
+      // here. The filter is what makes that a checked fact rather than an
+      // assumption: if the pin is ever lost, the queue comes back short with
+      // a visible error instead of throwing at render, and the editor is
+      // never handed a revision whose body it did not receive.
+      const rawResults = [...heads.results, ...deprecated.results];
+      const fullResults = rawResults.filter(isFullLookupResult);
+      if (fullResults.length !== rawResults.length) {
+        toast.error(
+          `${rawResults.length - fullResults.length} result(s) arrived without their payload and were skipped. Review requires payload_mode="full".`,
+        );
+      }
+      const fullHeads = fullResults.filter((item) => item.revision.status !== "deprecated");
+      const fullDeprecated = fullResults.filter((item) => item.revision.status === "deprecated");
+
+      const latestDeprecatedByMemory = new Map<string, FullLookupResultItem>();
+      for (const item of fullDeprecated) {
         const existing = latestDeprecatedByMemory.get(item.revision.memory_id);
         if (!existing || item.revision.created_at > existing.revision.created_at) {
           latestDeprecatedByMemory.set(item.revision.memory_id, item);
         }
       }
 
-      const merged = [...heads.results, ...latestDeprecatedByMemory.values()];
+      const merged = [...fullHeads, ...latestDeprecatedByMemory.values()];
       const unique = new Map<string, QueueItem>();
       for (const item of merged) {
         unique.set(item.revision.revision_id, {

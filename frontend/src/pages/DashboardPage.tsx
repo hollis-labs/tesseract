@@ -72,10 +72,15 @@ export function DashboardPage({ health, onNavigate }: Props) {
     let lowConfidence = 0;
     let reviewed = 0;
     let pendingReview = 0;
+    // This call takes the server's default payload_mode. `summary` carries
+    // status and confidence, but `keys` does not, so both are optional here.
+    // Counting an unknown confidence as low would invent review work that
+    // does not exist; a tile is better slightly under-counted than wrong.
     for (const item of res.results) {
-      if (item.revision.confidence < 0.8) lowConfidence++;
-      if (item.revision.status === "reviewed") reviewed++;
-      if (item.revision.status === "draft" || item.revision.status === "reviewed") pendingReview++;
+      const { confidence, status } = item.revision;
+      if (confidence !== undefined && confidence < 0.8) lowConfidence++;
+      if (status === "reviewed") reviewed++;
+      if (status === "draft" || status === "reviewed") pendingReview++;
     }
     return { lowConfidence, reviewed, pendingReview };
   }, [namespaceData]);
