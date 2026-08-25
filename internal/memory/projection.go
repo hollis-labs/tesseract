@@ -100,10 +100,31 @@ type ProjectedRevision struct {
 // Full mode does not use this type at all: it serializes RecallResult
 // unchanged, so `payload_mode` is absent there and full responses stay
 // byte-identical to their pre-projection form.
+// PointerHealth rides on summary (and therefore on the default projection)
+// but NOT on keys, and both halves of that are deliberate.
+//
+// Carrying it under summary is the whole point: `summary` is
+// DefaultPayloadMode, and a staleness signal that only appears when a caller
+// opts into `full` is not discoverable — nobody opts in to look for a problem
+// they have not been told about. It is a triage signal, which is exactly what
+// summary mode is for.
+//
+// Withholding it under keys keeps that mode's documented contract intact:
+// keys is identity-only, the enumerate/browse shape, and the three modes form
+// a strict ladder. Adding a non-identity field there would widen the narrowest
+// rung for every caller that asked only for IDs. A caller enumerating keys who
+// then wants health re-requests at summary — the same recall → choose →
+// hydrate step the modes already ask for.
+//
+// It sits beside Revision rather than inside it so the field path is
+// `pointer_health` in both summary and full, matching how RecallResult nests
+// it. Absent means the revision carries no pointer at all — never "healthy",
+// and never "we don't know", which is what PointerHealthUnchecked is for.
 type ProjectedResult struct {
-	Revision    ProjectedRevision `json:"revision"`
-	Score       *float64          `json:"score,omitempty"`
-	PayloadMode PayloadMode       `json:"payload_mode"`
+	Revision      ProjectedRevision `json:"revision"`
+	Score         *float64          `json:"score,omitempty"`
+	PayloadMode   PayloadMode       `json:"payload_mode"`
+	PointerHealth *PointerHealth    `json:"pointer_health,omitempty"`
 }
 
 // ProjectResults renders results under mode for serialization.
@@ -147,6 +168,7 @@ func ProjectResults(results []RecallResult, mode PayloadMode) any {
 			// Summary only — Body is dropped, never truncated. A caller
 			// that needs it hydrates by revision_id.
 			pr.Revision.Payload = &Payload{Summary: r.Revision.Payload.Summary}
+			pr.PointerHealth = r.PointerHealth
 		}
 		out = append(out, pr)
 	}

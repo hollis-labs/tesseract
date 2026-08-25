@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion = 12
+	schemaVersion = 13
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -611,6 +611,52 @@ AFTER DELETE ON memory_revisions BEGIN
     INSERT INTO memory_revisions_fts(memory_revisions_fts, rowid, payload_summary, payload_body, tags)
     VALUES ('delete', old.rowid, old.payload_summary, old.payload_body, old.tags);
 END`); err != nil {
+				return err
+			}
+		case 13:
+			// Pointer verification log (CW-20260825-0015).
+			//
+			// This table is the authority for whether a knowledge pointer was
+			// ACTUALLY verified against the outside world.
+			// memory_revisions.facet_pointer_resolved_at stays what it has
+			// always honestly been: a write-time assertion by the author.
+			//
+			// It is a side table rather than a column on memory_revisions, and
+			// rather than a superseding revision per check, because a
+			// verification is an observation about the world — not authored
+			// content. Updating the revision in place would rewrite history;
+			// minting a revision per check would generate revision churn
+			// proportional to corpus size x run frequency for something nobody
+			// authored.
+			//
+			// Append-only by construction: rows are only ever INSERTed. There
+			// is no UPDATE or DELETE path, so the full observation history for
+			// a pointer survives, which is what lets a caller tell one bad
+			// afternoon from a pointer that has never resolved.
+			//
+			// scheme/locator are denormalized onto the row on purpose: a
+			// revision is immutable, so they cannot drift, and carrying them
+			// makes each observation self-describing in a report without a
+			// join back to memory_revisions.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS pointer_verifications (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	revision_id  TEXT NOT NULL,
+	scheme       TEXT NOT NULL,
+	locator      TEXT NOT NULL,
+	outcome      TEXT NOT NULL,
+	checked_at   TEXT NOT NULL,
+	detail       TEXT NOT NULL DEFAULT '',
+	FOREIGN KEY (revision_id) REFERENCES memory_revisions(revision_id) ON DELETE CASCADE
+)`); err != nil {
+				return err
+			}
+			// The latest-observation lookup is (revision_id, id DESC); the
+			// outcome index serves the health distribution aggregate.
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_pointer_verifications_revision ON pointer_verifications(revision_id, id DESC)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_pointer_verifications_outcome ON pointer_verifications(outcome)`); err != nil {
 				return err
 			}
 		}

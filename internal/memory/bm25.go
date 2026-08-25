@@ -51,6 +51,18 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 		}
 	}
 
+	// Pointer health is computed inline (pointerHealthStatusExpr) rather than
+	// joined, because this builder produces WHERE fragments only — the two
+	// callers own their own FROM/JOIN. Filtering here rather than after the
+	// fact is what makes "list the dead pointers" return the dead pointers
+	// instead of the dead pointers that happened to rank in the top N.
+	if len(in.Filters.PointerHealth) > 0 {
+		where = append(where, "("+pointerHealthStatusExpr+") IN ("+placeholders(len(in.Filters.PointerHealth))+")")
+		for _, h := range in.Filters.PointerHealth {
+			args = append(args, h)
+		}
+	}
+
 	if len(in.Filters.Origins) > 0 {
 		where = append(where, "r.origin IN ("+placeholders(len(in.Filters.Origins))+")")
 		for _, o := range in.Filters.Origins {

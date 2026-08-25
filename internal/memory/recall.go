@@ -73,6 +73,16 @@ type RecallFilters struct {
 	// listed facet values. Applied as SQL IN (...) filters when non-empty.
 	FacetKinds   []string
 	FacetSources []string
+
+	// PointerHealth constrains results to revisions whose derived pointer
+	// health is one of the listed statuses (see PointerHealthStatus).
+	//
+	// Applied in SQL, not as a post-fetch pass, and that is load-bearing: a
+	// post-filter runs after LIMIT, so "show me the dead pointers" would
+	// return however many dead ones happened to fall in the top N by score.
+	// A query whose whole purpose is to enumerate a suspect population cannot
+	// be sampled by an unrelated ranking.
+	PointerHealth []string
 }
 
 // RecallResult pairs a revision with its ranking score and the parent state.
@@ -90,10 +100,17 @@ type RecallFilters struct {
 // restate the sort key in units nothing else uses. It is a pointer rather
 // than a bare float64 so that "no score" stays distinguishable from a real
 // zero — cosine similarity is legitimately 0 (orthogonal) or negative.
+// PointerHealth is the verification state of this revision's pointer, or nil
+// when the revision carries no pointer facet at all (every memory-domain
+// revision, and any knowledge revision predating facets). It is a sibling of
+// Revision rather than a field inside it because a verification is an
+// observation ABOUT the revision made later, not part of what was authored —
+// the same reason State sits here.
 type RecallResult struct {
-	Revision Revision `json:"revision"`
-	Score    *float64 `json:"score,omitempty"`
-	State    State    `json:"state"`
+	Revision      Revision       `json:"revision"`
+	Score         *float64       `json:"score,omitempty"`
+	State         State          `json:"state"`
+	PointerHealth *PointerHealth `json:"pointer_health,omitempty"`
 }
 
 // scoreOf reads a result's score, treating an absent score as zero. Used for
@@ -168,7 +185,11 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 	// embedder is optional — BM25-only is intentional for freshly-written
 	// memories that haven't been embedded yet.
 	if in.Ranking == RankingRelevance {
-		return s.relevanceRecall(ctx, in)
+		relResults, relErr := s.relevanceRecall(ctx, in)
+		if relErr != nil {
+			return nil, relErr
+		}
+		return s.attachPointerHealth(ctx, relResults)
 	}
 
 	// 4. Fetch candidate revisions.
@@ -261,7 +282,9 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		return nil, err
 	}
 
-	return results, nil
+	// 8. Attach pointer verification state. Done last, on the truncated set,
+	// so the lookup is bounded by limit rather than by the candidate count.
+	return s.attachPointerHealth(ctx, results)
 }
 
 // fetchCandidates builds a dynamic SQL query with parameterized filters.

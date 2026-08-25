@@ -1350,8 +1350,24 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS memory_revisions_fts`); err != nil {
 		t.Fatalf("drop fts table: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version = 12`); err != nil {
+	// Roll the recorded version back to 11 so the migration loop resumes at
+	// case 12. This deletes every row >= 12 rather than exactly 12: the loop
+	// resumes from MAX(version), so leaving a later migration's row behind
+	// would make it believe the schema is already current and skip case 12
+	// entirely — the test would then pass on an unmigrated database.
+	// An equality delete quietly stops testing anything the moment a
+	// migration is added after this one, which is how it broke.
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 12`); err != nil {
 		t.Fatalf("roll schema_version back: %v", err)
+	}
+	var recorded int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&recorded); err != nil {
+		t.Fatalf("read rolled-back version: %v", err)
+	}
+	if recorded != 11 {
+		t.Fatalf("after rollback the recorded schema version is %d, want 11 — "+
+			"the fixture is not simulating a pre-FTS database", recorded)
 	}
 
 	// Seed a revision while the FTS index is absent.
