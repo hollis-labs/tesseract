@@ -105,28 +105,47 @@ func TestRecall_ChronologicalOrdering(t *testing.T) {
 	}
 }
 
-// TestRecall_ScorePresenceByRanking locks the per-mode score contract:
-// activation and similarity attach a score, chronological does not.
+// TestRecall_ScorePresenceByRanking is the single per-mode score contract:
+// activation, similarity, and relevance each attach a genuine
+// ranking-relative score; chronological attaches none, because ordering is
+// already carried by slice order plus Revision.CreatedAt.
+//
+// Every ranking mode belongs in this table. Relevance in particular
+// short-circuits into its own pipeline (relevanceRecall) before the main
+// scoring loop runs, so it can drift from the other three without any of
+// them failing. A fifth ranking mode gets a row here.
 func TestRecall_ScorePresenceByRanking(t *testing.T) {
-	ms, cleanup := newTestStore(t)
+	ms, cleanup := newTestStoreWithEmbedder(t)
 	defer cleanup()
+	ctx := context.Background()
 
-	if _, err := ms.WriteRevision(context.Background(), sampleInput("scored.a")); err != nil {
+	// Distinctive terms so the BM25 arm of relevance ranking has something
+	// to match; embedded so similarity ranking doesn't filter it out.
+	rev, err := ms.WriteRevision(ctx, relevanceInput("scored.a",
+		"Reciprocal rank fusion explained", "combining BM25 and dense retrieval"))
+	if err != nil {
 		t.Fatalf("write: %v", err)
+	}
+	if err := ms.EmbedRevision(ctx, rev.RevisionID, "test-model"); err != nil {
+		t.Fatalf("embed: %v", err)
 	}
 
 	cases := []struct {
 		ranking   memory.Ranking
+		query     string
 		wantScore bool
 	}{
-		{memory.RankingActivation, true},
-		{memory.RankingChronological, false},
+		{memory.RankingActivation, "", true},
+		{memory.RankingChronological, "", false},
+		{memory.RankingSimilarity, "reciprocal", true},
+		{memory.RankingRelevance, "reciprocal", true},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.ranking), func(t *testing.T) {
-			results, err := ms.Recall(context.Background(), memory.RecallInput{
+			results, err := ms.Recall(ctx, memory.RecallInput{
 				Namespaces: []string{"user/chrispian/memory/notes"},
 				Ranking:    tc.ranking,
+				Query:      tc.query,
 			})
 			if err != nil {
 				t.Fatalf("Recall: %v", err)

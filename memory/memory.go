@@ -57,7 +57,23 @@ type RecallInput = internal.RecallInput
 // RecallFilters constrains which revisions are returned.
 type RecallFilters = internal.RecallFilters
 
-// RecallResult pairs a revision with its computed score and the parent state.
+// RecallResult pairs a revision with its ranking score and the parent state.
+// It serializes as {revision, score, state}.
+//
+// Score is ranking-relative: comparable only against other results in the
+// same response, never across responses or across ranking modes. Its units
+// differ per mode —
+//
+//	activation     activation strength (recency x reinforcement x confidence)
+//	similarity     cosine similarity between query and revision embeddings
+//	relevance      RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	chronological  nil — no score
+//
+// Under chronological ranking the field is absent rather than set to a sort
+// key: ordering is already carried by slice order plus Revision.CreatedAt.
+// Score is a pointer so that "no score" stays distinguishable from a real
+// zero — cosine similarity is legitimately 0 (orthogonal) or negative
+// (opposite), so callers must nil-check before dereferencing.
 type RecallResult = internal.RecallResult
 
 // Ranking determines how recall results are ordered.
