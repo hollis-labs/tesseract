@@ -233,11 +233,14 @@ func unrepresentableRune(q string) rune {
 // at all: `AND memory`, `memory AND` and `NOT NULL constraint` are all
 // `fts5: syntax error` on main and become 301, 301 and 1 here.
 //
-// One more thing the quoting buys, unchanged from before: the implicit
-// operator between bare phrases in FTS5 is AND, not OR. On the same corpus
-// `CW 20260519 0032` and `CW AND 20260519 AND 0032` both return 12 rows while
-// `CW OR 20260519 OR 0032` returns 720 — so the recall-oriented arm is an
-// intersection, and always was.
+// One more thing worth stating, unchanged from before: the implicit operator
+// between bare phrases in FTS5 is AND, not OR — so the recall-oriented arm is
+// an intersection, and always was. Re-derive on any corpus with
+//
+//	SELECT COUNT(*) FROM memory_revisions_fts WHERE memory_revisions_fts MATCH ?
+//
+// for `CW 20260519 0032`, `CW AND 20260519 AND 0032` and
+// `CW OR 20260519 OR 0032`: the first two agree, the third is far larger.
 func sanitizeBM25Query(q string) string {
 	var tokens []string
 	for _, group := range bm25Tokenize(q) {
@@ -279,7 +282,8 @@ func sanitizeBM25Query(q string) string {
 // quoted, so AND/OR/NOT are literal words. That asymmetry is deliberate. The
 // two builders differ on grouping AND on operator handling, because no single
 // rule can serve both callers — the hybrid caller needs `nanite OR torque` to
-// stay 925 rows, and the lexical caller asked for the words they typed.
+// keep the row count the table above derives, and the lexical caller asked for
+// the words they typed.
 //
 // KNOWN LIMIT, and it is in the tool description because a caller cannot infer
 // it: adjacency is bound only for PUNCTUATION-joined runs, never for
