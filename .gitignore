@@ -33,6 +33,9 @@ frontend/dist/
 /forge
 /tesseract
 
+# Throwaway root for the Makefile contract-test targets (CONTRACT_ROOT)
+/.tesseract/
+
 # Editor
 .claude/
 

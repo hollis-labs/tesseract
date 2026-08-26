@@ -99,13 +99,11 @@ func TestRetiredRootEnvVarDoesNotMoveResolvedPaths(t *testing.T) {
 	}
 }
 
-// TestRetiredRootEnvVarProducesNoDeprecationWarning closes the other half of
-// the removal. The shim announced itself on stderr every run; a caller that
-// still sets the variable must now get silence rather than a warning about a
-// mapping that no longer happens.
-func TestRetiredRootEnvVarProducesNoDeprecationWarning(t *testing.T) {
-	hermeticLayout(t)
-	t.Setenv(retiredRootEnvVar, t.TempDir())
+// capturedStderr runs the binary's dispatcher and returns what it wrote to
+// stderr, so a test can assert on it. The exit code comes back too, because
+// some of the runs that produce stderr are the ones that fail.
+func capturedStderr(t *testing.T, args ...string) (string, int) {
+	t.Helper()
 
 	stdout, err := os.CreateTemp(t.TempDir(), "stdout-*.log")
 	if err != nil {
@@ -118,9 +116,8 @@ func TestRetiredRootEnvVarProducesNoDeprecationWarning(t *testing.T) {
 	}
 	defer func() { _ = stderr.Close() }()
 
-	if code := run(context.Background(), []string{"path"}, stdout, stderr); code != 0 {
-		t.Fatalf("`path` exited %d, want 0", code)
-	}
+	code := run(context.Background(), args, stdout, stderr)
+
 	if _, err := stderr.Seek(0, 0); err != nil {
 		t.Fatalf("seek stderr: %v", err)
 	}
@@ -128,7 +125,42 @@ func TestRetiredRootEnvVarProducesNoDeprecationWarning(t *testing.T) {
 	if _, err := buf.ReadFrom(stderr); err != nil {
 		t.Fatalf("read stderr: %v", err)
 	}
-	if strings.Contains(buf.String(), retiredRootEnvVar) {
-		t.Errorf("stderr still mentions %s: %s", retiredRootEnvVar, buf.String())
+	return buf.String(), code
+}
+
+// TestRetiredRootEnvVarProducesNoDeprecationWarning closes the other half of
+// the removal. The shim announced itself on stderr every run; a caller that
+// still sets the variable must now get silence rather than a warning about a
+// mapping that no longer happens.
+//
+// The positive control is not optional here, and for a sharper reason than in
+// the sibling test above. stderr is legitimately EMPTY on this run, so
+// "it does not contain the name" and "nothing was captured at all" are the
+// same observation — a harness that silently captured nothing would pass this
+// test forever while being incapable of ever failing it. The control drives a
+// command that is known to write to stderr through the identical capture path,
+// so the silence being asserted is measured silence rather than absence of
+// measurement.
+func TestRetiredRootEnvVarProducesNoDeprecationWarning(t *testing.T) {
+	hermeticLayout(t)
+	t.Setenv(retiredRootEnvVar, t.TempDir())
+
+	out, code := capturedStderr(t, "path")
+	if code != 0 {
+		t.Fatalf("`path` exited %d, want 0", code)
+	}
+	if strings.Contains(out, retiredRootEnvVar) {
+		t.Errorf("stderr still mentions %s: %s", retiredRootEnvVar, out)
+	}
+
+	// Positive control: the same capture path, on a command whose whole job on
+	// this input is to write an error to stderr.
+	ctrl, ctrlCode := capturedStderr(t, "serve", "--managed-auth", "--static-token", "x")
+	if ctrlCode == 0 {
+		t.Fatalf("control run exited 0; it was supposed to reject mutually exclusive auth flags")
+	}
+	if !strings.Contains(ctrl, "mutually exclusive") {
+		t.Fatalf("the capture path did not pick up a known stderr write (got %q) — it cannot observe "+
+			"stderr at all, so the %s assertion above is vacuous", ctrl, retiredRootEnvVar)
 	}
 }
