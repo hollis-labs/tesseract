@@ -31,6 +31,8 @@ single new knob.
   `payload_mode=full`**, which skips projection entirely rather than
   round-tripping through it. `keys` returns identity rows and doubles as the
   browse/enumerate affordance.
+  Note both tools are also renamed by the read collapse below — a v0.8.x caller
+  of `memory_recall` is affected by that entry as well as this one.
 - **Recall results are snake_case.** `memory.RecallResult` carried no JSON tags, so
   both tools served `{"Revision":…,"Score":…,"State":…}` — PascalCase, against
   snake_case everywhere else in the API. Now `{revision, score, state}`.
@@ -109,6 +111,43 @@ single new knob.
   granularity, since a policy permitting unauthenticated `context_head` must now
   permit `tesseract_get`.
 
+#### The daemon binary is renamed — coordinate before upgrading
+
+This is separated because its prerequisite is different in kind from everything
+above. The changes above take effect when a client updates its calls; **this one
+takes effect when the daemon is restarted, and anything launching it as a managed
+process must be updated first.**
+
+- **The binary is `tesseract`.** `cmd/contextd/` → `cmd/tesseract/`, and all nine
+  subcommands — `path`, `serve`, `mcp`, `plugin`, `backfill-embeddings`,
+  `migrate-namespaces`, `migrate-knowledge-kinds`, `verify-pointers`, `context` —
+  are reachable only under the new name. `make build` emits `./tesseract`;
+  `scripts/contextd-{smoke,e2e-local}.sh` are renamed; error and migration-plan
+  strings print the new name; `examples/mcp.json` names it.
+- **`go install …/cmd/contextd@latest` no longer resolves.** Use
+  `…/cmd/tesseract@latest`, which installs to `~/go/bin/tesseract`.
+- **Process supervisors must be updated before the restart.** Anything invoking
+  `contextd serve` or `contextd mcp` — launchd, a managed-process runner, a shell
+  alias — breaks at restart, not at upgrade. This is the coordination step, and it
+  is the reason this section exists.
+- **`CONTEXTD_ROOT` is removed and now silently ignored.** The failure mode is not
+  that a variable stops working: callers used it to point at an **isolated
+  throwaway root**, and a process still setting it now resolves against the real
+  XDG layout instead — the live store. There is no warning. Use the four
+  `$XDG_*_HOME` variables, or `TESSERACT_DB_PATH` / `TESSERACT_WORKSPACE`.
+- **`make contract-cli-list` and `contract-cli-run` take `CONTRACT_ROOT`**, not the
+  retired variable, and their default moved from `.tesseract/tmp/contextd` to
+  `.tesseract/tmp/contract`. Same silent-redirect shape as above, on the
+  contract-test targets rather than the daemon.
+- **`internal/mcpadapter/skills/knowledge.md` changed.** Skills are embedded in the
+  binary and served to MCP clients through `tesseract_skills`, so this is
+  consumer-visible text rather than an internal comment.
+- **`/contextd` is no longer gitignored**, so a stale pre-rename binary at the repo
+  root becomes visible to `git status` — and fails the new name guard until it is
+  removed. `rm contextd` clears it. The same applies to `.tesseract/tmp/contextd/`.
+- **Thirteen documentation files** name the new binary, and the `.mcp.json` samples
+  in `CONTEXT-FOR-PROJECTS.md` and `SPECS/MCP.md` no longer pin a root that is now
+  ignored.
 ### Added
 
 - **`tesseract_touch`** — explicit activation reinforcement. An agent reports which
