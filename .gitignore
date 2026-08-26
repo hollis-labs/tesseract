@@ -41,3 +41,6 @@ frontend/dist/
 
 # stray smoke binary from cmd/smoke build
 /smoke
+
+# Local cutover backups (retired binary, configs, logs) — never committed
+cutover-20260826/
