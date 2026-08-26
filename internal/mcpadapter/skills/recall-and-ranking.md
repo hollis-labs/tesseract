@@ -1,6 +1,6 @@
 ---
 name: recall-and-ranking
-description: The four ranking modes — activation, chronological, similarity, relevance (RRF) — plus search_mode, and when to use each.
+description: The four ranking modes — activation, chronological, similarity, relevance (RRF) — plus search_mode, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
 scope_hint: memory:read
 related: [memory, revisions]
 ---
@@ -11,7 +11,7 @@ related: [memory, revisions]
 
 ## Four modes
 
-- **`activation`** — combines recency, reinforcement, and confidence. Best when you have no query and want "what's top-of-mind." Activation decay is a stable, empirically-tuned formula — don't tune without data.
+- **`activation`** — combines recency, reinforcement, and confidence. Best when you have no query and want "what's top-of-mind." Reinforcement comes from `tesseract_touch` and the deliberate-read paths, never from recall itself — see [Access reinforcement](#access-reinforcement--recall--use--touch) below, because this mode is only as good as what callers report back. Activation decay is a stable, empirically-tuned formula — don't tune without data.
 - **`chronological`** — newest first, no scoring. Use when you want a timeline or an audit-style scan.
 - **`similarity`** — pure cosine similarity between the query embedding and each candidate's stored vector. Requires `query` to be set and target revisions to be embedded. Unembedded revisions are silently skipped.
 - **`relevance`** — RRF fusion of BM25 (keyword) and cosine (semantic). Best default for "search for this topic." Surfaces fresh, pre-embedding memories via the BM25 arm that similarity-only would miss.
@@ -142,8 +142,44 @@ All rankings accept the same filter set:
 - `since` / `until` (RFC3339 bounds)
 - `facet_kinds` / `facet_sources` (knowledge-aware, via `tesseract_lookup`)
 
-## Access reinforcement
+## Access reinforcement — recall → use → touch
 
-Recall does **not** reinforce access. Being returned by a search is the system's guess, not a deliberate read — letting recall bump `activation` would let the ranker's own guesses self-reinforce into an echo chamber.
+**Recall results are unreinforced.** Recall does not bump `activation`, and that is deliberate: being returned by a search is the ranker's guess, not a deliberate read, and letting the ranker's guesses self-reinforce turns popular-because-returned into actually-useful within a few cycles.
 
-Reinforcement happens only on the deliberate-read paths: `memory_get` (resolve a known key) and `memory_get_revision` (pull a specific revision by ID). Those bump `activation`, `access_count`, and `last_accessed_at`. Activation **decay** is unchanged and still runs on a schedule.
+So the loop is three steps, and this is the default shape of a turn — not an option:
+
+```
+1. memory_recall namespaces=[...] query="..."      -> results, each carrying revision_id
+2. read / hydrate / do the work of the turn
+3. tesseract_touch revision_ids=["01HXA..."]       -> the ones that actually shaped it
+```
+
+Step 3 is what tells the ranking your guess was right. It is the **only** input activation has, and `activation` is the default ranking whenever you recall without a query — so a corpus nobody touches ranks by nothing.
+
+**Timing is the whole point.** Call `tesseract_touch` *after* the reasoning, not when the results arrive. Touching on arrival reinforces the guess at the moment it was made, which is the failure recall refuses to commit for you.
+
+**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** Little is gained by inflating: reinforcement closes a fixed fraction of the distance to a ceiling rather than adding a fixed amount, so repeated touches approach that ceiling with ever-smaller steps and never pass it. A touch moves two of the five terms `ranking=activation` scores with: it raises the stored `activation`, and it stamps `last_accessed_at`, which lifts the recency weight. Both push the same way, so what you report genuinely moves what surfaces next time — and a report padded with things you did not use spends that leverage on noise.
+
+Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. Revision IDs from `tesseract_lookup` work here too: memory and knowledge both resolve.
+
+`memory_get` and `memory_get_revision` reinforce on their own — resolving a known key or pulling a specific revision by ID is already deliberate. `tesseract_touch` covers the rest: the hits whose summary alone was enough, and the distinction between what you read and what you used.
+
+Activation **decay** runs on a schedule and is unchanged by any of this. Untouched memories fall toward a floor; touched ones settle wherever reinforcement and decay balance.
+
+## `estimate_only` — size a read before paying for it
+
+Pass `estimate_only=true` to get the envelope without the results. `memory_recall` answers `{manifest, estimate_only: true}`; `tesseract_lookup` answers `{facets, manifest, estimate_only: true}` — its own envelope, minus `results`. There is no `results` key at all, so an absent array means withheld, never empty.
+
+The numbers are **exact, not approximate**: `results_total`, `results_returned`, `bytes_returned`, `tokens_estimate` — and every facet count on lookup — are what the identical call without the flag returns, under the same `payload_mode`. Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at.
+
+It is worth most where a read would be cut short. Under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would, and that `next_cursor` is a valid cursor for the real read — the flag changes what is serialized, never which rows match or in what order.
+
+## `similarity_min` — a floor on how close a match must actually be
+
+A floor on cosine similarity between your query and each result. Results below it are dropped **before** `limit` applies, so it narrows the qualifying set rather than thinning a page of it. Range `[-1, 1]`; outside that is a `validation_error`.
+
+Omitting it is not the same as passing `0.0`. The floor is **inclusive** — a result clears it at a score equal to it, as `confidence_min` does — so a floor of `0.0` keeps results at exactly `0` (orthogonal to your query) and drops only those scoring below it (opposed to it), while omitting the floor keeps the negative ones too.
+
+It is only honored where cosine is the score: `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`. Passing it anywhere else — including the default `hybrid`, whose score is an RRF fusion rather than a similarity — is a `validation_error` rather than a silently ignored knob.
+
+**Not the same as `confidence_min`**, which filters on the confidence the author recorded when writing the memory. A result can match your query closely and still have been written tentatively.

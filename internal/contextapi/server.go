@@ -376,6 +376,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleMemoryGetCurrent(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/memory/history":
 		s.handleMemoryHistory(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/touch":
+		if r = s.authorizeMutatingRequest(w, r); r == nil {
+			return
+		}
+		s.handleMemoryTouch(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/deprecate":
 		if r = s.authorizeMutatingRequest(w, r); r == nil {
 			return

@@ -122,6 +122,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
 | `tesseract_lookup` | `memory:read` | `POST /v1/tesseract/lookup` | `tesseract_skills recall-and-ranking` | Search memory + knowledge together |
+| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn — the only input activation has. Memory and knowledge revision ids both resolve. |
 
 ### Meta
 
@@ -205,6 +206,16 @@ mcp__tesseract__memory_get_revision { "revision_id": "01HXYZ…" }
 ```
 
 Useful when a `memory_recall` hit references a revision you want to inspect in full (`tesseract_lookup` results surface revision ids too).
+
+### 6. Close the loop after using what you recalled
+
+```json
+mcp__tesseract__tesseract_touch { "revision_ids": ["01HXYZ…"] }
+```
+
+Recall returns results **unreinforced** — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning, naming only the revisions that actually shaped the turn. It is the only input `ranking=activation` has.
+
+Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal. See `tesseract_skills memory` for the worked loop.
 
 ## Scopes
 

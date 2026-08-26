@@ -95,6 +95,12 @@ var surfaceCatalog = []parityOp{
 	// ── Unified lookup ─────────────────────────────────────────────────
 	{MCP: "tesseract_lookup", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
 
+	// ── Reinforcement ──────────────────────────────────────────────────
+	// Cross-domain like tesseract_lookup: a revision ID resolves whether it
+	// was written as memory or as knowledge. The route sits under /v1/memory/
+	// because memory_state is where the reinforcement lands.
+	{MCP: "tesseract_touch", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/touch"},
+
 	// ── Meta (orientation / discovery) ─────────────────────────────────
 	{MCP: "tesseract_skills", Waiver: "MCP-only: progressive-discovery meta-tool; serves embedded skill MDs"},
 
@@ -159,6 +165,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/deprecate"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/promote"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/recall"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/touch"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/write"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
