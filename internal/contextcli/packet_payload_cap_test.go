@@ -112,3 +112,43 @@ func TestCLIPacketPayloadMaxBytesCaps(t *testing.T) {
 		t.Fatalf("uncapped item lost its payload: %v", only)
 	}
 }
+
+// TestCLIPacketUncappedPayloadIsRawJSONNotBase64 pins the SHAPE of an uncapped
+// payload, not merely its presence.
+//
+// `item["payload"]` holds a json.RawMessage, which encodes as the record's own
+// JSON. Handing encoding/json a plain []byte instead encodes it as a base64
+// STRING — still present, still a value under the same key, and a presence-only
+// assertion cannot tell the two apart. This test decodes the field as an object
+// and reads a key out of it, so only the raw form passes.
+func TestCLIPacketUncappedPayloadIsRawJSONNotBase64(t *testing.T) {
+	cli, out, errOut := newTestCLI(t)
+	seedPacketRecord(t, cli, "user/memory/cli-shape", "doc", `{"marker":"visible","n":7}`)
+
+	out.Reset()
+	errOut.Reset()
+	if code := cli.Run(context.Background(), []string{
+		"context", "packet", "--namespace", "user/memory/cli-shape",
+		"--no-pins", "--output", "json",
+	}); code != 0 {
+		t.Fatalf("packet failed: %s", errOut.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+		t.Fatalf("output is not valid JSON: %v", err)
+	}
+	item := body["items"].([]any)[0].(map[string]any)
+
+	payload, ok := item["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload is %T, want a JSON object — a base64 string here means the raw form was lost: %v",
+			item["payload"], item["payload"])
+	}
+	if payload["marker"] != "visible" {
+		t.Errorf("payload.marker = %v, want \"visible\"", payload["marker"])
+	}
+	if n, _ := payload["n"].(float64); int(n) != 7 {
+		t.Errorf("payload.n = %v, want 7", payload["n"])
+	}
+}

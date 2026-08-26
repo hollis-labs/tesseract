@@ -65,7 +65,10 @@ When the cap binds, the item carries **no `payload` key at all**. Instead it car
 
 So an absent `payload` under a cap means **withheld**, never empty. Use a small cap to survey a large surface cheaply, then re-read a narrower namespace set with no cap.
 
-`payload_mode` is **not** a projection knob on these two tools: they accept only `payload_mode: "full"`, and any other value is a `validation_error`. The `keys | summary | full` projection lives on the recall and lookup tools, where it means one thing.
+`payload_mode` is **not** a projection knob here. The `keys | summary | full` projection lives on the recall and lookup tools, where it means one thing.
+
+- `context_broker` and `context_pack` with `shape: "packet"` accept `payload_mode: "full"` as a no-op; any other value is a `validation_error`.
+- `context_pack` with `shape: "list"` returns whole payloads and has no cap at all, so it rejects `payload_mode` at **any** non-empty value — `"full"` included — along with `payload_max_bytes`, `include_pins` and `max_tokens_estimate`.
 
 ## Pins
 

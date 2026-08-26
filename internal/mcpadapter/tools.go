@@ -99,7 +99,9 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("kind", mcp.Required(), mcp.Description(registryKindArgDescription)),
 		mcp.WithString("name", mcp.Description("kind=namespaces only: return the single named namespace's ownership policy instead of the list. "+
 			"Answers `{namespace, owner_type, owner_id, policy}` — a different shape from the list, because it is a different question. "+
-			"Not accepted under kind=types or kind=views; passing it there is a validation_error rather than a silently ignored knob.")),
+			"Not accepted under kind=types or kind=views, and not accepted together with `prefix` or `limit`, which shape a list this arm does not return. "+
+			"Every one of those is a validation_error rather than a silently ignored knob. "+
+			"The retired context_namespace_show spelled this `namespace`; that name is refused, not ignored.")),
 		mcp.WithString("prefix", mcp.Description("kind=namespaces only: filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
 		mcp.WithNumber("limit", mcp.Description("kind=namespaces only: max namespaces to return (default 10, max 25)")),
 	), a.handleRegistryList)
@@ -264,26 +266,47 @@ func (a *Adapter) handleContextBroker(ctx context.Context, req mcp.CallToolReque
 // handleRegistryList serves the merged context_registry_list. `kind` selects
 // which registry is read.
 func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// The retired context_namespace_show spelled this argument `namespace`.
+	// Silently ignoring the old spelling would answer the whole-list question
+	// for a caller who asked about one namespace.
+	if errResult := rejectRetiredArg(req, "namespace",
+		"kind=namespaces names a single namespace with `name`, not `namespace`."); errResult != nil {
+		return errResult, nil
+	}
+
 	kind := req.GetString("kind", "")
 	name := strings.TrimSpace(req.GetString("name", ""))
 
-	if kind == "types" || kind == "views" {
-		// These two registries take no arguments. Accepting a knob and not
-		// applying it is the failure this merge exists to avoid.
-		for _, knob := range []string{"name", "prefix", "limit"} {
+	// Reject knobs the selected registry cannot honor. Accepting one and not
+	// applying it is the failure this merge exists to remove.
+	reject := func(armLabel string, knobs ...string) *mcp.CallToolResult {
+		for _, knob := range knobs {
 			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
-				return toolError("validation_error", knob+" is not accepted under kind="+kind), nil
+				return toolError("validation_error", knob+" is not accepted "+armLabel)
 			}
 		}
+		return nil
 	}
 
 	switch kind {
-	case "types":
-		return a.handleTypesList(ctx, req)
-	case "views":
+	case "types", "views":
+		// These two registries take no arguments at all.
+		if errResult := reject("under kind="+kind, "name", "prefix", "limit"); errResult != nil {
+			return errResult, nil
+		}
+		if kind == "types" {
+			return a.handleTypesList(ctx, req)
+		}
 		return a.handleViewsList(ctx, req)
 	case "namespaces":
 		if name != "" {
+			// `name` asks for ONE namespace's policy. prefix and limit shape a
+			// list, and namespaceShowResult cannot consult them — so they are
+			// refused here rather than accepted and dropped.
+			if errResult := reject("together with name, which returns a single namespace rather than a list",
+				"prefix", "limit"); errResult != nil {
+				return errResult, nil
+			}
 			return a.namespaceShowResult(ctx, name), nil
 		}
 		return a.handleNamespacesList(ctx, req)
@@ -328,6 +351,27 @@ func resolvePayloadMaxBytes(req mcp.CallToolRequest) (int, *mcp.CallToolResult) 
 	return n, nil
 }
 
+// rejectRetiredArg fails closed when a call carries an argument name this tool
+// used to accept under a different spelling.
+//
+// mcp-go does not set `additionalProperties: false` on a tool's input schema, so
+// an argument the tool no longer declares still ARRIVES at the handler — where
+// nothing reads it. That is the worst shape a rename can take. A migrated
+// `context_status_promote(to_status: "canonical")` call would otherwise find
+// `status` empty, advance the record ONE step to `reviewed`, and report success:
+// a plausible answer to a question the caller did not ask. A hard error naming
+// the new spelling is strictly better than a silent behavior change.
+//
+// Same reasoning as rejectRetiredPayloadMode; that one is separate because its
+// old name survives with one legal value rather than being retired outright.
+func rejectRetiredArg(req mcp.CallToolRequest, old, guidance string) *mcp.CallToolResult {
+	raw, ok := req.GetArguments()[old]
+	if !ok || raw == nil || raw == "" {
+		return nil
+	}
+	return toolError("validation_error", old+" is not an argument of this tool. "+guidance)
+}
+
 // rejectRetiredPayloadMode fails closed on the packet-shaped tools' former
 // payload_mode vocabulary.
 //
@@ -358,7 +402,7 @@ func rejectRetiredPayloadMode(req mcp.CallToolRequest) *mcp.CallToolResult {
 // valid JSON, and a json.RawMessage holding invalid JSON makes the whole
 // enclosing json.Marshal fail — which is how the former head_only mode turned
 // an oversized record into an EMPTY tool result rather than a truncated one.
-// See TestPayloadMaxBytes_CappedItemStaysValidJSON.
+// See TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot.
 //
 // Returns the number of payload bytes actually serialized, for the manifest's
 // byte and token accounting.

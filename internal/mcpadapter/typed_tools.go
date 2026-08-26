@@ -77,6 +77,8 @@ const (
 		"`reviewed` / `canonical`: the transition is checked against the record type's promotion rules and a status_promote audit event is written. " +
 		"`deprecated`: the record is retired; deprecating an already-deprecated record is a validation_error. " +
 		"Anything else is rejected by the type registry. " +
+		"The retired context_status_promote spelled this `to_status`; that name is refused rather than ignored, because ignoring it would " +
+		"silently advance one step instead of going where you asked. " +
 		"NOTE: the two paths are not symmetric today — the deprecate path writes no audit event from this surface, while its HTTP peer " +
 		"POST /v1/context/status/deprecate does. That asymmetry predates this tool and is preserved here rather than quietly changed."
 )
@@ -124,8 +126,19 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 // to both predecessors: context_status_promote(to_status="deprecated") was a
 // legal call that took the PROMOTION path (type-rule validation plus a
 // status_promote audit event), and the same target now takes the deprecation
-// path instead. See TestStatusSet_DeprecatedTargetTakesTheDeprecationPath.
+// path instead. See TestMerge_StatusSet_DeprecatedTargetTakesTheDeprecationPath.
+//
+// The retired context_status_promote spelled the target `to_status`. That name
+// is refused outright rather than ignored: an ignored `to_status` leaves
+// `status` empty, which means "advance one step" — so the caller would silently
+// get `reviewed` where they asked for `canonical`, and a success envelope
+// saying so. The check runs before the scope check because it is a fact about
+// the arguments, not about the caller.
 func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if errResult := rejectRetiredArg(req, "to_status",
+		"the target status is now named `status`; omit it to advance one step."); errResult != nil {
+		return errResult, nil
+	}
 	if req.GetString("status", "") == "deprecated" {
 		return a.handleStatusDeprecate(ctx, req)
 	}

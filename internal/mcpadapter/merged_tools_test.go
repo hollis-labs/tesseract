@@ -301,6 +301,41 @@ func TestContextPack_ShapeRejectsTheOtherShapesKnobs(t *testing.T) {
 	}
 }
 
+// TestContextPack_RejectListIsLoadBearing walks every knob in both shapes'
+// reject lists and asserts each is refused BY NAME, so no entry can be deleted
+// without a failure here.
+func TestContextPack_RejectListIsLoadBearing(t *testing.T) {
+	a := New(newTestStore(t), "")
+
+	for knob, value := range map[string]any{
+		"include_pins":        true,
+		"max_tokens_estimate": float64(10),
+		"payload_max_bytes":   float64(10),
+		"payload_mode":        "full",
+	} {
+		t.Run("list/"+knob, func(t *testing.T) {
+			body := mustCall(t, a.handleContextPackShape, map[string]any{"view_id": "task_exec", knob: value})
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, knob)
+		})
+	}
+	for knob, value := range map[string]any{
+		"view_id":    "task_exec",
+		"max_tokens": float64(10),
+	} {
+		t.Run("packet/"+knob, func(t *testing.T) {
+			body := mustCall(t, a.handleContextPackShape, map[string]any{"shape": "packet", knob: value})
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, knob)
+		})
+	}
+
+	// Positive controls: each shape's own arguments are accepted, so the
+	// rejections above are about the wrong-arm knob and nothing else.
+	wantNoError(t, mustCall(t, a.handleContextPackShape, map[string]any{"view_id": "task_exec", "max_tokens": float64(100)}))
+	wantNoError(t, mustCall(t, a.handleContextPackShape, map[string]any{"shape": "packet", "include_pins": false}))
+}
+
 // TestContextPack_UnrecognizedShapeFailsClosed: an unparseable arm selector
 // must not fall through to the default arm.
 func TestContextPack_UnrecognizedShapeFailsClosed(t *testing.T) {
@@ -436,22 +471,104 @@ func TestMerge_ChunkedIngest_ChunkedModeReturnsChunkResults(t *testing.T) {
 
 // TestContextIngest_ModeRejectsTheOtherModesKnobs pins the disjoint argument
 // sets, so a chunked call carrying `items` is told rather than half-honored.
+//
+// The bulk cases carry a VALID, non-empty `items` array on purpose. An earlier
+// draft passed `[]`, which handleBulkIngest independently rejects with
+// "items array is empty" — so both bulk cases returned validation_error whether
+// or not the knob rejection existed, and deleting the entire bulk reject list
+// left the suite green. The knob name is asserted in the message for the same
+// reason: a bare code assertion cannot tell WHICH rule fired.
 func TestContextIngest_ModeRejectsTheOtherModesKnobs(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, writeToken(t, s, []string{"write"}, []string{"*"}))
+	const validItems = `[{"namespace":"app/test/ingest","key":"a","payload":{"v":1}}]`
 	for _, tc := range []struct {
 		name string
+		knob string
 		args map[string]any
 	}{
-		{"namespace under bulk", map[string]any{"items": `[]`, "namespace": "app/x"}},
-		{"strategy under bulk", map[string]any{"items": `[]`, "strategy": "fixed"}},
-		{"items under chunked", map[string]any{"mode": "chunked", "namespace": "app/x", "key_prefix": "p", "text": "t", "items": `[]`}},
-		{"stop_on_error under chunked", map[string]any{"mode": "chunked", "namespace": "app/x", "key_prefix": "p", "text": "t", "stop_on_error": true}},
+		{"namespace under bulk", "namespace", map[string]any{"items": validItems, "namespace": "app/x"}},
+		{"strategy under bulk", "strategy", map[string]any{"items": validItems, "strategy": "fixed"}},
+		{"record_type under bulk", "record_type", map[string]any{"items": validItems, "record_type": "brief/summary"}},
+		{"items under chunked", "items", map[string]any{"mode": "chunked", "namespace": "app/x", "key_prefix": "p", "text": "t", "items": validItems}},
+		{"stop_on_error under chunked", "stop_on_error", map[string]any{"mode": "chunked", "namespace": "app/x", "key_prefix": "p", "text": "t", "stop_on_error": true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			wantErrorCode(t, mustCall(t, a.handleContextIngest, tc.args), "validation_error")
+			body := mustCall(t, a.handleContextIngest, tc.args)
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, tc.knob)
 		})
 	}
+
+	// Positive control: the same valid items with no cross-mode knob is
+	// accepted, so the rejections above are about the knob and not about the
+	// fixture being unwritable.
+	wantNoError(t, mustCall(t, a.handleContextIngest, map[string]any{"items": validItems}))
+}
+
+// wantMessageNames asserts the error message names the specific thing that was
+// rejected. A bare code assertion passes for any validation_error the handler
+// happens to reach first, which is how a guard comes to measure something other
+// than its own name.
+func wantMessageNames(t *testing.T, body map[string]any, want string) {
+	t.Helper()
+	msg, _ := body["message"].(string)
+	if !strings.Contains(msg, want) {
+		t.Fatalf("error message does not name %q — some other rule fired: %s", want, msg)
+	}
+}
+
+// TestContextIngest_BulkRejectListIsLoadBearing is the direct answer to the
+// review finding: it walks EVERY knob in the bulk arm's reject list and asserts
+// each one is refused by name. Deleting any entry from that list fails here.
+func TestContextIngest_BulkRejectListIsLoadBearing(t *testing.T) {
+	s := newTestStore(t)
+	a := New(s, writeToken(t, s, []string{"write"}, []string{"*"}))
+	const validItems = `[{"namespace":"app/test/ingest","key":"a","payload":{"v":1}}]`
+
+	for knob, value := range map[string]any{
+		"namespace":   "app/x",
+		"key_prefix":  "p",
+		"text":        "some text",
+		"record_type": "brief/summary",
+		"strategy":    "fixed",
+		"max_chars":   float64(100),
+		"overlap_pct": float64(10),
+		"actor":       "someone",
+	} {
+		t.Run(knob, func(t *testing.T) {
+			body := mustCall(t, a.handleContextIngest, map[string]any{"items": validItems, knob: value})
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, knob)
+		})
+	}
+}
+
+// TestContextIngest_ChunkedRejectListIsLoadBearing is the same walk for the
+// chunked arm.
+func TestContextIngest_ChunkedRejectListIsLoadBearing(t *testing.T) {
+	s := newTestStore(t)
+	a := New(s, writeToken(t, s, []string{"write"}, []string{"*"}))
+	base := func() map[string]any {
+		return map[string]any{"mode": "chunked", "namespace": "app/test/doc", "key_prefix": "p", "text": "One. Two."}
+	}
+
+	for knob, value := range map[string]any{
+		"items":         `[{"namespace":"app/x","key":"a","payload":{}}]`,
+		"embed":         true,
+		"stop_on_error": true,
+	} {
+		t.Run(knob, func(t *testing.T) {
+			args := base()
+			args[knob] = value
+			body := mustCall(t, a.handleContextIngest, args)
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, knob)
+		})
+	}
+
+	// Positive control: the base call without a cross-mode knob succeeds.
+	wantNoError(t, mustCall(t, a.handleContextIngest, base()))
 }
 
 // TestContextIngest_UnrecognizedModeFailsClosed: an unparseable arm selector
@@ -696,21 +813,130 @@ func TestMerge_NamespaceShow_KindNamespacesWithName(t *testing.T) {
 	}), "not_found")
 }
 
-// TestContextRegistryList_RejectsKnobsTheChosenKindCannotHonor: types and views
-// take no arguments, so a `prefix` there would be silently ignored.
+// TestContextRegistryList_RejectsKnobsTheChosenKindCannotHonor walks every knob
+// each arm cannot honor, asserting each is refused BY NAME.
+//
+// The kind=namespaces + name cases are the review finding: namespaceShowResult
+// takes only the namespace, so prefix and limit CANNOT reach it. Accepting them
+// there was the silently-ignored-knob failure this whole tool exists to remove.
 func TestContextRegistryList_RejectsKnobsTheChosenKindCannotHonor(t *testing.T) {
-	a := New(newTestStore(t), "")
+	s := newTestStore(t)
+	if err := s.UpsertNamespacePolicy(context.Background(), contextstore.NamespacePolicyEntry{
+		Namespace: "app/known/ns", OwnerType: "app", OwnerID: "test",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	a := New(s, "")
+
 	for _, tc := range []struct {
 		name string
+		knob string
 		args map[string]any
 	}{
-		{"name under types", map[string]any{"kind": "types", "name": "x"}},
-		{"prefix under types", map[string]any{"kind": "types", "prefix": "user/"}},
-		{"limit under views", map[string]any{"kind": "views", "limit": float64(5)}},
+		{"name under types", "name", map[string]any{"kind": "types", "name": "x"}},
+		{"prefix under types", "prefix", map[string]any{"kind": "types", "prefix": "user/"}},
+		{"limit under types", "limit", map[string]any{"kind": "types", "limit": float64(5)}},
+		{"name under views", "name", map[string]any{"kind": "views", "name": "x"}},
+		{"prefix under views", "prefix", map[string]any{"kind": "views", "prefix": "user/"}},
+		{"limit under views", "limit", map[string]any{"kind": "views", "limit": float64(5)}},
+		{"prefix with name", "prefix", map[string]any{"kind": "namespaces", "name": "app/known/ns", "prefix": "app/"}},
+		{"limit with name", "limit", map[string]any{"kind": "namespaces", "name": "app/known/ns", "limit": float64(5)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			wantErrorCode(t, mustCall(t, a.handleRegistryList, tc.args), "validation_error")
+			body := mustCall(t, a.handleRegistryList, tc.args)
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, tc.knob)
 		})
+	}
+
+	// Positive controls. Each of these is the SAME call minus the knob that was
+	// rejected, so a rejection above cannot be the arm failing for its own
+	// reasons. The name form resolves a real namespace, and prefix/limit are
+	// legal on the list form.
+	wantNoError(t, mustCall(t, a.handleRegistryList, map[string]any{"kind": "types"}))
+	wantNoError(t, mustCall(t, a.handleRegistryList, map[string]any{"kind": "views"}))
+	wantNoError(t, mustCall(t, a.handleRegistryList, map[string]any{"kind": "namespaces", "name": "app/known/ns"}))
+	wantNoError(t, mustCall(t, a.handleRegistryList, map[string]any{"kind": "namespaces", "prefix": "app/", "limit": float64(5)}))
+}
+
+// ── Retired argument NAMES fail closed, they are not ignored ────────────────
+//
+// mcp-go sets no additionalProperties:false, so an argument a tool no longer
+// declares still reaches the handler. Ignoring it is worse than a hard break:
+// the caller gets a plausible answer to a different question.
+
+// TestRetiredArg_ToStatusIsRefusedNotIgnored covers the migration of
+// context_status_promote(to_status=X) → context_status_set(status=X).
+//
+// Ignored, `to_status: "canonical"` would leave `status` empty, which means
+// "advance one step" — so a record at draft would go to `reviewed` and the
+// response would report success. That is the silent behavior change.
+func TestRetiredArg_ToStatusIsRefusedNotIgnored(t *testing.T) {
+	s, a := statusFixture(t)
+
+	body := mustCall(t, a.handleStatusSet, map[string]any{
+		"namespace": "app/test/status",
+		"key":       "doc",
+		"to_status": "canonical",
+	})
+	wantErrorCode(t, body, "validation_error")
+	wantMessageNames(t, body, "to_status")
+
+	// Nothing moved: the record is still at draft, not silently at reviewed.
+	head, err := s.Head(context.Background(), "app/test/status", "doc")
+	if err != nil {
+		t.Fatalf("head: %v", err)
+	}
+	if head.Status != "draft" {
+		t.Fatalf("status = %q, want draft — the retired argument was honored or the record advanced anyway", head.Status)
+	}
+
+	// Positive control: the new spelling works and lands on canonical, so the
+	// rejection above is about the ARGUMENT NAME and not about the transition.
+	wantNoError(t, mustCall(t, a.handleStatusSet, map[string]any{
+		"namespace": "app/test/status", "key": "doc", "status": "reviewed",
+	}))
+	got := wantNoError(t, mustCall(t, a.handleStatusSet, map[string]any{
+		"namespace": "app/test/status", "key": "doc", "status": "canonical",
+	}))
+	if got["to_status"] != "canonical" {
+		t.Fatalf("status=canonical landed on %v", got["to_status"])
+	}
+}
+
+// TestRetiredArg_NamespaceIsRefusedNotIgnored covers the migration of
+// context_namespace_show(namespace=X) → context_registry_list(kind=namespaces,
+// name=X).
+//
+// Ignored, `namespace` would leave `name` empty and the tool would answer the
+// WHOLE LIST — a different question, in a different shape, reported as success.
+func TestRetiredArg_NamespaceIsRefusedNotIgnored(t *testing.T) {
+	s := newTestStore(t)
+	for _, ns := range []string{"app/one/ns", "app/two/ns"} {
+		if err := s.UpsertNamespacePolicy(context.Background(), contextstore.NamespacePolicyEntry{
+			Namespace: ns, OwnerType: "app", OwnerID: "test",
+		}); err != nil {
+			t.Fatalf("seed %s: %v", ns, err)
+		}
+	}
+	a := New(s, "")
+
+	body := mustCall(t, a.handleRegistryList, map[string]any{
+		"kind":      "namespaces",
+		"namespace": "app/one/ns",
+	})
+	wantErrorCode(t, body, "validation_error")
+	wantMessageNames(t, body, "namespace")
+	if _, listed := body["items"]; listed {
+		t.Fatalf("the retired argument was ignored and the whole list came back: %v", body)
+	}
+
+	// Positive control: the new spelling answers the single-namespace question.
+	got := wantNoError(t, mustCall(t, a.handleRegistryList, map[string]any{
+		"kind": "namespaces", "name": "app/one/ns",
+	}))
+	if got["namespace"] != "app/one/ns" {
+		t.Fatalf("name form returned %v", got)
 	}
 }
 
