@@ -42,7 +42,7 @@ Rotation checklist:
 4. Revoke the old token.
 
 ## Service runner
-- Start API server (default `:8080`): `tesseract serve`
+- Start API server (default `:8089`, see `parseServeArgs` in `cmd/tesseract/main.go`): `tesseract serve`
 - Start with managed token auth: `tesseract serve --managed-auth --addr :8080`
 - Start with legacy static token: `tesseract serve --static-token <token> --addr :8080`
 - Enable local diagnostics endpoint: `tesseract serve --metrics --addr :8080`
@@ -326,7 +326,9 @@ Parity pack:
 ## Embedding smoke test (`cmd/smoke`)
 
 A one-shot program that exercises the full embedding pipeline against the
-live `~/.tesseract` store: opens `tesseract.Open` with an OpenAI embedder and a
+live store. It calls `config.ResolveLayout()`, so it targets the same XDG
+locations as the daemon — `tesseract path` prints them. It opens
+`tesseract.Open` with an OpenAI embedder and a
 SQLite-backed queue, writes a memory revision, waits for the queue worker
 to populate `embedding_model`/`embedding_vector`, then runs a
 `RankingSimilarity` recall to confirm end-to-end correctness.

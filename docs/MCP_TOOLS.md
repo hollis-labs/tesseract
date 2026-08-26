@@ -17,14 +17,16 @@ here is registered by `tesseract mcp` and has an HTTP peer under
       "tesseract": {
         "type": "stdio",
         "command": "/Users/<you>/go/bin/tesseract",
-        "args": ["mcp", "--token", "<hex-capability-token>"],
-        "env": { "XDG_DATA_HOME": "/Users/<you>/.tesseract", "XDG_STATE_HOME": "/Users/<you>/.tesseract" }
+        "args": ["mcp", "--token", "<hex-capability-token>"]
       }
     }
   }
   ```
 - **Tool ID prefix:** `mcp__tesseract__` (Claude side). Example: `mcp__tesseract__memory_write`.
-- **Data root:** `~/.tesseract/` by default, shared with the HTTP server unless you override the config paths.
+- **Data root:** the XDG layout by default — `~/.local/share/tesseract` for data,
+  `~/.local/state/tesseract` for state — shared with the HTTP server. Run
+  `tesseract path` to print the resolved layout rather than trusting this line;
+  it creates nothing.
 - **Capability token:** required for any tool that requires a `write`/`read`/`promote` scope. Token claims are checked per-tool.
 - **No duplicated logic:** every tool and its HTTP peer call the same store/domain function. Responses match 1:1.
 

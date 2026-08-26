@@ -16,20 +16,17 @@ The codebase is closer to beta than the repo presentation suggests:
 
 ### 1. Make public builds work outside the author workspace
 
-Current blocker:
+Current state:
 
-- [go.mod](/Users/chrispian/dev/hollis-labs/apps/tesseract/go.mod) still contains local `replace` directives to `../../libs/...`.
-
-Impact:
-
-- `go install github.com/hollis-labs/tesseract/cmd/tesseract@latest` will fail for external users.
-- Any downstream consumer building from the public repo will get a broken module unless they have the same local monorepo layout.
+- `go.mod` carries no `replace` directives — `grep -c replace go.mod` → 0 — and every
+  `github.com/hollis-labs/*` dependency resolves to a tagged version. The local-monorepo
+  path assumption that blocked external builds is gone. Re-derive before acting on this.
 
 Required work:
 
-- Remove all local `replace` directives from `go.mod`.
-- Ensure every Hollis Labs dependency resolves to a public tagged module.
-- Verify `go install github.com/hollis-labs/tesseract/cmd/tesseract@<tag>` works in a clean environment.
+- Verify `go install github.com/hollis-labs/tesseract/cmd/tesseract@<tag>` works in a
+  clean environment. Not yet done — this is the one step the measurement above cannot
+  stand in for, since it exercises module resolution over the network.
 
 Definition of done:
 
@@ -157,10 +154,8 @@ Definition of done:
 
 Current hygiene issues:
 
-- Committed root binary: [tesseract](/Users/chrispian/dev/hollis-labs/apps/tesseract/tesseract)
-- Committed generated frontend bundle: `internal/webui/dist/`
-- Local symlink in repo root: `plugin -> /Users/chrispian/Projects-apps/plugin`
-- Local data-ish directories: `data/`, `outbox/`
+- Committed generated frontend bundle: `internal/webui/dist/` —
+  `git ls-files internal/webui/dist | wc -l` → 3. Re-derive before acting on it.
 
 Decision needed:
 
@@ -168,8 +163,6 @@ Decision needed:
 
 Required work:
 
-- Remove the committed root binary.
-- Remove the local symlink.
 - Decide whether `internal/webui/dist/` is source-controlled or generated.
 - Audit `.gitignore` for Tesseract-era paths instead of Tesseract-era assumptions.
 
