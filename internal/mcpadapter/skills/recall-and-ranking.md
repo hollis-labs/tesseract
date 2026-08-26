@@ -178,7 +178,7 @@ It is worth most where a read would be cut short. Under `budget_bytes` or `budge
 
 A floor on cosine similarity between your query and each result. Results below it are dropped **before** `limit` applies, so it narrows the qualifying set rather than thinning a page of it. Range `[-1, 1]`; outside that is a `validation_error`.
 
-Omitting it is not the same as passing `0.0`. Cosine is legitimately negative for opposed content, so a floor of `0.0` removes real rows that no floor would return.
+Omitting it is not the same as passing `0.0`. The floor is **inclusive** — a result clears it at a score equal to it, as `confidence_min` does — so a floor of `0.0` keeps results at exactly `0` (orthogonal to your query) and drops only those scoring below it (opposed to it), while omitting the floor keeps the negative ones too.
 
 It is only honored where cosine is the score: `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`. Passing it anywhere else — including the default `hybrid`, whose score is an RRF fusion rather than a similarity — is a `validation_error` rather than a silently ignored knob.
 
