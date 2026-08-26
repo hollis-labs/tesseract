@@ -21,13 +21,13 @@ func TestActivationDecay_ReducesAfterTime(t *testing.T) {
 		t.Fatalf("WriteRevision: %v", writeErr)
 	}
 
-	// Backdate last_accessed_at to 14 days ago.
+	// Backdate the decay baseline to 14 days ago.
 	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.RFC3339Nano)
 	if _, dbErr := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
+		`UPDATE memory_state SET last_decayed_at = ? WHERE memory_id = ?`,
 		oldTime, rev.MemoryID,
 	); dbErr != nil {
-		t.Fatalf("backdate last_accessed_at: %v", dbErr)
+		t.Fatalf("backdate last_decayed_at: %v", dbErr)
 	}
 
 	if decayErr := ms.ExportApplyActivationDecay(ctx); decayErr != nil {
@@ -57,13 +57,13 @@ func TestActivationDecay_FloorsAt005(t *testing.T) {
 		t.Fatalf("WriteRevision: %v", writeErr)
 	}
 
-	// Backdate last_accessed_at to 365 days ago — far past any floor.
+	// Backdate the decay baseline to 365 days ago — far past any floor.
 	oldTime := time.Now().UTC().Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano)
 	if _, dbErr := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
+		`UPDATE memory_state SET last_decayed_at = ? WHERE memory_id = ?`,
 		oldTime, rev.MemoryID,
 	); dbErr != nil {
-		t.Fatalf("backdate last_accessed_at: %v", dbErr)
+		t.Fatalf("backdate last_decayed_at: %v", dbErr)
 	}
 
 	if decayErr := ms.ExportApplyActivationDecay(ctx); decayErr != nil {
@@ -162,10 +162,12 @@ func TestTTLExpiry_UpdatesCurrentRevision(t *testing.T) {
 	}
 }
 
-// TestDecayJob_SuccessiveRunsFurtherDecay verifies that running decay twice
-// continues to reduce activation (relative decay compounds). The second run
-// applies the decay factor to the already-decayed value.
-func TestDecayJob_SuccessiveRunsFurtherDecay(t *testing.T) {
+// TestDecayJob_SuccessiveRunsDecayFurtherOnlyAsTimePasses verifies the two
+// halves of "successive runs": a second run over a further interval reduces
+// activation again, and the reduction is bounded by the floor. Whether a repeat
+// run with no interval between changes anything is the separate and sharper
+// property in decay_baseline_test.go.
+func TestDecayJob_SuccessiveRunsDecayFurtherOnlyAsTimePasses(t *testing.T) {
 	ctx := context.Background()
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -175,17 +177,16 @@ func TestDecayJob_SuccessiveRunsFurtherDecay(t *testing.T) {
 		t.Fatalf("WriteRevision: %v", writeErr)
 	}
 
-	// Backdate to 14 days ago.
-	oldTime := time.Now().UTC().Add(-14 * 24 * time.Hour).Format(time.RFC3339Nano)
+	base := time.Now().UTC()
 	if _, dbErr := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
-		oldTime, rev.MemoryID,
+		`UPDATE memory_state SET last_decayed_at = ? WHERE memory_id = ?`,
+		base.Format(time.RFC3339Nano), rev.MemoryID,
 	); dbErr != nil {
-		t.Fatalf("backdate: %v", dbErr)
+		t.Fatalf("set decay baseline: %v", dbErr)
 	}
 
-	// First decay run.
-	if decayErr := ms.ExportApplyActivationDecay(ctx); decayErr != nil {
+	// First run: one half-life on from the baseline.
+	if decayErr := ms.ExportApplyActivationDecayAt(ctx, base.Add(336*time.Hour)); decayErr != nil {
 		t.Fatalf("first applyActivationDecay: %v", decayErr)
 	}
 	state1, stateErr1 := ms.GetState(ctx, rev.MemoryID)
@@ -193,8 +194,8 @@ func TestDecayJob_SuccessiveRunsFurtherDecay(t *testing.T) {
 		t.Fatalf("GetState after first decay: %v", stateErr1)
 	}
 
-	// Second decay run — applies relative decay to the already-decayed value.
-	if decayErr := ms.ExportApplyActivationDecay(ctx); decayErr != nil {
+	// Second run: another half-life on again.
+	if decayErr := ms.ExportApplyActivationDecayAt(ctx, base.Add(672*time.Hour)); decayErr != nil {
 		t.Fatalf("second applyActivationDecay: %v", decayErr)
 	}
 	state2, stateErr2 := ms.GetState(ctx, rev.MemoryID)
@@ -202,12 +203,12 @@ func TestDecayJob_SuccessiveRunsFurtherDecay(t *testing.T) {
 		t.Fatalf("GetState after second decay: %v", stateErr2)
 	}
 
-	// Second run should produce equal or lower activation (relative decay compounds).
-	if state2.Activation > state1.Activation+0.001 {
-		t.Fatalf("expected activation to not increase, got %f then %f",
+	if state2.Activation >= state1.Activation {
+		t.Fatalf("a further half-life did not reduce activation: %f then %f",
 			state1.Activation, state2.Activation)
 	}
-	// Both should still be above the floor (0.05).
+	// Both should still be above the floor (0.05): two half-lives from the 1.0
+	// insert default is 0.25, well clear of it.
 	if state1.Activation < 0.05 || state2.Activation < 0.05 {
 		t.Fatalf("activation below floor: run1=%f run2=%f", state1.Activation, state2.Activation)
 	}

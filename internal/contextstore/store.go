@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion = 13
+	schemaVersion = 14
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -677,6 +677,60 @@ CREATE TABLE IF NOT EXISTS pointer_verifications (
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_pointer_verifications_outcome ON pointer_verifications(outcome)`); err != nil {
+				return err
+			}
+		case 14:
+			// Decay baseline (CW-20260826-0001).
+			//
+			// memory_state.last_decayed_at records the instant up to which decay
+			// has been applied to a row. The decay pass computes elapsed from it
+			// and advances it in the same UPDATE that writes activation, so a
+			// pass can never re-apply time it has already applied. Before this
+			// column, elapsed was computed from last_accessed_at (else
+			// created_at) — a baseline the pass never moved — so every pass
+			// re-multiplied the already-decayed value over a growing interval
+			// and decay compounded superlinearly.
+			//
+			// It is a separate column rather than a reuse of last_accessed_at
+			// on purpose. Advancing last_accessed_at on decay would fix the
+			// compounding by making the decay job forge a read, which destroys
+			// the one signal tesseract_touch exists to record and corrupts
+			// every "when was this last actually read" diagnostic.
+			//
+			// NULL means "never decayed"; readers fall back to created_at,
+			// which is the honest baseline for a fresh row: activation is the
+			// 1.0 insert default, established at created_at. Nothing has to
+			// remember to stamp the column on INSERT for that to be right.
+			if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_state ADD COLUMN last_decayed_at TEXT NULL`); err != nil {
+				return err
+			}
+			// Existing rows are stamped `now` rather than backfilled from
+			// last_accessed_at/created_at, and this is a deliberate choice
+			// about damage rather than a default.
+			//
+			// Backfilling the old baseline would hand the first post-migration
+			// pass an elapsed of the row's entire lifetime — months, for most
+			// of a mature corpus — and one honest application of the half-life
+			// over that interval drives essentially every row to the floor in
+			// a single pass. That would finish, in one transaction, exactly the
+			// destruction this ticket exists to stop, and it would take the
+			// small set of recently-reinforced rows that still carry signal
+			// with it.
+			//
+			// Stamping `now` stops the compounding at the migration instant and
+			// freezes each row at its current value, correct or not. It makes
+			// no attempt to reconstruct what activation "should" have been:
+			// activation is a mutable column with no history — memory_state is
+			// overwritten in place and no audit records prior values — so the
+			// pre-decay levels are not recoverable from this database. Any
+			// backfill curve would be invented, and an invented level is worse
+			// than a visibly frozen one because it looks measured.
+			//
+			// The corpus therefore keeps its existing distribution, most of it
+			// crushed to the floor, and re-accumulates real signal from touches
+			// after this point. That is the recovery path; there is no other.
+			if _, err = tx.ExecContext(ctx, `UPDATE memory_state SET last_decayed_at = ?`,
+				time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 				return err
 			}
 		}
