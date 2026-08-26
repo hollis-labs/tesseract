@@ -113,12 +113,34 @@ func TestNamedSkillsCarryTheWorkedLoop(t *testing.T) {
 				t.Errorf("skill %q does not carry %q — %s", skill, claim.fragment, claim.why)
 			}
 		}
-		// A worked loop names all three steps in order. "Mentions the tool
-		// somewhere" is what this is distinguishing itself from.
-		for _, step := range []string{"recall", "use", "touch"} {
-			if !strings.Contains(body, step) {
-				t.Errorf("skill %q does not name the %q step of the loop", skill, step)
-			}
+		// The loop has to be named as a unit, not assembled by the reader from
+		// three words that happen to appear.
+		//
+		// An earlier version of this check looked for "recall", "use" and
+		// "touch" with strings.Contains and claimed to be checking all three
+		// "in order". It checked neither: Contains has no ordering, and "use"
+		// matches inside `user`, `used` and `because` — 20 hits in
+		// recall-and-ranking.md alone. It would have passed on a skill that
+		// never mentioned the loop.
+		if !strings.Contains(body, "recall → use → touch") {
+			t.Errorf("skill %q does not name the loop as a unit (\"recall → use → touch\") — "+
+				"the ticket requires it read as the default workflow, and three words "+
+				"scattered through a page do not", skill)
+		}
+		// And the steps appear in the order the loop runs. Both tool names are
+		// distinctive enough that their first occurrence is a real position,
+		// unlike the bare English words.
+		recallAt := strings.Index(body, "memory_recall")
+		touchAt := strings.Index(body, "tesseract_touch")
+		switch {
+		case recallAt < 0:
+			t.Errorf("skill %q never names memory_recall, so it cannot be showing a worked loop", skill)
+		case touchAt < 0:
+			t.Errorf("skill %q never names tesseract_touch", skill)
+		case touchAt < recallAt:
+			t.Errorf("skill %q introduces tesseract_touch (at %d) before memory_recall (at %d) — "+
+				"the closing step cannot be taught before the step it closes",
+				skill, touchAt, recallAt)
 		}
 		if !strings.Contains(body, "revision_id") {
 			t.Errorf("skill %q does not say what to pass to tesseract_touch", skill)

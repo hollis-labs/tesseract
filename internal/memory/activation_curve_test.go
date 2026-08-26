@@ -423,14 +423,24 @@ func TestReinforcementDecayEquilibrium(t *testing.T) {
 			if got >= 2.0 {
 				t.Errorf("steady state %v reached the ceiling; no touch rate should", got)
 			}
-			// The headroom above the insert default is what makes reinforcement
-			// mean anything: a memory used through the day must be able to
-			// outrank one merely written today. This is the ranking-level
-			// counterpart of TestFreshMemoryMovesUnderTouch.
+			// Headroom above the insert default is what makes reinforcement
+			// mean anything at all: a memory used through the day settles ABOVE
+			// the value one merely written today starts at. Without it, touching
+			// buys no movement in the stored column for exactly the memories the
+			// loop exists to reinforce.
+			//
+			// Scope: this is a claim about memory_state.activation, the column
+			// this curve governs. It is NOT a claim about rank order.
+			// ranking=activation scores with activationScore (ranking.go), which
+			// multiplies the column by status, confidence, origin and recency
+			// weights — so two memories can order either way depending on those.
+			// TestFreshMemoryMovesUnderTouch is the per-touch counterpart of
+			// this; neither says anything about the composite score.
 			if tc.gapHours <= 6 && got <= insertDefaultActivation {
 				t.Errorf("steady state at a %dh touch interval = %v, which does not clear the "+
-					"insert default of %v — a frequently used memory would rank no higher than a "+
-					"brand-new one", tc.gapHours, got, insertDefaultActivation)
+					"insert default of %v — reinforcement would leave a frequently used memory's "+
+					"stored activation no higher than a brand-new one's",
+					tc.gapHours, got, insertDefaultActivation)
 			}
 		})
 	}

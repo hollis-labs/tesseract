@@ -138,6 +138,12 @@ type TouchResult struct {
 // Unknown revision IDs are reported in TouchResult.NotFound rather than raised:
 // a partly-stale set of IDs is a normal thing for a caller to hold, and failing
 // the whole call would cost the reinforcements that were valid.
+//
+// The accounting invariant that makes NotFound usable: every DISTINCT ID in the
+// request is accounted for exactly once, either by contributing to Touched or by
+// appearing in NotFound. Nothing is silently dropped — including the empty
+// string. Touched counts memories rather than IDs, so it is <= the number of
+// distinct IDs that resolved, never a per-ID tally.
 func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (TouchResult, error) {
 	res := TouchResult{NotFound: []string{}}
 	if len(revisionIDs) == 0 {
@@ -152,10 +158,12 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 	seenMemory := make(map[string]struct{}, len(revisionIDs))
 	var memoryIDs []string
 
+	// The empty string is deliberately NOT skipped here. Every distinct ID a
+	// caller sends must come back either counted in Touched or listed in
+	// NotFound — a caller diffing NotFound against what it sent should find a
+	// hole nowhere. "" resolves to no row and lands in NotFound like any other
+	// ID that names nothing. See TestTouchRevisions_AccountsForEveryDistinctID.
 	for _, revID := range revisionIDs {
-		if revID == "" {
-			continue
-		}
 		if _, dup := seenRevision[revID]; dup {
 			continue
 		}

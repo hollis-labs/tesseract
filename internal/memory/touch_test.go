@@ -12,6 +12,7 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -215,6 +216,25 @@ func TestTouchRevisions_EmptyIsANoop(t *testing.T) {
 	}
 }
 
+// TestTouchRevisionsCapIsOneHundred pins the cap to a literal stated here.
+//
+// Every other reference to the cap — this file's boundary test, the parity
+// tests, and the caller-facing tool description, which renders it with
+// strconv.Itoa — derives from memory.MaxTouchRevisions. Deriving the expectation
+// from the constant asserts the constant against itself: changing it from 100 to
+// 5 passed the entire suite. The cap is a documented contract, so a 20x change
+// to it must break something.
+//
+// This is the same anchoring the curve literals get, and for the same reason.
+func TestTouchRevisionsCapIsOneHundred(t *testing.T) {
+	if memory.MaxTouchRevisions != 100 {
+		t.Errorf("MaxTouchRevisions = %d, want 100 — this is a documented contract that "+
+			"renders into the tesseract_touch tool description; changing it means changing "+
+			"that description and this literal together",
+			memory.MaxTouchRevisions)
+	}
+}
+
 func TestTouchRevisions_RejectsOversizedBatch(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -235,6 +255,62 @@ func TestTouchRevisions_RejectsOversizedBatch(t *testing.T) {
 	_, err = ms.TouchRevisions(ctx, ids[:memory.MaxTouchRevisions])
 	if err != nil {
 		t.Errorf("exactly %d ids must be accepted, got %v", memory.MaxTouchRevisions, err)
+	}
+}
+
+// TestTouchRevisions_AccountsForEveryDistinctID pins the invariant that makes
+// not_found usable: every distinct ID sent comes back either counted in Touched
+// or listed in NotFound, so a caller diffing the two against what it sent finds
+// no hole.
+//
+// The empty string is the case that was silently dropped before: it was skipped
+// ahead of the lookup, so it appeared in neither tally.
+func TestTouchRevisions_AccountsForEveryDistinctID(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	real1, err := ms.WriteRevision(ctx, sampleInput("account.one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	real2, err := ms.WriteRevision(ctx, sampleInput("account.two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two resolvable, two not — one of which is the empty string — plus a
+	// duplicate of each kind, which must collapse rather than double-count.
+	sent := []string{real1.RevisionID, "", "01MISSING", real2.RevisionID, "", real1.RevisionID}
+	distinct := map[string]struct{}{}
+	for _, id := range sent {
+		distinct[id] = struct{}{}
+	}
+
+	res, err := ms.TouchRevisions(ctx, sent)
+	if err != nil {
+		t.Fatalf("TouchRevisions: %v", err)
+	}
+
+	if res.Touched+len(res.NotFound) != len(distinct) {
+		t.Errorf("touched(%d) + not_found(%d) = %d, want %d — every distinct ID sent must be "+
+			"accounted for exactly once (sent %v, not_found %v)",
+			res.Touched, len(res.NotFound), res.Touched+len(res.NotFound), len(distinct),
+			sent, res.NotFound)
+	}
+	if res.Touched != 2 {
+		t.Errorf("Touched = %d, want 2", res.Touched)
+	}
+	// Both unresolvable IDs, the empty string included, are named back.
+	gotNotFound := map[string]bool{}
+	for _, id := range res.NotFound {
+		gotNotFound[id] = true
+	}
+	for _, want := range []string{"", "01MISSING"} {
+		if !gotNotFound[want] {
+			t.Errorf("NotFound = %v, missing %q — it must be named back, not dropped",
+				res.NotFound, want)
+		}
 	}
 }
 
@@ -282,6 +358,15 @@ func TestTouchRevisions_SpansDomains(t *testing.T) {
 // behavior. Touch is a write from a read context; if it ever grows a content
 // field it becomes a second read path, and callers will reach for it to hydrate
 // — which would reinforce on retrieval, the thing recall refuses to do.
+//
+// The field set is enumerated by reflection and compared against a list stated
+// here. An earlier version of this test compared against a keyed composite
+// literal and claimed a new field "cannot be added without changing this
+// literal" — which was false: a keyed literal compiles unchanged when a field is
+// added, so the guard passed for exactly the change it advertised catching. An
+// unkeyed literal would break compilation, but `go vet`'s composites check
+// forbids unkeyed literals for a type from another package, so reflection is the
+// form left that actually fails.
 func TestTouchRevisions_DoesNotReturnContent(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -295,12 +380,22 @@ func TestTouchRevisions_DoesNotReturnContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// TouchResult has exactly two fields. Reflection would restate the struct;
-	// this states the contract as prose the compiler checks: adding a field
-	// breaks nothing here, but adding a CONTENT field cannot be done without
-	// changing this literal.
-	want := memory.TouchResult{Touched: 1, NotFound: []string{}}
-	if res.Touched != want.Touched || len(res.NotFound) != len(want.NotFound) {
-		t.Errorf("TouchResult = %+v, want %+v", res, want)
+	if res.Touched != 1 || len(res.NotFound) != 0 {
+		t.Errorf("TouchResult = %+v, want {Touched:1 NotFound:[]}", res)
+	}
+
+	// Stated here, not derived from the struct.
+	want := []string{"Touched", "NotFound"}
+	ty := reflect.TypeOf(memory.TouchResult{})
+	var got []string
+	for i := 0; i < ty.NumField(); i++ {
+		got = append(got, ty.Field(i).Name)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("TouchResult fields = %v, want exactly %v.\n"+
+			"A new field here is a decision, not an oversight: touch answers what it did, "+
+			"never what it read. A content field would make it a second read path, and "+
+			"callers would hydrate through it — reinforcing on retrieval, which recall refuses.",
+			got, want)
 	}
 }

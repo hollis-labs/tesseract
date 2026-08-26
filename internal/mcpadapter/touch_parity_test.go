@@ -220,6 +220,49 @@ func TestTouchParity_WrongArgumentNameIsInertOnBothDoors(t *testing.T) {
 	}
 }
 
+// TestTouchParity_AcceptsTheFormTheSchemaAdvertises closes a gap between what
+// the tool declares and what the tests exercise.
+//
+// revision_ids is declared with mcp.WithString, so a client generating a call
+// from the input schema sends a JSON-encoded STRING: "[\"01HX...\"]", not a JSON
+// array. parseStringArrayArg accepts both, but every other test here passes
+// []any — the native form — so the form the schema actually advertises was the
+// one form never driven through the door advertising it.
+//
+// Both forms must reinforce identically. If they ever diverge, the schema-
+// conformant client is the one that breaks, and it is the one least likely to be
+// holding the test suite.
+func TestTouchParity_AcceptsTheFormTheSchemaAdvertises(t *testing.T) {
+	a, _, ms := touchSurfaces(t)
+
+	viaNative := seedTouchable(t, ms, "schemaform.native")
+	viaString := seedTouchable(t, ms, "schemaform.string")
+
+	native := touchViaMCP(t, a, map[string]any{
+		"revision_ids": []any{viaNative.RevisionID},
+	})
+	// The stringified form, exactly as a schema-driven client would build it.
+	stringified := touchViaMCP(t, a, map[string]any{
+		"revision_ids": `["` + viaString.RevisionID + `"]`,
+	})
+
+	if native.Touched != 1 || stringified.Touched != 1 {
+		t.Errorf("touched: native=%d stringified=%d, want 1 from each "+
+			"(not_found native=%v stringified=%v)",
+			native.Touched, stringified.Touched, native.NotFound, stringified.NotFound)
+	}
+
+	nativeAct, nativeCount := activationFor(t, ms, viaNative.MemoryID)
+	stringAct, stringCount := activationFor(t, ms, viaString.MemoryID)
+	if nativeAct != stringAct || nativeCount != stringCount {
+		t.Errorf("the two argument encodings left different state: native=(%v,%d) stringified=(%v,%d)",
+			nativeAct, nativeCount, stringAct, stringCount)
+	}
+	if stringAct != 0.245 {
+		t.Errorf("activation after one stringified touch = %v, want 0.245", stringAct)
+	}
+}
+
 // TestTouchParity_MCPRequiresTheArgument checks the declaration, not just the
 // behavior: revision_ids is marked Required on the MCP tool, so an agent's
 // client refuses the call before it reaches the handler. The HTTP peer has no
