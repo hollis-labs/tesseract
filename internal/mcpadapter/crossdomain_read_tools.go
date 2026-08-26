@@ -67,6 +67,19 @@ func domainUnavailable(domain string) *mcp.CallToolResult {
 		"no store is wired for domain "+domain+" on this deployment")
 }
 
+// revisionStoreUnavailable is the answer when a revision-level op is reached on
+// a deployment with no revision store.
+//
+// Registration already gates these ops, so nothing on the wire can reach this
+// today. It exists because registration is a gate one refactor away from being
+// removed, and the failure it was hiding is a nil dereference inside the store
+// — a panic that takes the stdio server down rather than answering the caller.
+// A named error is the cheaper failure by a wide margin.
+func revisionStoreUnavailable() *mcp.CallToolResult {
+	return toolError("domain_unavailable",
+		"no revision store is wired on this deployment")
+}
+
 // revisionStore returns the shared memory_revisions store, from whichever field
 // is wired.
 //
@@ -230,12 +243,19 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 
 // handleTesseractGet dispatches on `domain`.
 //
-// Each arm is the body of the tool it replaces, unchanged apart from reading
-// `key` where the memory and knowledge tools read `memory_key`. That includes
-// the parts that differ between arms and would be tempting to unify: the
-// context arm performs no scope check (the context read surface never has), and
-// only the memory arm reinforces. Both differences are contracts callers
-// already depend on, so they are preserved and documented rather than smoothed.
+// Each arm is the body of the tool it replaces, with two deliberate departures:
+// it reads `key` where the memory and knowledge tools read `memory_key`, and an
+// empty `namespace` or `key` is a validation_error here where those tools
+// reached the store and surfaced not_found. The second moves the MCP side onto
+// the rule its HTTP peers already applied, so it narrows a divergence rather
+// than opening one — but it IS a changed response for that input, and calling
+// the arms "unchanged" would have hidden it.
+//
+// What is preserved is everything that differs BETWEEN arms and would be
+// tempting to unify: the context arm performs no scope check (the context read
+// surface never has), and only the memory arm reinforces. Both are contracts
+// callers already depend on, so they are kept and documented rather than
+// smoothed.
 func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	domain, errRes := resolveReadDomain(req)
 	if errRes != nil {
@@ -264,13 +284,23 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 		if a.MemoryStore == nil {
 			return domainUnavailable(domain), nil
 		}
-		// Deliberate read: GetCurrentReinforced bumps activation/access_count.
-		rev, err = a.MemoryStore.GetCurrentReinforced(ctx, namespace, key)
+		// Deliberate read: this bumps activation/access_count — but only after
+		// the domain check, so a knowledge row resolved through domain=memory
+		// is neither returned nor reinforced.
+		rev, err = a.MemoryStore.GetCurrentInDomainReinforced(ctx, domains.Memory, namespace, key)
 	case string(domains.Knowledge):
 		if a.KnowledgeStore == nil {
 			return domainUnavailable(domain), nil
 		}
 		rev, err = a.KnowledgeStore.GetCurrent(ctx, namespace, key)
+	default:
+		// resolveReadDomain accepts whatever readDomainVocabulary offers, and
+		// that is derived from domains.All(). A domain added to the registry
+		// therefore becomes callable here before it has an arm. Falling through
+		// would return the zero Revision with a nil error — a fabricated empty
+		// record, which is exactly the silently-empty read resolveReadDomain
+		// exists to prevent.
+		return domainUnavailable(domain), nil
 	}
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -316,12 +346,16 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 		if a.MemoryStore == nil {
 			return domainUnavailable(domain), nil
 		}
-		revs, err = a.MemoryStore.GetHistory(ctx, namespace, key)
+		revs, err = a.MemoryStore.GetHistoryInDomain(ctx, domains.Memory, namespace, key)
 	case string(domains.Knowledge):
 		if a.KnowledgeStore == nil {
 			return domainUnavailable(domain), nil
 		}
 		revs, err = a.KnowledgeStore.GetHistory(ctx, namespace, key)
+	default:
+		// See handleTesseractGet: without this, an accepted-but-unhandled
+		// domain answers a bare `null` instead of saying it has no arm.
+		return domainUnavailable(domain), nil
 	}
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
@@ -351,8 +385,12 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req mcp.CallTo
 	if revisionID == "" {
 		return toolError("validation_error", "revision_id is required"), nil
 	}
+	store := a.revisionStore()
+	if store == nil {
+		return revisionStoreUnavailable(), nil
+	}
 	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
-	rev, err := a.revisionStore().GetRevisionByIDReinforced(ctx, revisionID)
+	rev, err := store.GetRevisionByIDReinforced(ctx, revisionID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			return toolError("not_found", err.Error()), nil
@@ -370,7 +408,11 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req mcp.CallTool
 	if revisionID == "" {
 		return toolError("validation_error", "revision_id is required"), nil
 	}
-	if err := a.revisionStore().Deprecate(ctx, revisionID); err != nil {
+	store := a.revisionStore()
+	if store == nil {
+		return revisionStoreUnavailable(), nil
+	}
+	if err := store.Deprecate(ctx, revisionID); err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			return toolError("not_found", err.Error()), nil
 		}

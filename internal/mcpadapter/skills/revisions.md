@@ -16,7 +16,7 @@ Every write in Tesseract creates a new revision. The service never mutates exist
 
 ## Head vs. history
 
-- `tesseract_get` — returns the current (latest, non-deprecated) revision for `(domain, namespace, key)`.
+- `tesseract_get` — returns the current (latest, non-deprecated) revision for `(domain, namespace, key)`. `domain` filters: a key holding another domain's revision answers `not_found`, not that revision.
 - `tesseract_history` — returns the revision chain, newest first, as a **bare array** under `domain="memory"` and `domain="knowledge"`.
 - `tesseract_recall` with `revision_scope=timeline` — includes superseded revisions in ranking.
 

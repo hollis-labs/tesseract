@@ -114,12 +114,16 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 
 The revision-level ops take no `domain`. Memory and knowledge revisions share one table keyed by `revision_id`, so an id from either resolves without saying which it was.
 
-Each of these covers several HTTP routes rather than one, so the parity catalog lists them MCP-only and lists those routes HTTP-only. The routes are unchanged and still wired.
+`domain` is a **filter**, not a hint. A namespace does not identify a domain — `memory_state` has no domain column and both domains share `memory_revisions` — so a keyed read that named `memory` and found a knowledge revision at that key returns `not_found` rather than the other domain's row. Only a matching read reinforces.
+
+Each of these covers several HTTP routes rather than one; the parity catalog carries one row per (tool, route) pair. The routes are unchanged and still wired.
+
+**Argument name:** the MCP tools take `key`; their HTTP peers take `?memory_key=`. The retired per-domain tools took `memory_key` on both doors, so this is a rename on the MCP side only. The revision JSON still carries the field as `memory_key`. `memory_write` still takes `memory_key` too — aligning it is out of scope here.
 
 | Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). Reinforces under `memory` only. |
-| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first |
+| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` only, and only on a match. |
+| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain |
 | `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over memory + knowledge (activation / chronological / similarity / relevance). Narrow with `domains`. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |

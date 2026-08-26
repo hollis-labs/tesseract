@@ -75,6 +75,8 @@ var nonToolVocabulary = map[string]string{
 	"current_revision":    "memory_state SQL column (TEXT): revision_id of the memory's current head; surfaces as the state.current_revision field on a full recall result",
 	"head_revision":       "API response field: id of the current revision",
 	"max_tokens_estimate": "context_packet budget field",
+	"memory_revisions":    "SQL table: every revision of every domain, keyed by revision_id and discriminated by a domain column; named in docs/MCP_TOOLS.md when explaining why `domain` has to be a filter rather than a hint",
+	"memory_state":        "SQL table: one row per logical memory, holding current_revision, activation and access_count. It carries NO domain column, which is why (namespace, key) alone cannot identify a domain",
 	"memory_id":           "memory_revisions and memory_state SQL column (TEXT): the stable id of the memory a revision belongs to; surfaces as revision.memory_id on every recall result",
 	"memory_key":          "memory_write request field: the stable key of a keyed memory",
 	"missing_head":        "API error code: namespace/key has no head revision",
@@ -115,7 +117,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:230",
+		Doc:     "docs/MCP_TOOLS.md:234",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +

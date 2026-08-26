@@ -243,8 +243,12 @@ func (s *Server) handleMemoryGetCurrent(w http.ResponseWriter, r *http.Request) 
 	if !requireNamespaceAccess(w, r, ns) {
 		return
 	}
-	// Deliberate read: reinforce the resolved memory's activation.
-	rev, err := s.MemoryStore.GetCurrentReinforced(r.Context(), ns, key)
+	// Deliberate read: reinforce the resolved memory's activation — but only
+	// after the domain check inside GetCurrentInDomainReinforced. This route
+	// resolved (namespace, memory_key) unfiltered until CW-20260825-0010, so a
+	// knowledge namespace asked of it returned the knowledge revision and
+	// reinforced it, contradicting the contract knowledge/store.go states.
+	rev, err := s.MemoryStore.GetCurrentInDomainReinforced(r.Context(), domains.Memory, ns, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
@@ -274,7 +278,7 @@ func (s *Server) handleMemoryHistory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	revs, err := s.MemoryStore.GetHistory(r.Context(), ns, key)
+	revs, err := s.MemoryStore.GetHistoryInDomain(r.Context(), domains.Memory, ns, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)

@@ -189,6 +189,76 @@ func (s *Store) GetRevisionByIDReinforced(ctx context.Context, revisionID string
 	return rev, nil
 }
 
+// GetCurrentInDomain is GetCurrent restricted to one domain.
+//
+// (namespace, memory_key) does not identify a domain — memory_state has no
+// domain column, and memory and knowledge revisions share memory_revisions —
+// so an unfiltered resolve returns whatever was written at that key regardless
+// of which domain wrote it. A caller that named a domain must not be handed
+// another one's row: knowledge/store.go states that contract for its side
+// ("callers should not see cross-domain reads"), and this is the same contract
+// for every side, in one place, so the two cannot implement it differently.
+//
+// The filter is applied to the resolved revision rather than in SQL because the
+// head pointer lives in memory_state and the domain lives on the revision; there
+// is one row to check and no index to gain.
+func (s *Store) GetCurrentInDomain(ctx context.Context, domain domains.Domain, namespace, memoryKey string) (Revision, error) {
+	rev, err := s.GetCurrent(ctx, namespace, memoryKey)
+	if err != nil {
+		return Revision{}, err
+	}
+	if rev.Domain != domain {
+		return Revision{}, fmt.Errorf("%w: revision at %s/%s is not a %s entry",
+			ErrNotFound, namespace, memoryKey, domain)
+	}
+	return rev, nil
+}
+
+// GetCurrentInDomainReinforced is GetCurrentInDomain plus the deliberate-read
+// activation bump.
+//
+// The order is the whole point and is not interchangeable with reinforcing
+// first and filtering after: reinforcement is a WRITE to ranking state, so
+// bumping a row that is then withheld as not_found would teach the ranking that
+// a memory mattered on the strength of a read that never returned it — and
+// would do it to the wrong domain's rows. The check happens before the write.
+func (s *Store) GetCurrentInDomainReinforced(ctx context.Context, domain domains.Domain, namespace, memoryKey string) (Revision, error) {
+	rev, err := s.GetCurrentInDomain(ctx, domain, namespace, memoryKey)
+	if err != nil {
+		return rev, err
+	}
+	_ = s.reinforceAccess(ctx, rev.MemoryID)
+	return rev, nil
+}
+
+// GetHistoryInDomain is GetHistory restricted to one domain, newest-first.
+//
+// Returns ErrNotFound when the key exists but holds no revision of this domain,
+// rather than an empty slice: an empty history and a wrong-domain history are
+// different facts, and only one of them means "nothing has been written here".
+//
+// Filtering here also keeps the paging cursor honest. HistoryOrderingFingerprint
+// takes the domain as part of its key, so an unfiltered memory-domain read of a
+// knowledge entry would issue a cursor stamped "memory" over rows the knowledge
+// door stamps "knowledge" — two doors paging identical rows with mutually
+// unusable cursors.
+func (s *Store) GetHistoryInDomain(ctx context.Context, domain domains.Domain, namespace, memoryKey string) ([]Revision, error) {
+	revs, err := s.GetHistory(ctx, namespace, memoryKey)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Revision, 0, len(revs))
+	for _, rev := range revs {
+		if rev.Domain == domain {
+			out = append(out, rev)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%w: no %s revisions for %s/%s", ErrNotFound, domain, namespace, memoryKey)
+	}
+	return out, nil
+}
+
 // GetHistory returns all revisions for a logical memory identified by
 // (namespace, memory_key), ordered newest-first. Returns ErrNotFound if no
 // memory exists for the given key.
