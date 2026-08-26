@@ -112,7 +112,7 @@ func TestProjectionSize(t *testing.T) {
 			"limit":        float64(limit),
 			"payload_mode": mode,
 		}
-		res, err := a.handleMemoryRecall(ctx, req)
+		res, err := a.handleTesseractRecall(ctx, req)
 		if err != nil {
 			t.Fatalf("recall %s: %v", mode, err)
 		}
@@ -391,7 +391,7 @@ func TestChronologicalLogOnRealCorpus(t *testing.T) {
 		}
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = args
-		res, err := a.handleMemoryRecall(ctx, req)
+		res, err := a.handleTesseractRecall(ctx, req)
 		if err != nil {
 			t.Fatalf("page %d: %v", pages, err)
 		}
@@ -461,4 +461,3 @@ func TestChronologicalLogOnRealCorpus(t *testing.T) {
 		t.Errorf("%d log lines carried a body; summary projection is not holding", withBody)
 	}
 }
-

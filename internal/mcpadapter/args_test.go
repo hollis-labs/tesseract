@@ -112,9 +112,9 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 		"namespaces": []any{"user/chrispian/memory/notes"},
 		"tags":       []any{"decision"},
 	}
-	res, err := a.handleMemoryRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleMemoryRecall: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	textContent := res.Content[0].(mcp.TextContent)
 	var results []map[string]any

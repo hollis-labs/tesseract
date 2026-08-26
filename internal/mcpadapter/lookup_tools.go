@@ -12,24 +12,24 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerLookupTools(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("tesseract_lookup",
+func (a *Adapter) registerRecallTool(s *server.MCPServer) {
+	a.addTool(s, mcp.NewTool("tesseract_recall",
 		mcp.WithDescription(
-			"**Unified search across memory + knowledge.** Returns ranked results + facet histograms.\n"+
+			"**Ranked recall across memory + knowledge.** Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
 				"• **Result shape:** `{results: [{revision, score}], facets: {domains, kinds, sources}, manifest: {...}}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				manifestResultShapeDescription+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
-				"• **Just-in-time pattern — recall → choose → hydrate.** Look up at the default `payload_mode` to see what exists, **choose** the few hits worth reading, then **hydrate** each by passing its `revision_id` to `memory_get_revision`. Reaching for `payload_mode=full` to skip the third step is how a single lookup eats a context window.\n"+
+				"• **Just-in-time pattern — recall → choose → hydrate.** **Recall** at the default `payload_mode` to see what exists, **choose** the few hits worth reading, then **hydrate** each by passing its `revision_id` to `tesseract_get_revision`. Reaching for `payload_mode=full` to skip the third step is how a single recall eats a context window.\n"+
 				touchLoopDescription+
-				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you looked up without it.\n"+
+				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
 				"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
 				"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
-				"• **`estimate_only`:** size a lookup before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
+				"• **`estimate_only`:** size a recall before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
 				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Scope:** `memory:read`.\n"+
-				"• **Use this when:** you don't know whether the content is memory or knowledge, or you want both. **Prefer this BEFORE filesystem or web exploration.**\n"+
-				"• **Don't use this for:** memory-only recall (`memory_recall`), deterministic selection (`views_evaluate`).\n"+
+				"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration.**\n"+
+				"• **Don't use this for:** deterministic selection — use `context_view` / `views_evaluate`. To narrow to one domain, pass `domains`, not a different tool.\n"+
 				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
@@ -67,10 +67,10 @@ func (a *Adapter) registerLookupTools(s *server.MCPServer) {
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleTesseractLookup)
+	), a.handleTesseractRecall)
 }
 
-func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
 		return res, nil
 	}
@@ -199,7 +199,7 @@ func (a *Adapter) handleTesseractLookup(ctx context.Context, req mcp.CallToolReq
 		},
 	}
 
-	page, err := a.MemoryStore.RecallPaged(ctx, in, pageReq)
+	page, err := a.revisionStore().RecallPaged(ctx, in, pageReq)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidCursor) {
 			return toolError("validation_error", err.Error()), nil

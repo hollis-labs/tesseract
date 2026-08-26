@@ -23,7 +23,7 @@ Five tiers ship today. Each tier has a fixed owner — ownership isn't orthogona
 
 ## Memory domain — typed, shallow + faceted
 
-The memory domain (`memory_write`, `memory_recall`, `memory_get`, etc.) uses a **fixed-depth typed namespace**. The `{type}` segment is the ONLY structural level; anything finer is expressed as tags / facets on the revision, not as deeper namespace segments.
+The memory domain (`memory_write`, and `tesseract_recall` / `tesseract_get` under `domain="memory"`) uses a **fixed-depth typed namespace**. The `{type}` segment is the ONLY structural level; anything finer is expressed as tags / facets on the revision, not as deeper namespace segments.
 
 ```
 user/{user_id}/memory/{type}                       # user scope, 4 seg

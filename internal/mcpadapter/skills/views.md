@@ -52,7 +52,7 @@ When `order` is omitted, results sort by `(namespace, key, revision)` as a stabl
 
 ## What views don't do
 
-- No ranking (use `memory_recall` or `tesseract_lookup`).
+- No ranking (use `tesseract_recall`).
 - No payload transforms.
 - No cross-namespace joins beyond the glob set.
 - No synthesis or summarization.

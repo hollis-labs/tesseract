@@ -11,18 +11,18 @@
 //
 // The durable value is on rename events, within a stated boundary. A tool name
 // is two anchors — a domain segment and an operation segment — and the guard
-// catches a stale reference as long as ONE of them survives the rename:
+// catches a stale reference as long as ONE of them survives the rename. Taking
+// a live name as the worked example:
 //
-//	memory_recall → tesseract_recall     caught (operation segment survives)
-//	memory_recall → memory_search        caught (domain segment survives)
-//	memory_recall → tesseract_search     BLIND  (neither survives)
+//	tesseract_recall → memory_recall      caught (operation segment survives)
+//	tesseract_recall → tesseract_search   caught (domain segment survives)
+//	tesseract_recall → memory_search      BLIND  (neither survives)
 //
-// The announced wave-3 targets (tesseract_recall, tesseract_get_revision)
-// preserve the operation segment, so that rename is covered. A rename that
-// changes both segments at once is not, and would ship stale references
-// silently. If one is ever planned, land the doc updates in the same commit;
-// this guard will not catch them for you. See looksLikeTool for why the rule
-// is anchored this way rather than on a fixed list of domain prefixes.
+// A rename that changes both segments at once is not covered, and would ship
+// stale references silently. If one is ever planned, land the doc updates in
+// the same commit; this guard will not catch them for you. See looksLikeTool
+// for why the rule is anchored this way rather than on a fixed list of domain
+// prefixes.
 package parity
 
 import (
@@ -51,10 +51,10 @@ var scannedRoots = []string{
 // scannedFiles are individually named shipped docs outside any scanned root.
 //
 // CHANGELOG.md sits beside README.md at the repo root and is deliberately not
-// listed. Release notes describe identifier changes, so they legitimately name
-// superseded IDs ("the lookup tool is now `tesseract_lookup`"). Scanning it
-// would turn this guard red on exactly the commit that ships a rename — the
-// moment it most needs to be usable.
+// listed. Release notes describe identifier changes, so a line naming both the
+// old and the new ID is exactly what they are for. Scanning it would turn this
+// guard red on exactly the commit that ships a rename — the moment it most
+// needs to be usable.
 var scannedFiles = []string{
 	"README.md",
 }
@@ -115,7 +115,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:228",
+		Doc:     "docs/MCP_TOOLS.md:230",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +
@@ -332,9 +332,13 @@ func TestDriftGuardCatchesUnregisteredToolName(t *testing.T) {
 			want: "vanta_skills",
 		},
 		{
-			name: "wave-3 target name referenced before the rename lands",
-			doc:  "Call `tesseract_recall` to search memory.\n",
-			want: "tesseract_recall",
+			// The complement of the vanta_skills case: a live domain segment
+			// with an operation segment no tool has. Both halves of
+			// looksLikeTool's either-match rule need a fixture, or tightening
+			// one half could silently disable the other.
+			name: "unregistered operation segment under a live domain segment",
+			doc:  "Call `memory_search` to search memory.\n",
+			want: "memory_search",
 		},
 		{
 			name: "bare tool name in a heading",
@@ -349,8 +353,9 @@ func TestDriftGuardCatchesUnregisteredToolName(t *testing.T) {
 		{
 			// Bold closes with the same character a wildcard family does.
 			// "- **tool_name** — description" is idiomatic markdown for a
-			// definition list, and this corpus already writes bare bold
-			// snake_case (internal/mcpadapter/skills/namespaces.md, "**client_id**").
+			// definition list, and this corpus writes bare bold snake_case in
+			// prose — re-derive with a grep for '\*\*[a-z_]*_' under
+			// internal/mcpadapter/skills before trusting that sentence.
 			name: "bold emphasis does not read as a wildcard family",
 			doc:  "- **vanta_skills** — search memory.\n",
 			want: "vanta_skills",
@@ -386,12 +391,12 @@ func TestDriftGuardCatchesUnregisteredToolName(t *testing.T) {
 		name string
 		doc  string
 	}{
-		{"registered tool", "Call `memory_recall` to search memory.\n"},
+		{"registered tool", "Call `tesseract_recall` to search memory.\n"},
 		{"wildcard family", "Cross-ownership moves go through `context_promote_*`.\n"},
 		{"allowlisted field name", "Required: `memory_key`.\n"},
 		{"single-word prose", "Deliberate reads reinforce a memory's activation.\n"},
 		{"source filename", "Registered in internal/mcpadapter/memory_tools.go.\n"},
-		{"bold registered tool", "- **memory_recall** — search memory.\n"},
+		{"bold registered tool", "- **tesseract_recall** — search memory.\n"},
 		{"wildcard family in bold", "Moves go through **context_promote_***.\n"},
 	}
 	for _, tc := range mustPass {

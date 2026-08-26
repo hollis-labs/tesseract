@@ -86,7 +86,7 @@ func TestBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 		t.Helper()
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = args
-		res, err := a.handleMemoryRecall(context.Background(), req)
+		res, err := a.handleTesseractRecall(context.Background(), req)
 		if err != nil {
 			t.Fatalf("MCP recall: %v", err)
 		}
@@ -266,7 +266,7 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 		t.Helper()
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = args
-		res, err := a.handleMemoryHistory(context.Background(), req)
+		res, err := a.handleTesseractHistory(context.Background(), req)
 		if err != nil {
 			t.Fatalf("MCP history: %v", err)
 		}
@@ -287,8 +287,9 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 
 	const q = "namespace=user/chrispian/memory/notes&memory_key=hist.key"
 	base := map[string]any{
-		"namespace":  "user/chrispian/memory/notes",
-		"memory_key": "hist.key",
+		"domain":    "memory",
+		"namespace": "user/chrispian/memory/notes",
+		"key":       "hist.key",
 	}
 
 	// Both surfaces must page the same way.

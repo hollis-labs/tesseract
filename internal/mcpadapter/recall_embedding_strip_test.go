@@ -103,9 +103,9 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 	req.Params.Arguments = map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
-	res, err := a.handleMemoryRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleMemoryRecall: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	textContent, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
@@ -148,9 +148,9 @@ func TestTesseractLookup_OmitsEmbeddingVector(t *testing.T) {
 	req.Params.Arguments = map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
-	res, err := a.handleTesseractLookup(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleTesseractLookup: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	textContent, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
@@ -190,9 +190,9 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 		"ranking":    "similarity",
 		"query":      "dark mode preference",
 	}
-	res, err := a.handleMemoryRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleMemoryRecall: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	textContent, ok := res.Content[0].(mcp.TextContent)
 	if !ok {

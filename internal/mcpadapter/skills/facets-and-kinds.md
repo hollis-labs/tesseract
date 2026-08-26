@@ -58,7 +58,7 @@ Naming rules for a proposed kind:
 
 ## Filtering by facet
 
-`tesseract_lookup` accepts `facet_kinds` and `facet_sources` as JSON-array filters. Use these to narrow a cross-domain search:
+`tesseract_recall` accepts `facet_kinds` and `facet_sources` as JSON-array filters. Use these to narrow a cross-domain search:
 
 ```json
 {"query": "embedding provider", "facet_kinds": ["package"], "limit": 10}

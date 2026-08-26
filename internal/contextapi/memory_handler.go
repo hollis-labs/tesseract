@@ -106,13 +106,13 @@ type memoryRecallRequest struct {
 
 	// SearchMode selects the retrieval arms under ranking=relevance:
 	// hybrid|lexical|semantic. Empty means hybrid. Peer of the MCP
-	// memory_recall argument of the same name — same vocabulary, same
+	// tesseract_recall argument of the same name — same vocabulary, same
 	// default, same validation, because both hand the value to
 	// RecallPaged unmodified and it is RecallPaged that rejects it.
 	SearchMode memory.SearchMode `json:"search_mode,omitempty"`
 
 	// PayloadMode projects each result: keys|summary|full. Empty means the
-	// server default (read.payload_mode). Peer of the MCP memory_recall
+	// server default (read.payload_mode). Peer of the MCP tesseract_recall
 	// argument of the same name.
 	//
 	// parity_test.go pairs memory_recall with this route and carries no
@@ -121,7 +121,7 @@ type memoryRecallRequest struct {
 	// argument parity is on us.
 	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
 
-	// SimilarityMin is the cosine floor. Peer of the MCP memory_recall argument
+	// SimilarityMin is the cosine floor. Peer of the MCP tesseract_recall argument
 	// of the same name — same range, same ranking/search_mode restriction, same
 	// error, because both hand the value to RecallPaged unmodified.
 	//
@@ -144,7 +144,7 @@ type memoryRecallRequest struct {
 	SimilarityMin *float64 `json:"similarity_min,omitempty"`
 
 	// Cursor, BudgetBytes, BudgetTokens and EstimateOnly: peers of the MCP
-	// memory_recall arguments of the same name. See pageArgs.
+	// tesseract_recall arguments of the same name. See pageArgs.
 	pageArgs
 }
 

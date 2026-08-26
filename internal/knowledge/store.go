@@ -153,3 +153,14 @@ func (s *Store) GetHistory(ctx context.Context, namespace, key string) ([]memory
 	}
 	return out, nil
 }
+
+// RevisionStore returns the shared revision store this knowledge store is
+// built on.
+//
+// Memory and knowledge revisions live in one table (memory_revisions, keyed by
+// a domain column), so revision-level operations — fetch by revision_id,
+// deprecate by revision_id — resolve either domain without a domain filter.
+// This accessor is what lets a deployment that wires only a knowledge store
+// still perform those operations, rather than having them gated behind a
+// separate memory-store field that happens to be nil.
+func (s *Store) RevisionStore() *memory.Store { return s.mem }

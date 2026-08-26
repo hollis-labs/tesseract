@@ -38,9 +38,9 @@ func callRecall(t *testing.T, a *Adapter, args map[string]any) []map[string]any 
 	t.Helper()
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = args
-	res, err := a.handleMemoryRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleMemoryRecall: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	text, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
@@ -165,9 +165,9 @@ func TestTesseractLookup_ResultKeysAreSnakeCase(t *testing.T) {
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "activation",
 	}
-	res, err := a.handleTesseractLookup(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleTesseractLookup: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	text, ok := res.Content[0].(mcp.TextContent)
 	if !ok {

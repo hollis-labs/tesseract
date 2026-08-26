@@ -6,7 +6,7 @@ package parity
 // was added for nothing.
 //
 // The code half defends itself — a broken curve fails a test. The docs half had
-// nothing. Deleting the touch-loop paragraph from memory_recall's description
+// nothing. Deleting the touch-loop paragraph from the recall tool's description
 // compiled cleanly and passed every test in the repo, which is exactly how a
 // docs half quietly stops shipping.
 //
@@ -41,10 +41,13 @@ var touchLoopClaims = []struct {
 }
 
 // rankedResultTools are the tools that return ranked results and therefore owe
-// the reader the loop. Both are listed rather than one: they share a rendered
-// constant today, and a future edit that inlines one of them must not be able to
-// drop the claim from that one alone.
-var rankedResultTools = []string{"memory_recall", "tesseract_lookup"}
+// the reader the loop.
+//
+// It is a slice of one today. It stays a slice because the claim is owed by a
+// PROPERTY of a tool — returning ranked results — not by a name, and a second
+// such tool must not be able to arrive without owing it. Adding a name here is
+// the whole cost of keeping that true.
+var rankedResultTools = []string{"tesseract_recall"}
 
 func TestRankedResultToolsDocumentTheTouchLoop(t *testing.T) {
 	adapter := newFullyWiredAdapter(t)
@@ -130,15 +133,15 @@ func TestNamedSkillsCarryTheWorkedLoop(t *testing.T) {
 		// And the steps appear in the order the loop runs. Both tool names are
 		// distinctive enough that their first occurrence is a real position,
 		// unlike the bare English words.
-		recallAt := strings.Index(body, "memory_recall")
+		recallAt := strings.Index(body, "tesseract_recall")
 		touchAt := strings.Index(body, "tesseract_touch")
 		switch {
 		case recallAt < 0:
-			t.Errorf("skill %q never names memory_recall, so it cannot be showing a worked loop", skill)
+			t.Errorf("skill %q never names tesseract_recall, so it cannot be showing a worked loop", skill)
 		case touchAt < 0:
 			t.Errorf("skill %q never names tesseract_touch", skill)
 		case touchAt < recallAt:
-			t.Errorf("skill %q introduces tesseract_touch (at %d) before memory_recall (at %d) — "+
+			t.Errorf("skill %q introduces tesseract_touch (at %d) before tesseract_recall (at %d) — "+
 				"the closing step cannot be taught before the step it closes",
 				skill, touchAt, recallAt)
 		}

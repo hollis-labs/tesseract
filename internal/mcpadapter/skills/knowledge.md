@@ -99,13 +99,13 @@ When the external artifact genuinely is the point, use a real scheme — and **v
 
 ## Reading
 
-- `knowledge_get` returns the current revision by `(namespace, key)`. Returns `not_found` if the entry exists but is not knowledge-domain (cross-domain reads are filtered).
-- `knowledge_history` returns the full chain, newest first; non-knowledge revisions are filtered out.
-- For cross-domain search (memory + knowledge), use `tesseract_lookup` with `facet_kinds` / `facet_sources` filters. See `tesseract_skills facets-and-kinds`.
+- `tesseract_get domain="knowledge"` returns the current revision by `(namespace, key)`. Returns `not_found` if the entry exists but is not knowledge-domain (cross-domain reads are filtered).
+- `tesseract_history domain="knowledge"` returns the full chain, newest first; non-knowledge revisions are filtered out.
+- For search across memory + knowledge, use `tesseract_recall` with `facet_kinds` / `facet_sources` filters. See `tesseract_skills facets-and-kinds`.
 
 ## Pointer health
 
-Every knowledge result from `tesseract_lookup` (and `memory_recall`, when pointed at a knowledge namespace) carries a `pointer_health` object under `payload_mode` `summary` and `full`. It is **not** carried under `keys`, which stays identity-only.
+Every knowledge result from `tesseract_recall` carries a `pointer_health` object under `payload_mode` `summary` and `full`. It is **not** carried under `keys`, which stays identity-only.
 
 `pointer_health.status` is one of:
 
@@ -126,7 +126,7 @@ Two readings that matter:
 
 ### Finding suspect entries by query
 
-Pass `pointer_health` to `tesseract_lookup` as a JSON array of statuses. The filter is applied in SQL **before** `limit`, so this enumerates the set rather than sampling whatever ranked well:
+Pass `pointer_health` to `tesseract_recall` as a JSON array of statuses. The filter is applied in SQL **before** `limit`, so this enumerates the set rather than sampling whatever ranked well:
 
 ```json
 {

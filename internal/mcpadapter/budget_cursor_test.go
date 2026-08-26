@@ -118,7 +118,7 @@ func callTool(t *testing.T, fn func(context.Context, mcp.CallToolRequest) (*mcp.
 // already fixed three times on other fields.
 func TestMCPRecall_ManifestCarriesZeroValues(t *testing.T) {
 	a := budgetAdapter(t, 2)
-	raw := callTool(t, a.handleMemoryRecall, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 	})
@@ -134,7 +134,7 @@ func TestMCPRecall_ManifestCarriesZeroValues(t *testing.T) {
 
 func TestMCPLookup_CarriesManifestAlongsideFacets(t *testing.T) {
 	a := budgetAdapter(t, 3)
-	raw := callTool(t, a.handleTesseractLookup, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 	})
@@ -161,13 +161,13 @@ func TestMCPLookup_CarriesManifestAlongsideFacets(t *testing.T) {
 
 func TestMCPRecall_BudgetBytesTruncatesWithReasonAndCursor(t *testing.T) {
 	a := budgetAdapter(t, 8)
-	base := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	base := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
 	}))
 
-	raw := callTool(t, a.handleMemoryRecall, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
@@ -196,7 +196,7 @@ func TestMCPRecall_ZeroBudgetIsValidationError(t *testing.T) {
 	for _, knob := range []string{"budget_bytes", "budget_tokens"} {
 		for _, v := range []float64{0, -1} {
 			t.Run(knob, func(t *testing.T) {
-				raw := callTool(t, a.handleMemoryRecall, map[string]any{
+				raw := callTool(t, a.handleTesseractRecall, map[string]any{
 					"namespaces": `["user/chrispian/memory/notes"]`,
 					knob:         v,
 				})
@@ -215,7 +215,7 @@ func TestMCPRecall_ZeroBudgetIsValidationError(t *testing.T) {
 // wholeNumberArg's contract on the other numeric arguments.
 func TestMCPRecall_FractionalBudgetIsValidationError(t *testing.T) {
 	a := budgetAdapter(t, 2)
-	raw := callTool(t, a.handleMemoryRecall, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"budget_bytes": 2.5,
 	})
@@ -229,7 +229,7 @@ func TestMCPRecall_FractionalBudgetIsValidationError(t *testing.T) {
 // it does.
 func TestMCPRecall_BudgetDefaultComesFromConfig(t *testing.T) {
 	a := budgetAdapter(t, 8)
-	unbounded := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	unbounded := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
@@ -239,7 +239,7 @@ func TestMCPRecall_BudgetDefaultComesFromConfig(t *testing.T) {
 	}
 
 	a.DefaultBudget = memory.Budget{Bytes: unbounded.BytesReturned / 3}
-	bounded := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	bounded := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
@@ -249,7 +249,7 @@ func TestMCPRecall_BudgetDefaultComesFromConfig(t *testing.T) {
 	}
 
 	// A per-call argument overrides the configured default upward.
-	override := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	override := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
@@ -264,7 +264,7 @@ func TestMCPRecall_BudgetDefaultComesFromConfig(t *testing.T) {
 
 func TestMCPRecall_CursorPagesAndRejectsAChangedSort(t *testing.T) {
 	a := budgetAdapter(t, 6)
-	first := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	first := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 		"limit":      float64(2),
@@ -274,7 +274,7 @@ func TestMCPRecall_CursorPagesAndRejectsAChangedSort(t *testing.T) {
 	}
 
 	// Same sort resumes.
-	second := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	second := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 		"limit":      float64(2),
@@ -285,7 +285,7 @@ func TestMCPRecall_CursorPagesAndRejectsAChangedSort(t *testing.T) {
 	}
 
 	// Changed sort errors.
-	raw := callTool(t, a.handleMemoryRecall, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "activation",
 		"limit":      float64(2),
@@ -301,7 +301,7 @@ func TestMCPRecall_CursorPagesAndRejectsAChangedSort(t *testing.T) {
 
 func TestMCPLookup_CursorRejectsAChangedSort(t *testing.T) {
 	a := budgetAdapter(t, 6)
-	first := recallManifest(t, callTool(t, a.handleTesseractLookup, map[string]any{
+	first := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 		"limit":      float64(2),
@@ -309,7 +309,7 @@ func TestMCPLookup_CursorRejectsAChangedSort(t *testing.T) {
 	if first.NextCursor == nil {
 		t.Fatalf("no cursor issued: %+v", first)
 	}
-	raw := callTool(t, a.handleTesseractLookup, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "chronological",
 		"limit":      float64(2),
@@ -323,7 +323,7 @@ func TestMCPLookup_CursorRejectsAChangedSort(t *testing.T) {
 
 func TestMCPRecall_MalformedCursorIsValidationError(t *testing.T) {
 	a := budgetAdapter(t, 2)
-	raw := callTool(t, a.handleMemoryRecall, map[string]any{
+	raw := callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"cursor":     "!!!not-a-cursor!!!",
 	})
@@ -355,9 +355,10 @@ func TestMCPHistory_BareArrayUntilAKnobIsPassed(t *testing.T) {
 		last, _ = res["revision_id"].(string)
 	}
 
-	bare := callTool(t, a.handleMemoryHistory, map[string]any{
-		"namespace":  "user/chrispian/memory/notes",
-		"memory_key": "hist.key",
+	bare := callTool(t, a.handleTesseractHistory, map[string]any{
+		"domain":    "memory",
+		"namespace": "user/chrispian/memory/notes",
+		"key":       "hist.key",
 	})
 	var arr []map[string]any
 	if err := json.Unmarshal([]byte(bare), &arr); err != nil {
@@ -367,10 +368,11 @@ func TestMCPHistory_BareArrayUntilAKnobIsPassed(t *testing.T) {
 		t.Errorf("bare history returned %d revisions, want 4", len(arr))
 	}
 
-	paged := callTool(t, a.handleMemoryHistory, map[string]any{
-		"namespace":  "user/chrispian/memory/notes",
-		"memory_key": "hist.key",
-		"limit":      float64(2),
+	paged := callTool(t, a.handleTesseractHistory, map[string]any{
+		"domain":    "memory",
+		"namespace": "user/chrispian/memory/notes",
+		"key":       "hist.key",
+		"limit":     float64(2),
 	})
 	m := recallManifest(t, paged)
 	if m.ResultsTotal != 4 || m.ResultsReturned != 2 {
@@ -410,17 +412,18 @@ func TestMCPHistory_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	}
 
 	args := map[string]any{
-		"namespace":  "user/chrispian/memory/notes",
-		"memory_key": "hist.key",
+		"domain":    "memory",
+		"namespace": "user/chrispian/memory/notes",
+		"key":       "hist.key",
 	}
-	baseline := callTool(t, a.handleMemoryHistory, args)
+	baseline := callTool(t, a.handleTesseractHistory, args)
 	var arr []json.RawMessage
 	if err := json.Unmarshal([]byte(baseline), &arr); err != nil {
 		t.Fatalf("baseline is not a bare array: %v", err)
 	}
 
 	a.DefaultBudget = memory.Budget{Bytes: 10 << 20, Tokens: 10 << 20}
-	withBudget := callTool(t, a.handleMemoryHistory, args)
+	withBudget := callTool(t, a.handleTesseractHistory, args)
 	if err := json.Unmarshal([]byte(withBudget), &arr); err != nil {
 		t.Fatalf("a configured budget flipped memory_history's shape: %v\nraw=%s", err, withBudget)
 	}
@@ -430,12 +433,13 @@ func TestMCPHistory_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	}
 
 	// A per-call budget still engages the envelope.
-	perCall := map[string]any{}
+	perCall := map[string]any{
+		"domain": "memory"}
 	for k, v := range args {
 		perCall[k] = v
 	}
 	perCall["budget_bytes"] = float64(400)
-	if _, ok := tryManifest([]byte(callTool(t, a.handleMemoryHistory, perCall))); !ok {
+	if _, ok := tryManifest([]byte(callTool(t, a.handleTesseractHistory, perCall))); !ok {
 		t.Error("a per-call budget did not engage the envelope on memory_history")
 	}
 }
@@ -443,7 +447,7 @@ func TestMCPHistory_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 // Narrowing the config budget to recall/lookup must not have disabled it there.
 func TestMCPRecall_ConfiguredBudgetStillApplies(t *testing.T) {
 	a := budgetAdapter(t, 8)
-	base := recallManifest(t, callTool(t, a.handleMemoryRecall, map[string]any{
+	base := recallManifest(t, callTool(t, a.handleTesseractRecall, map[string]any{
 		"namespaces":   `["user/chrispian/memory/notes"]`,
 		"ranking":      "chronological",
 		"payload_mode": "summary",
@@ -451,8 +455,8 @@ func TestMCPRecall_ConfiguredBudgetStillApplies(t *testing.T) {
 
 	a.DefaultBudget = memory.Budget{Bytes: base.BytesReturned / 3}
 	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
-		"memory_recall":    a.handleMemoryRecall,
-		"tesseract_lookup": a.handleTesseractLookup,
+		"memory_recall":    a.handleTesseractRecall,
+		"tesseract_lookup": a.handleTesseractRecall,
 	} {
 		m := recallManifest(t, callTool(t, fn, map[string]any{
 			"namespaces":   `["user/chrispian/memory/notes"]`,
@@ -477,9 +481,10 @@ func TestMCPHistory_ZeroBudgetIsValidationError(t *testing.T) {
 		"confidence":      0.9,
 		"payload_summary": "history probe",
 	})
-	raw := callTool(t, a.handleMemoryHistory, map[string]any{
+	raw := callTool(t, a.handleTesseractHistory, map[string]any{
+		"domain":       "memory",
 		"namespace":    "user/chrispian/memory/notes",
-		"memory_key":   "hist.key",
+		"key":          "hist.key",
 		"budget_bytes": float64(0),
 	})
 	if !strings.Contains(raw, "validation_error") {
@@ -512,10 +517,8 @@ func TestBudgetCursorArgumentsAreDeclared(t *testing.T) {
 		tool string
 		args []string
 	}{
-		{"memory_recall", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
-		{"tesseract_lookup", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
-		{"memory_history", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
-		{"knowledge_history", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
+		{"tesseract_recall", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
+		{"tesseract_history", []string{"cursor", "budget_bytes", "budget_tokens", "limit"}},
 	} {
 		props, ok := tools[tc.tool]
 		if !ok {

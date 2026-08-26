@@ -7,7 +7,7 @@ related: [memory, revisions]
 
 # Recall and ranking
 
-`memory_recall` and `tesseract_lookup` share one ranking surface. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
+`tesseract_recall` is the ranking surface for memory and knowledge alike. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
 
 ## Four modes
 
@@ -49,7 +49,7 @@ Two more things `lexical` does differently from `hybrid`: `AND`, `OR` and `NOT` 
 
 ## Result shape and `score`
 
-Both tools answer with an envelope. `memory_recall` returns `{results, manifest}`; `tesseract_lookup` returns `{results, facets, manifest}`. Inside `results`, every entry is `{revision, score}`, best first.
+`tesseract_recall` answers with an envelope: `{results, facets, manifest}`. Inside `results`, every entry is `{revision, score}`, best first. `facets` counts the rows this page returned, not the whole match set.
 
 How much of each result you get is set by `payload_mode`:
 
@@ -61,7 +61,7 @@ How much of each result you get is set by `payload_mode`:
 
 The default comes from server config (`read.payload_mode`); pass `payload_mode` to override it per call. `state` — activation, access counts, `current_revision` — rides **only** on `full`.
 
-Work just-in-time: **recall → choose → hydrate.** Recall at the default to see what exists, pick the few hits that matter, then pass each `revision_id` to `memory_get_revision`. `revision_id` is present in every mode, so hydration is always available. Reaching for `payload_mode=full` to skip the third step is how one recall eats a context window.
+Work just-in-time: **recall → choose → hydrate.** Recall at the default to see what exists, pick the few hits that matter, then pass each `revision_id` to `tesseract_get_revision`. `revision_id` is present in every mode, so hydration is always available. Reaching for `payload_mode=full` to skip the third step is how one recall eats a context window.
 
 Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` results do not. That marker matters when you intend to **edit** what you read: `payload.body` is omitted both when it was withheld by projection and when it is genuinely empty, so the marker is the only thing that tells them apart. If it is present and not `full`, treat the body as unknown — re-request with `payload_mode=full` or hydrate by id. Never write back a body you never received.
 
@@ -115,7 +115,7 @@ Paging is not available together with a reranker: a reranker reorders within a p
 `ranking=chronological` + `payload_mode=summary` + `cursor` **is** the episodic log. There is no separate log tool because this composition already is one: strictly newest-first across page boundaries, every entry exactly once, terminating on `next_cursor: null`, at roughly 700 bytes per entry.
 
 ```
-memory_recall namespaces=[...] ranking=chronological payload_mode=summary limit=200
+tesseract_recall namespaces=[...] ranking=chronological payload_mode=summary limit=200
   -> read results, then repeat with cursor=manifest.next_cursor until it is null
 ```
 
@@ -140,7 +140,8 @@ All rankings accept the same filter set:
 - `origins`, `statuses`, `tags` (JSON arrays)
 - `confidence_min` (0-1)
 - `since` / `until` (RFC3339 bounds)
-- `facet_kinds` / `facet_sources` (knowledge-aware, via `tesseract_lookup`)
+- `facet_kinds` / `facet_sources` (knowledge-aware)
+- `domains` (JSON array; narrow to `["memory"]` or `["knowledge"]` instead of reaching for a different tool)
 
 ## Access reinforcement — recall → use → touch
 
@@ -149,7 +150,7 @@ All rankings accept the same filter set:
 So the loop is three steps, and this is the default shape of a turn — not an option:
 
 ```
-1. memory_recall namespaces=[...] query="..."      -> results, each carrying revision_id
+1. tesseract_recall namespaces=[...] query="..."   -> results, each carrying revision_id
 2. read / hydrate / do the work of the turn
 3. tesseract_touch revision_ids=["01HXA..."]       -> the ones that actually shaped it
 ```
@@ -160,17 +161,17 @@ Step 3 is what tells the ranking your guess was right. It is the **only** input 
 
 **Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** Little is gained by inflating: reinforcement closes a fixed fraction of the distance to a ceiling rather than adding a fixed amount, so repeated touches approach that ceiling with ever-smaller steps and never pass it. A touch moves two of the five terms `ranking=activation` scores with: it raises the stored `activation`, and it stamps `last_accessed_at`, which lifts the recency weight. Both push the same way, so what you report genuinely moves what surfaces next time — and a report padded with things you did not use spends that leverage on noise.
 
-Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. Revision IDs from `tesseract_lookup` work here too: memory and knowledge both resolve.
+Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. A recall spanning both domains is reportable in one call: memory and knowledge revision IDs both resolve.
 
-`memory_get` and `memory_get_revision` reinforce on their own — resolving a known key or pulling a specific revision by ID is already deliberate. `tesseract_touch` covers the rest: the hits whose summary alone was enough, and the distinction between what you read and what you used.
+`tesseract_get` under `domain="memory"` and `tesseract_get_revision` reinforce on their own — resolving a known key or pulling a specific revision by ID is already deliberate. `tesseract_touch` covers the rest: the hits whose summary alone was enough, and the distinction between what you read and what you used.
 
 Activation **decay** runs on a schedule and is unchanged by any of this. Untouched memories fall toward a floor; touched ones settle wherever reinforcement and decay balance.
 
 ## `estimate_only` — size a read before paying for it
 
-Pass `estimate_only=true` to get the envelope without the results. `memory_recall` answers `{manifest, estimate_only: true}`; `tesseract_lookup` answers `{facets, manifest, estimate_only: true}` — its own envelope, minus `results`. There is no `results` key at all, so an absent array means withheld, never empty.
+Pass `estimate_only=true` to get the envelope without the results. `tesseract_recall` answers `{facets, manifest, estimate_only: true}` — its own envelope, minus `results`. There is no `results` key at all, so an absent array means withheld, never empty.
 
-The numbers are **exact, not approximate**: `results_total`, `results_returned`, `bytes_returned`, `tokens_estimate` — and every facet count on lookup — are what the identical call without the flag returns, under the same `payload_mode`. Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at.
+The numbers are **exact, not approximate**: `results_total`, `results_returned`, `bytes_returned`, `tokens_estimate` — and every facet count — are what the identical call without the flag returns, under the same `payload_mode`. Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at.
 
 It is worth most where a read would be cut short. Under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would, and that `next_cursor` is a valid cursor for the real read — the flag changes what is serialized, never which rows match or in what order.
 

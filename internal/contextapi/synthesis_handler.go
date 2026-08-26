@@ -113,7 +113,7 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
-	// 1. Recall — same shape memory + knowledge results tesseract_lookup uses.
+	// 1. Recall — same shape memory + knowledge results tesseract_recall uses.
 	recallIn := memory.RecallInput{
 		Namespaces:    req.Namespaces,
 		Query:         req.Question,

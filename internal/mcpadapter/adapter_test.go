@@ -76,9 +76,9 @@ func TestContextHead_Found(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001", "key": "state"}
 
-	res, err := a.handleHead(context.Background(), req)
+	res, err := a.handleContextHead(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleHead: %v", err)
+		t.Fatalf("handleContextHead: %v", err)
 	}
 	body := parseResult(t, res)
 	if body["namespace"] != "user/memory/task-001" {
@@ -98,9 +98,9 @@ func TestContextHead_NotFound(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"namespace": "user/memory/nope", "key": "missing"}
 
-	res, err := a.handleHead(context.Background(), req)
+	res, err := a.handleContextHead(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleHead: %v", err)
+		t.Fatalf("handleContextHead: %v", err)
 	}
 	body := parseResult(t, res)
 	if body["code"] != "not_found" {
@@ -112,7 +112,7 @@ func TestContextHead_MissingArgs(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001"} // missing key
-	res, _ := a.handleHead(context.Background(), req)
+	res, _ := a.handleContextHead(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "validation_error" {
 		t.Errorf("expected validation_error, got %v", body["code"])
@@ -129,9 +129,9 @@ func TestContextHistory(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001", "key": "state", "limit": float64(10)}
 
-	res, err := a.handleHistory(context.Background(), req)
+	res, err := a.handleContextHistory(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleHistory: %v", err)
+		t.Fatalf("handleContextHistory: %v", err)
 	}
 	body := parseResult(t, res)
 	count, _ := body["count"].(float64)

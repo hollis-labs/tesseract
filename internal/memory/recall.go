@@ -305,7 +305,7 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	// 2b. search_mode must be a value the retrieval path can honor.
 	//
 	// Both validations live here rather than on each surface, and that is the
-	// point: memory_recall, tesseract_lookup and both of their HTTP peers all
+	// point: tesseract_recall and both of its HTTP peers all
 	// funnel through this function, and all four already map ErrInvalidInput
 	// to their own validation error. One check therefore gives four doors the
 	// same vocabulary and the same message by construction, instead of four
@@ -334,7 +334,7 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	// 2c. similarity_min must name a floor this call can actually apply.
 	//
 	// Same placement and same reasoning as the search_mode checks above: all
-	// four doors (memory_recall, tesseract_lookup, and both HTTP peers) funnel
+	// three doors (tesseract_recall and both HTTP peers) funnel
 	// through here, so one check gives them the same vocabulary and the same
 	// message by construction rather than by four copies agreeing.
 	if in.Filters.SimilarityMin != nil {
@@ -391,7 +391,7 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	//
 	// Recall does NOT reinforce activation/access_count: being returned by
 	// a search is the system's guess, not a deliberate read. Reinforcement
-	// happens only on the get paths (memory_get / memory_get_revision) —
+	// happens only on the get paths (tesseract_get / tesseract_get_revision) —
 	// see reinforceMemoryIDs in activation.go.
 	window, err = s.applyReranker(ctx, in, window)
 	if err != nil {

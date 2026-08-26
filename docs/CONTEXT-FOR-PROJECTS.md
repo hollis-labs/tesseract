@@ -115,7 +115,7 @@ context_promote_request(
 | `context_broker_fetch` | none | Session boot — load prior context |
 | `context_write` | write scope | Save state or observations |
 | `context_packet` | none | Targeted context load (when you know the namespaces) |
-| `context_head` | none | Read a specific record |
+| `tesseract_get` | none for `domain: "context"` | Read a specific record |
 | `context_promote_request` | promote.request scope | Promote findings to long-term memory |
 | `context_promote_list` | none | Check pending promotions from prior sessions |
 | `context_audit` | none | Investigate what happened in a namespace |

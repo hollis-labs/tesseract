@@ -72,9 +72,9 @@ func lookupRaw(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = args
-	res, err := a.handleTesseractLookup(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleTesseractLookup: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	text, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
@@ -157,18 +157,18 @@ func TestLookupPointerHealthRejectsUnknownStatus(t *testing.T) {
 	}
 }
 
-// TestLookupToolDescribesPointerHealthVocabulary keeps the call-site
+// TestRecallToolDescribesPointerHealthVocabulary keeps the call-site
 // description from advertising a set the filter does not accept. It is
 // rendered from the vocabulary rather than restated; this asserts the
 // rendering reaches the registered tool.
-func TestLookupToolDescribesPointerHealthVocabulary(t *testing.T) {
+func TestRecallToolDescribesPointerHealthVocabulary(t *testing.T) {
 	a, _, _ := pointerHealthAdapter(t)
 	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
 	a.RegisterAllTools(srv)
 
-	st, ok := srv.ListTools()["tesseract_lookup"]
+	st, ok := srv.ListTools()["tesseract_recall"]
 	if !ok {
-		t.Fatal("tesseract_lookup not registered")
+		t.Fatal("tesseract_recall not registered")
 	}
 	schema, err := st.Tool.InputSchema.MarshalJSON()
 	if err != nil {
@@ -177,7 +177,7 @@ func TestLookupToolDescribesPointerHealthVocabulary(t *testing.T) {
 	desc := string(schema)
 	for _, status := range memory.PointerHealthStatusVocabulary() {
 		if !strings.Contains(desc, status) {
-			t.Errorf("tesseract_lookup pointer_health description omits %q", status)
+			t.Errorf("tesseract_recall pointer_health description omits %q", status)
 		}
 	}
 	// The reading that prevents the field from being misused.
