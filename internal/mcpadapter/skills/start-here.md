@@ -15,7 +15,7 @@ Tesseract is a local-first, append-only context and memory service. You reach it
 - **Knowledge** — pointer-first references to external content (packages, docs, notes). Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
 
-Search across memory + knowledge with `tesseract_lookup` — the unified query surface.
+Search across memory + knowledge with `tesseract_recall` — the unified query surface.
 
 ## Invariants (don't fight these)
 
@@ -36,6 +36,6 @@ Skills are progressive: the index is small; bodies only load when requested.
 
 - Writing an agent memory? → `tesseract_skills memory`
 - Recording a reference to external content? → `tesseract_skills knowledge`
-- Looking something up? → use `tesseract_lookup` or `memory_recall` directly, then **close the loop**: when you are done reasoning, pass the `revision_id`s that actually shaped the turn to `tesseract_touch`. Recall returns results unreinforced, so that report is the only thing that feeds ranking. `tesseract_skills recall-and-ranking` for ranking modes.
+- Looking something up? → use `tesseract_recall` directly, then **close the loop**: when you are done reasoning, pass the `revision_id`s that actually shaped the turn to `tesseract_touch`. Recall returns results unreinforced, so that report is the only thing that feeds ranking. `tesseract_skills recall-and-ranking` for ranking modes.
 - Working across user/app namespace boundaries? → `tesseract_skills promotion`.
 - Booting into a project? → `tesseract_skills context-packet`.

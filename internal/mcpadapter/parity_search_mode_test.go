@@ -124,8 +124,8 @@ func newSearchModeDoors(a *Adapter, srv *contextapi.Server) searchModeDoors {
 		}
 	}
 	return searchModeDoors{
-		mcpRecall:  callMCP(a.handleMemoryRecall),
-		mcpLookup:  callMCP(a.handleTesseractLookup),
+		mcpRecall:  callMCP(a.handleTesseractRecall),
+		mcpLookup:  callMCP(a.handleTesseractRecall),
 		httpRecall: callHTTP("/v1/memory/recall"),
 		httpLookup: callHTTP("/v1/tesseract/lookup"),
 	}

@@ -47,9 +47,9 @@ func recallRaw(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = args
-	res, err := a.handleMemoryRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleMemoryRecall: %v", err)
+		t.Fatalf("handleTesseractRecall: %v", err)
 	}
 	text, ok := res.Content[0].(mcp.TextContent)
 	if !ok {
@@ -158,21 +158,22 @@ func TestPayloadMode_ToolDescriptionStatesHydratePattern(t *testing.T) {
 	a.RegisterAllTools(srv)
 	registered := srv.ListTools()
 
-	for _, name := range []string{"memory_recall", "tesseract_lookup"} {
+	for _, name := range []string{"tesseract_recall"} {
 		st, ok := registered[name]
 		if !ok {
 			t.Fatalf("tool %q not registered", name)
 		}
 		desc := st.Tool.Description
-		for _, want := range []string{"payload_mode", "recall → choose → hydrate", "memory_get_revision"} {
+		for _, want := range []string{"payload_mode", "recall → choose → hydrate", "tesseract_get_revision"} {
 			if !strings.Contains(desc, want) {
 				t.Errorf("%s description missing %q", name, want)
 			}
 		}
-		// The hydration tool named must be one that exists on this surface.
-		// tesseract_get_revision is wave-3 naming and must not appear yet.
-		if strings.Contains(desc, "tesseract_get_revision") {
-			t.Errorf("%s description names tesseract_get_revision, which does not exist on this surface", name)
+		// The hydration tool named must be one this surface registers. The
+		// name is checked against the live registry rather than against a
+		// literal, so it cannot go stale independently of the surface.
+		if _, ok := registered["tesseract_get_revision"]; !ok {
+			t.Errorf("%s description names tesseract_get_revision, which no adapter registers", name)
 		}
 		if _, ok := st.Tool.InputSchema.Properties["payload_mode"]; !ok {
 			t.Errorf("%s does not declare a payload_mode argument in its input schema", name)
@@ -330,9 +331,9 @@ func TestPayloadMode_LookupProjectsAndKeepsFacets(t *testing.T) {
 				"ranking":      "activation",
 				"payload_mode": tc.mode,
 			}
-			res, err := a.handleTesseractLookup(context.Background(), req)
+			res, err := a.handleTesseractRecall(context.Background(), req)
 			if err != nil {
-				t.Fatalf("handleTesseractLookup: %v", err)
+				t.Fatalf("handleTesseractRecall: %v", err)
 			}
 			raw := res.Content[0].(mcp.TextContent).Text
 

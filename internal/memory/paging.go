@@ -100,7 +100,8 @@ const (
 	// TruncationPayloadModeLimitCap and issues a next_cursor, so the rows past
 	// the cap stay reachable by paging rather than by raising limit.
 	MaxRecallLimitFull = 100
-	// MaxHistoryLimit is the ceiling for memory_history / knowledge_history.
+	// MaxHistoryLimit is the ceiling for tesseract_history under the memory
+	// and knowledge domains.
 	MaxHistoryLimit = 500
 )
 
@@ -357,8 +358,8 @@ func RecallOrderingFingerprint(in RecallInput) string {
 // HistoryOrderingFingerprint derives the ordering fingerprint for a revision
 // history read. History ordering is fixed (created_at DESC, revision_id DESC),
 // so only the identity of the series can change it — but the domain is part of
-// the key because memory_history and knowledge_history read the same table
-// through different filters.
+// the key because the memory and knowledge arms of tesseract_history read the
+// same table through different filters.
 func HistoryOrderingFingerprint(domain, namespace, memoryKey string) string {
 	return fingerprintOf(struct {
 		D string `json:"d"`
@@ -573,7 +574,7 @@ type PagedRecall struct {
 	// Manifest describes what was withheld and how to get the rest.
 	Manifest Manifest `json:"manifest"`
 	// Kept is the unprojected form of the same rows. Callers that derive
-	// something from the results themselves — tesseract_lookup's facet
+	// something from the results themselves — tesseract_recall's facet
 	// histogram — read it here rather than reflecting over Results.
 	Kept []RecallResult `json:"-"`
 }
@@ -585,8 +586,8 @@ type PagedRevisions struct {
 }
 
 // RecallPaged runs a recall and wraps one page of it in a budget/cursor
-// envelope. It is the single implementation behind memory_recall,
-// tesseract_lookup, and both of their HTTP peers.
+// envelope. It is the single implementation behind tesseract_recall and
+// both of its HTTP peers.
 //
 // An invalid or mismatched cursor is returned as an error wrapping
 // ErrInvalidCursor; surfaces translate that to their own validation error.

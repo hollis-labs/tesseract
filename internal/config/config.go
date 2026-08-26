@@ -29,8 +29,9 @@ type Config struct {
 // recall and lookup ONLY, overridable per call by the arguments of the same
 // name. Both default to 0, meaning no ceiling.
 //
-// They deliberately do not reach memory_history / knowledge_history. Those
-// answer with a bare array unless the caller passes a paging knob, and a bare
+// They deliberately do not reach tesseract_history. It
+// answers with a bare array under the memory and knowledge domains unless the
+// caller passes a paging knob, and a bare
 // array has nowhere to report truncation — so a configured ceiling there could
 // only either flip the response shape for every caller (breaking the shipped
 // web UI, which parses both routes as arrays) or silently drop revisions. A

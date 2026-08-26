@@ -60,7 +60,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 - **Context** — generic revisioned key-value records. Thirty-ish tools for read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity rankings).
 - **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
-- **Unified** — `tesseract_lookup` searches memory + knowledge together.
+- **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
 
 ## Tool catalog
 
@@ -69,8 +69,6 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 | Tool | Scope | HTTP peer | Notes |
 |---|---|---|---|
 | `context_write` | `write` | `POST /v1/context/write` | Append a record revision |
-| `context_head` | — | `GET /v1/context/head` | Latest revision by namespace/key |
-| `context_history` | — | `GET /v1/context/history` | All revisions, newest-first |
 | `context_view` | — | — (MCP-only; use `views_evaluate` for full-power selector) | Simplified view over namespace globs |
 | `views_evaluate` | — | `POST /v1/views/evaluate` | Full selector + evaluation_meta |
 | `context_estimate` | — | `POST /v1/context/estimate` | Record count + bytes + token proxy without payload |
@@ -104,26 +102,33 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
 | `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup) |
-| `memory_get` | `memory:read` | `GET /v1/memory/current?namespace=&memory_key=` | `tesseract_skills memory` | Current revision for a keyed memory |
-| `memory_history` | `memory:read` | `GET /v1/memory/history?namespace=&memory_key=` | `tesseract_skills revisions` | Revision history, newest-first |
-| `memory_recall` | `memory:read` | `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall (activation / chronological / similarity / relevance) |
-| `memory_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id |
 | `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `tesseract_skills promotion` | Promote session → user / project |
-| `memory_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id |
 
 ### Knowledge
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
 | `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
-| `knowledge_get` | `memory:read` | `GET /v1/knowledge/current?namespace=&memory_key=` | `tesseract_skills knowledge` | Current knowledge revision for (namespace, memory_key) |
-| `knowledge_history` | `memory:read` | `GET /v1/knowledge/history?namespace=&memory_key=` | `tesseract_skills revisions` | Full history for a knowledge entry |
 
-### Unified
+### Cross-domain
 
-| Tool | Scope | HTTP peer | Deeper | Notes |
+`domain` is an argument on the keyed reads: `context`, `memory`, or `knowledge`. It is required — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
+
+The revision-level ops take no `domain`. Memory and knowledge revisions share one table keyed by `revision_id`, so an id from either resolves without saying which it was.
+
+`domain` is a **filter**, not a hint. A namespace does not identify a domain — `memory_state` has no domain column and both domains share `memory_revisions` — so a keyed read that named `memory` and found a knowledge revision at that key returns `not_found` rather than the other domain's row. Only a matching read reinforces.
+
+Each of these covers several HTTP routes rather than one; the parity catalog carries one row per (tool, route) pair. The routes are unchanged and still wired.
+
+**Argument name:** the MCP tools take `key`; their HTTP peers take `?memory_key=`. The retired per-domain tools took `memory_key` on both doors, so this is a rename on the MCP side only. The revision JSON still carries the field as `memory_key`. `memory_write` still takes `memory_key` too — aligning it is out of scope here.
+
+| Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_lookup` | `memory:read` | `POST /v1/tesseract/lookup` | `tesseract_skills recall-and-ranking` | Search memory + knowledge together |
+| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` only, and only on a match. |
+| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain |
+| `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over memory + knowledge (activation / chronological / similarity / relevance). Narrow with `domains`. |
+| `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain |
+| `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
 | `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn — the only input activation has. Memory and knowledge revision ids both resolve. |
 
 ### Meta
@@ -177,7 +182,8 @@ Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are req
 ### 3. Look up anything by topic
 
 ```json
-mcp__tesseract__tesseract_lookup {
+mcp__tesseract__tesseract_recall {
+  "namespaces": ["user/chrispian/memory", "user/chrispian/knowledge"],
   "query": "hybrid relevance recall ranking",
   "limit": 20
 }
@@ -204,10 +210,10 @@ Or split the phases manually with `context_broker_plan` + `context_packet`.
 ### 5. Resolve a revision id
 
 ```json
-mcp__tesseract__memory_get_revision { "revision_id": "01HXYZ…" }
+mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }
 ```
 
-Useful when a `memory_recall` hit references a revision you want to inspect in full (`tesseract_lookup` results surface revision ids too).
+Useful when a `tesseract_recall` hit references a revision you want to inspect in full. Every result carries `revision_id` under every `payload_mode`, so this hydrate step is always available.
 
 ### 6. Close the loop after using what you recalled
 

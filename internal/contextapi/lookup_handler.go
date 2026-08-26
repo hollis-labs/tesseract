@@ -24,7 +24,7 @@ type tesseractLookupRequest struct {
 
 	// SearchMode selects the retrieval arms under ranking=relevance:
 	// hybrid|lexical|semantic. Empty means hybrid. Peer of the MCP
-	// tesseract_lookup argument of the same name — same vocabulary, same
+	// tesseract_recall argument of the same name — same vocabulary, same
 	// default, same validation, because both hand the value to RecallPaged
 	// unmodified and it is RecallPaged that rejects it.
 	SearchMode memory.SearchMode `json:"search_mode,omitempty"`
@@ -34,7 +34,7 @@ type tesseractLookupRequest struct {
 	FacetSources []string         `json:"facet_sources,omitempty"`
 
 	// PointerHealth filters knowledge results by verification state. Peer of
-	// the MCP tesseract_lookup argument of the same name — same vocabulary,
+	// the MCP tesseract_recall argument of the same name — same vocabulary,
 	// same semantics, same SQL-before-limit application.
 	PointerHealth []string `json:"pointer_health,omitempty"`
 
@@ -43,7 +43,7 @@ type tesseractLookupRequest struct {
 	Tags          []string        `json:"tags,omitempty"`
 	ConfidenceMin float64         `json:"confidence_min,omitempty"`
 
-	// SimilarityMin is the cosine floor. Peer of the MCP tesseract_lookup
+	// SimilarityMin is the cosine floor. Peer of the MCP tesseract_recall
 	// argument of the same name — same range, same ranking/search_mode
 	// restriction, same error, because both hand the value to RecallPaged
 	// unmodified and it is RecallPaged that rejects it.
@@ -57,7 +57,7 @@ type tesseractLookupRequest struct {
 	Until *time.Time `json:"until,omitempty"`
 
 	// PayloadMode projects each result: keys|summary|full. Empty means the
-	// server default (read.payload_mode). Peer of the MCP tesseract_lookup
+	// server default (read.payload_mode). Peer of the MCP tesseract_recall
 	// argument of the same name — same vocabulary, same semantics.
 	//
 	// A caller that intends to EDIT what it reads must pass "full"
@@ -67,7 +67,7 @@ type tesseractLookupRequest struct {
 	// `payload_mode` for exactly that reason.
 	PayloadMode memory.PayloadMode `json:"payload_mode,omitempty"`
 
-	// Cursor, BudgetBytes and BudgetTokens: peers of the MCP tesseract_lookup
+	// Cursor, BudgetBytes and BudgetTokens: peers of the MCP tesseract_recall
 	// arguments of the same name. See pageArgs.
 	pageArgs
 }
@@ -222,7 +222,7 @@ type pageArgs struct {
 
 	// EstimateOnly withholds the result rows and returns only the envelope
 	// describing them. Peer of the MCP argument of the same name on both
-	// memory_recall and tesseract_lookup.
+	// tesseract_recall.
 	//
 	// A plain bool rather than a pointer, unlike the budgets beside it: false
 	// is both the zero value and the meaning of an absent field, so there is no

@@ -19,24 +19,11 @@ import (
 )
 
 func (a *Adapter) registerTools(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("context_head",
-		mcp.WithDescription("Read the current head (latest revision) of a record by namespace and key. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path, e.g. user/memory/task-001")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-	), a.handleHead)
-
-	a.addTool(s, mcp.NewTool("context_history",
-		mcp.WithDescription("Read the revision history for a namespace/key, newest first. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithNumber("limit", mcp.Description("Max revisions to return (default 10, max 25)")),
-	), a.handleHistory)
-
 	a.addTool(s, mcp.NewTool("context_view",
 		mcp.WithDescription("Evaluate a view selector and return matching records. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\"")),
 		mcp.WithString("revision_scope", mcp.Description("head or all (default: head)")),
-		mcp.WithNumber("limit", mcp.Description("Max records to return (default 10, max 25). Returns summaries; use context_head for full record.")),
+		mcp.WithNumber("limit", mcp.Description("Max records to return (default 10, max 25). Returns summaries; use `tesseract_get` with domain=\"context\" for the full record.")),
 	), a.handleView)
 
 	a.addTool(s, mcp.NewTool("context_packet",
@@ -133,8 +120,16 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 }
 
 // --- Read tools ---
+//
+// handleContextHead and handleContextHistory are not registered as tools of
+// their own. They are the `domain: "context"` arms of tesseract_get and
+// tesseract_history, called from crossdomain_read_tools.go. Their shapes are
+// this domain's own — a record projection and the go-mcp budget envelope — and
+// differ from what the memory and knowledge arms return, which is pinned in
+// TestCrossDomainGet_ContextArmShapeIsHandStated and
+// TestCrossDomainHistory_ContextArmKeepsItsOwnEnvelope.
 
-func (a *Adapter) handleHead(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleContextHead(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
@@ -151,7 +146,7 @@ func (a *Adapter) handleHead(_ context.Context, req mcp.CallToolRequest) (*mcp.C
 	return toolJSON(recordJSON(rec)), nil
 }
 
-func (a *Adapter) handleHistory(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleContextHistory(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
@@ -167,7 +162,7 @@ func (a *Adapter) handleHistory(_ context.Context, req mcp.CallToolRequest) (*mc
 	for i, rec := range records {
 		summaries[i] = recordJSON(rec)
 	}
-	env := budget.Apply(summaries, budget.Config{Limit: limit}, "%d revisions available. Use context_head with namespace and key for full record content.")
+	env := budget.Apply(summaries, budget.Config{Limit: limit}, "%d revisions available. Use tesseract_get with domain, namespace and key for full record content.")
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 
@@ -206,7 +201,7 @@ func (a *Adapter) handleView(_ context.Context, req mcp.CallToolRequest) (*mcp.C
 		s["updated_at"] = rec.CreatedAt
 		summaries[i] = s
 	}
-	env := budget.Apply(summaries, budget.Config{Limit: limit}, "%d records available. Use context_head with namespace and key for full record content.")
+	env := budget.Apply(summaries, budget.Config{Limit: limit}, "%d records available. Use tesseract_get with domain, namespace and key for full record content.")
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 

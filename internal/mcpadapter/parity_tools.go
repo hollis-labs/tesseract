@@ -3,19 +3,15 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
-	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 // registerParityTools adds MCP tools that mirror HTTP routes for agent parity:
-// context_estimate, views_evaluate, memory_get_revision, and (when
-// KnowledgeStore is present) knowledge_get + knowledge_history.
+// context_estimate and views_evaluate.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_estimate",
 		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `tesseract_skills start-here` for the primitive model."),
@@ -29,65 +25,6 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("Override selector.limit (0 = use selector or default)")),
 	), a.handleViewsEvaluate)
 
-	if a.MemoryStore != nil {
-		a.addTool(s, mcp.NewTool("memory_get_revision",
-			mcp.WithDescription(
-				"**Fetch a memory revision by its revision_id.** Peer of HTTP /v1/memory/revisions/{id}.\n"+
-					"• **Kind of content:** a single revision record, including body, facets, and lineage.\n"+
-					"• **Scope:** `memory:read`.\n"+
-					"• **Use this when:** a recall or history result referenced a revision_id and you want the full content.\n"+
-					"• **Don't use this for:** resolving by (namespace, memory_key) — use `memory_get`.\n"+
-					"• **Side effect:** reinforces the parent memory's activation/access_count — a deliberate read counts as use.\n"+
-					"• **Deeper:** `tesseract_skills revisions`.",
-			),
-			mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
-			mcp.WithReadOnlyHintAnnotation(true),
-			mcp.WithIdempotentHintAnnotation(true),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithOpenWorldHintAnnotation(false),
-		), a.handleMemoryGetRevision)
-	}
-
-	if a.KnowledgeStore != nil {
-		a.addTool(s, mcp.NewTool("knowledge_get",
-			mcp.WithDescription(
-				"**Fetch the current knowledge revision** for `(namespace, memory_key)`. Peer of HTTP /v1/knowledge/current.\n"+
-					"• **Kind of content:** the latest non-deprecated knowledge revision for this entry.\n"+
-					"• **Scope:** `memory:read`.\n"+
-					"• **Use this when:** you know the key and want the current pointer + summary + body.\n"+
-					"• **Don't use this for:** full history (`knowledge_history`), cross-entry search (`tesseract_lookup`).\n"+
-					"• **Deeper:** `tesseract_skills knowledge`.",
-			),
-			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace (must contain 'knowledge' segment, e.g. user/chrispian/knowledge/framework)")),
-			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key (e.g. framework.go-providers). Named memory_key for parity with memory tools — both stores share the Revision shape.")),
-			mcp.WithReadOnlyHintAnnotation(true),
-			mcp.WithIdempotentHintAnnotation(true),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithOpenWorldHintAnnotation(false),
-		), a.handleKnowledgeGet)
-
-		a.addTool(s, mcp.NewTool("knowledge_history",
-			mcp.WithDescription(
-				"**Fetch the revision history** for a knowledge entry, newest-first. Peer of HTTP /v1/knowledge/history.\n"+
-					"• **Kind of content:** every revision under `(namespace, memory_key)`, including superseded.\n"+
-					"• **Result shape:** a bare array by default. Pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and the response becomes `{results, manifest}`.\n"+
-					"• **Scope:** `memory:read`.\n"+
-					"• **Use this when:** you need to trace how a knowledge entry evolved (e.g. pointer churn, summary rewrites).\n"+
-					"• **Don't use this for:** just the current value (`knowledge_get`).\n"+
-					"• **Deeper:** `tesseract_skills revisions`.",
-			),
-			mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace")),
-			mcp.WithString("memory_key", mcp.Required(), mcp.Description("Knowledge key. Named memory_key for parity with memory tools.")),
-			mcp.WithNumber("limit", mcp.Description(historyLimitArgDescription)),
-			mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
-			mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
-			mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
-			mcp.WithReadOnlyHintAnnotation(true),
-			mcp.WithIdempotentHintAnnotation(true),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithOpenWorldHintAnnotation(false),
-		), a.handleKnowledgeHistory)
-	}
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -149,76 +86,4 @@ func wholeNumberArg(req mcp.CallToolRequest, name string, def float64) (int, err
 		return 0, fmt.Errorf("%s must be a whole number, got %v", name, v)
 	}
 	return int(v), nil
-}
-
-func (a *Adapter) handleMemoryGetRevision(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
-		return res, nil
-	}
-	revisionID := req.GetString("revision_id", "")
-	if revisionID == "" {
-		return toolError("validation_error", "revision_id is required"), nil
-	}
-	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
-	rev, err := a.MemoryStore.GetRevisionByIDReinforced(ctx, revisionID)
-	if err != nil {
-		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
-		}
-		return nil, err
-	}
-	return toolJSON(rev), nil
-}
-
-func (a *Adapter) handleKnowledgeGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
-		return res, nil
-	}
-	namespace := req.GetString("namespace", "")
-	key := req.GetString("memory_key", "")
-	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and memory_key are required"), nil
-	}
-	rev, err := a.KnowledgeStore.GetCurrent(ctx, namespace, key)
-	if err != nil {
-		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
-		}
-		return nil, err
-	}
-	return toolJSON(rev), nil
-}
-
-func (a *Adapter) handleKnowledgeHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
-		return res, nil
-	}
-	namespace := req.GetString("namespace", "")
-	key := req.GetString("memory_key", "")
-	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and memory_key are required"), nil
-	}
-	pr, errRes := a.resolveHistoryPageRequest(req)
-	if errRes != nil {
-		return errRes, nil
-	}
-	revs, err := a.KnowledgeStore.GetHistory(ctx, namespace, key)
-	if err != nil {
-		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
-		}
-		return nil, err
-	}
-	if !pr.Engaged() {
-		return toolJSON(revs), nil
-	}
-	page, err := memory.PageRevisions(revs, pr,
-		memory.HistoryOrderingFingerprint(string(domains.Knowledge), namespace, key))
-	if err != nil {
-		if errors.Is(err, memory.ErrInvalidCursor) {
-			return toolError("validation_error", err.Error()), nil
-		}
-		return nil, err
-	}
-	return toolJSON(page), nil
 }

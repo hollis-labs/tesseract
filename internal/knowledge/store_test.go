@@ -17,6 +17,14 @@ import (
 
 func newTestStore(t *testing.T) *knowledge.Store {
 	t.Helper()
+	s, _ := newTestStoreWithMemory(t)
+	return s
+}
+
+// newTestStoreWithMemory also hands back the underlying revision store, for the
+// tests that must write a NON-knowledge revision to prove the filter works.
+func newTestStoreWithMemory(t *testing.T) (*knowledge.Store, *memory.Store) {
+	t.Helper()
 	root := t.TempDir()
 	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: root})
 	if err != nil {
@@ -24,7 +32,7 @@ func newTestStore(t *testing.T) *knowledge.Store {
 	}
 	t.Cleanup(func() { _ = cs.Close() })
 	mem := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
-	return knowledge.New(mem)
+	return knowledge.New(mem), mem
 }
 
 func validInput() knowledge.WriteInput {
@@ -289,6 +297,54 @@ func TestGetCurrent_NotFound(t *testing.T) {
 	_, err := s.GetCurrent(context.Background(), "user/chrispian/knowledge/missing", "no-such-key")
 	if !errors.Is(err, memory.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound wrap", err)
+	}
+}
+
+// TestGetCurrent_RefusesAMemoryRevision exercises the contract GetCurrent's doc
+// comment states: "callers should not see cross-domain reads."
+//
+// The comment has said that since the method was written; nothing checked it.
+// The sibling read on the memory side did not implement it at all, and a
+// memory-domain read of a knowledge namespace returned the knowledge revision
+// and reinforced it. Both sides now share one implementation, so this test and
+// the memory-side cases in internal/mcpadapter/crossdomain_parity_test.go are
+// each other's cross-check rather than two copies of one assertion.
+func TestGetCurrent_RefusesAMemoryRevision(t *testing.T) {
+	s, mem := newTestStoreWithMemory(t)
+	ctx := context.Background()
+
+	// A memory revision at a memory namespace. The mirror arrangement — a
+	// memory revision parked under a knowledge namespace — is unreachable:
+	// memory.WriteRevision requires "memory" as the penultimate segment, so the
+	// write path refuses it. Asking the knowledge store about a memory
+	// namespace is the direction that can actually happen.
+	const ns, key = "user/chrispian/memory/notes", "cross.domain.probe"
+	if _, err := mem.WriteRevision(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
+		Namespace:  ns,
+		MemoryKey:  key,
+		Author:     memory.Author{AgentID: "claude"},
+		Trigger:    memory.TriggerExplicit,
+		SessionID:  "sess-xd",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Status:     memory.StatusCanonical,
+		Payload:    memory.Payload{Summary: "a memory revision, asked of the knowledge store"},
+	}); err != nil {
+		t.Fatalf("seed memory revision: %v", err)
+	}
+
+	// Positive control: the row really is there and resolvable unfiltered, so
+	// the ErrNotFound below is the domain filter and not an empty fixture.
+	if _, err := mem.GetCurrent(ctx, ns, key); err != nil {
+		t.Fatalf("unfiltered resolve found nothing, so this test proves nothing: %v", err)
+	}
+
+	if _, err := s.GetCurrent(ctx, ns, key); !errors.Is(err, memory.ErrNotFound) {
+		t.Errorf("GetCurrent returned a memory revision to a knowledge caller: err = %v", err)
+	}
+	if _, err := s.GetHistory(ctx, ns, key); !errors.Is(err, memory.ErrNotFound) {
+		t.Errorf("GetHistory returned memory revisions to a knowledge caller: err = %v", err)
 	}
 }
 

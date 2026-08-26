@@ -45,6 +45,25 @@ type parityOp struct {
 //     convenience wrapper with no clean HTTP equivalent.
 //   - HTTP-only (MCP == ""): op is an infra/admin/security boundary, a
 //     deprecated alias, or batch-2 work not yet on MCP.
+//
+// An MCP name may appear on SEVERAL rows, one per HTTP route it covers. Every
+// assertion below builds a SET rather than walking pairs —
+// TestMCPRegistrationMatchesCatalog and TestHTTPRoutesMatchCatalog both collect
+// into map[string]struct{}, and TestSurfaceCatalogWaivers classifies each row on
+// its own — so repeating a name costs nothing and keeps each route paired with
+// the tool that serves it.
+//
+// The cross-domain reads of CW-20260825-0010 are why that matters: five MCP
+// tools cover ten routes between them, and writing those as five MCP-only plus
+// ten HTTP-only waivers would have added fifteen exclusions to say what ten
+// paired rows say exactly. Reach for a waiver only when a surface genuinely has
+// no peer, never to express a fan-out this shape already carries.
+//
+// ROW COUNT IS NOT TOOL COUNT. Because names repeat, the number of tools is the
+// number of DISTINCT MCP names:
+//
+//	awk '/^var surfaceCatalog = \[\]parityOp\{/{f=1;next} f&&/^\}$/{exit} f' \
+//	  tests/parity/parity_test.go | grep -oE 'MCP: "[a-z_]+"' | sort -u | wc -l
 var surfaceCatalog = []parityOp{
 	// ── Context domain ──────────────────────────────────────────────────
 	{MCP: "context_audit", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/audit"},
@@ -54,8 +73,6 @@ var surfaceCatalog = []parityOp{
 	{MCP: "context_chunked_ingest", Waiver: "MCP-only: chunked stateful ingest has no clean HTTP shape"},
 	{MCP: "context_embed", Waiver: "MCP-only: embedding-only op for agent tooling"},
 	{MCP: "context_estimate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/estimate"},
-	{MCP: "context_head", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/head"},
-	{MCP: "context_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/history"},
 	{MCP: "context_namespace_register", HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
 	{MCP: "context_namespace_show", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
 	{MCP: "context_namespaces_list", Waiver: "MCP-only: list-of-namespaces helper; HTTP caller iterates /namespaces/get"},
@@ -79,21 +96,29 @@ var surfaceCatalog = []parityOp{
 	{MCP: "views_evaluate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
 
 	// ── Memory domain ──────────────────────────────────────────────────
-	{MCP: "memory_deprecate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/deprecate"},
-	{MCP: "memory_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/current"},
-	{MCP: "memory_get_revision", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/revisions/{id}"},
-	{MCP: "memory_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/history"},
 	{MCP: "memory_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/promote"},
-	{MCP: "memory_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/recall"},
 	{MCP: "memory_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/write"},
 
 	// ── Knowledge domain ───────────────────────────────────────────────
-	{MCP: "knowledge_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
-	{MCP: "knowledge_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/history"},
 	{MCP: "knowledge_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/knowledge/write"},
 
-	// ── Unified lookup ─────────────────────────────────────────────────
-	{MCP: "tesseract_lookup", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
+	// ── Cross-domain reads (CW-20260825-0010) ──────────────────────────
+	// One MCP tool per operation, several HTTP routes each. The routes are
+	// unchanged from when a domain-specific tool served each of them, so
+	// every pairing below is a real peer relationship and not a placeholder.
+	// Argument and output parity per (tool, domain) is asserted in
+	// internal/mcpadapter/crossdomain_parity_test.go; these rows carry the
+	// existence half.
+	{MCP: "tesseract_deprecate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/deprecate"},
+	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/head"},
+	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
+	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/current"},
+	{MCP: "tesseract_get_revision", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/revisions/{id}"},
+	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/history"},
+	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/history"},
+	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/history"},
+	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/recall"},
+	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
 
 	// ── Reinforcement ──────────────────────────────────────────────────
 	// Cross-domain like tesseract_lookup: a revision ID resolves whether it

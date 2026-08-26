@@ -31,16 +31,16 @@ tesseract context token create \
   --ttl 8760h
 ```
 
-Read tools (`context_head`, `context_history`, `context_view`, `context_packet`) work
-without a token. Write tools (`context_write`, `context_promote_request`) require a token
+Read tools (`tesseract_get`, `tesseract_history`, `context_view`, `context_packet`) work
+without a token under `domain: "context"`; the `memory` and `knowledge` domains check `memory:read`. Write tools (`context_write`, `context_promote_request`) require a token
 with the matching scope and a namespace glob that covers the target namespace.
 
 ### Available tools
 
 | Tool | Auth required | Description |
 |---|---|---|
-| `context_head` | none | Read latest record revision |
-| `context_history` | none | Read revision history (newest first) |
+| `tesseract_get` | none under `domain: "context"` | Read latest record revision |
+| `tesseract_history` | none under `domain: "context"` | Read revision history (newest first) |
 | `context_view` | none | Evaluate a namespace/selector query |
 | `context_packet` | none | Assemble a budget-bounded context bundle |
 | `context_write` | `write` scope | Append a record revision |

@@ -51,7 +51,7 @@ const (
 // reinforceMemoryIDs is the shared activation-reinforcement primitive: it
 // bumps activation, access_count, and last_accessed_at on memory_state for
 // every memory_id in the set. Reinforcement is a "deliberate read" signal —
-// it must be driven only by the get paths (memory_get / memory_get_revision)
+// it must be driven only by the get paths (tesseract_get / tesseract_get_revision)
 // or by an explicit TouchRevisions report, never by search/recall (which would
 // let the system's own guesses self-reinforce).
 //

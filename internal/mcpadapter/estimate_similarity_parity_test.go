@@ -6,10 +6,11 @@ package mcpadapter
 //
 // Both are new MCP <-> HTTP seams, and this file drives BOTH doors over the
 // SAME stores so any difference it reports belongs to the surface rather than
-// to the data. tests/parity/parity_test.go pairs memory_recall with
-// POST /v1/memory/recall but asserts only that the route exists; argument
-// parity has no structural guard and its absence has already shipped a defect
-// (payload_mode, CW-20260825-0003).
+// to the data. tests/parity/parity_test.go carries POST /v1/memory/recall and
+// POST /v1/tesseract/lookup as HTTP-only rows waived against tesseract_recall,
+// and asserts only that the routes exist; argument parity has no structural
+// guard there and its absence has already shipped a defect (payload_mode,
+// CW-20260825-0003).
 
 import (
 	"bytes"
@@ -174,24 +175,13 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 
 // ── Call helpers ─────────────────────────────────────────────────────────────
 
-func estCall(t *testing.T, a *Adapter, tool string, args map[string]any) string {
+func estCall(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = args
-	var (
-		res *mcp.CallToolResult
-		err error
-	)
-	switch tool {
-	case "memory_recall":
-		res, err = a.handleMemoryRecall(context.Background(), req)
-	case "tesseract_lookup":
-		res, err = a.handleTesseractLookup(context.Background(), req)
-	default:
-		t.Fatalf("unknown tool %q", tool)
-	}
+	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
-		t.Fatalf("%s: %v", tool, err)
+		t.Fatalf("tesseract_recall: %v", err)
 	}
 	return res.Content[0].(mcp.TextContent).Text
 }
@@ -253,8 +243,8 @@ func TestEstimateOnly_ExactIdentityPerPayloadMode(t *testing.T) {
 		route string
 		ns    string
 	}{
-		{"memory_recall", "/v1/memory/recall", estNSJSON},
-		{"tesseract_lookup", "/v1/tesseract/lookup", estBothJSON},
+		{"vs_memory_recall_route", "/v1/memory/recall", estBothJSON},
+		{"vs_tesseract_lookup_route", "/v1/tesseract/lookup", estBothJSON},
 	} {
 		for _, mode := range []string{"keys", "summary", "full"} {
 			t.Run(tool.name+"/payload_mode="+mode, func(t *testing.T) {
@@ -279,7 +269,7 @@ func TestEstimateOnly_ExactIdentityPerPayloadMode(t *testing.T) {
 					return b + `}`
 				}
 
-				actual := decodeEnvelope(t, estCall(t, a, tool.name, mcpArgs(false)))
+				actual := decodeEnvelope(t, estCall(t, a, mcpArgs(false)))
 
 				// ── Non-vacuity precondition ──────────────────────────────
 				if actual.Manifest.ResultsReturned == 0 {
@@ -292,7 +282,7 @@ func TestEstimateOnly_ExactIdentityPerPayloadMode(t *testing.T) {
 						"identity below would be vacuous", mode)
 				}
 
-				est := decodeEnvelope(t, estCall(t, a, tool.name, mcpArgs(true)))
+				est := decodeEnvelope(t, estCall(t, a, mcpArgs(true)))
 
 				// The whole manifest, compared as the wire renders it — count,
 				// bytes, token proxy, total, truncation state and cursor at
@@ -428,14 +418,14 @@ func assertFacetIdentity(t *testing.T, mode string, est, actual estimateFacets) 
 // hardcoded, so the case cannot quietly stop binding when the fixture changes.
 func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
 	for _, tool := range []struct{ name, route, ns string }{
-		{"memory_recall", "/v1/memory/recall", estNSJSON},
-		{"tesseract_lookup", "/v1/tesseract/lookup", estBothJSON},
+		{"vs_memory_recall_route", "/v1/memory/recall", estBothJSON},
+		{"vs_tesseract_lookup_route", "/v1/tesseract/lookup", estBothJSON},
 	} {
 		for _, mode := range []string{"keys", "summary", "full"} {
 			t.Run(tool.name+"/payload_mode="+mode, func(t *testing.T) {
 				a, srv := estimateSurfaces(t)
 
-				unbounded := decodeEnvelope(t, estCall(t, a, tool.name, map[string]any{
+				unbounded := decodeEnvelope(t, estCall(t, a, map[string]any{
 					"namespaces": tool.ns, "ranking": "chronological", "payload_mode": mode,
 				}))
 				if unbounded.Manifest.BytesReturned == 0 || unbounded.Manifest.ResultsReturned < 2 {
@@ -465,7 +455,7 @@ func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
 					return b + `}`
 				}
 
-				actual := decodeEnvelope(t, estCall(t, a, tool.name, args(false)))
+				actual := decodeEnvelope(t, estCall(t, a, args(false)))
 
 				// ── Non-vacuity: the budget must have BOUND ────────────────
 				// Without this the whole case degenerates into the unbounded
@@ -488,7 +478,7 @@ func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
 						actual.Manifest.ResultsReturned, unbounded.Manifest.ResultsReturned)
 				}
 
-				est := decodeEnvelope(t, estCall(t, a, tool.name, args(true)))
+				est := decodeEnvelope(t, estCall(t, a, args(true)))
 				if got, want := manifestKey(t, est.Manifest), manifestKey(t, actual.Manifest); got != want {
 					t.Errorf("under a binding budget the estimate is not the identity of the "+
 						"real read (payload_mode=%s):\nestimate: %s\n    real: %s", mode, got, want)
@@ -532,7 +522,7 @@ func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
 				// The cursor a TRUNCATED estimate issued must resume the real
 				// read — the claim that makes a pre-flight actionable rather
 				// than merely informative.
-				resumed := decodeEnvelope(t, estCall(t, a, tool.name, map[string]any{
+				resumed := decodeEnvelope(t, estCall(t, a, map[string]any{
 					"namespaces": tool.ns, "ranking": "chronological", "payload_mode": mode,
 					"cursor": *est.Manifest.NextCursor,
 				}))
@@ -556,7 +546,7 @@ func TestEstimateOnly_IdentityUnderABindingBudget(t *testing.T) {
 func TestEstimateOnly_CursorResumesTheRealRead(t *testing.T) {
 	a, _ := estimateSurfaces(t)
 
-	est := decodeEnvelope(t, estCall(t, a, "memory_recall", map[string]any{
+	est := decodeEnvelope(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "chronological",
 		"payload_mode": "summary", "limit": float64(2), "estimate_only": true,
 	}))
@@ -565,7 +555,7 @@ func TestEstimateOnly_CursorResumesTheRealRead(t *testing.T) {
 	}
 
 	// The first page of the real read, for comparison.
-	first := decodeScored(t, estCall(t, a, "memory_recall", map[string]any{
+	first := decodeScored(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "chronological",
 		"payload_mode": "summary", "limit": float64(2),
 	}))
@@ -574,7 +564,7 @@ func TestEstimateOnly_CursorResumesTheRealRead(t *testing.T) {
 	}
 
 	// The cursor an ESTIMATE issued, spent on a REAL read.
-	resumedRaw := estCall(t, a, "memory_recall", map[string]any{
+	resumedRaw := estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "chronological",
 		"payload_mode": "summary", "limit": float64(2),
 		"cursor": *est.Manifest.NextCursor,
@@ -621,7 +611,7 @@ func TestNewKnobs_NoArgumentCallerKeepsTheOldShape(t *testing.T) {
 				srv.RuntimeConfig.Read.PayloadMode = mode
 				srv.RuntimeConfig.Read.BudgetBytes = budget
 
-				raw := estCall(t, a, "memory_recall", map[string]any{"namespaces": estNSJSON})
+				raw := estCall(t, a, map[string]any{"namespaces": estNSJSON})
 				env := decodeEnvelope(t, raw)
 				if env.Results == nil {
 					t.Errorf("a caller passing no arguments got no results key under %s; "+
@@ -658,7 +648,7 @@ func TestNewKnobs_NoArgumentCallerKeepsTheOldShape(t *testing.T) {
 func TestSimilarityMin_DropsExactlyTheRowsBelowTheFloor(t *testing.T) {
 	a, _ := estimateSurfaces(t)
 
-	unfiltered := decodeScored(t, estCall(t, a, "memory_recall", map[string]any{
+	unfiltered := decodeScored(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(50),
 	}))
@@ -686,7 +676,7 @@ func TestSimilarityMin_DropsExactlyTheRowsBelowTheFloor(t *testing.T) {
 			floor, len(wantIDs), len(unfiltered))
 	}
 
-	filtered := decodeScored(t, estCall(t, a, "memory_recall", map[string]any{
+	filtered := decodeScored(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(50), "similarity_min": floor,
 	}))
@@ -732,7 +722,7 @@ func TestSimilarityMin_BindsOnTheSemanticArmToo(t *testing.T) {
 		return out
 	}
 
-	unfiltered := decodeScored(t, estCall(t, a, "memory_recall", args(nil)))
+	unfiltered := decodeScored(t, estCall(t, a, args(nil)))
 	if len(unfiltered) < 3 {
 		t.Fatalf("semantic arm returned %d rows; a floor cannot be shown to "+
 			"discriminate on fewer than three", len(unfiltered))
@@ -754,7 +744,7 @@ func TestSimilarityMin_BindsOnTheSemanticArmToo(t *testing.T) {
 			floor, len(wantIDs), len(unfiltered))
 	}
 
-	filtered := decodeScored(t, estCall(t, a, "memory_recall",
+	filtered := decodeScored(t, estCall(t, a,
 		args(map[string]any{"similarity_min": floor})))
 
 	var gotIDs []string
@@ -771,9 +761,9 @@ func TestSimilarityMin_BindsOnTheSemanticArmToo(t *testing.T) {
 	}
 
 	// The floor must narrow the candidate set on this arm too, not the page.
-	full := decodeEnvelope(t, estCall(t, a, "memory_recall",
+	full := decodeEnvelope(t, estCall(t, a,
 		args(map[string]any{"similarity_min": floor})))
-	paged := decodeEnvelope(t, estCall(t, a, "memory_recall",
+	paged := decodeEnvelope(t, estCall(t, a,
 		args(map[string]any{"similarity_min": floor, "limit": float64(1)})))
 	if paged.Manifest.ResultsTotal != full.Manifest.ResultsTotal {
 		t.Errorf("semantic results_total is %d at limit=1 and %d at limit=50; the floor "+
@@ -806,8 +796,8 @@ func TestSimilarityMin_ZeroIsAFloorNotAnAbsence(t *testing.T) {
 		return out
 	}
 
-	absent := decodeScored(t, estCall(t, a, "memory_recall", args(nil)))
-	atZero := decodeScored(t, estCall(t, a, "memory_recall",
+	absent := decodeScored(t, estCall(t, a, args(nil)))
+	atZero := decodeScored(t, estCall(t, a,
 		args(map[string]any{"similarity_min": 0.0})))
 
 	// ── Non-vacuity, in both directions ───────────────────────────────────
@@ -937,7 +927,7 @@ func TestSimilarityMin_RefusedWhereThereIsNoSimilarity(t *testing.T) {
 			for k, v := range tc.extra {
 				args[k] = v
 			}
-			raw := estCall(t, a, "memory_recall", args)
+			raw := estCall(t, a, args)
 			gotErr := strings.Contains(raw, "validation_error")
 			if gotErr == tc.wantOK {
 				t.Errorf("MCP: wantOK=%v but validation_error=%v; raw=%s", tc.wantOK, gotErr, raw)
@@ -980,7 +970,7 @@ func TestSimilarityMin_RangeRejectedOnBothDoors(t *testing.T) {
 		{"zero is legal", 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			raw := estCall(t, a, "memory_recall", map[string]any{
+			raw := estCall(t, a, map[string]any{
 				"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 				"similarity_min": tc.value,
 			})
@@ -1019,12 +1009,12 @@ func TestSimilarityMinParity_MCPvsHTTP(t *testing.T) {
 	a, srv := estimateSurfaces(t)
 
 	for _, tool := range []struct{ name, route, ns string }{
-		{"memory_recall", "/v1/memory/recall", estNSJSON},
-		{"tesseract_lookup", "/v1/tesseract/lookup", estBothJSON},
+		{"vs_memory_recall_route", "/v1/memory/recall", estBothJSON},
+		{"vs_tesseract_lookup_route", "/v1/tesseract/lookup", estBothJSON},
 	} {
 		for _, floor := range []float64{0, 0.25, 0.5} {
 			t.Run(tool.name+"/similarity_min="+ftoa(floor), func(t *testing.T) {
-				raw := estCall(t, a, tool.name, map[string]any{
+				raw := estCall(t, a, map[string]any{
 					"namespaces": tool.ns, "ranking": "similarity", "query": "alpha",
 					"payload_mode": "summary", "similarity_min": floor,
 				})
@@ -1081,11 +1071,11 @@ func TestSimilarityMinParity_MCPvsHTTP(t *testing.T) {
 
 	// A floor that binds must return FEWER rows than one that does not, or
 	// every comparison above is between two unfiltered responses.
-	loose := decodeScored(t, estCall(t, a, "memory_recall", map[string]any{
+	loose := decodeScored(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "similarity_min": -1.0,
 	}))
-	tight := decodeScored(t, estCall(t, a, "memory_recall", map[string]any{
+	tight := decodeScored(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "similarity_min": 0.9,
 	}))
@@ -1103,11 +1093,11 @@ func TestSimilarityMinParity_MCPvsHTTP(t *testing.T) {
 func TestSimilarityMin_AppliesBeforeLimit(t *testing.T) {
 	a, _ := estimateSurfaces(t)
 
-	full := decodeEnvelope(t, estCall(t, a, "memory_recall", map[string]any{
+	full := decodeEnvelope(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(50), "similarity_min": 0.5,
 	}))
-	paged := decodeEnvelope(t, estCall(t, a, "memory_recall", map[string]any{
+	paged := decodeEnvelope(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(1), "similarity_min": 0.5,
 	}))
@@ -1122,7 +1112,7 @@ func TestSimilarityMin_AppliesBeforeLimit(t *testing.T) {
 	}
 	// And the unfiltered total must be LARGER, or "applies before limit" is
 	// being asserted about a floor that removes nothing.
-	unfiltered := decodeEnvelope(t, estCall(t, a, "memory_recall", map[string]any{
+	unfiltered := decodeEnvelope(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(50),
 	}))
@@ -1149,18 +1139,18 @@ func TestEstimateOnly_ReflectsTheSimilarityFloor(t *testing.T) {
 		return out
 	}
 
-	actual := decodeEnvelope(t, estCall(t, a, "memory_recall", args(false, 0.5)))
+	actual := decodeEnvelope(t, estCall(t, a, args(false, 0.5)))
 	if actual.Manifest.ResultsReturned == 0 || actual.Manifest.BytesReturned == 0 {
 		t.Fatalf("floored read is empty; the identity below would be vacuous: %+v", actual.Manifest)
 	}
-	est := decodeEnvelope(t, estCall(t, a, "memory_recall", args(true, 0.5)))
+	est := decodeEnvelope(t, estCall(t, a, args(true, 0.5)))
 	if got, want := manifestKey(t, est.Manifest), manifestKey(t, actual.Manifest); got != want {
 		t.Errorf("estimate of a floored read does not match the floored read:\n"+
 			"estimate: %s\n    real: %s", got, want)
 	}
 
 	// The floor must have moved the numbers, or the composition is untested.
-	unfloored := decodeEnvelope(t, estCall(t, a, "memory_recall", map[string]any{
+	unfloored := decodeEnvelope(t, estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"payload_mode": "summary", "limit": float64(50), "estimate_only": true,
 	}))
@@ -1177,7 +1167,7 @@ func TestEstimateOnly_ReflectsTheSimilarityFloor(t *testing.T) {
 // error.
 func TestSimilarityMin_NonNumericIsRejected(t *testing.T) {
 	a, _ := estimateSurfaces(t)
-	raw := estCall(t, a, "memory_recall", map[string]any{
+	raw := estCall(t, a, map[string]any{
 		"namespaces": estNSJSON, "ranking": "similarity", "query": "alpha",
 		"similarity_min": "0.5",
 	})
@@ -1213,7 +1203,7 @@ func TestNewKnobs_SpanMemoryAndKnowledge(t *testing.T) {
 		return out
 	}
 
-	unfiltered := decodeEnvelope(t, estCall(t, a, "tesseract_lookup", with(nil)))
+	unfiltered := decodeEnvelope(t, estCall(t, a, with(nil)))
 	if unfiltered.Facets == nil {
 		t.Fatal("lookup returned no facets")
 	}
@@ -1227,7 +1217,7 @@ func TestNewKnobs_SpanMemoryAndKnowledge(t *testing.T) {
 	}
 
 	// estimate_only over both domains, identity per facet.
-	est := decodeEnvelope(t, estCall(t, a, "tesseract_lookup",
+	est := decodeEnvelope(t, estCall(t, a,
 		with(map[string]any{"estimate_only": true})))
 	if est.Facets == nil {
 		t.Fatal("cross-domain estimate returned no facets")
@@ -1239,12 +1229,12 @@ func TestNewKnobs_SpanMemoryAndKnowledge(t *testing.T) {
 	}
 
 	// similarity_min over both domains: the floor must bind on rows from each.
-	scored := decodeScored(t, estCall(t, a, "tesseract_lookup", with(nil)))
+	scored := decodeScored(t, estCall(t, a, with(nil)))
 	if len(scored) < 3 {
 		t.Fatalf("cross-domain lookup returned %d rows; too few to floor", len(scored))
 	}
 	floor := (scored[0].Score + scored[len(scored)-1].Score) / 2
-	filtered := decodeEnvelope(t, estCall(t, a, "tesseract_lookup",
+	filtered := decodeEnvelope(t, estCall(t, a,
 		with(map[string]any{"similarity_min": floor})))
 	if filtered.Manifest.ResultsTotal >= unfiltered.Manifest.ResultsTotal {
 		t.Errorf("similarity_min=%v did not narrow the cross-domain set: %d vs %d",
@@ -1294,7 +1284,7 @@ func TestNewKnobDescriptions_NameOnlyReachableErrorCodes(t *testing.T) {
 					"failure by deleting the code from the map.", d.name, code)
 				continue
 			}
-			raw := estCall(t, a, "memory_recall", args)
+			raw := estCall(t, a, args)
 			if !strings.Contains(raw, `"`+code+`"`) {
 				t.Errorf("%s names %q but the provoking call returned: %s", d.name, code, raw)
 			}
@@ -1355,11 +1345,9 @@ func TestNewKnobDescriptions_ClaimsMatchBehavior(t *testing.T) {
 		// The rule now has ONE statement in the store, and this pins that the
 		// description renders it rather than paraphrasing it back into drift.
 		{"similarity_min renders the store's boundary rule", similarityMinArgDescription, memory.SimilarityMinBoundaryRule},
-		// R2: the facet asymmetry must be explained where a CALLER can see it,
-		// not only in a Go doc comment. Both the shapes and the reason.
-		{"estimate_only names memory_recall's shape", estimateOnlyArgDescription, "`memory_recall` answers `{manifest, estimate_only: true}`"},
-		{"estimate_only names tesseract_lookup's shape", estimateOnlyArgDescription, "`tesseract_lookup` answers `{facets, manifest, estimate_only: true}`"},
-		{"estimate_only says WHY the shapes differ", estimateOnlyArgDescription, "The shapes differ because"},
+		// R2: the estimate's shape must be stated where a CALLER can see it,
+		// not only in a Go doc comment.
+		{"estimate_only names the recall envelope it answers with", estimateOnlyArgDescription, "`tesseract_recall` answers `{facets, manifest, estimate_only: true}`"},
 		{"estimate_only states the never-a-field-the-read-cannot-return rule", estimateOnlyArgDescription, "never a field that read cannot return"},
 		// The truncation claim, exercised by TestEstimateOnly_IdentityUnderABindingBudget.
 		{"estimate_only claims the truncation envelope", estimateOnlyArgDescription, "`truncated`, `truncation_reason` and `next_cursor` the real read would"},

@@ -20,7 +20,9 @@ import (
 
 // Adapter exposes context memory service operations as MCP tools over stdio.
 //
-// Read tools (context_head, context_history, context_view) work without a token.
+// Read tools (tesseract_get, tesseract_history, context_view) work without a
+// token for the context domain; the memory and knowledge domains check
+// memory:read.
 // Write tools (context_write, context_promote_request) require a capability token
 // configured at startup via the Token field.
 // context_packet is read-only but respects namespace_globs from the token when present.
@@ -31,18 +33,18 @@ type Adapter struct {
 	EmbeddingProvider embedcontracts.Embedder // optional; nil disables context_embed/context_search
 	EmbeddingModel    string                  // model name passed to EmbeddingProvider (default: "")
 	VectorIndex       embedding.VectorIndex   // optional; nil uses brute-force search via Store
-	MemoryStore       *memory.Store           // optional; nil disables memory_* tools
-	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_* tools
+	MemoryStore       *memory.Store           // optional; nil disables memory_write / memory_promote
+	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_write
 	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
 
-	// DefaultPayloadMode is the projection applied to memory_recall and
-	// tesseract_lookup results when the call does not pass payload_mode.
+	// DefaultPayloadMode is the projection applied to tesseract_recall
+	// results when the call does not pass payload_mode.
 	// Wired from config (read.payload_mode). Empty or unrecognized falls
 	// back to memory.DefaultPayloadMode.
 	DefaultPayloadMode memory.PayloadMode
 
-	// DefaultBudget is the response ceiling applied to memory_recall and
-	// tesseract_lookup when the call passes no budget_bytes / budget_tokens.
+	// DefaultBudget is the response ceiling applied to tesseract_recall when
+	// the call passes no budget_bytes / budget_tokens.
 	// Wired from config (read.budget_bytes, read.budget_tokens), which
 	// defaults both to 0 — no ceiling. contextapi.Server resolves the same
 	// two config fields for the HTTP peers.
@@ -53,8 +55,8 @@ type Adapter struct {
 // MCP arguments.
 //
 // defaultBudget is the ceiling to apply when the call passes no budget of its
-// own. Recall and lookup pass the config-wired a.DefaultBudget; the history
-// tools pass the zero Budget — see resolveHistoryPageRequest.
+// own. tesseract_recall passes the config-wired a.DefaultBudget; the history
+// path passes the zero Budget — see resolveHistoryPageRequest.
 //
 // Every knob here has a declared HTTP peer that must accept the same name,
 // validate identically, and resolve the same default. The two surfaces
@@ -168,12 +170,12 @@ func resolveSimilarityMin(req mcp.CallToolRequest) (*float64, *mcp.CallToolResul
 //
 // The rule it implements is that every field of an estimate has a referent in
 // the SAME tool's non-estimate response. That is what makes the identity
-// checkable field by field rather than by eye: memory_recall answers with
-// {results, manifest}, so its estimate is {manifest}; tesseract_lookup answers
-// with {results, facets, manifest}, so its estimate is {facets, manifest}.
-// Reporting a facet histogram from memory_recall would mean the estimate
-// advertised a number the real call cannot return, which is the opposite of an
-// identity. Callers wanting the histogram use tesseract_lookup, which has it.
+// checkable field by field rather than by eye: tesseract_recall answers with
+// {results, facets, manifest}, so its estimate is {facets, manifest}. An
+// estimate that advertised a field the real call cannot return would be the
+// opposite of an identity, so facets stays `any` and is skipped when nil —
+// a caller that has no histogram to report passes none rather than inventing
+// an empty one.
 //
 // `results` is OMITTED, not emitted as an empty array. An empty array is
 // indistinguishable from "your query matched nothing" — the same absent-versus-
@@ -194,8 +196,8 @@ func estimateEnvelope(page memory.PagedRecall, facets any) map[string]any {
 	return out
 }
 
-// resolveHistoryPageRequest builds the paging half of a memory_history or
-// knowledge_history call.
+// resolveHistoryPageRequest builds the paging half of a tesseract_history call
+// under the memory and knowledge domains.
 //
 // It differs from the recall path in exactly one way, and the difference is
 // load-bearing: the server-configured budget is NOT applied. History answers
@@ -238,8 +240,8 @@ func (a *Adapter) resolvePayloadMode(req mcp.CallToolRequest) (memory.PayloadMod
 	return memory.DefaultPayloadMode, nil
 }
 
-// payloadModeArgDescription is the shared parameter blurb for the recall and
-// lookup tools. One string so the two surfaces cannot drift apart.
+// payloadModeArgDescription is the parameter blurb for the recall tool. One
+// string so the tool and its HTTP peers cannot drift apart.
 const payloadModeArgDescription = "How much of each result to return: " +
 	"`keys` (identity only: revision_id, memory_id, domain, namespace, memory_key, created_at — the browse/enumerate shape), " +
 	"`summary` (keys + status, tags, confidence, payload.summary), or " +
@@ -247,10 +249,9 @@ const payloadModeArgDescription = "How much of each result to return: " +
 	"Default comes from server config (read.payload_mode). " +
 	"Under keys and summary each result carries `payload_mode`, so an absent body means withheld, not empty."
 
-// searchModeArgDescription documents the retrieval-arm knob. Shared by
-// memory_recall and tesseract_lookup so the two cannot describe it differently,
-// and rendered from memory.SearchModeVocabulary so it cannot advertise a value
-// the store rejects.
+// searchModeArgDescription documents the retrieval-arm knob. Rendered from
+// memory.SearchModeVocabulary so it cannot advertise a value the store
+// rejects.
 //
 // Every capability sentence below is one the code actually has. Two earlier
 // drafts of this string did not clear that bar — it advertised a
@@ -279,8 +280,8 @@ var searchModeArgDescription = "Which retrieval signal answers the query, under 
 	"`lexical` and `semantic` require ranking=relevance (the default when a query is set); passing them with another ranking is a validation_error."
 
 // Shared parameter blurbs for the budget/cursor knobs. One string per knob so
-// the recall, lookup and history tools cannot drift apart, and so the HTTP
-// peers' field docs have a single thing to agree with.
+// the recall and history tools cannot drift apart, and so the HTTP peers'
+// field docs have a single thing to agree with.
 const (
 	cursorArgDescription = "Opaque resume token from a previous response's `manifest.next_cursor`. " +
 		"Omit to start at the beginning. A cursor is bound to the ordering it was issued for: " +
@@ -305,10 +306,8 @@ const (
 		"Passing it switches the response from a bare array to `{results, manifest}`. " +
 		"Chains are shallow today, so this is a ceiling against unbounded growth rather than a routine knob."
 
-	// similarityMinArgDescription documents the cosine floor. Shared by
-	// memory_recall and tesseract_lookup so the two cannot describe it
-	// differently, and so their HTTP peers' field docs have one thing to agree
-	// with.
+	// similarityMinArgDescription documents the cosine floor. One string, so
+	// the tool and its HTTP peers' field docs have one thing to agree with.
 	//
 	// Every sentence here is a claim the code makes good on and a test
 	// exercises: the [-1, 1] range check, the 0.0-is-not-absent distinction,
@@ -332,16 +331,13 @@ const (
 	// is rather than as an approximation.
 	//
 	// The shape rule is stated here, in the description, and not only in
-	// estimateEnvelope's Go doc: the two tools return DIFFERENT estimate
-	// shapes, and a caller comparing them can see that difference but cannot
-	// see a comment. Leaving the reason to a source file is what makes a caller
-	// infer one, and the inference available ("memory_recall's estimate is
-	// missing something") is the wrong one.
+	// estimateEnvelope's Go doc: a caller comparing an estimate against a real
+	// read can see the shape but cannot see a comment, so the rule that ties
+	// the two together has to travel with the tool.
 	estimateOnlyArgDescription = "Return the envelope describing the results without the results themselves — the pre-flight for deciding whether to spend context on a read. " +
-		"The response is the envelope THIS tool returns, minus `results`: `memory_recall` answers `{manifest, estimate_only: true}`, and `tesseract_lookup` answers `{facets, manifest, estimate_only: true}`. " +
-		"The shapes differ because `tesseract_lookup` returns a facet histogram on a normal read and `memory_recall` does not — an estimate reports exactly what its own read would report and never a field that read cannot return, which is what makes every number in it checkable against the real call. " +
-		"Reach for `tesseract_lookup` when you want the histogram sized too. " +
-		"There is no `results` key at all in either shape; an absent array means withheld, never empty. " +
+		"The response is the envelope THIS tool returns, minus `results`: `tesseract_recall` answers `{facets, manifest, estimate_only: true}`. " +
+		"An estimate reports exactly what its own read would report and never a field that read cannot return, which is what makes every number in it checkable against the real call. " +
+		"There is no `results` key at all; an absent array means withheld, never empty. " +
 		"The numbers are exact, not approximate: `results_total`, `results_returned`, `bytes_returned` and `tokens_estimate` — and every facet count, where the tool has facets — are the same values the identical call WITHOUT this argument reports, under the same `payload_mode`. " +
 		"Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at. " +
 		"It is worth most where a read would be cut short: under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would. " +
@@ -393,13 +389,24 @@ func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	a.registerSessionTools(s)
 	a.registerBulkTools(s)
 	a.registerRAGTools(s)
+	// Domain-specific writes stay gated on their own store: memory_write needs
+	// a memory store, knowledge_write needs a knowledge store, and their
+	// required-field sets differ materially (D10).
 	if a.MemoryStore != nil {
 		a.registerMemoryTools(s)
-		a.registerLookupTools(s)
 	}
 	if a.KnowledgeStore != nil {
 		a.registerKnowledgeTools(s)
 	}
+	// The cross-domain reads are gated on what they actually need, not on which
+	// field happens to be set. tesseract_recall needs some revision store;
+	// registerCrossDomainReadTools makes the same call for the revision-level
+	// ops and registers the keyed reads unconditionally, answering
+	// domain_unavailable per domain.
+	if a.revisionStore() != nil {
+		a.registerRecallTool(s)
+	}
+	a.registerCrossDomainReadTools(s)
 	a.registerParityTools(s)
 	a.registerSkillsTool(s)
 }

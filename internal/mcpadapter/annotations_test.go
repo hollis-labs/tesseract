@@ -9,7 +9,7 @@ import (
 )
 
 // TestMemoryKnowledgeUnifiedToolsAnnotated enforces that every memory / knowledge /
-// unified / meta MCP tool has non-nil ReadOnlyHint and IdempotentHint annotations.
+// cross-domain / meta MCP tool has non-nil ReadOnlyHint and IdempotentHint annotations.
 // Context-domain tools are NOT enforced here — they carry only a pointer-footer in v2
 // per spec §5.5, and a future spec will bring them to the same standard.
 //
@@ -32,18 +32,17 @@ func TestMemoryKnowledgeUnifiedToolsAnnotated(t *testing.T) {
 	enforced := []string{
 		// memory domain
 		"memory_write",
-		"memory_get",
-		"memory_history",
-		"memory_recall",
-		"memory_get_revision",
 		"memory_promote",
-		"memory_deprecate",
 		// knowledge domain
 		"knowledge_write",
-		"knowledge_get",
-		"knowledge_history",
-		// unified / meta
-		"tesseract_lookup",
+		// cross-domain
+		"tesseract_get",
+		"tesseract_history",
+		"tesseract_recall",
+		"tesseract_get_revision",
+		"tesseract_deprecate",
+		"tesseract_touch",
+		// meta
 		"tesseract_skills",
 	}
 

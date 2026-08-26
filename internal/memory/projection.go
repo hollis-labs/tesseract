@@ -95,7 +95,7 @@ type ProjectedRevision struct {
 // that intends to edit and write back a body MUST NOT treat a missing body
 // as empty when this field is present and not "full" — it must either
 // re-request with payload_mode=full or hydrate the revision by ID via
-// memory_get_revision.
+// tesseract_get_revision.
 //
 // Full mode does not use this type at all: it serializes RecallResult
 // unchanged, so `payload_mode` is absent there and full responses stay

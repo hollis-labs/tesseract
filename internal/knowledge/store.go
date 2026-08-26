@@ -123,33 +123,32 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 // GetCurrent returns the current revision for the knowledge entry keyed by
 // (namespace, key). Returns memory.ErrNotFound if the revision exists but
 // is not in the knowledge domain — callers should not see cross-domain reads.
+//
+// The filter lives in memory.Store rather than here so that the memory domain
+// gets the identical rule from the identical code. It did not, for a while, and
+// the asymmetry was a defect: a memory-domain read of a knowledge namespace
+// returned the knowledge revision and reinforced it. Consolidating removes the
+// drift between the two; it does not by itself make the shared rule right, so
+// both domains are asserted separately against hand-stated expectations in
+// internal/mcpadapter/crossdomain_parity_test.go.
 func (s *Store) GetCurrent(ctx context.Context, namespace, key string) (memory.Revision, error) {
-	rev, err := s.mem.GetCurrent(ctx, namespace, key)
-	if err != nil {
-		return memory.Revision{}, err
-	}
-	if rev.Domain != domains.Knowledge {
-		return memory.Revision{}, fmt.Errorf("%w: revision at %s/%s is not a knowledge entry", memory.ErrNotFound, namespace, key)
-	}
-	return rev, nil
+	return s.mem.GetCurrentInDomain(ctx, domains.Knowledge, namespace, key)
 }
 
 // GetHistory returns the revision history for the knowledge entry keyed by
 // (namespace, key), newest-first. Non-knowledge revisions are filtered out;
 // returns memory.ErrNotFound if the entry exists but has no knowledge revisions.
 func (s *Store) GetHistory(ctx context.Context, namespace, key string) ([]memory.Revision, error) {
-	revs, err := s.mem.GetHistory(ctx, namespace, key)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]memory.Revision, 0, len(revs))
-	for _, rev := range revs {
-		if rev.Domain == domains.Knowledge {
-			out = append(out, rev)
-		}
-	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("%w: no knowledge revisions for %s/%s", memory.ErrNotFound, namespace, key)
-	}
-	return out, nil
+	return s.mem.GetHistoryInDomain(ctx, domains.Knowledge, namespace, key)
 }
+
+// RevisionStore returns the shared revision store this knowledge store is
+// built on.
+//
+// Memory and knowledge revisions live in one table (memory_revisions, keyed by
+// a domain column), so revision-level operations — fetch by revision_id,
+// deprecate by revision_id — resolve either domain without a domain filter.
+// This accessor is what lets a deployment that wires only a knowledge store
+// still perform those operations, rather than having them gated behind a
+// separate memory-store field that happens to be nil.
+func (s *Store) RevisionStore() *memory.Store { return s.mem }
