@@ -8,12 +8,16 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+The memory, knowledge and context domains get one read surface instead of three.
 Recall becomes bounded, projectable and pageable; the lexical arm is reachable
-directly; the knowledge `kind` vocabulary closes; and activation gains the
-deliberate-read input it was always missing. Consumers pinning `v0.8.x` should
-read the breaking-changes section before bumping — **the default recall response
-shape changed**, and that one affects every caller whether or not it adopts a new
-knob.
+directly; the knowledge `kind` vocabulary closes; and activation gains both the
+deliberate-read input it was always missing and a decay job that stops erasing
+it within the day.
+
+Consumers pinning `v0.8.x` should read the breaking-changes section in full.
+**Ten read tools are retired with no aliases**, and **the default recall response
+shape changed** — the second affects every caller whether or not it adopts a
+single new knob.
 
 ### Breaking changes
 
@@ -60,6 +64,50 @@ knob.
 - **Go API: `memory.RecallResult.Score` is `*float64`** (was `float64`), as is
   `synthesisSource.Score`. Cosine similarity is legitimately 0 or negative, and a
   value type with `omitempty` drops those real scores.
+- **Ten memory/knowledge/context read tools were retired and replaced by five
+  cross-domain ones. No aliases.** `context_head`, `memory_get` and
+  `knowledge_get` → **`tesseract_get(domain, namespace, key)`**;
+  `context_history`, `memory_history` and `knowledge_history` →
+  **`tesseract_history`**; `memory_get_revision` → **`tesseract_get_revision`**;
+  `memory_deprecate` → **`tesseract_deprecate`**; `memory_recall` and
+  `tesseract_lookup` → **`tesseract_recall(domains[], …)`**. The tool surface
+  goes from 43 to 38. `tesseract_recall` is a superset of both tools it replaces:
+  no argument was lost, and it gains `domains`, `facet_kinds`, `facet_sources`
+  and `pointer_health`.
+- **`domain` is required on `tesseract_get` and `tesseract_history`, with no
+  default.** Inferring it from the namespace would answer a different question
+  silently. An unknown domain is a `validation_error` naming the allowed set; a
+  domain in the vocabulary with no store wired is a new `domain_unavailable`,
+  kept distinct from `not_found` on purpose.
+- **`domain` is a filter, not a hint — and cross-domain reads now refuse.**
+  `tesseract_get`/`tesseract_history` with `domain=memory` over a knowledge
+  namespace previously returned the knowledge revision **and reinforced it**; the
+  same was true of `GET /v1/memory/current` and `GET /v1/memory/history`, which
+  are fixed alongside. Those calls now return `not_found`. The prior behavior
+  contradicted the contract already stated at `internal/knowledge/store.go:124`
+  — *"callers should not see cross-domain reads"* — which one store implemented
+  and the other did not. A caller relying on it was relying on a bug the sibling
+  arm explicitly disclaimed.
+- **The keyed reads take `key` where the retired tools took `memory_key`.** This
+  is MCP-side only: the HTTP peers still accept `?memory_key=`, the revision JSON
+  still carries `memory_key`, and `memory_write` is unchanged. `knowledge_write`
+  and `context_write` already took `key`.
+- **Callers of the retired `memory_recall` now receive a `facets` key** in the
+  response envelope, which `tesseract_lookup` already returned.
+- **Empty `namespace` or `key` is a `validation_error`.** The retired tools
+  reached the store and returned `not_found`. This moves toward the HTTP peers,
+  which already validated.
+- **The budget truncation hint changed text.** `tesseract_history` with
+  `domain=context` emits *"Use `tesseract_get` with domain, namespace and key…"*
+  where `context_history` emitted *"Use `context_head` with namespace and key…"*.
+  It appears only when results are truncated, but it is a response-body change.
+- **Authorization on `tesseract_get` depends on the `domain` argument.**
+  `domain=context` requires no token, as `context_head` did; `memory` and
+  `knowledge` check `memory:read`. The domain is resolved before the scope check
+  and the context arm reads physically separate tables, so the boundary is
+  unchanged per-arm — but a client that allowlists by *tool name* loses
+  granularity, since a policy permitting unauthenticated `context_head` must now
+  permit `tesseract_get`.
 
 ### Added
 
@@ -103,7 +151,7 @@ knob.
   append-only `pointer_verifications` table with outcomes `resolved`,
   `unresolvable` and `unverifiable`, plus a `verify-pointers` command with
   plan-then-apply semantics.
-- **`contextd migrate-knowledge-kinds`** — plan-then-apply normalization of off-vocabulary
+- **The `migrate-knowledge-kinds` subcommand** — plan-then-apply normalization of off-vocabulary
   knowledge `kind` values, with `--expect-rows` and `--expect-digest` binding the
   apply to the reviewed plan (exit 3 on approval mismatch, exit 2 on an unmapped
   kind).
@@ -114,6 +162,18 @@ knob.
 
 ### Fixed
 
+- **Activation decay no longer compounds across passes.** The decay job measured
+  elapsed time from a baseline it never advanced, so every pass re-decayed an
+  already-decayed value over a longer interval. A never-read memory lost two
+  thirds of its activation in eight hours against a nominal fourteen-day
+  half-life — roughly sixty times the intended rate, which meant no
+  activation-ranked recall carried information beyond "read in the last few
+  hours." A new `memory_state.last_decayed_at` column (schema 14) records how
+  current the stored value is, and every writer of `activation` advances it.
+  Reads still stamp `last_accessed_at` only, so the deliberate-read signal stays
+  distinct from decay bookkeeping. Existing rows are stamped rather than
+  backfilled: the prior levels are unrecoverable, and replaying each row's whole
+  lifetime in one pass would finish the erasure instead of undoing it.
 - **FTS5 queries beginning or ending with an operator keyword no longer fail the
   whole recall.** `AND memory`, `memory AND` and `NOT NULL constraint` were
   `fts5: syntax error` on the hybrid path; they are now quoted into ordinary terms
