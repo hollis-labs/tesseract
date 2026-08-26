@@ -10,12 +10,14 @@ ITERATION ?=
 RUN_DATE ?= $(shell date +%F)
 PROFILE ?= orchestrator
 RUNLOG_OUT ?=
-# CONTEXTD_ROOT isolates the contract-test targets onto a throwaway root.
-# Post go-apppaths migration (CW-20260517-0066) it is a deprecated one-release
-# shim — contextd maps it onto $XDG_*_HOME so the whole layout still nests
-# under it. When the shim is removed, switch these targets to setting
-# $XDG_DATA_HOME/$XDG_STATE_HOME/$XDG_CONFIG_HOME directly.
-CONTEXTD_ROOT ?= .tesseract/tmp/contextd
+# CONTRACT_ROOT isolates the contract-test targets onto a throwaway root, so
+# they never resolve the real ~/.local/state/tesseract and collide with a
+# running daemon. go-apppaths (CW-20260517-0066) has no single "one base for
+# everything" knob, so the whole layout is nested by pinning all four
+# $XDG_*_HOME roots at the same directory — which is what CONTRACT_ENV does.
+CONTRACT_ROOT ?= .tesseract/tmp/contract
+CONTRACT_ENV := XDG_DATA_HOME=$(CONTRACT_ROOT) XDG_STATE_HOME=$(CONTRACT_ROOT) \
+                XDG_CACHE_HOME=$(CONTRACT_ROOT) XDG_CONFIG_HOME=$(CONTRACT_ROOT)
 SUITE ?= all
 
 TEST ?= go test ./...
@@ -44,10 +46,10 @@ frontend:
 	cp -r frontend/dist internal/webui/dist
 
 build: frontend
-	go build -o contextd ./cmd/contextd/
+	go build -o tesseract ./cmd/tesseract/
 
 install: frontend
-	go install ./cmd/contextd/
+	go install ./cmd/tesseract/
 
 test:
 	$(TEST)
@@ -64,7 +66,7 @@ contract-metrics:
 contracts: contract-api contract-errors contract-metrics
 
 smoke:
-	scripts/contextd-smoke.sh --base-url $(BASE_URL) --auth-mode $(AUTH_MODE) $(SMOKE_TOKEN_ARG) $(SMOKE_METRICS_ARG) $(SMOKE_INVALID_TOKEN_ARG)
+	scripts/tesseract-smoke.sh --base-url $(BASE_URL) --auth-mode $(AUTH_MODE) $(SMOKE_TOKEN_ARG) $(SMOKE_METRICS_ARG) $(SMOKE_INVALID_TOKEN_ARG)
 
 smoke-invalid-token:
 	@if [ "$(AUTH_MODE)" = "none" ]; then echo "AUTH_MODE must be static|managed for smoke-invalid-token"; exit 2; fi
@@ -75,10 +77,10 @@ validate: contracts
 	@echo "validate complete: contract suites passed"
 
 e2e-local:
-	scripts/contextd-e2e-local.sh
+	scripts/tesseract-e2e-local.sh
 
 e2e-managed:
-	AUTH_MODE=managed scripts/contextd-e2e-local.sh
+	AUTH_MODE=managed scripts/tesseract-e2e-local.sh
 
 contract-lint:
 	scripts/contract-fixture-lint.sh
@@ -87,9 +89,9 @@ contract-commands:
 	scripts/contract-suite-commands.sh
 
 contract-cli-list:
-	@mkdir -p $(CONTEXTD_ROOT)
-	CONTEXTD_ROOT=$(CONTEXTD_ROOT) go run ./cmd/contextd context contract list --output table
+	@mkdir -p $(CONTRACT_ROOT)
+	$(CONTRACT_ENV) go run ./cmd/tesseract context contract list --output table
 
 contract-cli-run:
-	@mkdir -p $(CONTEXTD_ROOT)
-	CONTEXTD_ROOT=$(CONTEXTD_ROOT) go run ./cmd/contextd context contract run --suite $(SUITE) --output table
+	@mkdir -p $(CONTRACT_ROOT)
+	$(CONTRACT_ENV) go run ./cmd/tesseract context contract run --suite $(SUITE) --output table

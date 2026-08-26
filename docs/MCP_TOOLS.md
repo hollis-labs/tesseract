@@ -1,7 +1,7 @@
 # Tesseract — MCP Tools (agent reference)
 
 This is the agent-facing catalog for Tesseract's MCP surface. Every tool
-here is registered by `contextd mcp` and has an HTTP peer under
+here is registered by `tesseract mcp` and has an HTTP peer under
 `/v1/*` unless the row is marked **MCP-only**.
 
 > Single source of truth for what's reachable on both surfaces lives in
@@ -16,9 +16,9 @@ here is registered by `contextd mcp` and has an HTTP peer under
     "mcpServers": {
       "tesseract": {
         "type": "stdio",
-        "command": "/Users/<you>/go/bin/contextd",
+        "command": "/Users/<you>/go/bin/tesseract",
         "args": ["mcp", "--token", "<hex-capability-token>"],
-        "env": { "CONTEXTD_ROOT": "/Users/<you>/.tesseract" }
+        "env": { "XDG_DATA_HOME": "/Users/<you>/.tesseract", "XDG_STATE_HOME": "/Users/<you>/.tesseract" }
       }
     }
   }

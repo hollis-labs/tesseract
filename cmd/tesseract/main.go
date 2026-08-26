@@ -60,10 +60,6 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		defer shutdown(ctx)
 	}
 
-	// CONTEXTD_ROOT deprecation shim — maps the retired single-root env var
-	// onto $XDG_*_HOME before any path resolution. See contextd_root_shim.go.
-	applyContextdRootShim(stderr)
-
 	// `path` introspects the resolved layout without materializing directories
 	// or opening the store — dispatch it before layout resolution.
 	if len(args) > 0 && args[0] == "path" {
@@ -278,8 +274,8 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 		Tokens: tesseractCfg.Read.BudgetTokens,
 	}
 	// Wire a slog logger that writes to stderr so the go-mcp-sanitize warn
-	// telemetry surfaces in contextd logs without colliding with the stdout
-	// MCP protocol stream.
+	// telemetry surfaces in the daemon's logs without colliding with the
+	// stdout MCP protocol stream.
 	adapter.Logger = slog.New(slog.NewTextHandler(stderr, nil))
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
@@ -326,7 +322,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 			return 1
 		}
 		if !ok {
-			_, _ = stderr.WriteString("error: managed auth requires at least one active token (run `contextd context token issue ...` first)\n")
+			_, _ = stderr.WriteString("error: managed auth requires at least one active token (run `tesseract context token issue ...` first)\n")
 			return 1
 		}
 	}

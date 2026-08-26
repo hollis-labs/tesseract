@@ -31,7 +31,7 @@ frontend/dist/
 # Compiled binaries (root-level only)
 /volon
 /forge
-/contextd
+/tesseract
 
 # Editor
 .claude/

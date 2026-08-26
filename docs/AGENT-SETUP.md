@@ -13,10 +13,10 @@ Tesseract over MCP gives an agent:
 
 ## Install and prerequisites
 
-Install `contextd` first:
+Install `tesseract` first:
 
 ```bash
-go install github.com/hollis-labs/tesseract/cmd/contextd@latest
+go install github.com/hollis-labs/tesseract/cmd/tesseract@latest
 ```
 
 Then make sure you have:
@@ -34,7 +34,7 @@ Read-only tools do not require a token. Mutating tools do.
 Typical agent token:
 
 ```bash
-contextd context token create \
+tesseract context token create \
   --name claude-agent \
   --client-id app:claude \
   --scopes write,promote.request \
@@ -47,7 +47,7 @@ Copy the raw token value immediately.
 Human operator token:
 
 ```bash
-contextd context token create \
+tesseract context token create \
   --name operator \
   --client-id user \
   --scopes promote.approve,promote.apply,namespace.admin \
@@ -63,7 +63,7 @@ Project-local example:
 {
   "mcpServers": {
     "tesseract": {
-      "command": "contextd",
+      "command": "tesseract",
       "args": ["mcp", "--token", "<paste-token-here>"],
       "env": {
         "OPENAI_API_KEY": "<optional-for-embeddings>",

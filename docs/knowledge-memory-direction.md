@@ -637,7 +637,7 @@ than inferred from the word "local."
 
 ## Library and daemon modes
 
-The Go library and `contextd` daemon expose the same core semantics.
+The Go library and `tesseract` daemon expose the same core semantics.
 
 ### Embedded library
 
@@ -943,13 +943,13 @@ Decay and queue workers are safe only when ownership and leasing are explicit.
 Embedded and daemon processes sharing a store need coordination or a clear
 single-authority rule.
 
-### Product naming is canonical at the surface, split underneath
+### Product naming is canonical
 
-Tesseract is the product name, and the whole public surface uses it: MCP tool
-IDs, `/v1/*` routes, the Go module path, and the release artifacts. The split
-that remains is internal — the daemon binary is `contextd` and the packages
-under `internal/context*` name the Context domain. New integrations should
-target the public surface, where the vocabulary is already single.
+Tesseract is the product name, and every surface uses it: the daemon binary,
+MCP tool IDs, `/v1/*` routes, the Go module path, and the release artifacts.
+The `context_*` tools and the `internal/context*` packages name the Context
+domain — one of the three memory domains alongside Memory and Knowledge — so
+those are domain names, not a residual product name.
 
 ## Boundary guidance
 

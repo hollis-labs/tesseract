@@ -22,14 +22,14 @@ Current blocker:
 
 Impact:
 
-- `go install github.com/hollis-labs/tesseract/cmd/contextd@latest` will fail for external users.
+- `go install github.com/hollis-labs/tesseract/cmd/tesseract@latest` will fail for external users.
 - Any downstream consumer building from the public repo will get a broken module unless they have the same local monorepo layout.
 
 Required work:
 
 - Remove all local `replace` directives from `go.mod`.
 - Ensure every Hollis Labs dependency resolves to a public tagged module.
-- Verify `go install github.com/hollis-labs/tesseract/cmd/contextd@<tag>` works in a clean environment.
+- Verify `go install github.com/hollis-labs/tesseract/cmd/tesseract@<tag>` works in a clean environment.
 
 Definition of done:
 
@@ -74,7 +74,7 @@ Current blocker:
 
 Observed current behavior:
 
-- Embeddings: currently only `openai` is wired in [cmd/contextd/main.go](/Users/chrispian/dev/hollis-labs/apps/tesseract/cmd/contextd/main.go).
+- Embeddings: currently only `openai` is wired in [cmd/tesseract/main.go](/Users/chrispian/dev/hollis-labs/apps/tesseract/cmd/tesseract/main.go).
 - Synthesis: currently `openai` and `anthropic` are wired in the same file.
 - Config is read from `config.yaml` under the resolved app config dir via [internal/config/layout.go](/Users/chrispian/dev/hollis-labs/apps/tesseract/internal/config/layout.go).
 
@@ -157,7 +157,7 @@ Definition of done:
 
 Current hygiene issues:
 
-- Committed root binary: [contextd](/Users/chrispian/dev/hollis-labs/apps/tesseract/contextd)
+- Committed root binary: [tesseract](/Users/chrispian/dev/hollis-labs/apps/tesseract/tesseract)
 - Committed generated frontend bundle: `internal/webui/dist/`
 - Local symlink in repo root: `plugin -> /Users/chrispian/Projects-apps/plugin`
 - Local data-ish directories: `data/`, `outbox/`
@@ -189,7 +189,7 @@ Required work:
 
 - Choose one primary install path and one fallback:
   - primary: prebuilt GitHub release binaries
-  - fallback: `go install .../cmd/contextd@latest`
+  - fallback: `go install .../cmd/tesseract@latest`
 - Optionally add Homebrew later; it is not required for beta.
 - Document exact prerequisites:
   - Go version
@@ -317,10 +317,10 @@ Keep this short and put it in one place.
 ## Validation checklist
 
 - `go test ./...`
-- clean-machine `go install github.com/hollis-labs/tesseract/cmd/contextd@<tag>`
+- clean-machine `go install github.com/hollis-labs/tesseract/cmd/tesseract@<tag>`
 - fresh config from sample file
 - provider env vars picked up as documented
-- `contextd serve`
+- `tesseract serve`
 - MCP configured from sample `.mcp.json`
 - one record write/read flow works
 - one embedding flow works
