@@ -107,8 +107,10 @@ knob.
   knowledge `kind` values, with `--expect-rows` and `--expect-digest` binding the
   apply to the reviewed plan (exit 3 on approval mismatch, exit 2 on an unmapped
   kind).
-- **CI guard against tool-name drift** — shipped prose naming an unregistered tool
-  now fails the build.
+- **A test guard against tool-name drift** — shipped prose naming an unregistered
+  tool now fails `go test ./tests/parity/`. It walks `docs/` and the embedded
+  skills recursively; `CHANGELOG.md` is deliberately outside its scope, because
+  release notes legitimately name superseded identifiers.
 
 ### Fixed
 

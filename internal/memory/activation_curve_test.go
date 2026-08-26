@@ -329,50 +329,51 @@ func TestTouchPullsOutOfRangeRowsTowardCeiling(t *testing.T) {
 // the caller guidance rests on. It drives the production reinforcement SQL and
 // the production applyActivationDecay — nothing here reimplements either.
 //
-// Time is simulated the way decay_test.go already does it: last_accessed_at is
-// back-dated and the real decay pass is run, once per hour of the gap, which is
-// exactly what the hourly DecayJob does to a row it never re-stamps.
+// Time is simulated by injecting the clock into the real decay pass, once per
+// hour of the gap — exactly what the hourly DecayJob does. Nothing is
+// back-dated, so the row's own last_decayed_at carries the baseline between
+// passes the way it does in production.
 //
 // The closed form is the independent cross-check. One touch-and-decay cycle is
 // a' = D*(a*(1-k) + k*C), so the steady state solves
 //
 //	a* = D*k*C / (1 - D*(1-k))    with k=0.1, C=2.0  =>  0.2D / (1 - 0.9D)
 //
-// where D = exp(-(ln2/336) * n(n+1)/2) is the cumulative decay across the n
-// hourly passes in one gap, since the pass at hour i sees elapsed = i. Working,
-// with ln2/336 = 0.00206265:
+// where D = exp(-n*ln2/336) is the cumulative decay across the n hourly passes
+// in one gap. The exponent is n, not the triangular number n(n+1)/2: a pass
+// applies the interval since the previous pass and advances the baseline by it,
+// so n hourly passes apply n hours between them. Working, with
+// ln2/336 = 0.0020629380374:
 //
-//	n=2:  sum=3    D=e^-0.0061880=0.993831  a*=0.1987662/0.1055520=1.8831
-//	n=6:  sum=21   D=e^-0.0433157=0.957609  a*=0.1915218/0.1381518=1.3863
-//	n=12: sum=78   D=e^-0.1608867=0.851393  a*=0.1702787/0.2337460=0.7285
-//	n=24: sum=300  D=e^-0.6187950=0.538592  a*=0.1077183/0.5152676=0.2091
+//	n=2:  D=e^-0.0041258761=0.9958826237  a*=0.1991765247/0.1037056387=1.9206
+//	n=6:  D=e^-0.0123776282=0.9876986595  a*=0.1975397319/0.1110712065=1.7785
+//	n=12: D=e^-0.0247555565=0.9755486421  a*=0.1951097284/0.1220062221=1.5992
+//	n=24: D=e^-0.0495105129=0.9516951530  a*=0.1903390306/0.1434743623=1.3266
 //
 // The bands below are those figures +/-0.02, stated as literals.
 //
 // A steady state is approached, not arrived at, so the band has to cover the
 // simulation's residual. One cycle contracts the remaining distance by D*(1-k),
 // so after c cycles the residual is (a* - 0.05) * (D*(1-k))^c. At the 2h gap
-// that factor is 0.8944, and 40 cycles leaves 2.1e-2 — enough to sit outside a
+// that factor is 0.896294, and 40 cycles leaves 2.3e-2 — enough to sit outside a
 // +/-0.02 band and be mistaken for a mechanism difference. equilibriumCycles is
 // set so the worst residual is ~1e-7:
 //
-//	gap=2h   rate=0.8944  residual(150) = 9.9e-08
-//	gap=6h   rate=0.8618  residual(150) = 2.8e-10
-//	gap=12h  rate=0.7662  residual(150) = 3.1e-18
-//	gap=24h  rate=0.4847  residual(150) = 1.1e-48
+//	gap=2h   rate=0.896294  residual(150) = 1.4e-07
+//	gap=6h   rate=0.888929  residual(150) = 3.7e-08
+//	gap=12h  rate=0.877994  residual(150) = 5.2e-09
+//	gap=24h  rate=0.856526  residual(150) = 1.0e-10
 //
 // With settling that far below the band, a failure here is the mechanism and not
 // the step count — which is what makes the closed form an independent check
 // rather than something a wide band absorbs. Measured against production code at
-// 150 cycles: 1.8831, 1.3863, 0.7284, 0.2099.
+// 150 cycles: 1.9206, 1.7785, 1.5992, 1.3266.
 //
-// The first three match the closed form to four places. The 24h case runs
-// ~0.0009 HIGH, and that gap is real rather than noise: applyActivationDecay
-// skips a pass whose change is under 0.001, and near 0.21 the passes at elapsed
-// 1h and 2h change it by 0.00043 and 0.00087, so they are skipped. Less decay is
-// applied than the closed form assumes, so the row settles slightly higher. The
-// closed form does not model that threshold; the code has it, and the code is
-// what is being measured.
+// All four match the closed form to four places, and the write threshold does
+// not perturb them: at these steady states one hour moves a row by
+// a*(1-exp(-ln2/336)) = a*0.0020608, which is 0.0040 at the 2h gap and 0.0027 at
+// the 24h gap. Both clear the 0.001 threshold, so no pass at equilibrium is
+// skipped and the closed form and the code are modeling the same thing.
 const equilibriumCycles = 150
 
 func TestReinforcementDecayEquilibrium(t *testing.T) {
@@ -383,10 +384,10 @@ func TestReinforcementDecayEquilibrium(t *testing.T) {
 		wantHigh       float64
 		interpretation string
 	}{
-		{"touched_every_2h", 2, 1.86, 1.90, "a memory in the active working set of a long session"},
-		{"touched_every_6h", 6, 1.37, 1.41, "a memory used a few times a day"},
-		{"touched_every_12h", 12, 0.71, 0.75, "a memory used about twice a day"},
-		{"touched_every_24h", 24, 0.19, 0.23, "a memory used once a day"},
+		{"touched_every_2h", 2, 1.90, 1.94, "a memory in the active working set of a long session"},
+		{"touched_every_6h", 6, 1.76, 1.80, "a memory used a few times a day"},
+		{"touched_every_12h", 12, 1.58, 1.62, "a memory used about twice a day"},
+		{"touched_every_24h", 24, 1.31, 1.35, "a memory used once a day"},
 	}
 
 	for _, tc := range cases {
@@ -406,7 +407,9 @@ func TestReinforcementDecayEquilibrium(t *testing.T) {
 
 			for cycle := 0; cycle < equilibriumCycles; cycle++ {
 				touchOnce(t, ms, rev.RevisionID)
-				runDecayGap(t, ms, rev.MemoryID, tc.gapHours)
+				// The touch re-stamps last_decayed_at, so each gap starts from
+				// the instant of its own touch.
+				runDecayGap(t, ms, time.Now().UTC(), tc.gapHours)
 			}
 
 			got := activationOf(t, ms, rev.MemoryID)
@@ -447,9 +450,21 @@ func TestReinforcementDecayEquilibrium(t *testing.T) {
 }
 
 // TestUntouchedMemoryFallsToFloor is the positive control for the equilibrium
-// table above: the same simulation with no touches at all must land on the floor.
+// table above: the same simulation with no touches at all must reach the floor.
 // Without it, a steady state near the floor would be indistinguishable from a
 // simulation that was not reinforcing anything.
+//
+// How long "reaches the floor" takes is now a real quantity rather than an
+// artifact. Falling from the 1.0 insert default to the 0.05 floor is a factor
+// of 20, and 20 is between 2^4 and 2^5, so it takes between four and five
+// half-lives — between 1344h and 1680h, i.e. eight to ten weeks. 1600 hourly
+// passes sit inside that window with room to spare.
+//
+// The landing is just above 0.05 rather than exactly on it, and that is the
+// write threshold rather than the decay: once a row is within 0.001 of the
+// floor, the move it still owes is worth less than a write, so it is skipped
+// and the row rests there. The same signature is visible in the live corpus,
+// where near-floor rows read 0.0501-0.0509 rather than 0.05 exactly.
 func TestUntouchedMemoryFallsToFloor(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
@@ -459,83 +474,84 @@ func TestUntouchedMemoryFallsToFloor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 72 hourly decay passes over a row nothing re-stamps.
-	runDecayGap(t, ms, rev.MemoryID, 72)
+	// 1600 hourly decay passes over a row nothing ever touches.
+	runDecayGap(t, ms, time.Now().UTC(), 1600)
 
-	if got := activationOf(t, ms, rev.MemoryID); got != 0.05 {
-		t.Errorf("an untouched memory after 72 hourly decay passes = %v, want the 0.05 floor", got)
+	got := activationOf(t, ms, rev.MemoryID)
+	if got < 0.05 || got >= 0.051 {
+		t.Errorf("an untouched memory after 1600 hourly decay passes = %v, want the 0.05 floor "+
+			"(within the 0.001 write threshold of it)", got)
 	}
 }
 
-// runDecayGap simulates gapHours of the hourly DecayJob against one row.
+// runDecayGap simulates gapHours of the hourly DecayJob, starting from `from`.
 //
-// The job computes elapsed from last_accessed_at and never advances it, so the
-// pass at hour i sees elapsed = i. Back-dating last_accessed_at to now-i and
-// running the real pass reproduces that exactly. Decay applies to every row, so
+// The clock is injected rather than a column back-dated: the pass at hour i
+// runs at from+i, which is what the real job does, and the row's own
+// last_decayed_at carries the baseline between passes. Nothing here writes a
+// timestamp, so accrual under the write threshold is production behavior
+// rather than an artifact of the harness.
+//
+// `from` must be at or after the preceding touch, so the first pass sees one
+// hour elapsed rather than a negative interval. Decay applies to every row, so
 // this is only single-row in the sense that these tests have one row.
-func runDecayGap(t *testing.T, ms *memory.Store, memoryID string, gapHours int) {
+func runDecayGap(t *testing.T, ms *memory.Store, from time.Time, gapHours int) {
 	t.Helper()
 	ctx := context.Background()
-	base := time.Now().UTC()
 	for i := 1; i <= gapHours; i++ {
-		stamp := base.Add(-time.Duration(i) * time.Hour).Format(time.RFC3339Nano)
-		if _, err := ms.DB().ExecContext(ctx,
-			`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
-			stamp, memoryID); err != nil {
-			t.Fatalf("back-date last_accessed_at: %v", err)
-		}
-		if err := ms.ExportApplyActivationDecay(ctx); err != nil {
-			t.Fatalf("applyActivationDecay: %v", err)
+		if err := ms.ExportApplyActivationDecayAt(ctx, from.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("applyActivationDecay at +%dh: %v", i, err)
 		}
 	}
 }
 
-// TestDecayCompoundsAcrossPasses is a characterization test, not a change.
+// TestDecayIsPerHourNotPerPass states the property the equilibrium table above
+// is computed against: the 336h half-life is a half-life of WALL-CLOCK time, so
+// a pass applies the interval since the last pass and no more. Two passes over
+// the same interval apply it once.
 //
-// applyActivationDecay multiplies the CURRENT stored activation by
-// exp(-elapsed*ln2/halfLifeHours) where elapsed is measured from
-// last_accessed_at — a baseline the pass never advances (decay.go writes only
-// activation). Successive passes over an untouched row therefore compound, and
-// the realized half-life is far shorter than the nominal 336 hours: the nominal
-// figure is the half-life of a SINGLE pass, not of wall-clock time.
+// The equilibrium arithmetic depends on this directly. Its cumulative decay per
+// gap is D = exp(-n*ln2/336) for n hourly passes; if a pass instead re-applied
+// its whole elapsed each time, the exponent would be the triangular number
+// n(n+1)/2 and every steady state in the table would be wrong.
 //
-// That is tracked as CW-20260826-0001 and is deliberately NOT fixed here. This
-// test pins the behavior because the equilibrium table above is only
-// interpretable against it, and because the reinforcement rate must not be tuned
-// against activation levels this bug is setting.
-func TestDecayCompoundsAcrossPasses(t *testing.T) {
+// The deeper properties — composition across many passes, across a restart, and
+// under the write threshold — are in decay_baseline_test.go (CW-20260826-0001).
+func TestDecayIsPerHourNotPerPass(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	rev, err := ms.WriteRevision(ctx, sampleInput("decay.compounding"))
+	rev, err := ms.WriteRevision(ctx, sampleInput("decay.per_hour"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// One pass at elapsed = 24h. exp(-24*ln2/336) = 0.95169, from 1.0.
-	stamp := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
+	// One pass at elapsed = 24h, from the 1.0 insert default. 24h is a
+	// fourteenth of the 336h half-life, and fourteen such steps have to compose
+	// into one halving, so the factor is the fourteenth root of 1/2:
+	// 2^(-1/14) = 0.9516951529676...
+	base := time.Now().UTC().Add(-24 * time.Hour)
 	if _, err := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET last_accessed_at = ? WHERE memory_id = ?`,
-		stamp, rev.MemoryID); err != nil {
+		`UPDATE memory_state SET last_decayed_at = ? WHERE memory_id = ?`,
+		base.Format(time.RFC3339Nano), rev.MemoryID); err != nil {
 		t.Fatal(err)
 	}
-	if err := ms.ExportApplyActivationDecay(ctx); err != nil {
+	if err := ms.ExportApplyActivationDecayAt(ctx, base.Add(24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	afterOne := activationOf(t, ms, rev.MemoryID)
-	if math.Abs(afterOne-0.95169) > 1e-4 {
-		t.Fatalf("one pass at elapsed=24h: activation = %v, want 0.95169", afterOne)
+	if math.Abs(afterOne-0.9516951530106196) > 1e-9 {
+		t.Fatalf("one pass over 24h: activation = %v, want 0.9516951530106196 (2^(-1/14))", afterOne)
 	}
 
-	// A second pass at the SAME elapsed applies the same factor again, because
-	// the baseline did not move. Nothing in the world changed between the two.
-	if err := ms.ExportApplyActivationDecay(ctx); err != nil {
+	// A second pass at the same instant. Nothing in the world changed between
+	// the two, so nothing about the row may change either.
+	if err := ms.ExportApplyActivationDecayAt(ctx, base.Add(24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	afterTwo := activationOf(t, ms, rev.MemoryID)
-	if math.Abs(afterTwo-0.90571) > 1e-4 {
-		t.Fatalf("a second pass at the same elapsed: activation = %v, want 0.90571 "+
-			"(0.95169 squared) — decay compounds per pass, not per hour", afterTwo)
+	if afterTwo := activationOf(t, ms, rev.MemoryID); afterTwo != afterOne {
+		t.Fatalf("a second pass over the same 24h: activation = %v, want %v unchanged — "+
+			"decay is per hour of wall clock, not per pass", afterTwo, afterOne)
 	}
 }

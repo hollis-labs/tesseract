@@ -1350,6 +1350,20 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS memory_revisions_fts`); err != nil {
 		t.Fatalf("drop fts table: %v", err)
 	}
+	// Rolling the version back to 11 replays EVERY case from 12 up, not just
+	// 12, so this fixture has to undo what each of those cases creates — not
+	// only the FTS objects it is actually testing. Cases 12 and 13 build with
+	// CREATE ... IF NOT EXISTS and survive a replay untouched; case 14 adds a
+	// column, and ALTER TABLE ADD COLUMN has no IF NOT EXISTS, so it must be
+	// dropped here or the re-migrate below fails with "duplicate column name".
+	//
+	// Any future migration that is not itself replay-safe needs its own line
+	// here. That is the standing cost of resuming the loop from MAX(version),
+	// and it is cheaper than making the production ladder defensive against a
+	// state only this fixture produces.
+	if _, err := db.ExecContext(ctx, `ALTER TABLE memory_state DROP COLUMN last_decayed_at`); err != nil {
+		t.Fatalf("drop last_decayed_at: %v", err)
+	}
 	// Roll the recorded version back to 11 so the migration loop resumes at
 	// case 12. This deletes every row >= 12 rather than exactly 12.
 	//
