@@ -66,24 +66,32 @@ type parityOp struct {
 //	  tests/parity/parity_test.go | grep -oE 'MCP: "[a-z_]+"' | sort -u | wc -l
 var surfaceCatalog = []parityOp{
 	// ── Context domain ──────────────────────────────────────────────────
-	{MCP: "context_audit", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/audit"},
-	{MCP: "context_broker", HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
+	{MCP: "context_audit_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/audit"},
 	{MCP: "context_embed", Waiver: "MCP-only: embedding-only op for agent tooling"},
 	{MCP: "context_estimate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/estimate"},
 	{MCP: "context_ingest", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/bulk-ingest"},
 	{MCP: "context_namespace_register", HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
 	{MCP: "context_pack", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/pack"},
+	// Two routes, one handler: server.go dispatches both POST /v1/broker/plan
+	// and POST /v1/context/plan to Server.handleContextPlan. Recorded as two
+	// paired rows because this catalog builds SETS — see the header note. Until
+	// CW-20260825-0012 the second was an HTTP-only waiver reading "HTTP alias of
+	// /v1/broker/plan; MCP peer is context_broker", which named the peer in the
+	// waiver text while blanking out the MCP column, so no assertion could see
+	// the pairing it described.
+	{MCP: "context_plan", HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
+	{MCP: "context_plan", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/plan"},
 	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/apply"},
 	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/approve"},
 	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/request"},
-	{MCP: "context_promote_list", Waiver: "MCP-only; HTTP side lists promotions via audit query"},
+	{MCP: "context_promotion_list", Waiver: "MCP-only; HTTP side lists promotions via audit query"},
 	{MCP: "context_rag_query", Waiver: "MCP-only: convenience query over embedding search"},
 	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/types"},
 	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/views"},
 	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
 	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/list"},
 	{MCP: "context_search", Waiver: "MCP-only: low-level embedding search for agent tooling"},
-	{MCP: "context_session_snapshot", Waiver: "MCP-only: per-session snapshot capture"},
+	{MCP: "context_session_write", Waiver: "MCP-only: per-session snapshot capture"},
 	{MCP: "context_status_set", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/deprecate"},
 	{MCP: "context_status_set", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/promote"},
 	{MCP: "context_typed_view", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/typed-view"},
@@ -117,7 +125,7 @@ var surfaceCatalog = []parityOp{
 	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
 
 	// ── Reinforcement ──────────────────────────────────────────────────
-	// Cross-domain like tesseract_lookup: a revision ID resolves whether it
+	// Cross-domain like tesseract_recall: a revision ID resolves whether it
 	// was written as memory or as knowledge. The route sits under /v1/memory/
 	// because memory_state is where the reinforcement lands.
 	{MCP: "tesseract_touch", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/touch"},
@@ -136,7 +144,6 @@ var surfaceCatalog = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/create", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/auth/tokens/list", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/revoke", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
-	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/plan", Waiver: "HTTP alias of /v1/broker/plan; MCP peer is context_broker"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote", Waiver: "HTTP-only: returns 410 Gone; superseded by /v1/context/promote/request"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/packet", Waiver: "HTTP-only: divergent packet shape; MCP context_pack shape=packet uses different budget/manifest"},
 }
@@ -146,9 +153,9 @@ var surfaceCatalog = []parityOp{
 // Recording them here rather than as waivers, which would have to blank out the
 // MCP name and so would misdescribe the tool:
 //
-//   - context_broker with execute=true (the former context_broker_fetch):
-//     plan+packet in one call, MCP-only. POST /v1/broker/plan is the peer of
-//     the default arm only.
+//   - context_plan with execute=true (the former context_broker_fetch):
+//     plan+packet in one call, MCP-only. POST /v1/context/plan and its second
+//     path POST /v1/broker/plan are the peers of the default arm only.
 //   - context_ingest with mode=chunked (the former context_chunked_ingest):
 //     chunked stateful ingest has no clean HTTP shape. POST
 //     /v1/context/bulk-ingest is the peer of mode=bulk only.

@@ -6,7 +6,7 @@
 //
 // Note the intentional duplication between MCP and HTTP promote-stage names:
 // both shapes exist in persisted audit data today, and consumers of the
-// /v1/context/audit and context_audit surfaces rely on exact-match filters.
+// /v1/context/audit and context_audit_list surfaces rely on exact-match filters.
 // Do not collapse them without a coordinated rename and consumer migration.
 package contextstore
 

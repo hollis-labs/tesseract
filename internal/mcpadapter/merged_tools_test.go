@@ -72,7 +72,7 @@ func wantErrorCode(t *testing.T, body map[string]any, code string) {
 // ── Merge 1: context_view + views_evaluate → context_view ────────────────────
 
 // TestMerge_ContextView_DefaultArmReturnsSummaryEnvelope covers
-// (context_view → include_meta absent). The retired context_view answered the
+// (context_view → full_evaluation absent). The retired context_view answered the
 // shared budget envelope of record summaries: a `count`, an `items` array, and
 // no payloads at all.
 func TestMerge_ContextView_DefaultArmReturnsSummaryEnvelope(t *testing.T) {
@@ -106,18 +106,18 @@ func TestMerge_ContextView_DefaultArmReturnsSummaryEnvelope(t *testing.T) {
 	}
 }
 
-// TestMerge_ViewsEvaluate_IncludeMetaArmReturnsEvaluationEnvelope covers
-// (views_evaluate → include_meta=true). The retired views_evaluate answered
+// TestMerge_ViewsEvaluate_FullEvaluationArmReturnsEvaluationEnvelope covers
+// (views_evaluate → full_evaluation=true). The retired views_evaluate answered
 // `{items, evaluation_meta:{sort_keys, matched_count, truncated,
 // normalized_scope}}` — the exact envelope of HTTP POST /v1/views/evaluate.
-func TestMerge_ViewsEvaluate_IncludeMetaArmReturnsEvaluationEnvelope(t *testing.T) {
+func TestMerge_ViewsEvaluate_FullEvaluationArmReturnsEvaluationEnvelope(t *testing.T) {
 	s := newTestStore(t)
 	writeRecord(t, s, "app/test/one", "k", `{"v":1}`)
 	a := New(s, "")
 
 	body := wantNoError(t, mustCall(t, a.handleContextView, map[string]any{
-		"selector":     `{"namespaces":["app/test/*"]}`,
-		"include_meta": true,
+		"selector":        `{"namespaces":["app/test/*"]}`,
+		"full_evaluation": true,
 	}))
 
 	meta, ok := body["evaluation_meta"].(map[string]any)
@@ -137,11 +137,11 @@ func TestMerge_ViewsEvaluate_IncludeMetaArmReturnsEvaluationEnvelope(t *testing.
 	}
 }
 
-// TestContextView_IncludeMetaSelectsAnArmRatherThanAnnotatingOne is the
+// TestContextView_FullEvaluationSelectsAnArmRatherThanAnnotatingOne is the
 // 0010 lesson applied: a knob that merely annotates is a knob that does not
-// work. Flipping include_meta on the SAME selector against the SAME corpus
+// work. Flipping full_evaluation on the SAME selector against the SAME corpus
 // must change which fields come back, not just add a block.
-func TestContextView_IncludeMetaSelectsAnArmRatherThanAnnotatingOne(t *testing.T) {
+func TestContextView_FullEvaluationSelectsAnArmRatherThanAnnotatingOne(t *testing.T) {
 	s := newTestStore(t)
 	writeRecord(t, s, "app/test/one", "k", `{"v":1}`)
 	a := New(s, "")
@@ -150,26 +150,26 @@ func TestContextView_IncludeMetaSelectsAnArmRatherThanAnnotatingOne(t *testing.T
 	plain := wantNoError(t, mustCall(t, a.handleContextView, args))
 
 	withMeta := wantNoError(t, mustCall(t, a.handleContextView, map[string]any{
-		"namespaces":   "app/test/*",
-		"include_meta": true,
+		"namespaces":      "app/test/*",
+		"full_evaluation": true,
 	}))
 
 	if _, ok := plain["count"]; !ok {
 		t.Errorf("default arm lost its count field: %v", plain)
 	}
 	if _, ok := withMeta["count"]; ok {
-		t.Errorf("include_meta merely annotated the default arm instead of selecting the other one: %v", withMeta)
+		t.Errorf("full_evaluation merely annotated the default arm instead of selecting the other one: %v", withMeta)
 	}
 	if _, ok := withMeta["evaluation_meta"]; !ok {
-		t.Errorf("include_meta arm did not run: %v", withMeta)
+		t.Errorf("full_evaluation arm did not run: %v", withMeta)
 	}
 }
 
-// TestContextView_IncludePayloadWithoutIncludeMetaIsRejected pins the
+// TestContextView_IncludePayloadWithoutFullEvaluationIsRejected pins the
 // fail-closed rule: the default arm cannot carry payloads, so accepting the
 // knob and silently dropping it would be a parameter reporting it is honoring
 // something it ignores.
-func TestContextView_IncludePayloadWithoutIncludeMetaIsRejected(t *testing.T) {
+func TestContextView_IncludePayloadWithoutFullEvaluationIsRejected(t *testing.T) {
 	a := New(newTestStore(t), "")
 	wantErrorCode(t, mustCall(t, a.handleContextView, map[string]any{
 		"namespaces":      "app/test/*",
@@ -347,7 +347,7 @@ func TestContextPack_UnrecognizedShapeFailsClosed(t *testing.T) {
 	}
 }
 
-// ── Merge 3: context_broker_plan + context_broker_fetch → context_broker ─────
+// ── Merge 3: context_broker_plan + context_broker_fetch → context_plan ─────
 
 // TestMerge_ContextBrokerPlan_DefaultArmReturnsPlanAndRationale covers
 // (context_broker_plan → execute absent). The retired tool answered
@@ -357,7 +357,7 @@ func TestMerge_ContextBrokerPlan_DefaultArmReturnsPlanAndRationale(t *testing.T)
 	writeRecord(t, s, "user/memory/thing", "k", `{"v":1}`)
 	a := New(s, "")
 
-	body := wantNoError(t, mustCall(t, a.handleContextBroker, map[string]any{
+	body := wantNoError(t, mustCall(t, a.handleContextPlan, map[string]any{
 		"intent": "boot_project",
 	}))
 	plan, ok := body["plan"].(map[string]any)
@@ -385,7 +385,7 @@ func TestMerge_ContextBrokerFetch_ExecuteArmReturnsItemsManifestRationale(t *tes
 	writeRecord(t, s, "user/memory/thing", "k", `{"v":1}`)
 	a := New(s, "")
 
-	body := wantNoError(t, mustCall(t, a.handleContextBroker, map[string]any{
+	body := wantNoError(t, mustCall(t, a.handleContextPlan, map[string]any{
 		"intent":  "boot_project",
 		"execute": true,
 	}))
@@ -406,7 +406,7 @@ func TestMerge_ContextBrokerFetch_ExecuteArmReturnsItemsManifestRationale(t *tes
 // returns no records, so a byte cap there would be a knob with nothing to cap.
 func TestContextBroker_PayloadCapUnderThePlanningArmIsRejected(t *testing.T) {
 	a := New(newTestStore(t), "")
-	wantErrorCode(t, mustCall(t, a.handleContextBroker, map[string]any{
+	wantErrorCode(t, mustCall(t, a.handleContextPlan, map[string]any{
 		"intent":            "boot_project",
 		"payload_max_bytes": float64(512),
 	}), "validation_error")

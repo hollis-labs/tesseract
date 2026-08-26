@@ -45,7 +45,7 @@ func readDomainVocabulary() []string {
 func resolveReadDomain(req mcp.CallToolRequest) (string, *mcp.CallToolResult) {
 	raw := strings.TrimSpace(req.GetString("domain", ""))
 	if raw == "" {
-		return "", toolError("validation_error",
+		return "", toolError(codeValidationError,
 			"domain is required; one of "+strings.Join(readDomainVocabulary(), ", "))
 	}
 	for _, d := range readDomainVocabulary() {
@@ -53,7 +53,7 @@ func resolveReadDomain(req mcp.CallToolRequest) (string, *mcp.CallToolResult) {
 			return raw, nil
 		}
 	}
-	return "", toolError("validation_error",
+	return "", toolError(codeValidationError,
 		"domain must be one of "+strings.Join(readDomainVocabulary(), ", ")+", got "+raw)
 }
 
@@ -63,7 +63,7 @@ func resolveReadDomain(req mcp.CallToolRequest) (string, *mcp.CallToolResult) {
 // entry" are different facts, and collapsing them is how a misconfigured
 // deployment reads as an empty one.
 func domainUnavailable(domain string) *mcp.CallToolResult {
-	return toolError("domain_unavailable",
+	return toolError(codeDomainUnavailable,
 		"no store is wired for domain "+domain+" on this deployment")
 }
 
@@ -76,7 +76,7 @@ func domainUnavailable(domain string) *mcp.CallToolResult {
 // — a panic that takes the stdio server down rather than answering the caller.
 // A named error is the cheaper failure by a wide margin.
 func revisionStoreUnavailable() *mcp.CallToolResult {
-	return toolError("domain_unavailable",
+	return toolError(codeDomainUnavailable,
 		"no revision store is wired on this deployment")
 }
 
@@ -272,7 +272,7 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 	namespace := req.GetString("namespace", "")
 	key := req.GetString("key", "")
 	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 
 	var (
@@ -304,7 +304,7 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 	}
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
+			return toolError(codeNotFound, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 	namespace := req.GetString("namespace", "")
 	key := req.GetString("key", "")
 	if namespace == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 
 	pr, errRes := a.resolveHistoryPageRequest(req)
@@ -359,7 +359,7 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 	}
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
+			return toolError(codeNotFound, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -370,7 +370,7 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 		memory.HistoryOrderingFingerprint(domain, namespace, key))
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidCursor) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -383,7 +383,7 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req mcp.CallTo
 	}
 	revisionID := req.GetString("revision_id", "")
 	if revisionID == "" {
-		return toolError("validation_error", "revision_id is required"), nil
+		return toolError(codeValidationError, "revision_id is required"), nil
 	}
 	store := a.revisionStore()
 	if store == nil {
@@ -393,7 +393,7 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req mcp.CallTo
 	rev, err := store.GetRevisionByIDReinforced(ctx, revisionID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
+			return toolError(codeNotFound, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -406,7 +406,7 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req mcp.CallTool
 	}
 	revisionID := req.GetString("revision_id", "")
 	if revisionID == "" {
-		return toolError("validation_error", "revision_id is required"), nil
+		return toolError(codeValidationError, "revision_id is required"), nil
 	}
 	store := a.revisionStore()
 	if store == nil {
@@ -414,7 +414,7 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req mcp.CallTool
 	}
 	if err := store.Deprecate(ctx, revisionID); err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
+			return toolError(codeNotFound, err.Error()), nil
 		}
 		return nil, err
 	}

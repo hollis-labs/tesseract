@@ -28,12 +28,12 @@ func (a *Adapter) handleRAGQuery(_ context.Context, req mcp.CallToolRequest) (*m
 	ctx := context.Background()
 
 	if a.EmbeddingProvider == nil {
-		return toolError("embedding_unavailable", "no embedding provider configured — RAG queries require an embedding provider"), nil
+		return toolError(codeEmbeddingUnavailable, "no embedding provider configured — RAG queries require an embedding provider"), nil
 	}
 
 	query := req.GetString("query", "")
 	if query == "" {
-		return toolError("validation_error", "query is required"), nil
+		return toolError(codeValidationError, "query is required"), nil
 	}
 
 	limit := req.GetInt("limit", 5)
@@ -71,11 +71,11 @@ func (a *Adapter) handleRAGQuery(_ context.Context, req mcp.CallToolRequest) (*m
 	if a.VectorIndex != nil {
 		queryResult, err := a.EmbeddingProvider.Embed(ctx, query, a.EmbeddingModel)
 		if err != nil {
-			return toolError("embedding_error", fmt.Sprintf("query embedding failed: %v", err)), nil
+			return toolError(codeEmbeddingError, fmt.Sprintf("query embedding failed: %v", err)), nil
 		}
 		results, err = a.VectorIndex.Search(ctx, queryResult.Embedding, opts)
 		if err != nil {
-			return toolError("search_error", fmt.Sprintf("vector search failed: %v", err)), nil
+			return toolError(codeSearchError, fmt.Sprintf("vector search failed: %v", err)), nil
 		}
 	} else {
 		// Brute-force via Store.
@@ -91,13 +91,13 @@ func (a *Adapter) handleRAGQuery(_ context.Context, req mcp.CallToolRequest) (*m
 
 		embeddings, records, err := a.Store.ListEmbeddings(ctx, filter)
 		if err != nil {
-			return toolError("search_error", fmt.Sprintf("failed to load embeddings: %v", err)), nil
+			return toolError(codeSearchError, fmt.Sprintf("failed to load embeddings: %v", err)), nil
 		}
 
 		if len(embeddings) > 0 {
 			queryResult, err := a.EmbeddingProvider.Embed(ctx, query, a.EmbeddingModel)
 			if err != nil {
-				return toolError("embedding_error", fmt.Sprintf("query embedding failed: %v", err)), nil
+				return toolError(codeEmbeddingError, fmt.Sprintf("query embedding failed: %v", err)), nil
 			}
 			queryVec := queryResult.Embedding
 

@@ -50,17 +50,70 @@ Shipped skills (11):
 | `views` | primitive | Selectors-not-processors; namespace globs. |
 | `memory` | domain | When to use memory, common patterns. |
 | `knowledge` | domain | Pointer-first model, `kind`/`source`/`pointer` facets. |
-| `context-packet` | feature | Boot workflows, broker plan/fetch, budget tuning. |
+| `context-packet` | feature | Boot workflows, plan and fetch, budget tuning. |
 | `audit` | feature | Querying the audit log. |
 
 Workflow-specific skills for downstream apps belong in those app repos. Tesseract ships primitives and reference docs only.
 
 ## Domains
 
-- **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `include_meta`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
+- **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `full_evaluation`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity rankings).
 - **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
+
+## Tool naming
+
+A tool name is `<prefix>_[subject_]<verb>`. The prefix says which domain owns the
+tool; the verb says what the operation is; anything in between names what is
+operated on. One verb per operation, so an operation you know in one domain is
+guessable in another.
+
+The tables below are **generated** from `internal/mcpadapter/toolvocab.go`.
+`tests/parity/toolvocab_test.go` asserts every registered name matches them and
+that this section is still their rendering — edit the Go structure, not this
+block.
+
+<!-- BEGIN GENERATED: tool-naming -->
+**Prefix rule.** `tesseract_` when the tool spans domains or serves the surface itself; `<domain>_` when it is domain-specific.
+
+| Prefix | Covers |
+|---|---|
+| `context_` | the context domain only — generic revisioned records |
+| `knowledge_` | the knowledge domain only — pointer-first references |
+| `memory_` | the memory domain only — agent-authored revisions |
+| `tesseract_` | spans every domain, or serves the surface itself |
+
+**Verb table.** The verb is the trailing segment(s) of the name; anything between prefix and verb is a subject naming what is operated on.
+
+| Verb | Means | Prefixes |
+|---|---|---|
+| `deprecate` | Soft-remove one revision; history keeps it. | `tesseract` |
+| `embed` | Compute and store an embedding vector for a record. | `context` |
+| `estimate` | Size what a selector would return, without returning it. | `context` |
+| `get` | Fetch the current entry at one identity. | `tesseract` |
+| `get_revision` | Fetch one revision by its revision_id. | `tesseract` |
+| `history` | Every revision of one entry, newest first. | `tesseract` |
+| `ingest` | Write many records, or one document split into many, in a single call. | `context` |
+| `list` | Enumerate the entries of a registry or a log. | `context` |
+| `pack` | Assemble a budget-bounded bundle of records. | `context` |
+| `plan` | Produce a fetch plan for an intent, and optionally run it. | `context` |
+| `promote` | Move an entry across scope or ownership. | `context`, `memory` |
+| `recall` | Ranked multi-result retrieval across domains. | `tesseract` |
+| `register` | Add an entry to a registry. | `context` |
+| `search` | Rank records of the context store by vector similarity. | `context` |
+| `set` | Move a record to a named value of a closed field. | `context` |
+| `touch` | Report deliberate use, so it counts toward activation. | `tesseract` |
+| `view` | Evaluate a view or selector and return what it matches. | `context` |
+| `write` | Append a revision or record. | `context`, `knowledge`, `memory` |
+
+**Exemptions.** Registered names that do not match the vocabulary, and why.
+
+| Tool | Why |
+|---|---|
+| `context_rag_query` | `rag_query` is not an operation in the vocabulary, and it is the one name on the surface that does not fit. Left as-is under an explicit CW-20260825-0012 scope fence covering context_rag_query, context_search and context_embed; the other two turned out to fit (`search`, `embed`) and were admitted to the table on their merits. |
+| `tesseract_skills` | Named for what it serves rather than for a verb, and both its arms — the catalog and one skill body — are covered by the plural noun. Kept because it is the most-referenced identifier on the surface (every tool description ends in a `tesseract_skills <name>` pointer) and no verb form read better than the noun: it neither purely lists nor purely gets. |
+<!-- END GENERATED: tool-naming -->
 
 ## Tool catalog
 
@@ -69,23 +122,23 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 | Tool | Scope | HTTP peer | Notes |
 |---|---|---|---|
 | `context_write` | `write` | `POST /v1/context/write` | Append a record revision |
-| `context_view` | — | `POST /v1/views/evaluate` | `include_meta` selects the arm: default is the summary envelope over namespace globs; `true` is the full selector + `evaluation_meta`, the exact peer of the HTTP route |
+| `context_view` | — | `POST /v1/views/evaluate` | `full_evaluation` selects the arm: default is the summary envelope over namespace globs; `true` is the full selector + `evaluation_meta`, the exact peer of the HTTP route |
 | `context_estimate` | — | `POST /v1/context/estimate` | Record count + bytes + token proxy without payload |
 | `context_pack` | — | `POST /v1/context/pack` | `shape` selects the arm: `list` (default) ranks a named view; `packet` assembles namespace globs + pins into a budget-bounded packet + manifest (MCP-only — divergent shape from HTTP `/context/packet`) |
-| `context_audit` | — | `GET /v1/context/audit` | Structured audit events |
+| `context_audit_list` | — | `GET /v1/context/audit` | Structured audit events |
 | `context_typed_write` | `write` | `POST /v1/context/typed-write` | Write with schema-validated payload |
 | `context_typed_view` | — | `POST /v1/context/typed-view` | Typed view over schema |
 | `context_registry_list` | — | `GET /v1/context/types`, `GET /v1/context/views`, `GET /v1/namespaces/list`, `GET /v1/namespaces/get` | `kind` selects the registry: `types`, `views`, or `namespaces` (with `name` for one namespace's policy) |
 | `context_ingest` | `write` | `POST /v1/context/bulk-ingest` | `mode` selects the arm: `bulk` (default) writes a list of records; `chunked` splits one document into auto-embedded chunks (MCP-only) |
 | `context_status_set` | `write` | `POST /v1/context/status/promote`, `POST /v1/context/status/deprecate` | `status` names the target: omit to advance one step, `deprecated` to retire |
 | `context_promote` | `promote.request` / `promote.approve` / `promote.apply` | `POST /v1/context/promote/request`, `/approve`, `/apply` | `stage` selects the stage AND the scope checked for it; an absent or unrecognized stage is a validation_error and authorizes nothing |
-| `context_promote_list` | — | — (MCP-only; HTTP equivalents iterate audit) | List promotion requests |
-| `context_broker` | — | `POST /v1/broker/plan` (alias `/v1/context/plan`) | `execute` selects the arm: `false` (default) returns the plan; `true` runs it and returns the records (MCP-only) |
+| `context_promotion_list` | — | — (MCP-only; HTTP equivalents iterate audit) | List promotion requests |
+| `context_plan` | — | `POST /v1/context/plan`, `POST /v1/broker/plan` | `execute` selects the arm: `false` (default) returns the plan; `true` runs it and returns the records (MCP-only). Both routes are the same handler; both are peers of the default arm. |
 | `context_namespace_register` | `namespace.admin` | `POST /v1/namespaces/register` | Register a namespace ownership policy |
 | `context_embed` | — | — (MCP-only) | Embedding-only op |
 | `context_search` | — | — (MCP-only) | Low-level embedding search |
 | `context_rag_query` | — | — (MCP-only) | Convenience RAG query |
-| `context_session_snapshot` | — | — (MCP-only) | Capture a session snapshot |
+| `context_session_write` | `write` | — (MCP-only) | Write a session snapshot record with an enforced schema, and embed it |
 
 ### Memory
 
@@ -183,10 +236,10 @@ Searches memory + knowledge. Returns ranked results with a uniform shape so the 
 
 ### 4. Pack context at boot
 
-Use `context_broker` with `execute: true` (MCP-only — plan + packet in one call):
+Use `context_plan` with `execute: true` (MCP-only — plan + packet in one call):
 
 ```json
-mcp__tesseract__context_broker {
+mcp__tesseract__context_plan {
   "execute": true,
   "intent": "boot_project",
   "summary": "Tesseract backend — batch 1 parity work",
@@ -195,7 +248,7 @@ mcp__tesseract__context_broker {
 }
 ```
 
-Or split the phases: `context_broker` with `execute` omitted returns the plan,
+Or split the phases: `context_plan` with `execute` omitted returns the plan,
 and `context_pack` with `shape: "packet"` assembles it.
 
 ### 5. Resolve a revision id

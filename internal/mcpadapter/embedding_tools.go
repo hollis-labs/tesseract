@@ -36,33 +36,33 @@ func (a *Adapter) handleEmbed(_ context.Context, req mcp.CallToolRequest) (*mcp.
 	ctx := context.Background()
 
 	if a.EmbeddingProvider == nil {
-		return toolError("embedding_unavailable", "no embedding provider configured"), nil
+		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}
 
 	recordID := req.GetString("record_id", "")
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
 	if recordID == "" || ns == "" || key == "" {
-		return toolError("validation_error", "record_id, namespace, and key are required"), nil
+		return toolError(codeValidationError, "record_id, namespace, and key are required"), nil
 	}
 
 	// Fetch the record to get its payload text.
 	rec, err := a.Store.GetByRecordID(ctx, recordID)
 	if err != nil {
-		return toolError("not_found", fmt.Sprintf("record %s not found: %v", recordID, err)), nil
+		return toolError(codeNotFound, fmt.Sprintf("record %s not found: %v", recordID, err)), nil
 	}
 
 	// Extract text from the payload for embedding.
 	text := extractTextForEmbedding(rec)
 	if text == "" {
-		return toolError("validation_error", "record has no embeddable text content"), nil
+		return toolError(codeValidationError, "record has no embeddable text content"), nil
 	}
 
 	// Generate embedding.
 	model := req.GetString("model", a.EmbeddingModel)
 	result, err := a.EmbeddingProvider.Embed(ctx, text, model)
 	if err != nil {
-		return toolError("embedding_error", fmt.Sprintf("embedding generation failed: %v", err)), nil
+		return toolError(codeEmbeddingError, fmt.Sprintf("embedding generation failed: %v", err)), nil
 	}
 
 	// Store the embedding.
@@ -72,7 +72,7 @@ func (a *Adapter) handleEmbed(_ context.Context, req mcp.CallToolRequest) (*mcp.
 		Dimensions: len(result.Embedding),
 		Vector:     result.Embedding,
 	}); err != nil {
-		return toolError("internal_error", fmt.Sprintf("failed to store embedding: %v", err)), nil
+		return toolError(codeInternalError, fmt.Sprintf("failed to store embedding: %v", err)), nil
 	}
 
 	return toolJSON(map[string]any{
@@ -89,12 +89,12 @@ func (a *Adapter) handleSearch(_ context.Context, req mcp.CallToolRequest) (*mcp
 	ctx := context.Background()
 
 	if a.EmbeddingProvider == nil {
-		return toolError("embedding_unavailable", "no embedding provider configured"), nil
+		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}
 
 	query := req.GetString("query", "")
 	if query == "" {
-		return toolError("validation_error", "query is required"), nil
+		return toolError(codeValidationError, "query is required"), nil
 	}
 
 	limit := int(req.GetFloat("limit", 10))
@@ -129,7 +129,7 @@ func (a *Adapter) handleSearch(_ context.Context, req mcp.CallToolRequest) (*mcp
 	// Load candidate embeddings.
 	embeddings, records, err := a.Store.ListEmbeddings(ctx, filter)
 	if err != nil {
-		return toolError("internal_error", fmt.Sprintf("failed to load embeddings: %v", err)), nil
+		return toolError(codeInternalError, fmt.Sprintf("failed to load embeddings: %v", err)), nil
 	}
 
 	if len(embeddings) == 0 {
@@ -139,7 +139,7 @@ func (a *Adapter) handleSearch(_ context.Context, req mcp.CallToolRequest) (*mcp
 	// Embed the query.
 	queryResult, err := a.EmbeddingProvider.Embed(ctx, query, a.EmbeddingModel)
 	if err != nil {
-		return toolError("embedding_error", fmt.Sprintf("query embedding failed: %v", err)), nil
+		return toolError(codeEmbeddingError, fmt.Sprintf("query embedding failed: %v", err)), nil
 	}
 	queryVec := queryResult.Embedding
 

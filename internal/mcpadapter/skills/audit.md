@@ -1,13 +1,13 @@
 ---
 name: audit
-description: The audit log — emitting events from service-internal code and querying them via context_audit.
+description: The audit log — emitting events from service-internal code and querying them via context_audit_list.
 scope_hint: none
 related: [revisions, promotion]
 ---
 
 # Audit
 
-Every write and every promotion stage records a structured audit event. The audit log is append-only: no tool mutates it. Use `context_audit` to query it — no scope required.
+Every write and every promotion stage records a structured audit event. The audit log is append-only: no tool mutates it. Use `context_audit_list` to query it — no scope required.
 
 ## Emitting (for service-internal code)
 
@@ -31,7 +31,7 @@ convention for audit emits.
 
 ## Querying
 
-`context_audit` returns events newest-first, with filters:
+`context_audit_list` returns events newest-first, with filters:
 
 - `namespace` — exact namespace match (not a glob).
 - `event_type` — exact event type match (see below).
@@ -51,7 +51,7 @@ Event types actually emitted by the MCP surface:
 - `typed_write` — a typed-view write (`context_typed_write`).
 - `status_promote` — `context_status_set` moving a record to `reviewed` or `canonical`, or advancing it one step.
 - `status_deprecate` — emitted only by the HTTP route `POST /v1/context/status/deprecate`. `context_status_set` with `status: "deprecated"` writes **no** audit event; the two doors differ here, and reconstructing a deprecation from the audit log will miss the MCP ones.
-- `session_snapshot` — `context_session_snapshot`.
+- `session_snapshot` — `context_session_write`.
 - `bulk_ingest` / `chunked_ingest` — `context_ingest` under `mode: "bulk"` / `mode: "chunked"`.
 - `memory.write` — a memory revision was written. Emitted by `memory_write` and internal memory paths.
 - `memory.supersede` — a memory write whose `Supersedes` field is set (the write replaces a prior revision).
@@ -79,5 +79,5 @@ Each returned event carries:
 ## Common queries
 
 - "What wrote into `user/chrispian/memory` recently?" — set `namespace: user/chrispian/memory`, page with `cursor`. Filter `event_type: memory.write` (or `memory.supersede` / `memory.deprecate` / `memory.promote`) to narrow to memory-domain mutations.
-- "What promotions are pending?" — prefer `context_promote_list` (domain-aware); `context_audit` gives the raw event stream.
+- "What promotions are pending?" — prefer `context_promotion_list` (domain-aware); `context_audit_list` gives the raw event stream.
 - "When was revision X applied?" — filter `event_type: promote` and walk until `record_id` or `revision` matches; there is no direct revision index.

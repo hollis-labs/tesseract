@@ -94,7 +94,7 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 	reject := func(shapeName string, knobs ...string) *mcp.CallToolResult {
 		for _, knob := range knobs {
 			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
-				return toolError("validation_error", knob+" is not accepted under shape="+shapeName)
+				return toolError(codeValidationError, knob+" is not accepted under shape="+shapeName)
 			}
 		}
 		return nil
@@ -112,7 +112,7 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 		}
 		return a.handlePacket(ctx, req)
 	default:
-		return toolError("validation_error",
+		return toolError(codeValidationError,
 			"shape must be one of list|packet, got "+strconv.Quote(shape)), nil
 	}
 }
@@ -148,7 +148,7 @@ func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) 
 // ── Session Snapshot ──────────────────────────────────────────────────────────
 
 func (a *Adapter) registerSessionTools(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("context_session_snapshot",
+	a.addTool(s, mcp.NewTool("context_session_write",
 		mcp.WithDescription("Write a structured session snapshot to Tesseract and auto-embed for semantic search. Combines `context_typed_write` + `context_embed` into one call with enforced session schema. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
@@ -159,10 +159,10 @@ func (a *Adapter) registerSessionTools(s *server.MCPServer) {
 		mcp.WithString("open_questions", mcp.Description("JSON array of unresolved questions")),
 		mcp.WithString("handoff_notes", mcp.Description("Notes for the next session/agent")),
 		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
-	), a.handleSessionSnapshot)
+	), a.handleSessionWrite)
 }
 
-func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Auth: require write scope
 	errResult, claims := a.checkScope(ctx, "write")
 	if errResult != nil {
@@ -175,7 +175,7 @@ func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolReq
 	actor := req.GetString("actor", "mcp-agent")
 
 	if sessionID == "" || projectID == "" || summary == "" {
-		return toolError("validation_error", "session_id, project_id, and summary are required"), nil
+		return toolError(codeValidationError, "session_id, project_id, and summary are required"), nil
 	}
 
 	// Build namespace: system/sessions/<project_id>
@@ -184,7 +184,7 @@ func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolReq
 
 	// Check namespace permission
 	if !globsPermit(claims.NamespaceGlobs, ns) {
-		return toolError("namespace_not_permitted", fmt.Sprintf("token does not permit writes to namespace %q", ns)), nil
+		return toolError(codeNamespaceNotPermitted, fmt.Sprintf("token does not permit writes to namespace %q", ns)), nil
 	}
 
 	// Build structured payload
@@ -229,7 +229,7 @@ func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolReq
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		return toolError("internal_error", "failed to marshal payload: "+err.Error()), nil
+		return toolError(codeInternalError, "failed to marshal payload: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 	}
 
 	// Write record
@@ -243,7 +243,7 @@ func (a *Adapter) handleSessionSnapshot(ctx context.Context, req mcp.CallToolReq
 		Pointers:   []string{"session:" + sessionID},
 	})
 	if err != nil {
-		return toolError("write_failed", err.Error()), nil
+		return toolError(codeWriteFailed, err.Error()), nil
 	}
 
 	// Audit log
@@ -311,23 +311,23 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 	actor := req.GetString("actor", "mcp-agent")
 
 	if !globsPermit(claims.NamespaceGlobs, ns) {
-		return toolError("namespace_not_permitted", "token namespace globs do not permit writing to: "+ns), nil
+		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing to: "+ns), nil
 	}
 	if ns == "" || key == "" || payloadStr == "" {
-		return toolError("validation_error", "namespace, key, and payload are required"), nil
+		return toolError(codeValidationError, "namespace, key, and payload are required"), nil
 	}
 
 	var payload json.RawMessage
 	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-		return toolError("validation_error", "payload must be valid JSON: "+err.Error()), nil
+		return toolError(codeValidationError, "payload must be valid JSON: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 	}
 
 	reg := a.getRegistry()
 	if err := reg.ValidateType(recordType); err != nil {
-		return toolError("validation_error", err.Error()), nil
+		return toolError(codeValidationError, err.Error()), nil
 	}
 	if err := reg.ValidateStatus(recordType, status); err != nil {
-		return toolError("validation_error", err.Error()), nil
+		return toolError(codeValidationError, err.Error()), nil
 	}
 
 	// Validate required fields for the type.
@@ -335,7 +335,7 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 		var payloadMap map[string]any
 		if err := json.Unmarshal(payload, &payloadMap); err == nil {
 			if err := reg.ValidateRequiredFields(recordType, payloadMap); err != nil {
-				return toolError("validation_error", err.Error()), nil
+				return toolError(codeValidationError, err.Error()), nil
 			}
 		}
 	}
@@ -371,7 +371,7 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 		Pointers:   pointers,
 	})
 	if err != nil {
-		return toolError("write_failed", err.Error()), nil
+		return toolError(codeWriteFailed, err.Error()), nil
 	}
 
 	_ = a.Store.EmitTypedWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID,
@@ -402,12 +402,12 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 	actor := req.GetString("actor", "user")
 
 	if ns == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 
 	head, err := a.Store.Head(ctx, ns, key)
 	if err != nil {
-		return toolError("not_found", err.Error()), nil
+		return toolError(codeNotFound, err.Error()), nil
 	}
 
 	reg := a.getRegistry()
@@ -420,17 +420,17 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 	if newStatus == "" {
 		newStatus = contexttypes.NextPromotionStatus(oldStatus)
 		if newStatus == "" {
-			return toolError("validation_error", fmt.Sprintf("cannot promote from status %q", oldStatus)), nil
+			return toolError(codeValidationError, fmt.Sprintf("cannot promote from status %q", oldStatus)), nil
 		}
 	}
 
 	if err := reg.ValidateTransition(head.RecordType, oldStatus, newStatus, actor); err != nil {
-		return toolError("validation_error", err.Error()), nil
+		return toolError(codeValidationError, err.Error()), nil
 	}
 
 	rec, err := a.Store.UpdateRecordStatus(ctx, ns, key, actor, newStatus)
 	if err != nil {
-		return toolError("promote_failed", err.Error()), nil
+		return toolError(codePromoteFailed, err.Error()), nil
 	}
 
 	_ = a.Store.EmitStatusPromote(ctx, actor, ns, key, rec.Revision, rec.RecordID,
@@ -456,12 +456,12 @@ func (a *Adapter) handleStatusDeprecate(ctx context.Context, req mcp.CallToolReq
 	actor := req.GetString("actor", "user")
 
 	if ns == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 
 	head, err := a.Store.Head(ctx, ns, key)
 	if err != nil {
-		return toolError("not_found", err.Error()), nil
+		return toolError(codeNotFound, err.Error()), nil
 	}
 
 	oldStatus := head.Status
@@ -469,12 +469,12 @@ func (a *Adapter) handleStatusDeprecate(ctx context.Context, req mcp.CallToolReq
 		oldStatus = "draft"
 	}
 	if oldStatus == "deprecated" {
-		return toolError("validation_error", "item is already deprecated"), nil
+		return toolError(codeValidationError, "item is already deprecated"), nil
 	}
 
 	rec, err := a.Store.UpdateRecordStatus(ctx, ns, key, actor, "deprecated")
 	if err != nil {
-		return toolError("deprecate_failed", err.Error()), nil
+		return toolError(codeDeprecateFailed, err.Error()), nil
 	}
 
 	return toolJSON(map[string]any{
@@ -490,7 +490,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 	ctx := context.Background()
 	viewID := req.GetString("view_id", "")
 	if viewID == "" {
-		return toolError("validation_error", "view_id is required"), nil
+		return toolError(codeValidationError, "view_id is required"), nil
 	}
 
 	nsStr := req.GetString("namespaces", "")
@@ -512,7 +512,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 	reg := a.getRegistry()
 	viewDef, ok := reg.GetView(viewID)
 	if !ok {
-		return toolError("not_found", fmt.Sprintf("view %q not found", viewID)), nil
+		return toolError(codeNotFound, fmt.Sprintf("view %q not found", viewID)), nil
 	}
 
 	if maxItems <= 0 {
@@ -531,7 +531,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 		Limit:         maxItems,
 	})
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError(codeSelectorError, err.Error()), nil
 	}
 
 	// Apply token glob filtering.
@@ -596,7 +596,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 	ctx := context.Background()
 	viewID := req.GetString("view_id", "")
 	if viewID == "" {
-		return toolError("validation_error", "view_id is required"), nil
+		return toolError(codeValidationError, "view_id is required"), nil
 	}
 
 	nsStr := req.GetString("namespaces", "")
@@ -618,7 +618,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 	reg := a.getRegistry()
 	viewDef, ok := reg.GetView(viewID)
 	if !ok {
-		return toolError("not_found", fmt.Sprintf("view %q not found", viewID)), nil
+		return toolError(codeNotFound, fmt.Sprintf("view %q not found", viewID)), nil
 	}
 
 	statuses := []string{"draft", "reviewed", "canonical"}
@@ -630,7 +630,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 		Limit:         maxItems * 2,
 	})
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError(codeSelectorError, err.Error()), nil
 	}
 
 	// Rank.
