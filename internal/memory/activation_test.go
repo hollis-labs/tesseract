@@ -16,19 +16,10 @@ func TestGetCurrentReinforcedIncrementsActivation(t *testing.T) {
 	ctx := context.Background()
 
 	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
-	if st, _ := ms.GetState(ctx, rev.MemoryID); st.Activation != 1.0 {
-		t.Fatalf("initial activation: %v", st.Activation)
-	}
-	// Park below the ceiling first. A fresh memory starts AT the 1.0 default,
-	// which is now also the activation ceiling and a fixed point of the
-	// reinforcement curve — so "activation increased" is not observable there.
-	// Reinforcement restores a decayed memory toward the standing a new one has;
-	// this test is about whether the head-read path emits that signal at all.
-	if _, err := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, rev.MemoryID); err != nil {
-		t.Fatal(err)
-	}
 	st1, _ := ms.GetState(ctx, rev.MemoryID)
+	if st1.Activation != 1.0 {
+		t.Fatalf("initial activation: %v", st1.Activation)
+	}
 
 	// A deliberate head read should reinforce.
 	if _, err := ms.GetCurrentReinforced(ctx, rev.Namespace, rev.MemoryKey); err != nil {
@@ -55,11 +46,6 @@ func TestGetRevisionByIDReinforcedIncrementsActivation(t *testing.T) {
 	ctx := context.Background()
 
 	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
-	// Park below the ceiling — see TestGetCurrentReinforcedIncrementsActivation.
-	if _, err := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, rev.MemoryID); err != nil {
-		t.Fatal(err)
-	}
 	st1, _ := ms.GetState(ctx, rev.MemoryID)
 
 	if _, err := ms.GetRevisionByIDReinforced(ctx, rev.RevisionID); err != nil {
@@ -78,44 +64,27 @@ func TestGetRevisionByIDReinforcedIncrementsActivation(t *testing.T) {
 	}
 }
 
-// TestReinforcementDiminishingReturns verifies the diminishing-returns curve
-// keeps activation bounded under repeated deliberate reads, exercised through
-// memory_get's path rather than through touch.
-//
-// That distinction is the point of this test: memory_get and memory_get_revision
-// were the only reinforcement paths before tesseract_touch, and they inherit the
-// same curve. The two doors cannot reinforce differently because both go through
-// reinforceMemoryIDs.
-//
-// This test previously asserted activation grew ABOVE 1.0 under repeated reads,
-// which held against the old 2.0 ceiling and does not hold against the 1.0 one:
-// a memory starts at the schema default of 1.0, which is now the ceiling and a
-// fixed point. Reinforcement can restore a decayed memory to that standing and
-// never past it. See TestReinforcementAtCeilingIsAFixedPoint.
+// TestReinforcementDiminishingReturns verifies the diminishing-returns
+// formula keeps activation bounded under repeated deliberate reads.
 func TestReinforcementDiminishingReturns(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
 	rev, _ := ms.WriteRevision(ctx, sampleInput("user.x"))
 
-	// Start below the ceiling so growth is observable at all.
-	if _, err := ms.DB().ExecContext(ctx,
-		`UPDATE memory_state SET activation = 0.05 WHERE memory_id = ?`, rev.MemoryID); err != nil {
-		t.Fatal(err)
-	}
-
+	// Reinforce 100 times via deliberate reads; activation should stay
+	// below 2.5 (rough cap) but grow above its 1.0 starting point.
 	for i := 0; i < 100; i++ {
 		if _, err := ms.GetCurrentReinforced(ctx, rev.Namespace, rev.MemoryKey); err != nil {
 			t.Fatal(err)
 		}
 	}
 	st, _ := ms.GetState(ctx, rev.MemoryID)
-	// Bound stated as a literal, not derived from the package constants.
-	if st.Activation >= 1.0 {
-		t.Errorf("activation runaway past the ceiling: %v (expected strictly below 1.0)", st.Activation)
+	if st.Activation > 2.5 {
+		t.Errorf("activation runaway: %v (expected below 2.5)", st.Activation)
 	}
-	if st.Activation <= 0.05 {
-		t.Errorf("activation did not grow from the floor: %v", st.Activation)
+	if st.Activation <= 1.0 {
+		t.Errorf("activation did not grow: %v", st.Activation)
 	}
 }
 

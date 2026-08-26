@@ -51,8 +51,8 @@ func TestTouchRevisions_ReinforcesNamedMemory(t *testing.T) {
 	if st.LastAccessedAt == nil {
 		t.Error("last_accessed_at not set")
 	}
-	if st.Activation != 0.24 {
-		t.Errorf("activation = %v, want 0.24", st.Activation)
+	if st.Activation != 0.245 {
+		t.Errorf("activation = %v, want 0.245", st.Activation)
 	}
 }
 
@@ -83,9 +83,9 @@ func TestTouchRevisions_DuplicateIDsCountOnce(t *testing.T) {
 	if st.AccessCount != 1 {
 		t.Errorf("access_count = %d, want 1", st.AccessCount)
 	}
-	// One reinforcement from the floor, not three. Three would give 0.5136.
-	if st.Activation != 0.24 {
-		t.Errorf("activation = %v, want 0.24 (one reinforcement, not three)", st.Activation)
+	// One reinforcement from the floor, not three. Three would give 0.57845.
+	if st.Activation != 0.245 {
+		t.Errorf("activation = %v, want 0.245 (one reinforcement, not three)", st.Activation)
 	}
 }
 
@@ -122,8 +122,8 @@ func TestTouchRevisions_TwoRevisionsOfOneMemoryCountOnce(t *testing.T) {
 		t.Errorf("Touched = %d for two revisions of one memory, want 1", res.Touched)
 	}
 	st, _ := ms.GetState(ctx, first.MemoryID)
-	if st.Activation != 0.24 {
-		t.Errorf("activation = %v, want 0.24 (one reinforcement)", st.Activation)
+	if st.Activation != 0.245 {
+		t.Errorf("activation = %v, want 0.245 (one reinforcement)", st.Activation)
 	}
 }
 
@@ -153,8 +153,8 @@ func TestTouchRevisions_UnknownIDsReportedNotRaised(t *testing.T) {
 		t.Errorf("NotFound = %v, want [01NOPE-not-a-revision]", res.NotFound)
 	}
 	st, _ := ms.GetState(ctx, rev.MemoryID)
-	if st.Activation != 0.24 {
-		t.Errorf("activation = %v, want 0.24", st.Activation)
+	if st.Activation != 0.245 {
+		t.Errorf("activation = %v, want 0.245", st.Activation)
 	}
 }
 
@@ -272,8 +272,8 @@ func TestTouchRevisions_SpansDomains(t *testing.T) {
 	}
 	for _, id := range []string{memRev.MemoryID, knowRev.MemoryID} {
 		st, _ := ms.GetState(ctx, id)
-		if st.Activation != 0.24 {
-			t.Errorf("memory %s: activation = %v, want 0.24", id, st.Activation)
+		if st.Activation != 0.245 {
+			t.Errorf("memory %s: activation = %v, want 0.245", id, st.Activation)
 		}
 	}
 }

@@ -172,8 +172,8 @@ func TestTouchParity_SameArgumentSameEffect(t *testing.T) {
 		t.Errorf("the two doors left different access_counts: MCP=%d HTTP=%d", mcpCount, httpCount)
 	}
 	// Stated independently of the constants: one reinforcement from 0.05.
-	if mcpAct != 0.24 {
-		t.Errorf("activation after one touch = %v, want 0.24", mcpAct)
+	if mcpAct != 0.245 {
+		t.Errorf("activation after one touch = %v, want 0.245", mcpAct)
 	}
 }
 
@@ -259,8 +259,8 @@ func TestTouchParity_DedupIdenticalOnBothDoors(t *testing.T) {
 	if mcpCount != int64(1) {
 		t.Errorf("access_count = %d after three copies of one ID, want 1", mcpCount)
 	}
-	if mcpAct != 0.24 {
-		t.Errorf("activation = %v, want 0.24 (one reinforcement, not three)", mcpAct)
+	if mcpAct != 0.245 {
+		t.Errorf("activation = %v, want 0.245 (one reinforcement, not three)", mcpAct)
 	}
 }
 

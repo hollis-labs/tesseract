@@ -158,7 +158,7 @@ Step 3 is what tells the ranking your guess was right. It is the **only** input 
 
 **Timing is the whole point.** Call `tesseract_touch` *after* the reasoning, not when the results arrive. Touching on arrival reinforces the guess at the moment it was made, which is the failure recall refuses to commit for you.
 
-**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** Nothing is gained by inflating: reinforcement closes a fixed fraction of the distance to a ceiling rather than adding a fixed amount, so repeated touches approach that ceiling and never pass it — a heavily-touched memory cannot outrank a freshly written one.
+**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** Little is gained by inflating: reinforcement closes a fixed fraction of the distance to a ceiling rather than adding a fixed amount, so repeated touches approach that ceiling with ever-smaller steps and never pass it. A memory you genuinely use through the day does end up ranking above one merely written today — that headroom is the point — but it gets there by being used, and a report padded with things you did not use spends the ranking's only signal on noise.
 
 Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. Revision IDs from `tesseract_lookup` work here too: memory and knowledge both resolve.
 

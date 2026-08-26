@@ -57,7 +57,7 @@ Note what step 3 does **not** contain. Ten revisions came back, two were read, o
 
 **Why the third step exists at all.** `memory_recall` returns results **unreinforced**. Being returned by a search is the ranker's guess about what you need; if that guess reinforced itself, popular-because-returned would beat actually-useful within a few cycles. `tesseract_touch` is you telling the ranking, after the reasoning, which guesses were right. That is the only input activation has, and activation is the default ranking whenever you recall without a query.
 
-**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** There is nothing to win by inflating: reinforcement is asymptotic, so touching a memory repeatedly cannot push it past where a freshly written memory already sits.
+**Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** There is little to win by inflating: reinforcement has diminishing returns — each touch closes a fraction of the remaining distance to a ceiling, so the tenth touch moves a memory far less than the first, and no amount of touching passes the ceiling.
 
 **When to call it.** After the work, not after the search. If you touch as soon as results arrive, you are reinforcing the guess at the moment it was made — the thing recall refuses to do, done manually.
 

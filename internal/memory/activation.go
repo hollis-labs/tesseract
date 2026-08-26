@@ -16,23 +16,28 @@ const (
 	// value — which is the discrimination activation exists to provide, at the
 	// top of the range where it matters most.
 	//
-	// It is deliberately the same value memory_state.activation defaults to on
-	// insert, so reinforcement can restore a decayed memory to the standing a
-	// brand-new one has and can never push it past that. "Most-touched" cannot
-	// outrank "just-written" — the popular-because-returned failure mode that
-	// Recall refuses through the back door (see recall.go), refused here at the
-	// front door too.
-	activationCeiling = 1.0
+	// It sits ABOVE memory_state.activation's insert default of 1.0
+	// (internal/contextstore/store.go), and that headroom is the point. A new
+	// memory lands mid-range with room to climb and room to fall. A ceiling AT
+	// the insert default would make 1.0 a fixed point of the curve, so touching
+	// a memory written this session would move activation by exactly zero —
+	// the case the touch loop exists for. See TestFreshMemoryMovesUnderTouch.
+	activationCeiling = 2.0
 
 	// reinforcementRate is k: the fraction of the remaining distance to
 	// activationCeiling that one reinforcement closes. From the floor it
-	// yields 0.05 → 0.24 → 0.39 → 0.51 → 0.61 → …
+	// yields 0.05 → 0.245 → 0.4205 → 0.57845 → 0.720605 → …
 	//
 	// It is a package constant rather than config on purpose. Per D4 an app
 	// default with no per-call override is the shape any tuning must take,
 	// because a caller that chooses its own reinforcement weight is exactly
 	// the incentive problem the touch loop exists to avoid.
-	reinforcementRate = 0.2
+	//
+	// Do not tune it against observed activation levels while CW-20260826-0001
+	// is open: decay currently re-applies its factor from a baseline it never
+	// advances, so the levels a rate would be fitted to are set by that bug
+	// rather than by the rate.
+	reinforcementRate = 0.1
 
 	// MaxTouchRevisions bounds one TouchRevisions request. It is a request-size
 	// guard, not an incentive mechanism — the incentive work is done by the
@@ -55,8 +60,10 @@ const (
 // constants above are the single definition of the rule.
 //
 // The increment is negative for a row already above activationCeiling, which
-// walks legacy out-of-range rows back down toward the ceiling. That is
-// deliberate; see TestTouchPullsOutOfRangeRowsTowardCeiling.
+// walks such a row back down toward it. No row in the live corpus is above 2.0
+// and no path writes one, so this is a property of the curve rather than a case
+// anything currently hits — which is exactly why it is tested rather than
+// assumed. See TestTouchPullsOutOfRangeRowsTowardCeiling.
 //
 // Callers decide whether a failure here is fatal. The get paths swallow it —
 // a reinforcement failure must not fail a read. TouchRevisions does not, because
