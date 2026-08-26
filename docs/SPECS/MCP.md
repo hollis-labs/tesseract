@@ -31,8 +31,8 @@ tesseract context token create \
   --ttl 8760h
 ```
 
-Read tools (`tesseract_get`, `tesseract_history`, `context_view`, `context_packet`) work
-without a token under `domain: "context"`; the `memory` and `knowledge` domains check `memory:read`. Write tools (`context_write`, `context_promote_request`) require a token
+Read tools (`tesseract_get`, `tesseract_history`, `context_view`, `context_pack`) work
+without a token under `domain: "context"`; the `memory` and `knowledge` domains check `memory:read`. Write tools (`context_write`, `context_promote`) require a token
 with the matching scope and a namespace glob that covers the target namespace.
 
 ### Available tools
@@ -42,9 +42,9 @@ with the matching scope and a namespace glob that covers the target namespace.
 | `tesseract_get` | none under `domain: "context"` | Read latest record revision |
 | `tesseract_history` | none under `domain: "context"` | Read revision history (newest first) |
 | `context_view` | none | Evaluate a namespace/selector query |
-| `context_packet` | none | Assemble a budget-bounded context bundle |
+| `context_pack` | none | Assemble a budget-bounded context bundle (`shape=packet` for the namespace-glob form) |
 | `context_write` | `write` scope | Append a record revision |
-| `context_promote_request` | `promote.request` scope | Request promotion to user/* |
+| `context_promote` | one of `promote.request` / `promote.approve` / `promote.apply`, per `stage` | Promote a record to user/* in three stages |
 
 See [`docs/AGENT-SETUP.md`](../AGENT-SETUP.md) for full tool schemas and agent workflow.
 

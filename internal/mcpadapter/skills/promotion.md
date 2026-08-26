@@ -11,11 +11,11 @@ Apps cannot write directly into `user/*` namespaces. The user owns that surface;
 
 ## Three-stage context promotion
 
-For the generic context domain, promotion is a three-stage append-only workflow. Each stage requires its own scope:
+For the generic context domain, promotion is a three-stage append-only workflow on one tool, `context_promote`. The `stage` argument names the stage AND selects the scope checked for it, so holding one stage's scope grants that stage only. There is no default stage: an absent or unrecognized `stage` is a `validation_error` and authorizes nothing.
 
-1. **Request** - `context_promote_request` (scope: `promote.request`). Opens a pending request. Required: `source_namespace`, `source_key`, `target_namespace`, `target_key`. Optional: `reason`, `actor`. The request is stored in `app/mcp-agent/promotions` (or equivalent app namespace); the head revision carries current status.
-2. **Approve** - `context_promote_approve` (scope: `promote.approve`). Moves a `pending` request to `approved`. Default actor is `user`. Writes an approval record to `user/promotions` and appends an updated request revision.
-3. **Apply** - `context_promote_apply` (scope: `promote.apply`). Copies the source record's payload into the target namespace as a new revision, then marks the request `applied`. Terminal state; not reversible.
+1. **Request** - `context_promote` with `stage: "request"` (scope: `promote.request`). Opens a pending request. Required: `source_namespace`, `source_key`, `target_namespace`, `target_key`. Optional: `reason`, `actor`. The request is stored in `app/mcp-agent/promotions` (or equivalent app namespace); the head revision carries current status.
+2. **Approve** - `context_promote` with `stage: "approve"` (scope: `promote.approve`). Moves a `pending` request to `approved`. Required: `request_id`. Optional: `notes`, `actor` (default `user`). Writes an approval record to `user/promotions` and appends an updated request revision.
+3. **Apply** - `context_promote` with `stage: "apply"` (scope: `promote.apply`). Required: `request_id`. Copies the source record's payload into the target namespace as a new revision, then marks the request `applied`. Terminal state; not reversible.
 
 Listing: `context_promote_list` with `status=pending|approved|applied|all` (default `pending`). Read-only, no scope required.
 
@@ -40,4 +40,4 @@ Use it for same-agent, same-session elevations (session scratch -> durable user 
 
 ## Adjacent tool
 
-`context_status_promote` is unrelated to cross-namespace promotion - it transitions a record's status (`draft` -> `reviewed` -> `canonical`) in place and stays in its original namespace. Reach for it when the lifecycle move is ownership-internal.
+`context_status_set` is unrelated to cross-namespace promotion - it transitions a record's status (`draft` -> `reviewed` -> `canonical`, or straight to `deprecated`) in place and stays in its original namespace. Reach for it when the lifecycle move is ownership-internal.

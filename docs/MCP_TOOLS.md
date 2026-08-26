@@ -57,7 +57,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 
 ## Domains
 
-- **Context** — generic revisioned key-value records. Thirty-ish tools for read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit.
+- **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `include_meta`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity rankings).
 - **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
@@ -69,33 +69,23 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 | Tool | Scope | HTTP peer | Notes |
 |---|---|---|---|
 | `context_write` | `write` | `POST /v1/context/write` | Append a record revision |
-| `context_view` | — | — (MCP-only; use `views_evaluate` for full-power selector) | Simplified view over namespace globs |
-| `views_evaluate` | — | `POST /v1/views/evaluate` | Full selector + evaluation_meta |
+| `context_view` | — | `POST /v1/views/evaluate` | `include_meta` selects the arm: default is the summary envelope over namespace globs; `true` is the full selector + `evaluation_meta`, the exact peer of the HTTP route |
 | `context_estimate` | — | `POST /v1/context/estimate` | Record count + bytes + token proxy without payload |
-| `context_packet` | — | — (MCP-only — divergent shape from HTTP `/context/packet`) | Budget-bounded context packet + manifest |
-| `context_pack` | — | `POST /v1/context/pack` | Pack context as ordered list |
+| `context_pack` | — | `POST /v1/context/pack` | `shape` selects the arm: `list` (default) ranks a named view; `packet` assembles namespace globs + pins into a budget-bounded packet + manifest (MCP-only — divergent shape from HTTP `/context/packet`) |
 | `context_audit` | — | `GET /v1/context/audit` | Structured audit events |
 | `context_typed_write` | `write` | `POST /v1/context/typed-write` | Write with schema-validated payload |
 | `context_typed_view` | — | `POST /v1/context/typed-view` | Typed view over schema |
-| `context_types_list` | — | `GET /v1/context/types` | List registered types |
-| `context_views_list` | — | `GET /v1/context/views` | List registered views |
-| `context_bulk_ingest` | `write` | `POST /v1/context/bulk-ingest` | Multi-record ingest in one call |
-| `context_status_promote` | `promote` | `POST /v1/context/status/promote` | Move a record's status (e.g. draft → canonical) |
-| `context_status_deprecate` | `promote` | `POST /v1/context/status/deprecate` | Mark a record deprecated |
-| `context_promote_request` | `promote.request` | `POST /v1/context/promote/request` | Open a cross-namespace promotion |
+| `context_registry_list` | — | `GET /v1/context/types`, `GET /v1/context/views`, `GET /v1/namespaces/list`, `GET /v1/namespaces/get` | `kind` selects the registry: `types`, `views`, or `namespaces` (with `name` for one namespace's policy) |
+| `context_ingest` | `write` | `POST /v1/context/bulk-ingest` | `mode` selects the arm: `bulk` (default) writes a list of records; `chunked` splits one document into auto-embedded chunks (MCP-only) |
+| `context_status_set` | `write` | `POST /v1/context/status/promote`, `POST /v1/context/status/deprecate` | `status` names the target: omit to advance one step, `deprecated` to retire |
+| `context_promote` | `promote.request` / `promote.approve` / `promote.apply` | `POST /v1/context/promote/request`, `/approve`, `/apply` | `stage` selects the stage AND the scope checked for it; an absent or unrecognized stage is a validation_error and authorizes nothing |
 | `context_promote_list` | — | — (MCP-only; HTTP equivalents iterate audit) | List promotion requests |
-| `context_promote_approve` | `promote.approve` | `POST /v1/context/promote/approve` | Approve a pending request |
-| `context_promote_apply` | `promote.apply` | `POST /v1/context/promote/apply` | Apply an approved promotion |
-| `context_broker_plan` | — | `POST /v1/broker/plan` (alias `/v1/context/plan`) | Build a fetch plan from intent |
-| `context_broker_fetch` | — | — (MCP-only; plan + packet in one call) | Convenience wrapper |
+| `context_broker` | — | `POST /v1/broker/plan` (alias `/v1/context/plan`) | `execute` selects the arm: `false` (default) returns the plan; `true` runs it and returns the records (MCP-only) |
 | `context_namespace_register` | `namespace.admin` | `POST /v1/namespaces/register` | Register a namespace ownership policy |
-| `context_namespace_show` | — | `GET /v1/namespaces/get` | Inspect a namespace policy |
-| `context_namespaces_list` | — | — (MCP-only list helper) | List registered namespaces |
 | `context_embed` | — | — (MCP-only) | Embedding-only op |
 | `context_search` | — | — (MCP-only) | Low-level embedding search |
 | `context_rag_query` | — | — (MCP-only) | Convenience RAG query |
 | `context_session_snapshot` | — | — (MCP-only) | Capture a session snapshot |
-| `context_chunked_ingest` | `write` | — (MCP-only) | Streamed multi-chunk ingest |
 
 ### Memory
 
@@ -193,19 +183,20 @@ Searches memory + knowledge. Returns ranked results with a uniform shape so the 
 
 ### 4. Pack context at boot
 
-Use `context_broker_fetch` (MCP-only convenience — plan + packet in one call):
+Use `context_broker` with `execute: true` (MCP-only — plan + packet in one call):
 
 ```json
-mcp__tesseract__context_broker_fetch {
+mcp__tesseract__context_broker {
+  "execute": true,
   "intent": "boot_project",
   "summary": "Tesseract backend — batch 1 parity work",
   "budget_items": 80,
-  "budget_tokens": 8000,
-  "payload_mode": "full"
+  "budget_tokens": 8000
 }
 ```
 
-Or split the phases manually with `context_broker_plan` + `context_packet`.
+Or split the phases: `context_broker` with `execute` omitted returns the plan,
+and `context_pack` with `shape: "packet"` assembles it.
 
 ### 5. Resolve a revision id
 

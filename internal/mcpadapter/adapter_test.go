@@ -153,7 +153,7 @@ func TestContextView(t *testing.T) {
 		"revision_scope": "head",
 	}
 
-	res, err := a.handleView(context.Background(), req)
+	res, err := a.handleContextView(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleView: %v", err)
 	}
@@ -174,12 +174,13 @@ func TestContextPacket_WithPins(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"shape":        "packet",
 		"namespaces":   "app/test/session/task-001",
 		"include_pins": true,
 		"max_items":    float64(50),
 	}
 
-	res, err := a.handlePacket(context.Background(), req)
+	res, err := a.handleContextPackShape(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handlePacket: %v", err)
 	}
@@ -200,10 +201,11 @@ func TestContextPacket_EmptyResult(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"shape":        "packet",
 		"namespaces":   "user/memory/*",
 		"include_pins": false,
 	}
-	res, err := a.handlePacket(context.Background(), req)
+	res, err := a.handleContextPackShape(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handlePacket: %v", err)
 	}
@@ -339,6 +341,7 @@ func TestContextPromoteRequest_Success(t *testing.T) {
 	a := New(s, tok)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/test/draft",
 		"source_key":       "user-preference",
 		"target_namespace": "user/memory/preferences",
@@ -346,7 +349,7 @@ func TestContextPromoteRequest_Success(t *testing.T) {
 		"reason":           "high confidence preference",
 		"actor":            "app:my-agent",
 	}
-	res, err := a.handlePromoteRequest(context.Background(), req)
+	res, err := a.handlePromote(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handlePromoteRequest: %v", err)
 	}
@@ -364,12 +367,13 @@ func TestContextPromoteRequest_NoToken(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/test/draft",
 		"source_key":       "pref",
 		"target_namespace": "user/memory/prefs",
 		"target_key":       "pref",
 	}
-	res, _ := a.handlePromoteRequest(context.Background(), req)
+	res, _ := a.handlePromote(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "auth_required" {
 		t.Errorf("expected auth_required, got %v", body["code"])
@@ -415,7 +419,7 @@ func TestContextView_TokenFiltersToMatchingNamespaces(t *testing.T) {
 		"namespaces":     "app/test/*,user/memory/*",
 		"revision_scope": "head",
 	}
-	res, err := a.handleView(context.Background(), req)
+	res, err := a.handleContextView(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleView: %v", err)
 	}
@@ -437,7 +441,7 @@ func TestContextView_NoToken_ReturnsAll(t *testing.T) {
 		"namespaces":     "app/test/*,user/memory/*",
 		"revision_scope": "head",
 	}
-	res, _ := a.handleView(context.Background(), req)
+	res, _ := a.handleContextView(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
 	if len(items) != 2 {
@@ -457,10 +461,11 @@ func TestContextPacket_TokenFiltersToMatchingNamespaces(t *testing.T) {
 	a := New(s, tok)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"shape":        "packet",
 		"namespaces":   "app/agent/*,user/memory/*",
 		"include_pins": true,
 	}
-	res, err := a.handlePacket(context.Background(), req)
+	res, err := a.handleContextPackShape(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handlePacket: %v", err)
 	}
@@ -547,12 +552,13 @@ func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 	// Create a promotion request.
 	writeReq := mcp.CallToolRequest{}
 	writeReq.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
 		"target_namespace": "user/memory/agent",
 		"target_key":       "summary",
 	}
-	_, _ = a.handlePromoteRequest(context.Background(), writeReq)
+	_, _ = a.handlePromote(context.Background(), writeReq)
 
 	// List should return it.
 	listReq := mcp.CallToolRequest{}
@@ -572,9 +578,9 @@ func TestContextPromoteApprove_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"request_id": "req-abc"}
+	req.Params.Arguments = map[string]any{"stage": "approve", "request_id": "req-abc"}
 
-	res, err := a.handlePromoteApprove(context.Background(), req)
+	res, err := a.handlePromote(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handlePromoteApprove: %v", err)
 	}
@@ -594,22 +600,24 @@ func TestContextPromoteApprove_Success(t *testing.T) {
 	// Create a request first.
 	writeReq := mcp.CallToolRequest{}
 	writeReq.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
 		"target_namespace": "user/memory/agent",
 		"target_key":       "summary",
 	}
-	promRes, _ := a.handlePromoteRequest(context.Background(), writeReq)
+	promRes, _ := a.handlePromote(context.Background(), writeReq)
 	promBody := parseResult(t, promRes)
 	requestID := promBody["request_id"].(string)
 
 	// Approve it.
 	approveReq := mcp.CallToolRequest{}
 	approveReq.Params.Arguments = map[string]any{
+		"stage":      "approve",
 		"request_id": requestID,
 		"notes":      "looks good",
 	}
-	res, err := a.handlePromoteApprove(context.Background(), approveReq)
+	res, err := a.handlePromote(context.Background(), approveReq)
 	if err != nil {
 		t.Fatalf("handlePromoteApprove: %v", err)
 	}
@@ -633,21 +641,22 @@ func TestContextPromoteApprove_AlreadyApproved(t *testing.T) {
 
 	writeReq := mcp.CallToolRequest{}
 	writeReq.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
 		"target_namespace": "user/memory/agent",
 		"target_key":       "summary",
 	}
-	promRes, _ := a.handlePromoteRequest(context.Background(), writeReq)
+	promRes, _ := a.handlePromote(context.Background(), writeReq)
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Approve once.
 	approveReq := mcp.CallToolRequest{}
-	approveReq.Params.Arguments = map[string]any{"request_id": requestID}
-	a.handlePromoteApprove(context.Background(), approveReq) //nolint
+	approveReq.Params.Arguments = map[string]any{"stage": "approve", "request_id": requestID}
+	a.handlePromote(context.Background(), approveReq) //nolint
 
 	// Approve again — should fail.
-	res, _ := a.handlePromoteApprove(context.Background(), approveReq)
+	res, _ := a.handlePromote(context.Background(), approveReq)
 	body := parseResult(t, res)
 	if body["code"] != "invalid_state" {
 		t.Errorf("expected invalid_state, got %v", body["code"])
@@ -658,9 +667,9 @@ func TestContextPromoteApply_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"request_id": "req-abc"}
+	req.Params.Arguments = map[string]any{"stage": "apply", "request_id": "req-abc"}
 
-	res, _ := a.handlePromoteApply(context.Background(), req)
+	res, _ := a.handlePromote(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "auth_required" {
 		t.Errorf("expected auth_required, got %v", body["code"])
@@ -675,18 +684,19 @@ func TestContextPromoteApply_NotApproved(t *testing.T) {
 
 	writeReq := mcp.CallToolRequest{}
 	writeReq.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
 		"target_namespace": "user/memory/agent",
 		"target_key":       "summary",
 	}
-	promRes, _ := a.handlePromoteRequest(context.Background(), writeReq)
+	promRes, _ := a.handlePromote(context.Background(), writeReq)
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Try to apply without approving first.
 	applyReq := mcp.CallToolRequest{}
-	applyReq.Params.Arguments = map[string]any{"request_id": requestID}
-	res, _ := a.handlePromoteApply(context.Background(), applyReq)
+	applyReq.Params.Arguments = map[string]any{"stage": "apply", "request_id": requestID}
+	res, _ := a.handlePromote(context.Background(), applyReq)
 	body := parseResult(t, res)
 	if body["code"] != "invalid_state" {
 		t.Errorf("expected invalid_state, got %v", body["code"])
@@ -702,23 +712,24 @@ func TestContextPromoteApply_Success(t *testing.T) {
 	// Request.
 	writeReq := mcp.CallToolRequest{}
 	writeReq.Params.Arguments = map[string]any{
+		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
 		"target_namespace": "user/memory/agent",
 		"target_key":       "summary",
 	}
-	promRes, _ := a.handlePromoteRequest(context.Background(), writeReq)
+	promRes, _ := a.handlePromote(context.Background(), writeReq)
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Approve.
 	approveReq := mcp.CallToolRequest{}
-	approveReq.Params.Arguments = map[string]any{"request_id": requestID}
-	a.handlePromoteApprove(context.Background(), approveReq) //nolint
+	approveReq.Params.Arguments = map[string]any{"stage": "approve", "request_id": requestID}
+	a.handlePromote(context.Background(), approveReq) //nolint
 
 	// Apply.
 	applyReq := mcp.CallToolRequest{}
-	applyReq.Params.Arguments = map[string]any{"request_id": requestID}
-	res, err := a.handlePromoteApply(context.Background(), applyReq)
+	applyReq.Params.Arguments = map[string]any{"stage": "apply", "request_id": requestID}
+	res, err := a.handlePromote(context.Background(), applyReq)
 	if err != nil {
 		t.Fatalf("handlePromoteApply: %v", err)
 	}
@@ -753,7 +764,7 @@ func TestContextPlan_BootProject(t *testing.T) {
 	req.Params.Arguments = map[string]any{
 		"intent": "boot_project",
 	}
-	res, err := a.handleContextPlan(context.Background(), req)
+	res, err := a.handleContextBroker(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleContextPlan: %v", err)
 	}
@@ -789,7 +800,7 @@ func TestContextPlan_ResumeTask_ExtractsKeywords(t *testing.T) {
 		"intent":  "resume_task",
 		"summary": "implementing authentication middleware for the API",
 	}
-	res, _ := a.handleContextPlan(context.Background(), req)
+	res, _ := a.handleContextBroker(context.Background(), req)
 	body := parseResult(t, res)
 	plan := body["plan"].(map[string]any)
 	ns := plan["namespaces"].([]any)
@@ -803,7 +814,7 @@ func TestContextPlan_Custom_ReturnsUserStar(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"intent": "custom"}
-	res, _ := a.handleContextPlan(context.Background(), req)
+	res, _ := a.handleContextBroker(context.Background(), req)
 	body := parseResult(t, res)
 	plan := body["plan"].(map[string]any)
 	ns := plan["namespaces"].([]any)
@@ -826,10 +837,11 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
+		"execute":      true,
 		"intent":       "boot_project",
 		"budget_items": float64(50),
 	}
-	res, err := a.handleContextFetch(context.Background(), req)
+	res, err := a.handleContextBroker(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleContextFetch: %v", err)
 	}
@@ -853,8 +865,8 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 func TestContextFetch_Empty(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"intent": "boot_project"}
-	res, _ := a.handleContextFetch(context.Background(), req)
+	req.Params.Arguments = map[string]any{"execute": true, "intent": "boot_project"}
+	res, _ := a.handleContextBroker(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
 	if len(items) != 0 {
@@ -952,8 +964,8 @@ func TestContextNamespaceShow_Found(t *testing.T) {
 
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "app/my-agent/session"}
-	res, err := a.handleNamespaceShow(context.Background(), req)
+	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/my-agent/session"}
+	res, err := a.handleRegistryList(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleNamespaceShow: %v", err)
 	}
@@ -972,8 +984,8 @@ func TestContextNamespaceShow_Found(t *testing.T) {
 func TestContextNamespaceShow_NotFound(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "app/nonexistent/ns"}
-	res, _ := a.handleNamespaceShow(context.Background(), req)
+	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/nonexistent/ns"}
+	res, _ := a.handleRegistryList(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "not_found" {
 		t.Errorf("expected not_found, got %v", body["code"])
@@ -987,8 +999,8 @@ func TestContextNamespaceShow_NoAuthRequired(t *testing.T) {
 	})
 	a := New(s, "") // no token — should still work
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "app/open/ns"}
-	res, _ := a.handleNamespaceShow(context.Background(), req)
+	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/open/ns"}
+	res, _ := a.handleRegistryList(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != nil {
 		t.Errorf("expected success without token, got %v", body)

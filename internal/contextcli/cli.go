@@ -1490,11 +1490,23 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 	since := fs.String("since", "", "include records created after this RFC3339 time")
 	until := fs.String("until", "", "include records created before this RFC3339 time")
 	noPins := fs.Bool("no-pins", false, "skip user/pins/* prepend")
-	payloadMode := fs.String("payload-mode", "full", "payload mode: full|head_only")
+	// payload-mode accepts only "full" here. It used to also accept
+	// "head_only", which cut the payload at 512 bytes mid-JSON; every other
+	// value fell through to full payloads silently. Byte capping is now
+	// -payload-max-bytes, and the flag is kept so an old invocation gets told
+	// what to use instead of being quietly ignored.
+	payloadMode := fs.String("payload-mode", "full", "payload mode: full (byte capping moved to -payload-max-bytes)")
+	payloadMaxBytes := fs.Int("payload-max-bytes", 0, "cap each payload at N bytes (0=no cap); a capped item reports payload_head, payload_truncated and payload_bytes instead of payload")
 	manifest := fs.String("manifest", "summary", "manifest detail: summary|full")
 	output := fs.String("output", "human", "output mode: human|json|manifest-only")
 	if err := fs.Parse(args); err != nil {
 		return c.fail(err.Error())
+	}
+	if *payloadMode != "" && *payloadMode != "full" {
+		return c.fail("payload-mode accepts only \"full\"; the former -payload-mode=head_only is now -payload-max-bytes=512")
+	}
+	if *payloadMaxBytes < 0 {
+		return c.fail("payload-max-bytes must be >= 0; omit it or pass 0 for no cap")
 	}
 
 	var items []map[string]any
@@ -1525,9 +1537,6 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 			return false
 		}
 		payload := rec.Payload
-		if *payloadMode == "head_only" && len(payload) > 512 {
-			payload = payload[:512]
-		}
 		item := map[string]any{
 			"record_id":  rec.RecordID,
 			"namespace":  rec.Namespace,
@@ -1535,11 +1544,21 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 			"revision":   rec.Revision,
 			"actor":      rec.Actor,
 			"created_at": rec.CreatedAt,
-			"payload":    json.RawMessage(payload),
+		}
+		served := len(payload)
+		if *payloadMaxBytes > 0 && len(payload) > *payloadMaxBytes {
+			// The prefix of a JSON object is not valid JSON, so the head is a
+			// string and `payload` is withheld rather than shortened.
+			served = *payloadMaxBytes
+			item["payload_head"] = string(payload[:served])
+			item["payload_truncated"] = true
+			item["payload_bytes"] = len(payload)
+		} else {
+			item["payload"] = payload
 		}
 		items = append(items, item)
-		bytesSoFar += len(payload)
-		tokensSoFar += (len(payload) + 3) / 4
+		bytesSoFar += served
+		tokensSoFar += (served + 3) / 4
 		parts := strings.SplitN(rec.Namespace, "/", 3)
 		nsKey := rec.Namespace
 		if len(parts) >= 2 {

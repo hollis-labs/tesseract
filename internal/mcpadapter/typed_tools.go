@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,20 +27,15 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
 	), a.handleTypedWrite)
 
-	a.addTool(s, mcp.NewTool("context_status_promote",
-		mcp.WithDescription("Promote a record's status (draft->reviewed->canonical). Requires 'write' scope. See `tesseract_skills start-here` for the primitive model."),
+	a.addTool(s, mcp.NewTool("context_status_set",
+		mcp.WithDescription("Move a context record to a different lifecycle status. Requires 'write' scope. "+
+			"`status` names the target and selects which transition rules apply — see its description. "+
+			"See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithString("to_status", mcp.Description("Target status (default: next in chain)")),
+		mcp.WithString("status", mcp.Description(statusSetArgDescription)),
 		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
-	), a.handleStatusPromote)
-
-	a.addTool(s, mcp.NewTool("context_status_deprecate",
-		mcp.WithDescription("Deprecate a context record. Requires 'write' scope. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
-	), a.handleStatusDeprecate)
+	), a.handleStatusSet)
 
 	a.addTool(s, mcp.NewTool("context_typed_view",
 		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `tesseract_skills start-here` for the primitive model."),
@@ -50,20 +46,103 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleTypedView)
 
 	a.addTool(s, mcp.NewTool("context_pack",
-		mcp.WithDescription("Generate a budget-bounded context pack for a view with token estimation. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("view_id", mcp.Required(), mcp.Description("View ID: task_exec, strategy, or custom")),
-		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs (default: all)")),
-		mcp.WithNumber("max_items", mcp.Description("Max items (default: 50)")),
-		mcp.WithNumber("max_tokens", mcp.Description("Max tokens estimate (default: 8000)")),
-	), a.handleContextPack)
+		mcp.WithDescription("Assemble a budget-bounded bundle of context records. "+
+			"`shape` selects how the bundle is chosen and what envelope comes back — the two shapes take different arguments; see its description. "+
+			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithString("shape", mcp.Description(packShapeArgDescription)),
+		mcp.WithString("view_id", mcp.Description("shape=list only, required there: view ID — task_exec, strategy, or custom")),
+		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs. shape=list: narrows the view (default: all). shape=packet: the records to include.")),
+		mcp.WithNumber("max_items", mcp.Description("Max items (default: 50 on both shapes)")),
+		mcp.WithNumber("max_tokens", mcp.Description("shape=list only: max tokens estimate (default: 8000)")),
+		mcp.WithNumber("max_tokens_estimate", mcp.Description("shape=packet only: token budget limit (default: 8000)")),
+		mcp.WithBoolean("include_pins", mcp.Description("shape=packet only: prepend user/pins/* records (default true)")),
+		mcp.WithNumber("payload_max_bytes", mcp.Description("shape=packet only. "+payloadMaxBytesArgDescription)),
+	), a.handleContextPackShape)
+}
 
-	a.addTool(s, mcp.NewTool("context_types_list",
-		mcp.WithDescription("List all registered context types with their metadata. See `tesseract_skills start-here` for the primitive model."),
-	), a.handleTypesList)
+// ── Merged-tool argument vocabulary ──────────────────────────────────────────
 
-	a.addTool(s, mcp.NewTool("context_views_list",
-		mcp.WithDescription("List all registered context views with their type configurations. See `tesseract_skills start-here` for the primitive model."),
-	), a.handleViewsList)
+const (
+	packShapeArgDescription = "How the bundle is chosen and what envelope comes back. The two shapes take DIFFERENT arguments; " +
+		"passing one shape's argument to the other is a validation_error rather than a silently ignored knob. " +
+		"`list` (default): rank the records of a named view (`view_id`, required) by type bias and status weight, bounded by `max_items` and `max_tokens`. " +
+		"Answers `{view, generated_at, token_estimate, items, count}`, payloads always included. Peer of POST /v1/context/pack. " +
+		"`packet`: take the heads under `namespaces`, optionally prepending user/pins/*, bounded by `max_items` and `max_tokens_estimate`, " +
+		"filtered by the capability token's namespace globs when a token is configured. " +
+		"Answers `{items, manifest}`, where the manifest reports what was included and why assembly stopped. MCP-only: " +
+		"POST /v1/context/packet exists but answers a different budget and manifest shape."
+
+	statusSetArgDescription = "Target lifecycle status. " +
+		"Omit it to advance one step along draft → reviewed → canonical. " +
+		"`reviewed` / `canonical`: the transition is checked against the record type's promotion rules and a status_promote audit event is written. " +
+		"`deprecated`: the record is retired; deprecating an already-deprecated record is a validation_error. " +
+		"Anything else is rejected by the type registry. " +
+		"The retired context_status_promote spelled this `to_status`; that name is refused rather than ignored, because ignoring it would " +
+		"silently advance one step instead of going where you asked. " +
+		"NOTE: the two paths are not symmetric today — the deprecate path writes no audit event from this surface, while its HTTP peer " +
+		"POST /v1/context/status/deprecate does. That asymmetry predates this tool and is preserved here rather than quietly changed."
+)
+
+// ── Merged-tool dispatchers ──────────────────────────────────────────────────
+
+// handleContextPackShape serves the merged context_pack. `shape` selects the
+// arm; the two arms are the pre-merge handlers unchanged.
+func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	shape := req.GetString("shape", "list")
+
+	// Reject the other shape's knobs rather than accept and ignore them.
+	reject := func(shapeName string, knobs ...string) *mcp.CallToolResult {
+		for _, knob := range knobs {
+			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
+				return toolError("validation_error", knob+" is not accepted under shape="+shapeName)
+			}
+		}
+		return nil
+	}
+
+	switch shape {
+	case "list":
+		if errResult := reject("list", "include_pins", "max_tokens_estimate", "payload_max_bytes", "payload_mode"); errResult != nil {
+			return errResult, nil
+		}
+		return a.handleContextPack(ctx, req)
+	case "packet":
+		if errResult := reject("packet", "view_id", "max_tokens"); errResult != nil {
+			return errResult, nil
+		}
+		return a.handlePacket(ctx, req)
+	default:
+		return toolError("validation_error",
+			"shape must be one of list|packet, got "+strconv.Quote(shape)), nil
+	}
+}
+
+// handleStatusSet serves the merged context_status_set. `status` names the
+// target and selects which transition path runs.
+//
+// `deprecated` routes to the deprecation path — the one the retired
+// context_status_deprecate tool ran — and every other target routes to the
+// promotion path. That is the one input where the merge is not byte-identical
+// to both predecessors: context_status_promote(to_status="deprecated") was a
+// legal call that took the PROMOTION path (type-rule validation plus a
+// status_promote audit event), and the same target now takes the deprecation
+// path instead. See TestMerge_StatusSet_DeprecatedTargetTakesTheDeprecationPath.
+//
+// The retired context_status_promote spelled the target `to_status`. That name
+// is refused outright rather than ignored: an ignored `to_status` leaves
+// `status` empty, which means "advance one step" — so the caller would silently
+// get `reviewed` where they asked for `canonical`, and a success envelope
+// saying so. The check runs before the scope check because it is a fact about
+// the arguments, not about the caller.
+func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if errResult := rejectRetiredArg(req, "to_status",
+		"the target status is now named `status`; omit it to advance one step."); errResult != nil {
+		return errResult, nil
+	}
+	if req.GetString("status", "") == "deprecated" {
+		return a.handleStatusDeprecate(ctx, req)
+	}
+	return a.handleStatusPromote(ctx, req, req.GetString("status", ""))
 }
 
 // ── Session Snapshot ──────────────────────────────────────────────────────────
@@ -309,7 +388,10 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 	}), nil
 }
 
-func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// handleStatusPromote is the promotion path of context_status_set. toStatus is
+// resolved by the dispatcher rather than read here, because the merged tool
+// spells it `status`; empty still means "next in the chain".
+func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolRequest, toStatus string) (*mcp.CallToolResult, error) {
 	errResult, _ := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
@@ -317,7 +399,6 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
-	toStatus := req.GetString("to_status", "")
 	actor := req.GetString("actor", "user")
 
 	if ns == "" || key == "" {

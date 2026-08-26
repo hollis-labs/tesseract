@@ -11,7 +11,7 @@ import (
 )
 
 // PlannerConfig holds server-side caps for context plan validation.
-// NOTE: The MCP tool names (context_broker_plan, context_broker_fetch) and
+// NOTE: The MCP tool name (context_broker) and
 // HTTP route (/v1/broker/plan) retain "broker" for backward compatibility.
 // Internally this is the context query planner, not the universal ContextBroker.
 type PlannerConfig struct {

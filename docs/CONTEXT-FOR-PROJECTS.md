@@ -53,10 +53,10 @@ The `context_*` tools are available in every session.
 
 ### On session start
 
-Call `context_broker_fetch` with your intent before doing anything else:
+Call `context_broker` with `execute=true` and your intent before doing anything else:
 
 ```
-context_broker_fetch(intent="resume_task", summary="<brief task description>")
+context_broker(execute=true, intent="resume_task", summary="<brief task description>")
 ```
 
 This loads prior context from your session namespace and pinned user memory.
@@ -86,7 +86,8 @@ Write a summary and request promotion for anything worth keeping long-term:
 context_write(namespace="app/<project-agent-name>/session/<task-id>",
               key="summary", payload='{"outcome":"...", "key_findings":[...]}')
 
-context_promote_request(
+context_promote(
+  stage="request",
   source_namespace="app/<project-agent-name>/session/<task-id>",
   source_key="summary",
   target_namespace="user/memory/<project-agent-name>",
@@ -108,11 +109,11 @@ context_promote_request(
 
 | Tool | Auth | Use when |
 |---|---|---|
-| `context_broker_fetch` | none | Session boot — load prior context |
+| `context_broker` (`execute=true`) | none | Session boot — load prior context |
 | `context_write` | write scope | Save state or observations |
-| `context_packet` | none | Targeted context load (when you know the namespaces) |
+| `context_pack` (`shape="packet"`) | none | Targeted context load (when you know the namespaces) |
 | `tesseract_get` | none for `domain: "context"` | Read a specific record |
-| `context_promote_request` | promote.request scope | Promote findings to long-term memory |
+| `context_promote` (`stage="request"`) | promote.request scope | Promote findings to long-term memory |
 | `context_promote_list` | none | Check pending promotions from prior sessions |
 | `context_audit` | none | Investigate what happened in a namespace |
 ```
