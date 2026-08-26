@@ -79,11 +79,27 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) erro
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC().Format(memoryTimeFormat)
+	// last_decayed_at is stamped alongside because reinforcement WRITES
+	// activation, and last_decayed_at means "as of when is activation
+	// current" (decay.go). The two columns say different things and are
+	// written for different reasons: last_accessed_at is the read signal, and
+	// nothing but a real read ever writes it; last_decayed_at is a bookkeeping
+	// stamp that every writer of activation owes.
+	//
+	// Without it a touch is annihilated. A floored row is skipped by every
+	// decay pass (its change is 0, under decayWriteThreshold), so its
+	// last_decayed_at stays wherever it last landed — months back, for most of
+	// the corpus. Reinforce that row to 0.245 and the very next pass would see
+	// months of elapsed against a value one second old and slam it straight
+	// back to the floor. That is the compounding defect coming back through a
+	// different door, and it would hit precisely the memories the touch loop
+	// exists to rescue.
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE memory_state
 		SET activation = activation + ? * (? - activation),
 		    access_count = access_count + 1,
-		    last_accessed_at = ?
+		    last_accessed_at = ?,
+		    last_decayed_at = ?
 		WHERE memory_id = ?
 	`)
 	if err != nil {
@@ -92,7 +108,7 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) erro
 	defer func() { _ = stmt.Close() }()
 
 	for _, id := range memoryIDs {
-		if _, err := stmt.ExecContext(ctx, reinforcementRate, activationCeiling, now, id); err != nil {
+		if _, err := stmt.ExecContext(ctx, reinforcementRate, activationCeiling, now, now, id); err != nil {
 			return fmt.Errorf("reinforce %s: %w", id, err)
 		}
 	}
