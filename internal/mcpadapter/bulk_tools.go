@@ -54,7 +54,7 @@ func (a *Adapter) handleContextIngest(ctx context.Context, req mcp.CallToolReque
 	reject := func(modeName string, knobs ...string) *mcp.CallToolResult {
 		for _, knob := range knobs {
 			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
-				return toolError("validation_error", knob+" is not accepted under mode="+modeName)
+				return toolError(codeValidationError, knob+" is not accepted under mode="+modeName)
 			}
 		}
 		return nil
@@ -72,7 +72,7 @@ func (a *Adapter) handleContextIngest(ctx context.Context, req mcp.CallToolReque
 		}
 		return a.handleChunkedIngest(ctx, req)
 	default:
-		return toolError("validation_error",
+		return toolError(codeValidationError,
 			"mode must be one of bulk|chunked, got "+strconv.Quote(mode)), nil
 	}
 }
@@ -106,18 +106,18 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 
 	itemsStr := req.GetString("items", "")
 	if itemsStr == "" {
-		return toolError("validation_error", "items is required"), nil
+		return toolError(codeValidationError, "items is required"), nil
 	}
 
 	var items []bulkItem
 	if err := json.Unmarshal([]byte(itemsStr), &items); err != nil {
-		return toolError("validation_error", "items must be a valid JSON array: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: return result with error details, not Go error
+		return toolError(codeValidationError, "items must be a valid JSON array: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: return result with error details, not Go error
 	}
 	if len(items) == 0 {
-		return toolError("validation_error", "items array is empty"), nil
+		return toolError(codeValidationError, "items array is empty"), nil
 	}
 	if len(items) > 100 {
-		return toolError("validation_error", "max 100 items per batch"), nil
+		return toolError(codeValidationError, "max 100 items per batch"), nil
 	}
 
 	embed := req.GetBool("embed", false)
@@ -338,10 +338,10 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 	actor := req.GetString("actor", "mcp-agent")
 
 	if ns == "" || keyPrefix == "" || text == "" {
-		return toolError("validation_error", "namespace, key_prefix, and text are required"), nil
+		return toolError(codeValidationError, "namespace, key_prefix, and text are required"), nil
 	}
 	if !globsPermit(claims.NamespaceGlobs, ns) {
-		return toolError("namespace_not_permitted", "token does not permit writes to namespace: "+ns), nil
+		return toolError(codeNamespaceNotPermitted, "token does not permit writes to namespace: "+ns), nil
 	}
 
 	// Map strategy string.
@@ -362,12 +362,12 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 	})
 
 	if len(chunks) == 0 {
-		return toolError("validation_error", "text produced no chunks"), nil
+		return toolError(codeValidationError, "text produced no chunks"), nil
 	}
 
 	reg := a.getRegistry()
 	if err := reg.ValidateType(recordType); err != nil {
-		return toolError("validation_error", err.Error()), nil
+		return toolError(codeValidationError, err.Error()), nil
 	}
 
 	type chunkResult struct {
@@ -403,7 +403,7 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 			Pointers:   []string{"source:" + keyPrefix},
 		})
 		if err != nil {
-			return toolError("write_failed", fmt.Sprintf("chunk %d: %v", chunk.Index, err)), nil
+			return toolError(codeWriteFailed, fmt.Sprintf("chunk %d: %v", chunk.Index, err)), nil
 		}
 
 		res := chunkResult{

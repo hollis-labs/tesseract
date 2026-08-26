@@ -80,7 +80,7 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 	// matching RecallInput.Limit and both HTTP peers.
 	limit, err := wholeNumberArg(req, "limit", 0)
 	if err != nil {
-		return memory.PageRequest{}, toolError("validation_error", err.Error())
+		return memory.PageRequest{}, toolError(codeValidationError, err.Error())
 	}
 	if limit > 0 {
 		pr.Limit = limit
@@ -105,10 +105,10 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 		}
 		v, err := wholeNumberArg(req, knob.name, 0)
 		if err != nil {
-			return memory.PageRequest{}, toolError("validation_error", err.Error())
+			return memory.PageRequest{}, toolError(codeValidationError, err.Error())
 		}
 		if v <= 0 {
-			return memory.PageRequest{}, toolError("validation_error",
+			return memory.PageRequest{}, toolError(codeValidationError,
 				knob.name+" must be greater than 0; omit it for no ceiling")
 		}
 		*knob.dst = v
@@ -158,12 +158,12 @@ func resolveSimilarityMin(req mcp.CallToolRequest) (*float64, *mcp.CallToolResul
 	case json.Number:
 		f, err := v.Float64()
 		if err != nil {
-			return nil, toolError("validation_error",
+			return nil, toolError(codeValidationError,
 				"similarity_min must be a number, got "+v.String())
 		}
 		return &f, nil
 	}
-	return nil, toolError("validation_error",
+	return nil, toolError(codeValidationError,
 		fmt.Sprintf("similarity_min must be a number, got %T", raw))
 }
 
@@ -232,7 +232,7 @@ func (a *Adapter) resolvePayloadMode(req mcp.CallToolRequest) (memory.PayloadMod
 	if raw := req.GetString("payload_mode", ""); raw != "" {
 		mode := memory.PayloadMode(raw)
 		if !mode.Valid() {
-			return "", toolError("validation_error", "payload_mode must be one of keys|summary|full, got "+raw)
+			return "", toolError(codeValidationError, "payload_mode must be one of keys|summary|full, got "+raw)
 		}
 		return mode, nil
 	}
@@ -432,23 +432,27 @@ func (a *Adapter) addTool(s *server.MCPServer, t mcp.Tool, h server.ToolHandlerF
 // Returns a non-nil error JSON result if auth fails; nil means the caller may proceed.
 func (a *Adapter) checkScope(ctx context.Context, scope string) (*mcp.CallToolResult, contextstore.AuthToken) {
 	if a.Token == "" {
-		return toolError("auth_required", "no capability token configured for mutating operations"), contextstore.AuthToken{}
+		return toolError(codeAuthRequired, "no capability token configured for mutating operations"), contextstore.AuthToken{}
 	}
 	claims, err := a.Store.ValidateAuthTokenWithClaims(ctx, a.Token)
 	if err != nil {
-		return toolError("auth_required", "token invalid or expired: "+err.Error()), contextstore.AuthToken{}
+		return toolError(codeAuthRequired, "token invalid or expired: "+err.Error()), contextstore.AuthToken{}
 	}
 	for _, s := range claims.Scopes {
 		if s == scope {
 			return nil, claims
 		}
 	}
-	return toolError("insufficient_scope", "token does not have scope: "+scope), claims
+	return toolError(codeInsufficientScope, "token does not have scope: "+scope), claims
 }
 
 // toolError returns a CallToolResult containing a JSON error body agents can parse.
-func toolError(code, message string) *mcp.CallToolResult {
-	body, _ := json.Marshal(map[string]string{"code": code, "message": message})
+//
+// code is an errorCode rather than a string so that a call site cannot name a
+// code that does not exist. The wire shape is unchanged — the constant's value
+// is the same literal that used to be written here.
+func toolError(code errorCode, message string) *mcp.CallToolResult {
+	body, _ := json.Marshal(map[string]string{"code": string(code), "message": message})
 	return mcp.NewToolResultText(string(body))
 }
 

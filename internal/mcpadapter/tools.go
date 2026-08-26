@@ -22,17 +22,17 @@ import (
 func (a *Adapter) registerTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_view",
 		mcp.WithDescription("Evaluate a view over the context store and return matching records. "+
-			"`include_meta` selects between two evaluation arms — see its description; they differ in more than whether metadata is attached. "+
+			"`full_evaluation` selects between two evaluation arms — see its description; they differ in more than whether metadata is attached. "+
 			"See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Description(viewSelectorArgDescription)),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\". "+
 			"Shorthand for `selector` in its glob form; passing both is a validation_error.")),
 		mcp.WithString("revision_scope", mcp.Description("head or all (default: head). Ignored when `selector` is a JSON object — put revision_scope inside it; passing both is a validation_error.")),
 		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false). "+
-			"Only the `include_meta: true` arm can carry payloads; passing true without include_meta is a validation_error rather than a silently dropped knob.")),
-		mcp.WithBoolean("include_meta", mcp.Description(viewIncludeMetaArgDescription)),
+			"Only the `full_evaluation: true` arm can carry payloads; passing true without full_evaluation is a validation_error rather than a silently dropped knob.")),
+		mcp.WithBoolean("full_evaluation", mcp.Description(viewFullEvaluationArgDescription)),
 		mcp.WithNumber("limit", mcp.Description("Max records to return. Under the default arm: default 10, max 25, returns summaries — use `tesseract_get` with domain=\"context\" for the full record. "+
-			"Under `include_meta: true`: overrides selector.limit (0 = use selector's own limit or the store default).")),
+			"Under `full_evaluation: true`: overrides selector.limit (0 = use selector's own limit or the store default).")),
 	), a.handleContextView)
 
 	a.addTool(s, mcp.NewTool("context_write",
@@ -62,28 +62,29 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent under stage=request, user under approve/apply)")),
 	), a.handlePromote)
 
-	a.addTool(s, mcp.NewTool("context_promote_list",
+	a.addTool(s, mcp.NewTool("context_promotion_list",
 		mcp.WithDescription("List promotion requests. Read-only, no token required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("status", mcp.Description("Filter by status: pending|approved|applied|all (default: pending)")),
 		mcp.WithNumber("limit", mcp.Description("Max requests to return (default 10, max 25)")),
-	), a.handlePromoteList)
+	), a.handlePromotionList)
 
-	// NOTE: The MCP tool name retains "broker" for continuity with consumers.
-	// Internally this is the context query planner, not the universal
-	// ContextBroker.
-	a.addTool(s, mcp.NewTool("context_broker",
+	// The tool is named for the operation it performs: it plans a context
+	// fetch. Its HTTP peer is still routed at POST /v1/broker/plan, which is
+	// an HTTP path and not in this ticket's scope; POST /v1/context/plan is
+	// the same handler under the matching path.
+	a.addTool(s, mcp.NewTool("context_plan",
 		mcp.WithDescription("Plan a context fetch for a given intent, and optionally execute it. No auth required. "+
 			"`execute` selects between returning the plan and returning the records the plan selects. "+
 			"See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithBoolean("execute", mcp.Description("false (default): return the plan only — namespace patterns, budget, and rationale, with no store read. "+
 			"true: run the plan and return the records it selects, plus a manifest and the same rationale. "+
-			"There is no HTTP peer for execute=true; POST /v1/broker/plan is the peer of the default arm.")),
+			"There is no HTTP peer for execute=true; POST /v1/context/plan (and its second path POST /v1/broker/plan) is the peer of the default arm.")),
 		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
 		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction (used with resume_task intent)")),
 		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
 		mcp.WithNumber("budget_tokens", mcp.Description("Max tokens estimate budget (default 4000)")),
 		mcp.WithNumber("payload_max_bytes", mcp.Description(payloadMaxBytesArgDescription)),
-	), a.handleContextBroker)
+	), a.handleContextPlan)
 
 	a.addTool(s, mcp.NewTool("context_namespace_register",
 		mcp.WithDescription("Register a namespace with ownership policy. Requires 'namespace.admin' scope. See `tesseract_skills start-here` for the primitive model."),
@@ -106,13 +107,13 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("kind=namespaces only: max namespaces to return (default 10, max 25)")),
 	), a.handleRegistryList)
 
-	a.addTool(s, mcp.NewTool("context_audit",
+	a.addTool(s, mcp.NewTool("context_audit_list",
 		mcp.WithDescription("Query the audit event log. No auth required. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("namespace", mcp.Description("Filter by exact namespace")),
 		mcp.WithString("event_type", mcp.Description("Filter by event type (e.g. write, promote)")),
 		mcp.WithNumber("limit", mcp.Description("Max events to return (default 10, max 25)")),
 		mcp.WithNumber("cursor", mcp.Description("Pagination cursor (ID from previous response's next_cursor)")),
-	), a.handleAudit)
+	), a.handleAuditList)
 }
 
 // ── Merged-tool argument vocabulary ──────────────────────────────────────────
@@ -130,14 +131,14 @@ const (
 		"recognized by a leading `{`. The selector form is the only way to filter on keys, tags, types or statuses. " +
 		"Omit it and pass `namespaces` instead if globs are all you need; passing both is a validation_error."
 
-	viewIncludeMetaArgDescription = "Which evaluation arm answers, NOT merely whether metadata is attached. " +
+	viewFullEvaluationArgDescription = "Which evaluation arm answers, NOT merely whether metadata is attached. " +
 		"false (default): the store is queried for heads matching the selector, results are filtered by the capability token's namespace globs when a token is configured, " +
 		"and the answer is the shared budget envelope of record SUMMARIES — no payloads, ever. " +
 		"true: the selector is evaluated with the store's view semantics (deterministic sort, selector limit, truncation flag) and the answer is `{items, evaluation_meta}` " +
 		"carrying full records, with payloads when `include_payload` is set. " +
 		"The two arms differ in one way that is not about shape: the `true` arm does NOT filter by the token's namespace globs, because it is the exact peer of " +
 		"POST /v1/views/evaluate, which does not either. Neither arm can reach a record the other cannot — the same pair of behaviors was reachable before this merge " +
-		"as two separate tools — but do not read `include_meta` as a display knob."
+		"as two separate tools — but do not read `full_evaluation` as a display knob."
 
 	promoteStageArgDescription = "Which stage of the promotion workflow runs. Each stage requires a DIFFERENT capability scope, and the scope is checked for the stage you named: " +
 		"`request` (scope promote.request) records a request to copy a record from an app namespace to a user namespace; " +
@@ -162,8 +163,8 @@ const (
 
 // ── Merged-tool dispatchers ──────────────────────────────────────────────────
 
-// handleContextView serves the merged context_view. `include_meta` selects the
-// arm; see viewIncludeMetaArgDescription for what each one does.
+// handleContextView serves the merged context_view. `full_evaluation` selects the
+// arm; see viewFullEvaluationArgDescription for what each one does.
 //
 // The two arms are the pre-merge handlers unchanged — handleViewSummaries was
 // context_view and handleViewsEvaluate was views_evaluate — so preservation is
@@ -172,15 +173,15 @@ func (a *Adapter) handleContextView(ctx context.Context, req mcp.CallToolRequest
 	rawSelector := strings.TrimSpace(req.GetString("selector", ""))
 	nsArg := strings.TrimSpace(req.GetString("namespaces", ""))
 	revScopeArg := strings.TrimSpace(req.GetString("revision_scope", ""))
-	includeMeta := req.GetBool("include_meta", false)
+	fullEvaluation := req.GetBool("full_evaluation", false)
 	includePayload := req.GetBool("include_payload", false)
 
 	if rawSelector != "" && nsArg != "" {
-		return toolError("validation_error", "pass either selector or namespaces, not both"), nil
+		return toolError(codeValidationError, "pass either selector or namespaces, not both"), nil
 	}
-	if includePayload && !includeMeta {
-		return toolError("validation_error",
-			"include_payload is only honored under include_meta: true; the default arm returns summaries and never payloads"), nil
+	if includePayload && !fullEvaluation {
+		return toolError(codeValidationError,
+			"include_payload is only honored under full_evaluation: true; the default arm returns summaries and never payloads"), nil
 	}
 
 	var sel contextstore.Selector
@@ -188,10 +189,10 @@ func (a *Adapter) handleContextView(ctx context.Context, req mcp.CallToolRequest
 	switch {
 	case selectorIsJSON:
 		if err := json.Unmarshal([]byte(rawSelector), &sel); err != nil {
-			return toolError("validation_error", "selector must be a JSON object or a comma-separated glob list: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+			return toolError(codeValidationError, "selector must be a JSON object or a comma-separated glob list: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 		}
 		if revScopeArg != "" {
-			return toolError("validation_error",
+			return toolError(codeValidationError,
 				"revision_scope belongs inside a JSON selector; pass it as selector.revision_scope, not as a separate argument"), nil
 		}
 	case rawSelector != "":
@@ -200,9 +201,9 @@ func (a *Adapter) handleContextView(ctx context.Context, req mcp.CallToolRequest
 		sel.Namespaces = splitCommaList(nsArg)
 	}
 
-	if includeMeta {
+	if fullEvaluation {
 		if len(sel.Namespaces) == 0 && !selectorIsJSON {
-			return toolError("validation_error", "selector is required"), nil
+			return toolError(codeValidationError, "selector is required"), nil
 		}
 		return a.handleViewsEvaluate(ctx, sel, req)
 	}
@@ -211,9 +212,9 @@ func (a *Adapter) handleContextView(ctx context.Context, req mcp.CallToolRequest
 		// JSON selector would be accepted and silently not applied.
 		if len(sel.Keys) > 0 || len(sel.Order) > 0 || sel.Limit != 0 ||
 			len(sel.TagsAny) > 0 || len(sel.Types) > 0 || len(sel.Statuses) > 0 {
-			return toolError("validation_error",
+			return toolError(codeValidationError,
 				"the default arm honors only selector.namespaces and selector.revision_scope; "+
-					"pass include_meta: true to evaluate the full selector"), nil
+					"pass full_evaluation: true to evaluate the full selector"), nil
 		}
 		revScopeArg = sel.RevisionScope
 	}
@@ -240,27 +241,27 @@ func (a *Adapter) handlePromote(ctx context.Context, req mcp.CallToolRequest) (*
 	case "apply":
 		return a.handlePromoteApply(ctx, req)
 	default:
-		return toolError("validation_error",
+		return toolError(codeValidationError,
 			"stage must be one of request|approve|apply, got "+strconv.Quote(req.GetString("stage", ""))), nil
 	}
 }
 
-// handleContextBroker serves the merged context_broker. `execute` selects
+// handleContextPlan serves the merged context_plan. `execute` selects
 // between planning and running the plan.
-func (a *Adapter) handleContextBroker(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleContextPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if req.GetBool("execute", false) {
-		return a.handleContextFetch(ctx, req)
+		return a.handlePlanAndFetch(ctx, req)
 	}
 	// The planning arm reads no payloads, so a byte cap there would be a knob
 	// reporting it is honoring something it never consults.
 	if raw, ok := req.GetArguments()["payload_max_bytes"]; ok && raw != nil {
-		return toolError("validation_error",
+		return toolError(codeValidationError,
 			"payload_max_bytes applies only under execute: true; the planning arm returns no records"), nil
 	}
 	if errResult := rejectRetiredPayloadMode(req); errResult != nil {
 		return errResult, nil
 	}
-	return a.handleContextPlan(ctx, req)
+	return a.handlePlanOnly(ctx, req)
 }
 
 // handleRegistryList serves the merged context_registry_list. `kind` selects
@@ -282,7 +283,7 @@ func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolReques
 	reject := func(armLabel string, knobs ...string) *mcp.CallToolResult {
 		for _, knob := range knobs {
 			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
-				return toolError("validation_error", knob+" is not accepted "+armLabel)
+				return toolError(codeValidationError, knob+" is not accepted "+armLabel)
 			}
 		}
 		return nil
@@ -311,7 +312,7 @@ func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolReques
 		}
 		return a.handleNamespacesList(ctx, req)
 	default:
-		return toolError("validation_error",
+		return toolError(codeValidationError,
 			"kind must be one of types|views|namespaces, got "+strconv.Quote(kind)), nil
 	}
 }
@@ -343,10 +344,10 @@ func resolvePayloadMaxBytes(req mcp.CallToolRequest) (int, *mcp.CallToolResult) 
 	}
 	n, err := wholeNumberArg(req, "payload_max_bytes", 0)
 	if err != nil {
-		return 0, toolError("validation_error", err.Error())
+		return 0, toolError(codeValidationError, err.Error())
 	}
 	if n < 0 {
-		return 0, toolError("validation_error", "payload_max_bytes must be >= 0; omit it or pass 0 for no cap")
+		return 0, toolError(codeValidationError, "payload_max_bytes must be >= 0; omit it or pass 0 for no cap")
 	}
 	return n, nil
 }
@@ -369,7 +370,7 @@ func rejectRetiredArg(req mcp.CallToolRequest, old, guidance string) *mcp.CallTo
 	if !ok || raw == nil || raw == "" {
 		return nil
 	}
-	return toolError("validation_error", old+" is not an argument of this tool. "+guidance)
+	return toolError(codeValidationError, old+" is not an argument of this tool. "+guidance)
 }
 
 // rejectRetiredPayloadMode fails closed on the packet-shaped tools' former
@@ -389,7 +390,7 @@ func rejectRetiredPayloadMode(req mcp.CallToolRequest) *mcp.CallToolResult {
 	if raw == "" || raw == "full" {
 		return nil
 	}
-	return toolError("validation_error",
+	return toolError(codeValidationError,
 		"payload_mode is not a projection knob on this tool: it accepts only \"full\". "+
 			"The former payload_mode=head_only is now payload_max_bytes=512. Got: "+raw)
 }
@@ -433,14 +434,14 @@ func (a *Adapter) handleContextHead(_ context.Context, req mcp.CallToolRequest) 
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
 	if ns == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 	rec, err := a.Store.Head(ctx, ns, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return toolError("not_found", fmt.Sprintf("no head record for %s/%s", ns, key)), nil
+			return toolError(codeNotFound, fmt.Sprintf("no head record for %s/%s", ns, key)), nil
 		}
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 	return toolJSON(recordJSON(rec)), nil
 }
@@ -450,12 +451,12 @@ func (a *Adapter) handleContextHistory(_ context.Context, req mcp.CallToolReques
 	ns := req.GetString("namespace", "")
 	key := req.GetString("key", "")
 	if ns == "" || key == "" {
-		return toolError("validation_error", "namespace and key are required"), nil
+		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 	records, err := a.Store.History(ctx, ns, key, limit)
 	if err != nil {
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 	summaries := make([]map[string]any, len(records))
 	for i, rec := range records {
@@ -474,7 +475,7 @@ func (a *Adapter) handleViewSummaries(_ context.Context, sel contextstore.Select
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 	records, err := a.Store.Select(ctx, sel)
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError(codeSelectorError, err.Error()), nil
 	}
 
 	// Filter by token namespace globs if a token is present.
@@ -582,7 +583,7 @@ func (a *Adapter) handlePacket(_ context.Context, req mcp.CallToolRequest) (*mcp
 		RevisionScope: "head",
 	})
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError(codeSelectorError, err.Error()), nil
 	}
 
 	// Filter by token globs when present.
@@ -631,15 +632,15 @@ func (a *Adapter) handleWrite(ctx context.Context, req mcp.CallToolRequest) (*mc
 
 	// Enforce token namespace globs on write target.
 	if !globsPermit(claims.NamespaceGlobs, ns) {
-		return toolError("namespace_not_permitted", "token namespace globs do not permit writing to: "+ns), nil
+		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing to: "+ns), nil
 	}
 	if ns == "" || key == "" || payloadStr == "" {
-		return toolError("validation_error", "namespace, key, and payload are required"), nil
+		return toolError(codeValidationError, "namespace, key, and payload are required"), nil
 	}
 
 	var payload json.RawMessage
 	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-		return toolError("validation_error", "payload must be valid JSON: "+err.Error()), nil
+		return toolError(codeValidationError, "payload must be valid JSON: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 	}
 
 	actor := req.GetString("actor", "mcp-agent")
@@ -651,7 +652,7 @@ func (a *Adapter) handleWrite(ctx context.Context, req mcp.CallToolRequest) (*mc
 		Payload:   payload,
 	})
 	if err != nil {
-		return toolError("write_failed", err.Error()), nil
+		return toolError(codeWriteFailed, err.Error()), nil
 	}
 
 	_ = a.Store.EmitWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID, json.RawMessage(`{"source":"mcp"}`))
@@ -678,12 +679,12 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 	actor := req.GetString("actor", "mcp-agent")
 
 	if srcNS == "" || srcKey == "" || tgtNS == "" || tgtKey == "" {
-		return toolError("validation_error", "source_namespace, source_key, target_namespace, and target_key are required"), nil
+		return toolError(codeValidationError, "source_namespace, source_key, target_namespace, and target_key are required"), nil
 	}
 
 	srcHead, err := a.Store.Head(ctx, srcNS, srcKey)
 	if err != nil {
-		return toolError("validation_error", fmt.Sprintf("source record not found: %v", err)), nil
+		return toolError(codeValidationError, fmt.Sprintf("source record not found: %v", err)), nil
 	}
 
 	requestID := "req-" + newMCPRequestID()[4:]
@@ -713,7 +714,7 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 		Payload:   payload,
 	})
 	if err != nil {
-		return toolError("promote_failed", err.Error()), nil
+		return toolError(codePromoteFailed, err.Error()), nil
 	}
 
 	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, srcNS, srcKey, srcHead.Revision, srcHead.RecordID,
@@ -727,7 +728,7 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 
 // --- Promote lifecycle tools ---
 
-func (a *Adapter) handlePromoteList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handlePromotionList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	status := req.GetString("status", "pending")
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
@@ -737,7 +738,7 @@ func (a *Adapter) handlePromoteList(_ context.Context, req mcp.CallToolRequest) 
 		RevisionScope: "head",
 	})
 	if err != nil {
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 
 	var items []map[string]any
@@ -776,17 +777,17 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 
 	requestID := req.GetString("request_id", "")
 	if requestID == "" {
-		return toolError("validation_error", "request_id is required"), nil
+		return toolError(codeValidationError, "request_id is required"), nil
 	}
 	notes := req.GetString("notes", "")
 	actor := req.GetString("actor", "user")
 
 	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
 	if err != nil {
-		return toolError("not_found", err.Error()), nil
+		return toolError(codeNotFound, err.Error()), nil
 	}
 	if pr.Status != "pending" {
-		return toolError("invalid_state", fmt.Sprintf("request status is %q, must be pending to approve", pr.Status)), nil
+		return toolError(codeInvalidState, fmt.Sprintf("request status is %q, must be pending to approve", pr.Status)), nil
 	}
 
 	approvalID := "appr-" + newMCPRequestID()[4:]
@@ -808,7 +809,7 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 		Actor:     actor,
 		Payload:   approvalPayload,
 	}); err != nil {
-		return toolError("approve_failed", err.Error()), nil
+		return toolError(codeApproveFailed, err.Error()), nil
 	}
 
 	pr.Status = "approved"
@@ -822,7 +823,7 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 		Payload:   updPayload,
 	})
 	if err != nil {
-		return toolError("approve_failed", err.Error()), nil
+		return toolError(codeApproveFailed, err.Error()), nil
 	}
 
 	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
@@ -843,21 +844,21 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 
 	requestID := req.GetString("request_id", "")
 	if requestID == "" {
-		return toolError("validation_error", "request_id is required"), nil
+		return toolError(codeValidationError, "request_id is required"), nil
 	}
 	actor := req.GetString("actor", "user")
 
 	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
 	if err != nil {
-		return toolError("not_found", err.Error()), nil
+		return toolError(codeNotFound, err.Error()), nil
 	}
 	if pr.Status != "approved" {
-		return toolError("invalid_state", fmt.Sprintf("request status is %q, must be approved to apply", pr.Status)), nil
+		return toolError(codeInvalidState, fmt.Sprintf("request status is %q, must be approved to apply", pr.Status)), nil
 	}
 
 	srcRec, err := a.Store.GetByRecordID(ctx, pr.SourceRevisionID)
 	if err != nil {
-		return toolError("not_found", fmt.Sprintf("source record not found: %v", err)), nil
+		return toolError(codeNotFound, fmt.Sprintf("source record not found: %v", err)), nil
 	}
 
 	newRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
@@ -867,7 +868,7 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 		Payload:   srcRec.Payload,
 	})
 	if err != nil {
-		return toolError("apply_failed", err.Error()), nil
+		return toolError(codeApplyFailed, err.Error()), nil
 	}
 
 	pr.Status = "applied"
@@ -922,7 +923,7 @@ func newMCPRequestID() string {
 
 // --- Context planner tools ---
 
-func (a *Adapter) handleContextPlan(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handlePlanOnly(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	intent := req.GetString("intent", "custom")
 	summary := req.GetString("summary", "")
 	maxItems := req.GetInt("budget_items", 50)
@@ -943,9 +944,9 @@ func (a *Adapter) handleContextPlan(_ context.Context, req mcp.CallToolRequest) 
 	}), nil
 }
 
-// handleContextFetch is the execute=true arm of context_broker: build the plan,
+// handlePlanAndFetch is the execute=true arm of context_plan: build the plan,
 // then run it and return the records it selects.
-func (a *Adapter) handleContextFetch(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handlePlanAndFetch(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	intent := req.GetString("intent", "custom")
 	summary := req.GetString("summary", "")
@@ -1151,7 +1152,7 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req mcp.CallToolR
 	ownerID := req.GetString("owner_id", "")
 
 	if ns == "" || ownerType == "" || ownerID == "" {
-		return toolError("validation_error", "namespace, owner_type, and owner_id are required"), nil
+		return toolError(codeValidationError, "namespace, owner_type, and owner_id are required"), nil
 	}
 
 	entry := contextstore.NamespacePolicyEntry{
@@ -1160,7 +1161,7 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req mcp.CallToolR
 		OwnerID:   ownerID,
 	}
 	if err := a.Store.UpsertNamespacePolicy(ctx, entry); err != nil {
-		return toolError("register_failed", err.Error()), nil
+		return toolError(codeRegisterFailed, err.Error()), nil
 	}
 
 	return toolJSON(map[string]any{
@@ -1175,12 +1176,12 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req mcp.CallToolR
 func (a *Adapter) namespaceShowResult(_ context.Context, ns string) *mcp.CallToolResult {
 	ctx := context.Background()
 	if ns == "" {
-		return toolError("validation_error", "namespace is required")
+		return toolError(codeValidationError, "namespace is required")
 	}
 
 	entry, err := a.Store.GetNamespacePolicy(ctx, ns)
 	if err != nil {
-		return toolError("not_found", fmt.Sprintf("namespace policy not found: %v", err))
+		return toolError(codeNotFound, fmt.Sprintf("namespace policy not found: %v", err))
 	}
 
 	return toolJSON(map[string]any{
@@ -1198,7 +1199,7 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 
 	entries, err := a.Store.ListNamespacePolicies(ctx)
 	if err != nil {
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 
 	// String-prefix filtering, matching the HTTP /v1/namespaces/list semantics.
@@ -1226,7 +1227,7 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 
 // --- Audit tool ---
 
-func (a *Adapter) handleAudit(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleAuditList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	ns := req.GetString("namespace", "")
 	eventType := req.GetString("event_type", "")
@@ -1240,7 +1241,7 @@ func (a *Adapter) handleAudit(_ context.Context, req mcp.CallToolRequest) (*mcp.
 		EventType: eventType,
 	})
 	if err != nil {
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 
 	items := make([]map[string]any, len(events))

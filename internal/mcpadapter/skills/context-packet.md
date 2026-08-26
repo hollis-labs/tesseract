@@ -1,6 +1,6 @@
 ---
 name: context-packet
-description: Boot workflows — broker planning and execution, packet assembly, budget tuning.
+description: Boot workflows — context planning and execution, packet assembly, budget tuning.
 scope_hint: none
 related: [namespaces, views]
 ---
@@ -11,10 +11,10 @@ A **packet** is a budget-bounded, ordered set of records assembled for an agent 
 
 Two tools cover this, each with an arm selector:
 
-- `context_broker` — `execute` selects between returning a plan and running it. The broker name is retained for continuity; internally this is the context *query planner*, not the universal ContextBroker.
+- `context_plan` — `execute` selects between returning a plan and running it. This is the context *query planner*; its HTTP peer answers at `POST /v1/context/plan` and at `POST /v1/broker/plan`.
 - `context_pack` — `shape` selects between ranking a named view (`list`, the default) and assembling namespace globs into a packet (`packet`).
 
-## One-shot: `context_broker` with `execute: true`
+## One-shot: `context_plan` with `execute: true`
 
 The simplest path. Plans and fetches in a single call:
 
@@ -39,7 +39,7 @@ The simplest path. Plans and fetches in a single call:
 
 When you want to inspect or edit the plan before executing:
 
-1. `context_broker` with `execute` omitted — returns `{plan: {namespaces, include_pins, budget}, rationale}`. Reads no records.
+1. `context_plan` with `execute` omitted — returns `{plan: {namespaces, include_pins, budget}, rationale}`. Reads no records.
 2. `context_pack` with `shape: "packet"` — accepts `namespaces` (comma-separated glob string), `include_pins` (default `true`), and executes with your chosen parameters.
 
 Reach for two-phase when you want to override globs, tighten budgets, or inspect the rationale before committing to a fetch.
@@ -48,7 +48,7 @@ Reach for two-phase when you want to override globs, tighten budgets, or inspect
 
 Two tool surfaces, two parameter names — same semantics:
 
-- `context_broker` → `budget_items` (default 50), `budget_tokens` (default 4000).
+- `context_plan` → `budget_items` (default 50), `budget_tokens` (default 4000).
 - `context_pack` with `shape: "packet"` → `max_items` (default 50), `max_tokens_estimate` (default 8000).
 
 Records are included in selector order until either budget is hit. The manifest's `truncated` / `truncation_reason` fields identify the binding constraint (`budget.max_items` or `budget.max_tokens_estimate`), so you can tune the next call.
@@ -67,7 +67,7 @@ So an absent `payload` under a cap means **withheld**, never empty. Use a small 
 
 `payload_mode` is **not** a projection knob here. The `keys | summary | full` projection lives on the recall and lookup tools, where it means one thing.
 
-- `context_broker` and `context_pack` with `shape: "packet"` accept `payload_mode: "full"` as a no-op; any other value is a `validation_error`.
+- `context_plan` and `context_pack` with `shape: "packet"` accept `payload_mode: "full"` as a no-op; any other value is a `validation_error`.
 - `context_pack` with `shape: "list"` returns whole payloads and has no cap at all, so it rejects `payload_mode` at **any** non-empty value — `"full"` included — along with `payload_max_bytes`, `include_pins` and `max_tokens_estimate`.
 
 ## Pins

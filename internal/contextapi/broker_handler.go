@@ -11,9 +11,10 @@ import (
 )
 
 // PlannerConfig holds server-side caps for context plan validation.
-// NOTE: The MCP tool name (context_broker) and
-// HTTP route (/v1/broker/plan) retain "broker" for backward compatibility.
-// Internally this is the context query planner, not the universal ContextBroker.
+//
+// This is the context query planner. Its MCP peer is context_plan; on HTTP it
+// answers at both POST /v1/context/plan and POST /v1/broker/plan, the same
+// handler under two paths.
 type PlannerConfig struct {
 	// MaxItemsCap is the server-enforced maximum for plan budget max_items. Default 200.
 	MaxItemsCap int

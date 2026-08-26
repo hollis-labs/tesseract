@@ -56,7 +56,7 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 
 	tags, _, err := parseStringArrayArg(req, "tags")
 	if err != nil {
-		return toolError("validation_error", "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeValidationError, "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
 	pointer := memory.Pointer{
@@ -66,7 +66,7 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	if raw := req.GetString("pointer_resolved_at", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return toolError("validation_error", "pointer_resolved_at must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+			return toolError(codeValidationError, "pointer_resolved_at must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 		}
 		pointer.ResolvedAt = &t
 	}
@@ -95,7 +95,7 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	rev, err := a.KnowledgeStore.Write(ctx, in)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}

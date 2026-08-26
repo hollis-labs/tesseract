@@ -33,16 +33,16 @@ func (a *Adapter) handleTesseractSkills(_ context.Context, req mcp.CallToolReque
 	if name == "" {
 		metas, err := skills.List()
 		if err != nil {
-			return toolError("internal_error", err.Error()), nil
+			return toolError(codeInternalError, err.Error()), nil
 		}
 		return toolJSON(metas), nil
 	}
 	body, err := skills.Get(name)
 	if err != nil {
 		if errors.Is(err, skills.ErrSkillNotFound) {
-			return toolError("skill_not_found", err.Error()), nil
+			return toolError(codeSkillNotFound, err.Error()), nil
 		}
-		return toolError("internal_error", err.Error()), nil
+		return toolError(codeInternalError, err.Error()), nil
 	}
 	return mcp.NewToolResultText(body), nil
 }

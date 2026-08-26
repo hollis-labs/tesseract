@@ -76,7 +76,7 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 	// Parse tags — accept both native JSON array and JSON-encoded string.
 	tags, _, err := parseStringArrayArg(req, "tags")
 	if err != nil {
-		return toolError("validation_error", "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeValidationError, "tags "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
@@ -107,7 +107,7 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 	rev, err := a.MemoryStore.WriteRevision(ctx, in)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -126,16 +126,16 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req mcp.CallToolRequ
 
 	revisionIDs, present, err := parseStringArrayArg(req, "revision_ids")
 	if err != nil {
-		return toolError("validation_error", "revision_ids "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeValidationError, "revision_ids "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 	if !present {
-		return toolError("validation_error", "revision_ids is required"), nil
+		return toolError(codeValidationError, "revision_ids is required"), nil
 	}
 
 	res, err := a.revisionStore().TouchRevisions(ctx, revisionIDs)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}
@@ -158,10 +158,10 @@ func (a *Adapter) handleMemoryPromote(ctx context.Context, req mcp.CallToolReque
 	promoted, err := a.MemoryStore.Promote(ctx, in)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError("not_found", err.Error()), nil
+			return toolError(codeNotFound, err.Error()), nil
 		}
 		return nil, err
 	}

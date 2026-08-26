@@ -17,9 +17,9 @@ For the generic context domain, promotion is a three-stage append-only workflow 
 2. **Approve** - `context_promote` with `stage: "approve"` (scope: `promote.approve`). Moves a `pending` request to `approved`. Required: `request_id`. Optional: `notes`, `actor` (default `user`). Writes an approval record to `user/promotions` and appends an updated request revision.
 3. **Apply** - `context_promote` with `stage: "apply"` (scope: `promote.apply`). Required: `request_id`. Copies the source record's payload into the target namespace as a new revision, then marks the request `applied`. Terminal state; not reversible.
 
-Listing: `context_promote_list` with `status=pending|approved|applied|all` (default `pending`). Read-only, no scope required.
+Listing: `context_promotion_list` with `status=pending|approved|applied|all` (default `pending`). Read-only, no scope required.
 
-Every stage emits an audit event (`promote.request`, `promote.approve`, `promote`) - reconstruct the chain with `context_audit`.
+Every stage emits an audit event (`promote.request`, `promote.approve`, `promote`) - reconstruct the chain with `context_audit_list`.
 
 ## memory_promote (the shortcut)
 

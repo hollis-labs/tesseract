@@ -13,7 +13,7 @@ import (
 // registerParityTools adds MCP tools that mirror HTTP routes for agent parity.
 //
 // The view-evaluation peer of /v1/views/evaluate is no longer a tool of its
-// own: it is the include_meta arm of context_view, registered in tools.go. Its
+// own: it is the full_evaluation arm of context_view, registered in tools.go. Its
 // handler still lives here, next to the other selector-shaped op.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_estimate",
@@ -27,23 +27,23 @@ func (a *Adapter) registerParityTools(s *server.MCPServer) {
 func (a *Adapter) handleContextEstimate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	raw := req.GetString("selector", "")
 	if raw == "" {
-		return toolError("validation_error", "selector is required"), nil
+		return toolError(codeValidationError, "selector is required"), nil
 	}
 	var sel contextstore.Selector
 	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
-		return toolError("validation_error", "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeValidationError, "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 	result, err := a.Store.Estimate(ctx, sel)
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil
+		return toolError(codeSelectorError, err.Error()), nil
 	}
 	return toolJSON(result), nil
 }
 
-// handleViewsEvaluate is the include_meta arm of context_view, and the exact
+// handleViewsEvaluate is the full_evaluation arm of context_view, and the exact
 // peer of HTTP POST /v1/views/evaluate — including in what it does NOT do:
 // neither surface filters results by the capability token's namespace globs.
-// The default arm of context_view does. See viewIncludeMetaArgDescription.
+// The default arm of context_view does. See viewFullEvaluationArgDescription.
 //
 // sel is resolved by handleContextView, which accepts both the JSON-selector
 // and comma-separated-glob forms.
@@ -51,11 +51,11 @@ func (a *Adapter) handleViewsEvaluate(ctx context.Context, sel contextstore.Sele
 	includePayload := req.GetBool("include_payload", false)
 	limit, err := wholeNumberArg(req, "limit", 0)
 	if err != nil {
-		return toolError("validation_error", err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeValidationError, err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 	result, err := a.Store.Evaluate(ctx, sel, includePayload, limit)
 	if err != nil {
-		return toolError("selector_error", err.Error()), nil //nolint:nilerr // MCP tool pattern
+		return toolError(codeSelectorError, err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
 	// Match the HTTP /v1/views/evaluate envelope: items + evaluation_meta.
 	// Keeping the wire shape identical lets agents share parsers across both surfaces.

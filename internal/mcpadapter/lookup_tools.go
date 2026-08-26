@@ -29,7 +29,7 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration.**\n"+
-				"• **Don't use this for:** deterministic selection — use `context_view` (with `include_meta: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
+				"• **Don't use this for:** deterministic selection — use `context_view` (with `full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
 				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
@@ -87,7 +87,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	unmarshalStrings := func(field string) ([]string, *mcp.CallToolResult) {
 		out, _, err := parseStringArrayArg(req, field)
 		if err != nil {
-			return nil, toolError("validation_error", field+" "+err.Error())
+			return nil, toolError(codeValidationError, field+" "+err.Error())
 		}
 		return out, nil
 	}
@@ -124,7 +124,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	// the failure this ticket exists to remove.
 	for _, h := range pointerHealth {
 		if !memory.PointerHealthStatus(h).Valid() {
-			return toolError("validation_error",
+			return toolError(codeValidationError,
 				"pointer_health must be one of "+strings.Join(memory.PointerHealthStatusVocabulary(), ", ")+", got "+h), nil
 		}
 	}
@@ -156,14 +156,14 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	if raw := req.GetString("since", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return toolError("validation_error", "since must be RFC3339: "+err.Error()), nil
+			return toolError(codeValidationError, "since must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 		}
 		since = &t
 	}
 	if raw := req.GetString("until", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return toolError("validation_error", "until must be RFC3339: "+err.Error()), nil
+			return toolError(codeValidationError, "until must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 		}
 		until = &t
 	}
@@ -202,13 +202,13 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	page, err := a.revisionStore().RecallPaged(ctx, in, pageReq)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidCursor) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		if errors.Is(err, memory.ErrSimilarityUnavailable) {
-			return toolError("similarity_unavailable", err.Error()), nil
+			return toolError(codeSimilarityUnavailable, err.Error()), nil
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {
-			return toolError("validation_error", err.Error()), nil
+			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}

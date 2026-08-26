@@ -531,9 +531,9 @@ func TestContextPromoteList_Empty(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{}
 
-	res, err := a.handlePromoteList(context.Background(), req)
+	res, err := a.handlePromotionList(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handlePromoteList: %v", err)
+		t.Fatalf("handlePromotionList: %v", err)
 	}
 	body := parseResult(t, res)
 	items := parseItems(t, body)
@@ -563,9 +563,9 @@ func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 	// List should return it.
 	listReq := mcp.CallToolRequest{}
 	listReq.Params.Arguments = map[string]any{"status": "pending"}
-	res, err := a.handlePromoteList(context.Background(), listReq)
+	res, err := a.handlePromotionList(context.Background(), listReq)
 	if err != nil {
-		t.Fatalf("handlePromoteList: %v", err)
+		t.Fatalf("handlePromotionList: %v", err)
 	}
 	body := parseResult(t, res)
 	items := parseItems(t, body)
@@ -764,9 +764,9 @@ func TestContextPlan_BootProject(t *testing.T) {
 	req.Params.Arguments = map[string]any{
 		"intent": "boot_project",
 	}
-	res, err := a.handleContextBroker(context.Background(), req)
+	res, err := a.handleContextPlan(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleContextPlan: %v", err)
+		t.Fatalf("handlePlanOnly: %v", err)
 	}
 	body := parseResult(t, res)
 	if body["code"] != nil {
@@ -800,7 +800,7 @@ func TestContextPlan_ResumeTask_ExtractsKeywords(t *testing.T) {
 		"intent":  "resume_task",
 		"summary": "implementing authentication middleware for the API",
 	}
-	res, _ := a.handleContextBroker(context.Background(), req)
+	res, _ := a.handleContextPlan(context.Background(), req)
 	body := parseResult(t, res)
 	plan := body["plan"].(map[string]any)
 	ns := plan["namespaces"].([]any)
@@ -814,7 +814,7 @@ func TestContextPlan_Custom_ReturnsUserStar(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"intent": "custom"}
-	res, _ := a.handleContextBroker(context.Background(), req)
+	res, _ := a.handleContextPlan(context.Background(), req)
 	body := parseResult(t, res)
 	plan := body["plan"].(map[string]any)
 	ns := plan["namespaces"].([]any)
@@ -841,9 +841,9 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 		"intent":       "boot_project",
 		"budget_items": float64(50),
 	}
-	res, err := a.handleContextBroker(context.Background(), req)
+	res, err := a.handleContextPlan(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleContextFetch: %v", err)
+		t.Fatalf("handlePlanAndFetch: %v", err)
 	}
 	body := parseResult(t, res)
 	if body["code"] != nil {
@@ -866,7 +866,7 @@ func TestContextFetch_Empty(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"execute": true, "intent": "boot_project"}
-	res, _ := a.handleContextBroker(context.Background(), req)
+	res, _ := a.handleContextPlan(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
 	if len(items) != 0 {
@@ -1017,9 +1017,9 @@ func TestContextAudit_NoAuthRequired(t *testing.T) {
 	a := New(s, "") // no token
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{}
-	res, err := a.handleAudit(context.Background(), req)
+	res, err := a.handleAuditList(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleAudit: %v", err)
+		t.Fatalf("handleAuditList: %v", err)
 	}
 	body := parseResult(t, res)
 	if body["code"] != nil {
@@ -1039,7 +1039,7 @@ func TestContextAudit_FiltersByNamespace(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"namespace": "app/agent/session"}
-	res, _ := a.handleAudit(context.Background(), req)
+	res, _ := a.handleAuditList(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
 	if len(items) != 1 {
@@ -1055,7 +1055,7 @@ func TestContextAudit_Empty(t *testing.T) {
 	a := New(newTestStore(t), "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{}
-	res, _ := a.handleAudit(context.Background(), req)
+	res, _ := a.handleAuditList(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
 	if len(items) != 0 {
@@ -1072,9 +1072,9 @@ func TestContextAudit_ProjectsMetadata(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{}
-	res, err := a.handleAudit(context.Background(), req)
+	res, err := a.handleAuditList(context.Background(), req)
 	if err != nil {
-		t.Fatalf("handleAudit: %v", err)
+		t.Fatalf("handleAuditList: %v", err)
 	}
 	body := parseResult(t, res)
 	items := parseItems(t, body)

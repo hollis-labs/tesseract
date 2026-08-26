@@ -99,7 +99,7 @@ For the complete catalog, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 For a typical Claude Code session:
 
-1. Boot from `context_pack` with `shape: "packet"`, or from `context_broker` with `execute: true`.
+1. Boot from `context_pack` with `shape: "packet"`, or from `context_plan` with `execute: true`.
 2. Read current app session state from `app/<agent>/*`.
 3. Write new session state only inside the namespaces granted by the token.
 4. Request promotions instead of writing directly to `user/*`.

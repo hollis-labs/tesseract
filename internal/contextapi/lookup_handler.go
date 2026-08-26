@@ -295,7 +295,7 @@ func (s *Server) historyPageRequest(w http.ResponseWriter, r *http.Request) (mem
 	//
 	// limit ≤ 0 is "unspecified" and resolves to the default. That is the
 	// meaning RecallInput.Limit and ClampHistoryLimit have always had, and
-	// the one context_view's include_meta arm advertises ("0 = use selector or
+	// the one context_view's full_evaluation arm advertises ("0 = use selector or
 	// default"); a budget has no such precedent, and a zero budget can only
 	// produce an empty page, so there it is a caller mistake worth naming.
 	for _, knob := range []struct {

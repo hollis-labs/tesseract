@@ -53,10 +53,10 @@ The `context_*` tools are available in every session.
 
 ### On session start
 
-Call `context_broker` with `execute=true` and your intent before doing anything else:
+Call `context_plan` with `execute=true` and your intent before doing anything else:
 
 ```
-context_broker(execute=true, intent="resume_task", summary="<brief task description>")
+context_plan(execute=true, intent="resume_task", summary="<brief task description>")
 ```
 
 This loads prior context from your session namespace and pinned user memory.
@@ -109,13 +109,13 @@ context_promote(
 
 | Tool | Auth | Use when |
 |---|---|---|
-| `context_broker` (`execute=true`) | none | Session boot — load prior context |
+| `context_plan` (`execute=true`) | none | Session boot — load prior context |
 | `context_write` | write scope | Save state or observations |
 | `context_pack` (`shape="packet"`) | none | Targeted context load (when you know the namespaces) |
 | `tesseract_get` | none for `domain: "context"` | Read a specific record |
 | `context_promote` (`stage="request"`) | promote.request scope | Promote findings to long-term memory |
-| `context_promote_list` | none | Check pending promotions from prior sessions |
-| `context_audit` | none | Investigate what happened in a namespace |
+| `context_promotion_list` | none | Check pending promotions from prior sessions |
+| `context_audit_list` | none | Investigate what happened in a namespace |
 ```
 
 ---

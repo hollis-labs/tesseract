@@ -41,12 +41,12 @@ Unknown selector fields are rejected as `validation_error`.
 
 ## Two arms of `context_view`
 
-`include_meta` selects which arm answers. It is not a display knob — the two arms query differently and answer differently.
+`full_evaluation` selects which arm answers. It is not a display knob — the two arms query differently and answer differently.
 
-- **`include_meta` omitted** - the simplified agent query. Takes `namespaces` (comma-separated) or `selector` in its glob form, plus `revision_scope` and `limit`. Returns summary records in the shared budget envelope; payloads are never included. Results are filtered by the capability token's namespace globs when a token is configured.
-- **`include_meta: true`** - the full selector. Matches the HTTP `POST /v1/views/evaluate` envelope exactly. Takes `selector` (JSON object or globs), `include_payload` (default false), `limit` (overrides selector.limit). Returns `items` + `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`). Like its HTTP peer, this arm does **not** filter by the token's namespace globs.
+- **`full_evaluation` omitted** - the simplified agent query. Takes `namespaces` (comma-separated) or `selector` in its glob form, plus `revision_scope` and `limit`. Returns summary records in the shared budget envelope; payloads are never included. Results are filtered by the capability token's namespace globs when a token is configured.
+- **`full_evaluation: true`** - the full selector. Matches the HTTP `POST /v1/views/evaluate` envelope exactly. Takes `selector` (JSON object or globs), `include_payload` (default false), `limit` (overrides selector.limit). Returns `items` + `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`). Like its HTTP peer, this arm does **not** filter by the token's namespace globs.
 
-Knobs the chosen arm cannot honor are rejected rather than ignored: `include_payload` without `include_meta` is a `validation_error`, as is a JSON selector carrying `keys`, `order`, `limit`, `tags_any`, `types` or `statuses` on the default arm.
+Knobs the chosen arm cannot honor are rejected rather than ignored: `include_payload` without `full_evaluation` is a `validation_error`, as is a JSON selector carrying `keys`, `order`, `limit`, `tags_any`, `types` or `statuses` on the default arm.
 
 Memory-domain recall uses a different revision-scope vocabulary (`current` / `timeline`) - see `tesseract_skills recall-and-ranking`. Views speak the context-store vocabulary (`head` / `all`).
 

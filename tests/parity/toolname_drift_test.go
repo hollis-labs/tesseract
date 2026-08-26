@@ -73,6 +73,7 @@ var nonToolVocabulary = map[string]string{
 	"bulk_ingest":         "audit event_type emitted by context_ingest under mode=bulk",
 	"chunked_ingest":      "audit event_type emitted by context_ingest under mode=chunked",
 	"current_revision":    "memory_state SQL column (TEXT): revision_id of the memory's current head; surfaces as the state.current_revision field on a full recall result",
+	"get_revision":        "a VERB, not a tool: the operation segment of tesseract_get_revision, listed on its own row in the generated tool-naming table of docs/MCP_TOOLS.md. Any multi-segment verb in that table lands here; single-word verbs carry no underscore and never reach this heuristic",
 	"head_revision":       "API response field: id of the current revision",
 	"max_tokens_estimate": "context_pack budget field under shape=packet",
 	"memory_revisions":    "SQL table: every revision of every domain, keyed by revision_id and discriminated by a domain column; named in docs/MCP_TOOLS.md when explaining why `domain` has to be a filter rather than a hint",
@@ -80,7 +81,8 @@ var nonToolVocabulary = map[string]string{
 	"memory_id":           "memory_revisions and memory_state SQL column (TEXT): the stable id of the memory a revision belongs to; surfaces as revision.memory_id on every recall result",
 	"memory_key":          "memory_write request field: the stable key of a keyed memory",
 	"missing_head":        "API error code: namespace/key has no head revision",
-	"session_snapshot":    "audit event_type emitted by context_session_snapshot",
+	"rag_query":           "the operation segment of context_rag_query, quoted in the exemptions row of the generated tool-naming table in docs/MCP_TOOLS.md. Not a tool name on its own",
+	"session_snapshot":    "audit event_type emitted by context_session_write",
 	"source_revision":     "promotion API response field",
 	"status_deprecate":    "audit event_type emitted by the HTTP route POST /v1/context/status/deprecate only; context_status_set with status=deprecated emits nothing",
 	"status_promote":      "audit event_type emitted by context_status_set on the promotion path",
@@ -117,7 +119,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:227",
+		Doc:     "docs/MCP_TOOLS.md:274",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +
