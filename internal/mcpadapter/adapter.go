@@ -23,9 +23,11 @@ import (
 // Read tools (tesseract_get, tesseract_history, context_view) work without a
 // token for the context domain; the memory and knowledge domains check
 // memory:read.
-// Write tools (context_write, context_promote_request) require a capability token
-// configured at startup via the Token field.
-// context_packet is read-only but respects namespace_globs from the token when present.
+// Write tools (context_write, context_promote) require a capability token
+// configured at startup via the Token field. context_promote checks a
+// different scope per stage.
+// context_pack is read-only; under shape=packet it respects namespace_globs
+// from the token when present.
 type Adapter struct {
 	Store             *contextstore.Store
 	Token             string // capability token for mutating ops; may be empty

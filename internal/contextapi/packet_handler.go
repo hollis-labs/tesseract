@@ -26,8 +26,24 @@ type PacketBudget struct {
 
 // PacketShape controls payload inclusion.
 type PacketShape struct {
-	IncludePayload bool   `json:"include_payload"`
-	PayloadMode    string `json:"payload_mode,omitempty"` // full|head_only
+	IncludePayload bool `json:"include_payload"`
+
+	// PayloadMode accepts only "full" here. It used to also accept
+	// "head_only", which cut the payload at 512 bytes mid-JSON; every OTHER
+	// value fell through to full payloads with no error at all, which failed
+	// toward MORE context than the caller asked for. Both halves are closed:
+	// unrecognized values are rejected, and byte capping moved to
+	// PayloadMaxBytes. The keys|summary|full projection that `payload_mode`
+	// names on the recall and lookup surfaces is a different knob entirely,
+	// which is why this one no longer competes for the name.
+	PayloadMode string `json:"payload_mode,omitempty"` // full
+
+	// PayloadMaxBytes caps each record's returned payload. 0 means no cap.
+	// When it binds, the item carries no `payload` and instead reports
+	// `payload_head`, `payload_truncated` and `payload_bytes` — so an absent
+	// payload means capped, never empty. The former payload_mode=head_only is
+	// payload_max_bytes=512.
+	PayloadMaxBytes int `json:"payload_max_bytes,omitempty"`
 }
 
 // PacketAssembly configures packet assembly beyond basic selection.
@@ -46,6 +62,12 @@ type PacketRequest struct {
 }
 
 // PacketItem is one record in the packet response.
+//
+// Payload and PayloadHead are mutually exclusive: under a PayloadMaxBytes cap
+// that binds, the payload is withheld and the head is reported instead. Head
+// is a JSON STRING rather than a shortened json.RawMessage because the prefix
+// of a JSON object is not valid JSON, and emitting it as raw would make the
+// enclosing encode fail.
 type PacketItem struct {
 	RecordID  string          `json:"record_id"`
 	Namespace string          `json:"namespace"`
@@ -54,6 +76,10 @@ type PacketItem struct {
 	Actor     string          `json:"actor"`
 	CreatedAt string          `json:"created_at"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
+
+	PayloadHead      string `json:"payload_head,omitempty"`
+	PayloadTruncated bool   `json:"payload_truncated,omitempty"`
+	PayloadBytes     int    `json:"payload_bytes,omitempty"`
 }
 
 // PacketManifest describes what was assembled and why.
@@ -98,6 +124,18 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m := req.Assembly.Shape.PayloadMode; m != "" && m != "full" {
+		writeError(w, http.StatusBadRequest, "validation_error",
+			"payload_mode is not a projection knob on this route: it accepts only \"full\". "+
+				"The former payload_mode=head_only is now payload_max_bytes=512. Got: "+m, nil)
+		return
+	}
+	if n := req.Assembly.Shape.PayloadMaxBytes; n < 0 {
+		writeError(w, http.StatusBadRequest, "validation_error",
+			"payload_max_bytes must be >= 0; omit it or pass 0 for no cap", nil)
+		return
+	}
+
 	ctx := r.Context()
 	reqID := newRequestID()
 	sources := map[string]int{}
@@ -133,8 +171,10 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 			return false
 		}
 		payload := rec.Payload
-		if shape.PayloadMode == "head_only" && len(payload) > 512 {
-			payload = payload[:512]
+		served := len(payload)
+		capped := shape.PayloadMaxBytes > 0 && len(payload) > shape.PayloadMaxBytes
+		if capped {
+			served = shape.PayloadMaxBytes
 		}
 		item := PacketItem{
 			RecordID:  rec.RecordID,
@@ -145,11 +185,17 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: rec.CreatedAt,
 		}
 		if shape.IncludePayload {
-			item.Payload = payload
+			if capped {
+				item.PayloadHead = string(payload[:served])
+				item.PayloadTruncated = true
+				item.PayloadBytes = len(payload)
+			} else {
+				item.Payload = payload
+			}
 		}
 		items = append(items, item)
-		bytesSoFar += len(payload)
-		tokensSoFar += contextstore.EstimateTokens(payload)
+		bytesSoFar += served
+		tokensSoFar += contextstore.EstimateTokens(payload[:served])
 		// Aggregate sources by top two namespace segments.
 		parts := strings.SplitN(rec.Namespace, "/", 3)
 		nsKey := rec.Namespace

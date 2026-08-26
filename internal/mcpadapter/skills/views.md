@@ -28,7 +28,7 @@ The shared `contextstore.Selector` struct:
 
 Fields:
 
-- `namespaces` - glob patterns. `views_evaluate` takes an array; `context_view` takes a comma-separated string.
+- `namespaces` - glob patterns. As a JSON selector this is an array; `context_view` also accepts the same globs as a comma-separated string, in either `selector` or `namespaces`.
 - `keys` - optional explicit key filter list (capped by `maxSelectorKeys`).
 - `revision_scope` - `head` (default; current revision per namespace/key) or `all` (full history). Case-insensitive; anything other than `all` normalizes to `head`.
 - `order` - stable sort keys. Default when omitted: `["namespace", "key", "revision"]`. Allowed: `namespace`, `key`, `revision`, `created_asc`, `created_desc`.
@@ -39,10 +39,14 @@ Fields:
 
 Unknown selector fields are rejected as `validation_error`.
 
-## Two surfaces
+## Two arms of `context_view`
 
-- `context_view` - simplified MCP tool for agent queries. Takes `namespaces` (comma-separated), `revision_scope`, `limit`. Returns summary records (payload omitted from list view).
-- `views_evaluate` - full selector via JSON. Matches the HTTP `POST /v1/views/evaluate` envelope exactly. Takes `selector` (JSON object), `include_payload` (default false), `limit` (overrides selector.limit). Returns `items` + `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`).
+`include_meta` selects which arm answers. It is not a display knob — the two arms query differently and answer differently.
+
+- **`include_meta` omitted** - the simplified agent query. Takes `namespaces` (comma-separated) or `selector` in its glob form, plus `revision_scope` and `limit`. Returns summary records in the shared budget envelope; payloads are never included. Results are filtered by the capability token's namespace globs when a token is configured.
+- **`include_meta: true`** - the full selector. Matches the HTTP `POST /v1/views/evaluate` envelope exactly. Takes `selector` (JSON object or globs), `include_payload` (default false), `limit` (overrides selector.limit). Returns `items` + `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`). Like its HTTP peer, this arm does **not** filter by the token's namespace globs.
+
+Knobs the chosen arm cannot honor are rejected rather than ignored: `include_payload` without `include_meta` is a `validation_error`, as is a JSON selector carrying `keys`, `order`, `limit`, `tags_any`, `types` or `statuses` on the default arm.
 
 Memory-domain recall uses a different revision-scope vocabulary (`current` / `timeline`) - see `tesseract_skills recall-and-ranking`. Views speak the context-store vocabulary (`head` / `all`).
 

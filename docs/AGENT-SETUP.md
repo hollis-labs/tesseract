@@ -99,7 +99,7 @@ For the complete catalog, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 For a typical Claude Code session:
 
-1. Boot from `context_packet` or `context_broker_fetch`.
+1. Boot from `context_pack` with `shape: "packet"`, or from `context_broker` with `execute: true`.
 2. Read current app session state from `app/<agent>/*`.
 3. Write new session state only inside the namespaces granted by the token.
 4. Request promotions instead of writing directly to `user/*`.
@@ -118,15 +118,21 @@ For a typical Claude Code session:
 
 ### Load a session packet
 
+`context_pack` with `shape: "packet"`:
+
 ```json
 {
+  "shape": "packet",
   "namespaces": "app/claude/session/*,user/memory/*",
   "include_pins": true,
   "max_items": 50,
-  "max_tokens_estimate": 8000,
-  "payload_mode": "full"
+  "max_tokens_estimate": 8000
 }
 ```
+
+Add `"payload_max_bytes": 512` to survey a wide namespace set cheaply. A capped
+item carries `payload_head`, `payload_truncated` and `payload_bytes` in place of
+`payload`.
 
 ### Write app state
 

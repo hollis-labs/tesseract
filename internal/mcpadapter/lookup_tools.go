@@ -29,7 +29,7 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration.**\n"+
-				"• **Don't use this for:** deterministic selection — use `context_view` / `views_evaluate`. To narrow to one domain, pass `domains`, not a different tool.\n"+
+				"• **Don't use this for:** deterministic selection — use `context_view` (with `include_meta: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
 				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),

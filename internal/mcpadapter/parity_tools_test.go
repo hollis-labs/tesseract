@@ -15,9 +15,10 @@ func TestViewsEvaluate_MatchesHTTPEnvelope(t *testing.T) {
 	a := newMemoryAdapter(t)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"selector": `{"namespaces":["app/test/*"]}`,
+		"selector":     `{"namespaces":["app/test/*"]}`,
+		"include_meta": true,
 	}
-	res, err := a.handleViewsEvaluate(context.Background(), req)
+	res, err := a.handleContextView(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleViewsEvaluate: %v", err)
 	}
@@ -49,10 +50,11 @@ func TestViewsEvaluate_RejectsFractionalLimit(t *testing.T) {
 	a := newMemoryAdapter(t)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"selector": `{"namespaces":["app/test/*"]}`,
-		"limit":    2.5,
+		"selector":     `{"namespaces":["app/test/*"]}`,
+		"include_meta": true,
+		"limit":        2.5,
 	}
-	res, err := a.handleViewsEvaluate(context.Background(), req)
+	res, err := a.handleContextView(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleViewsEvaluate: %v", err)
 	}

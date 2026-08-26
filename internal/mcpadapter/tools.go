@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,20 +21,19 @@ import (
 
 func (a *Adapter) registerTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_view",
-		mcp.WithDescription("Evaluate a view selector and return matching records. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\"")),
-		mcp.WithString("revision_scope", mcp.Description("head or all (default: head)")),
-		mcp.WithNumber("limit", mcp.Description("Max records to return (default 10, max 25). Returns summaries; use `tesseract_get` with domain=\"context\" for the full record.")),
-	), a.handleView)
-
-	a.addTool(s, mcp.NewTool("context_packet",
-		mcp.WithDescription("Retrieve a budget-bounded context packet with manifest. The primary agent continuity surface. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns to include")),
-		mcp.WithBoolean("include_pins", mcp.Description("Whether to prepend user/pins/* records (default true)")),
-		mcp.WithNumber("max_items", mcp.Description("Item budget limit (default 50)")),
-		mcp.WithNumber("max_tokens_estimate", mcp.Description("Token budget limit (default 8000)")),
-		mcp.WithString("payload_mode", mcp.Description("full or head_only (default: full)")),
-	), a.handlePacket)
+		mcp.WithDescription("Evaluate a view over the context store and return matching records. "+
+			"`include_meta` selects between two evaluation arms — see its description; they differ in more than whether metadata is attached. "+
+			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithString("selector", mcp.Description(viewSelectorArgDescription)),
+		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\". "+
+			"Shorthand for `selector` in its glob form; passing both is a validation_error.")),
+		mcp.WithString("revision_scope", mcp.Description("head or all (default: head). Ignored when `selector` is a JSON object — put revision_scope inside it; passing both is a validation_error.")),
+		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false). "+
+			"Only the `include_meta: true` arm can carry payloads; passing true without include_meta is a validation_error rather than a silently dropped knob.")),
+		mcp.WithBoolean("include_meta", mcp.Description(viewIncludeMetaArgDescription)),
+		mcp.WithNumber("limit", mcp.Description("Max records to return. Under the default arm: default 10, max 25, returns summaries — use `tesseract_get` with domain=\"context\" for the full record. "+
+			"Under `include_meta: true`: overrides selector.limit (0 = use selector's own limit or the store default).")),
+	), a.handleContextView)
 
 	a.addTool(s, mcp.NewTool("context_write",
 		mcp.WithDescription("Write a record to a namespace. Requires 'write' scope in the configured capability token. See `tesseract_skills start-here` for the primitive model."),
@@ -44,15 +44,23 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("record_type", mcp.Description("Record type tag (default: state)")),
 	), a.handleWrite)
 
-	a.addTool(s, mcp.NewTool("context_promote_request",
-		mcp.WithDescription("Request promotion of a record from an app namespace to a user namespace. Requires 'promote.request' scope. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source namespace (must be in app/*)")),
-		mcp.WithString("source_key", mcp.Required(), mcp.Description("Source record key")),
-		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target namespace (typically user/memory/*)")),
-		mcp.WithString("target_key", mcp.Required(), mcp.Description("Target record key")),
-		mcp.WithString("reason", mcp.Description("Human-readable reason for the promotion")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
-	), a.handlePromoteRequest)
+	a.addTool(s, mcp.NewTool("context_promote",
+		mcp.WithDescription("Move a record from an app namespace to a user namespace, in three stages. "+
+			"`stage` selects which stage runs AND which capability scope is required — see its description. "+
+			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithString("stage", mcp.Required(), mcp.Description(promoteStageArgDescription)),
+		// Per-stage requiredness is enforced in the handler, not in the schema:
+		// each stage needs a different subset, and a schema-level Required()
+		// would demand `request` fields on an `apply` call.
+		mcp.WithString("source_namespace", mcp.Description("stage=request: source namespace (must be in app/*)")),
+		mcp.WithString("source_key", mcp.Description("stage=request: source record key")),
+		mcp.WithString("target_namespace", mcp.Description("stage=request: target namespace (typically user/memory/*)")),
+		mcp.WithString("target_key", mcp.Description("stage=request: target record key")),
+		mcp.WithString("reason", mcp.Description("stage=request: human-readable reason for the promotion")),
+		mcp.WithString("request_id", mcp.Description("stage=approve, stage=apply: the promotion request ID to act on")),
+		mcp.WithString("notes", mcp.Description("stage=approve: optional approval notes")),
+		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent under stage=request, user under approve/apply)")),
+	), a.handlePromote)
 
 	a.addTool(s, mcp.NewTool("context_promote_list",
 		mcp.WithDescription("List promotion requests. Read-only, no token required. See `tesseract_skills start-here` for the primitive model."),
@@ -60,37 +68,22 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("Max requests to return (default 10, max 25)")),
 	), a.handlePromoteList)
 
-	a.addTool(s, mcp.NewTool("context_promote_approve",
-		mcp.WithDescription("Approve a pending promotion request. Requires 'promote.approve' scope. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("request_id", mcp.Required(), mcp.Description("Promotion request ID to approve")),
-		mcp.WithString("notes", mcp.Description("Optional approval notes")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
-	), a.handlePromoteApprove)
-
-	a.addTool(s, mcp.NewTool("context_promote_apply",
-		mcp.WithDescription("Apply an approved promotion request, writing the record to the target namespace. Requires 'promote.apply' scope. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("request_id", mcp.Required(), mcp.Description("Approved promotion request ID to apply")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
-	), a.handlePromoteApply)
-
-	// NOTE: MCP tool names retain "broker" for backward compatibility with consumers.
-	// Internally these are the context query planner, not the universal ContextBroker.
-	a.addTool(s, mcp.NewTool("context_broker_plan",
-		mcp.WithDescription("Generate a context fetch plan for a given intent. Returns namespace patterns, budget, and rationale. No auth required. See `tesseract_skills start-here` for the primitive model."),
+	// NOTE: The MCP tool name retains "broker" for continuity with consumers.
+	// Internally this is the context query planner, not the universal
+	// ContextBroker.
+	a.addTool(s, mcp.NewTool("context_broker",
+		mcp.WithDescription("Plan a context fetch for a given intent, and optionally execute it. No auth required. "+
+			"`execute` selects between returning the plan and returning the records the plan selects. "+
+			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithBoolean("execute", mcp.Description("false (default): return the plan only — namespace patterns, budget, and rationale, with no store read. "+
+			"true: run the plan and return the records it selects, plus a manifest and the same rationale. "+
+			"There is no HTTP peer for execute=true; POST /v1/broker/plan is the peer of the default arm.")),
 		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
 		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction (used with resume_task intent)")),
 		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
 		mcp.WithNumber("budget_tokens", mcp.Description("Max tokens estimate budget (default 4000)")),
-	), a.handleContextPlan)
-
-	a.addTool(s, mcp.NewTool("context_broker_fetch",
-		mcp.WithDescription("Execute a context plan and return a context packet in one call. Combines context_broker_plan and context_packet. No auth required. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
-		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction")),
-		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
-		mcp.WithNumber("budget_tokens", mcp.Description("Max tokens estimate budget (default 4000)")),
-		mcp.WithString("payload_mode", mcp.Description("full or head_only (default: full)")),
-	), a.handleContextFetch)
+		mcp.WithNumber("payload_max_bytes", mcp.Description(payloadMaxBytesArgDescription)),
+	), a.handleContextBroker)
 
 	a.addTool(s, mcp.NewTool("context_namespace_register",
 		mcp.WithDescription("Register a namespace with ownership policy. Requires 'namespace.admin' scope. See `tesseract_skills start-here` for the primitive model."),
@@ -99,16 +92,17 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("owner_id", mcp.Required(), mcp.Description("Owner identity (e.g. my-agent)")),
 	), a.handleNamespaceRegister)
 
-	a.addTool(s, mcp.NewTool("context_namespace_show",
-		mcp.WithDescription("Show the ownership policy for a registered namespace. No auth required. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path to inspect")),
-	), a.handleNamespaceShow)
-
-	a.addTool(s, mcp.NewTool("context_namespaces_list",
-		mcp.WithDescription("List all registered namespaces with ownership policies. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("prefix", mcp.Description("Filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
-		mcp.WithNumber("limit", mcp.Description("Max namespaces to return (default 10, max 25)")),
-	), a.handleNamespacesList)
+	a.addTool(s, mcp.NewTool("context_registry_list",
+		mcp.WithDescription("List what the context domain has registered: types, views, or namespaces. "+
+			"`kind` selects which registry is read; each answers with its own shape. No auth required. "+
+			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithString("kind", mcp.Required(), mcp.Description(registryKindArgDescription)),
+		mcp.WithString("name", mcp.Description("kind=namespaces only: return the single named namespace's ownership policy instead of the list. "+
+			"Answers `{namespace, owner_type, owner_id, policy}` — a different shape from the list, because it is a different question. "+
+			"Not accepted under kind=types or kind=views; passing it there is a validation_error rather than a silently ignored knob.")),
+		mcp.WithString("prefix", mcp.Description("kind=namespaces only: filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
+		mcp.WithNumber("limit", mcp.Description("kind=namespaces only: max namespaces to return (default 10, max 25)")),
+	), a.handleRegistryList)
 
 	a.addTool(s, mcp.NewTool("context_audit",
 		mcp.WithDescription("Query the audit event log. No auth required. See `tesseract_skills start-here` for the primitive model."),
@@ -117,6 +111,267 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("Max events to return (default 10, max 25)")),
 		mcp.WithNumber("cursor", mcp.Description("Pagination cursor (ID from previous response's next_cursor)")),
 	), a.handleAudit)
+}
+
+// ── Merged-tool argument vocabulary ──────────────────────────────────────────
+//
+// Each knob below SELECTS a behavior rather than annotating one. That
+// distinction is the whole point of merging two tools into one, and it is
+// checkable: every value named here routes to a different code path, and a
+// value outside the stated set is a validation_error rather than a silent
+// fallback to the default arm.
+
+const (
+	viewSelectorArgDescription = "What to select, in either of two forms. " +
+		"GLOB FORM: a comma-separated namespace glob list, e.g. \"user/memory/*,app/test/session/*\" — the same thing `namespaces` takes. " +
+		"SELECTOR FORM: a JSON object matching contextstore.Selector (namespaces, keys, revision_scope, order, limit, tags_any, types, statuses), " +
+		"recognized by a leading `{`. The selector form is the only way to filter on keys, tags, types or statuses. " +
+		"Omit it and pass `namespaces` instead if globs are all you need; passing both is a validation_error."
+
+	viewIncludeMetaArgDescription = "Which evaluation arm answers, NOT merely whether metadata is attached. " +
+		"false (default): the store is queried for heads matching the selector, results are filtered by the capability token's namespace globs when a token is configured, " +
+		"and the answer is the shared budget envelope of record SUMMARIES — no payloads, ever. " +
+		"true: the selector is evaluated with the store's view semantics (deterministic sort, selector limit, truncation flag) and the answer is `{items, evaluation_meta}` " +
+		"carrying full records, with payloads when `include_payload` is set. " +
+		"The two arms differ in one way that is not about shape: the `true` arm does NOT filter by the token's namespace globs, because it is the exact peer of " +
+		"POST /v1/views/evaluate, which does not either. Neither arm can reach a record the other cannot — the same pair of behaviors was reachable before this merge " +
+		"as two separate tools — but do not read `include_meta` as a display knob."
+
+	promoteStageArgDescription = "Which stage of the promotion workflow runs. Each stage requires a DIFFERENT capability scope, and the scope is checked for the stage you named: " +
+		"`request` (scope promote.request) records a request to copy a record from an app namespace to a user namespace; " +
+		"`approve` (scope promote.approve) marks a pending request approved; " +
+		"`apply` (scope promote.apply) writes the approved record to its target namespace. " +
+		"There is no default: an absent, empty or unrecognized stage is a validation_error and nothing is read, written or authorized. " +
+		"Holding one stage's scope grants that stage only — naming a stage you lack the scope for is an insufficient_scope error, exactly as calling a separate tool for it was."
+
+	payloadMaxBytesArgDescription = "Cap on the bytes of each record's payload that come back. Omit or 0 for no cap. " +
+		"When the cap binds, the item carries NO `payload` key at all; instead it carries `payload_head` (a JSON string holding the first N bytes), " +
+		"`payload_truncated: true`, and `payload_bytes` (the full payload's size). An absent `payload` therefore means capped, never empty. " +
+		"This replaces the former `payload_mode: head_only`, which cut the payload mid-JSON and left the `payload` field unparseable. " +
+		"The former `payload_mode=head_only` is now `payload_max_bytes=512`."
+
+	registryKindArgDescription = "Which registry to read. Each answers a different shape, because each lists a different thing: " +
+		"`types` → `{types: [...]}`, the registered context types and their metadata (peer of GET /v1/context/types); " +
+		"`views` → `{views: [...]}`, the registered views and their type configurations (peer of GET /v1/context/views); " +
+		"`namespaces` → the shared budget envelope of registered namespaces and their ownership policies (peer of GET /v1/namespaces/list), " +
+		"or, with `name` set, that one namespace's policy (peer of GET /v1/namespaces/get). " +
+		"There is no default: an absent or unrecognized kind is a validation_error."
+)
+
+// ── Merged-tool dispatchers ──────────────────────────────────────────────────
+
+// handleContextView serves the merged context_view. `include_meta` selects the
+// arm; see viewIncludeMetaArgDescription for what each one does.
+//
+// The two arms are the pre-merge handlers unchanged — handleViewSummaries was
+// context_view and handleViewsEvaluate was views_evaluate — so preservation is
+// a property of the routing rather than of two reimplementations agreeing.
+func (a *Adapter) handleContextView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawSelector := strings.TrimSpace(req.GetString("selector", ""))
+	nsArg := strings.TrimSpace(req.GetString("namespaces", ""))
+	revScopeArg := strings.TrimSpace(req.GetString("revision_scope", ""))
+	includeMeta := req.GetBool("include_meta", false)
+	includePayload := req.GetBool("include_payload", false)
+
+	if rawSelector != "" && nsArg != "" {
+		return toolError("validation_error", "pass either selector or namespaces, not both"), nil
+	}
+	if includePayload && !includeMeta {
+		return toolError("validation_error",
+			"include_payload is only honored under include_meta: true; the default arm returns summaries and never payloads"), nil
+	}
+
+	var sel contextstore.Selector
+	selectorIsJSON := strings.HasPrefix(rawSelector, "{")
+	switch {
+	case selectorIsJSON:
+		if err := json.Unmarshal([]byte(rawSelector), &sel); err != nil {
+			return toolError("validation_error", "selector must be a JSON object or a comma-separated glob list: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
+		}
+		if revScopeArg != "" {
+			return toolError("validation_error",
+				"revision_scope belongs inside a JSON selector; pass it as selector.revision_scope, not as a separate argument"), nil
+		}
+	case rawSelector != "":
+		sel.Namespaces = splitCommaList(rawSelector)
+	default:
+		sel.Namespaces = splitCommaList(nsArg)
+	}
+
+	if includeMeta {
+		if len(sel.Namespaces) == 0 && !selectorIsJSON {
+			return toolError("validation_error", "selector is required"), nil
+		}
+		return a.handleViewsEvaluate(ctx, sel, req)
+	}
+	if selectorIsJSON {
+		// The default arm reads exactly two selector fields; anything else in a
+		// JSON selector would be accepted and silently not applied.
+		if len(sel.Keys) > 0 || len(sel.Order) > 0 || sel.Limit != 0 ||
+			len(sel.TagsAny) > 0 || len(sel.Types) > 0 || len(sel.Statuses) > 0 {
+			return toolError("validation_error",
+				"the default arm honors only selector.namespaces and selector.revision_scope; "+
+					"pass include_meta: true to evaluate the full selector"), nil
+		}
+		revScopeArg = sel.RevisionScope
+	}
+	if revScopeArg == "" {
+		revScopeArg = "head"
+	}
+	sel.RevisionScope = revScopeArg
+	return a.handleViewSummaries(ctx, sel, req)
+}
+
+// handlePromote serves the merged context_promote. `stage` selects the arm AND
+// the capability scope that arm checks.
+//
+// Routing happens before any scope check, store read, or write, and an
+// unrecognized stage falls through to a validation_error — so a stage that
+// fails to parse fails CLOSED. Each arm keeps its own a.checkScope call, so the
+// scope a caller must hold is unchanged from when the three tools were separate.
+func (a *Adapter) handlePromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	switch req.GetString("stage", "") {
+	case "request":
+		return a.handlePromoteRequest(ctx, req)
+	case "approve":
+		return a.handlePromoteApprove(ctx, req)
+	case "apply":
+		return a.handlePromoteApply(ctx, req)
+	default:
+		return toolError("validation_error",
+			"stage must be one of request|approve|apply, got "+strconv.Quote(req.GetString("stage", ""))), nil
+	}
+}
+
+// handleContextBroker serves the merged context_broker. `execute` selects
+// between planning and running the plan.
+func (a *Adapter) handleContextBroker(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if req.GetBool("execute", false) {
+		return a.handleContextFetch(ctx, req)
+	}
+	// The planning arm reads no payloads, so a byte cap there would be a knob
+	// reporting it is honoring something it never consults.
+	if raw, ok := req.GetArguments()["payload_max_bytes"]; ok && raw != nil {
+		return toolError("validation_error",
+			"payload_max_bytes applies only under execute: true; the planning arm returns no records"), nil
+	}
+	if errResult := rejectRetiredPayloadMode(req); errResult != nil {
+		return errResult, nil
+	}
+	return a.handleContextPlan(ctx, req)
+}
+
+// handleRegistryList serves the merged context_registry_list. `kind` selects
+// which registry is read.
+func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := req.GetString("kind", "")
+	name := strings.TrimSpace(req.GetString("name", ""))
+
+	if kind == "types" || kind == "views" {
+		// These two registries take no arguments. Accepting a knob and not
+		// applying it is the failure this merge exists to avoid.
+		for _, knob := range []string{"name", "prefix", "limit"} {
+			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
+				return toolError("validation_error", knob+" is not accepted under kind="+kind), nil
+			}
+		}
+	}
+
+	switch kind {
+	case "types":
+		return a.handleTypesList(ctx, req)
+	case "views":
+		return a.handleViewsList(ctx, req)
+	case "namespaces":
+		if name != "" {
+			return a.namespaceShowResult(ctx, name), nil
+		}
+		return a.handleNamespacesList(ctx, req)
+	default:
+		return toolError("validation_error",
+			"kind must be one of types|views|namespaces, got "+strconv.Quote(kind)), nil
+	}
+}
+
+// ── Shared argument helpers ──────────────────────────────────────────────────
+
+// splitCommaList parses a comma-separated argument into trimmed, non-empty
+// entries. Returns nil for an empty input, which selectors read as "unset".
+func splitCommaList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// resolvePayloadMaxBytes reads the payload byte cap for the packet-shaped
+// tools, and rejects the retired payload_mode vocabulary on the way past.
+//
+// A negative cap is an error rather than a clamp: it is outside the knob's
+// meaning, and quietly reading it as "no cap" would return MORE context than
+// the caller asked for — the direction of failure this whole surface is trying
+// to close off.
+func resolvePayloadMaxBytes(req mcp.CallToolRequest) (int, *mcp.CallToolResult) {
+	if errResult := rejectRetiredPayloadMode(req); errResult != nil {
+		return 0, errResult
+	}
+	n, err := wholeNumberArg(req, "payload_max_bytes", 0)
+	if err != nil {
+		return 0, toolError("validation_error", err.Error())
+	}
+	if n < 0 {
+		return 0, toolError("validation_error", "payload_max_bytes must be >= 0; omit it or pass 0 for no cap")
+	}
+	return n, nil
+}
+
+// rejectRetiredPayloadMode fails closed on the packet-shaped tools' former
+// payload_mode vocabulary.
+//
+// `head_only` used to cut a payload mid-JSON, and every OTHER value — `keys`,
+// `summary`, a typo — fell through to full payloads with no error at all. Both
+// halves of that are fixed here by refusing the argument: `payload_mode` now
+// means exactly one thing across the surface (the keys|summary|full projection
+// on the recall/lookup tools), and these tools cap bytes with
+// payload_max_bytes instead.
+//
+// `full` is accepted as a no-op because it was the default and means the same
+// thing here as it does everywhere else: everything.
+func rejectRetiredPayloadMode(req mcp.CallToolRequest) *mcp.CallToolResult {
+	raw := strings.TrimSpace(req.GetString("payload_mode", ""))
+	if raw == "" || raw == "full" {
+		return nil
+	}
+	return toolError("validation_error",
+		"payload_mode is not a projection knob on this tool: it accepts only \"full\". "+
+			"The former payload_mode=head_only is now payload_max_bytes=512. Got: "+raw)
+}
+
+// capPayload applies a payload_max_bytes cap to one item.
+//
+// When the cap binds the `payload` key is REMOVED and replaced by
+// `payload_head` (a JSON string), `payload_truncated` and `payload_bytes`.
+// It cannot simply shorten `payload`: the prefix of a JSON object is not
+// valid JSON, and a json.RawMessage holding invalid JSON makes the whole
+// enclosing json.Marshal fail — which is how the former head_only mode turned
+// an oversized record into an EMPTY tool result rather than a truncated one.
+// See TestPayloadMaxBytes_CappedItemStaysValidJSON.
+//
+// Returns the number of payload bytes actually serialized, for the manifest's
+// byte and token accounting.
+func capPayload(item map[string]any, payload []byte, maxBytes int) int {
+	if maxBytes <= 0 || len(payload) <= maxBytes {
+		item["payload"] = json.RawMessage(payload)
+		return len(payload)
+	}
+	delete(item, "payload")
+	item["payload_head"] = string(payload[:maxBytes])
+	item["payload_truncated"] = true
+	item["payload_bytes"] = len(payload)
+	return maxBytes
 }
 
 // --- Read tools ---
@@ -166,23 +421,13 @@ func (a *Adapter) handleContextHistory(_ context.Context, req mcp.CallToolReques
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 
-func (a *Adapter) handleView(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// handleViewSummaries is the default arm of context_view: heads matching the
+// selector, filtered by the token's namespace globs, rendered as summaries in
+// the shared budget envelope. sel carries only Namespaces and RevisionScope —
+// handleContextView rejects a selector asking for anything else on this arm.
+func (a *Adapter) handleViewSummaries(_ context.Context, sel contextstore.Selector, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
-	nsStr := req.GetString("namespaces", "")
-	var namespaces []string
-	if nsStr != "" {
-		for _, ns := range strings.Split(nsStr, ",") {
-			if t := strings.TrimSpace(ns); t != "" {
-				namespaces = append(namespaces, t)
-			}
-		}
-	}
-	revScope := req.GetString("revision_scope", "head")
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
-	sel := contextstore.Selector{
-		Namespaces:    namespaces,
-		RevisionScope: revScope,
-	}
 	records, err := a.Store.Select(ctx, sel)
 	if err != nil {
 		return toolError("selector_error", err.Error()), nil
@@ -205,25 +450,23 @@ func (a *Adapter) handleView(_ context.Context, req mcp.CallToolRequest) (*mcp.C
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 
-// --- Packet tool ---
+// --- Packet arm of context_pack ---
 
+// handlePacket is the shape=packet arm of context_pack: namespace globs plus
+// pinned records, bounded by an item and token budget, with a manifest saying
+// what was included and why it stopped.
 func (a *Adapter) handlePacket(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 
-	nsStr := req.GetString("namespaces", "")
-	var namespaces []string
-	if nsStr != "" {
-		for _, ns := range strings.Split(nsStr, ",") {
-			if t := strings.TrimSpace(ns); t != "" {
-				namespaces = append(namespaces, t)
-			}
-		}
-	}
+	namespaces := splitCommaList(req.GetString("namespaces", ""))
 
 	includePins := req.GetBool("include_pins", true)
 	maxItems := req.GetInt("max_items", 50)
 	maxTokens := req.GetInt("max_tokens_estimate", 8000)
-	payloadMode := req.GetString("payload_mode", "full")
+	payloadMaxBytes, errResult := resolvePayloadMaxBytes(req)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	// Load token globs for optional namespace filtering.
 	var tokenGlobs []string
@@ -257,15 +500,11 @@ func (a *Adapter) handlePacket(_ context.Context, req mcp.CallToolRequest) (*mcp
 		if budgetExceeded() {
 			return false
 		}
-		payload := rec.Payload
-		if payloadMode == "head_only" && len(payload) > 512 {
-			payload = payload[:512]
-		}
 		item := recordJSON(rec)
-		item["payload"] = json.RawMessage(payload)
+		served := capPayload(item, rec.Payload, payloadMaxBytes)
 		items = append(items, item)
-		bytesSoFar += len(payload)
-		tokensSoFar += contextstore.EstimateTokens(payload)
+		bytesSoFar += served
+		tokensSoFar += contextstore.EstimateTokens(rec.Payload[:served])
 		parts := strings.SplitN(rec.Namespace, "/", 3)
 		nsKey := rec.Namespace
 		if len(parts) >= 2 {
@@ -481,7 +720,7 @@ func (a *Adapter) handlePromoteList(_ context.Context, req mcp.CallToolRequest) 
 	if items == nil {
 		items = []map[string]any{}
 	}
-	env := budget.Apply(items, budget.Config{Limit: limit}, "%d promotion requests available. Use context_promote_approve or context_promote_apply for specific requests.")
+	env := budget.Apply(items, budget.Config{Limit: limit}, "%d promotion requests available. Use context_promote with stage=approve or stage=apply for specific requests.")
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 
@@ -660,13 +899,18 @@ func (a *Adapter) handleContextPlan(_ context.Context, req mcp.CallToolRequest) 
 	}), nil
 }
 
+// handleContextFetch is the execute=true arm of context_broker: build the plan,
+// then run it and return the records it selects.
 func (a *Adapter) handleContextFetch(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
 	intent := req.GetString("intent", "custom")
 	summary := req.GetString("summary", "")
 	maxItems := req.GetInt("budget_items", 50)
 	maxTokens := req.GetInt("budget_tokens", 4000)
-	payloadMode := req.GetString("payload_mode", "full")
+	payloadMaxBytes, errResult := resolvePayloadMaxBytes(req)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	namespaces, includePins, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
 
@@ -700,15 +944,11 @@ func (a *Adapter) handleContextFetch(_ context.Context, req mcp.CallToolRequest)
 		if budgetExceeded() {
 			return false
 		}
-		payload := rec.Payload
-		if payloadMode == "head_only" && len(payload) > 512 {
-			payload = payload[:512]
-		}
 		item := recordJSON(rec)
-		item["payload"] = json.RawMessage(payload)
+		served := capPayload(item, rec.Payload, payloadMaxBytes)
 		items = append(items, item)
-		bytesSoFar += len(payload)
-		tokensSoFar += contextstore.EstimateTokens(payload)
+		bytesSoFar += served
+		tokensSoFar += contextstore.EstimateTokens(rec.Payload[:served])
 		parts := strings.SplitN(rec.Namespace, "/", 3)
 		nsKey := rec.Namespace
 		if len(parts) >= 2 {
@@ -886,16 +1126,17 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req mcp.CallToolR
 	}), nil
 }
 
-func (a *Adapter) handleNamespaceShow(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// namespaceShowResult is the kind=namespaces + name arm of
+// context_registry_list: one namespace's ownership policy.
+func (a *Adapter) namespaceShowResult(_ context.Context, ns string) *mcp.CallToolResult {
 	ctx := context.Background()
-	ns := req.GetString("namespace", "")
 	if ns == "" {
-		return toolError("validation_error", "namespace is required"), nil
+		return toolError("validation_error", "namespace is required")
 	}
 
 	entry, err := a.Store.GetNamespacePolicy(ctx, ns)
 	if err != nil {
-		return toolError("not_found", fmt.Sprintf("namespace policy not found: %v", err)), nil
+		return toolError("not_found", fmt.Sprintf("namespace policy not found: %v", err))
 	}
 
 	return toolJSON(map[string]any{
@@ -903,7 +1144,7 @@ func (a *Adapter) handleNamespaceShow(_ context.Context, req mcp.CallToolRequest
 		"owner_type": entry.OwnerType,
 		"owner_id":   entry.OwnerID,
 		"policy":     entry.Policy,
-	}), nil
+	})
 }
 
 func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -935,7 +1176,7 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 	if items == nil {
 		items = []map[string]any{}
 	}
-	env := budget.Apply(items, budget.Config{Limit: limit}, "%d namespaces available. Use context_namespace_show for details on a specific namespace.")
+	env := budget.Apply(items, budget.Config{Limit: limit}, "%d namespaces available. Use context_registry_list with kind=namespaces and name=<namespace> for details on a specific one.")
 	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
 }
 

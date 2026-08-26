@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,25 +14,67 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerBulkTools(s *server.MCPServer) {
-	a.addTool(s, mcp.NewTool("context_bulk_ingest",
-		mcp.WithDescription("Batch write multiple records with optional type validation and embedding. Accepts a JSON array of items. Each item is validated, written, and optionally embedded. Returns per-item results. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("items", mcp.Required(), mcp.Description("JSON array of items. Each item: {namespace, key, payload (JSON string or object), record_type?, status?, ttl?, pointers? (comma-sep), actor?}")),
-		mcp.WithBoolean("embed", mcp.Description("Auto-embed each record after writing (default: false). Requires configured embedding provider.")),
-		mcp.WithBoolean("stop_on_error", mcp.Description("Stop processing on first error (default: false). When false, errors are collected per-item.")),
-	), a.handleBulkIngest)
+// ingestModeArgDescription documents the arm selector on context_ingest.
+const ingestModeArgDescription = "What is being ingested, which decides how it is split into records and what comes back. " +
+	"The two modes take DIFFERENT arguments; passing one mode's argument to the other is a validation_error rather than a silently ignored knob. " +
+	"`bulk` (default): you already have the records. `items` (required) is a JSON array; each is validated, written, and optionally embedded. " +
+	"Answers `{total, written, embedded, errors, results}` with one result per input item. Peer of POST /v1/context/bulk-ingest. " +
+	"`chunked`: you have one document too large to embed. `namespace`, `key_prefix` and `text` (all required) are split by `strategy` into " +
+	"<key_prefix>/chunk-000, chunk-001, … each auto-embedded. Answers `{namespace, key_prefix, strategy, total_chunks, embedded, results}`. " +
+	"MCP-only: chunked ingest has no HTTP peer."
 
-	a.addTool(s, mcp.NewTool("context_chunked_ingest",
-		mcp.WithDescription("Ingest a large document by chunking it into multiple records, each auto-embedded. Useful for RAG pipelines with documents exceeding embedding context windows. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace")),
-		mcp.WithString("key_prefix", mcp.Required(), mcp.Description("Key prefix — chunks are named <prefix>/chunk-000, chunk-001, etc.")),
-		mcp.WithString("text", mcp.Required(), mcp.Description("Full document text to chunk")),
-		mcp.WithString("record_type", mcp.Description("Context type for chunks (default: brief/summary)")),
-		mcp.WithString("strategy", mcp.Description("Chunking strategy: fixed, sentence, paragraph (default: sentence)")),
-		mcp.WithNumber("max_chars", mcp.Description("Max characters per chunk (default: 1000)")),
-		mcp.WithNumber("overlap_pct", mcp.Description("Overlap percentage for fixed strategy (default: 10, range 0-50)")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
-	), a.handleChunkedIngest)
+func (a *Adapter) registerBulkTools(s *server.MCPServer) {
+	a.addTool(s, mcp.NewTool("context_ingest",
+		mcp.WithDescription("Write records into the context store in batch. "+
+			"`mode` selects whether the input is a list of records or one document to be chunked — see its description. "+
+			"Requires 'write' scope. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithString("mode", mcp.Description(ingestModeArgDescription)),
+		// Per-mode requiredness is enforced in the handlers, not in the schema:
+		// the two modes require disjoint argument sets, so a schema-level
+		// Required() would demand `items` on a chunked call.
+		mcp.WithString("items", mcp.Description("mode=bulk, required there: JSON array of items. Each item: {namespace, key, payload (JSON string or object), record_type?, status?, ttl?, pointers? (comma-sep), actor?}")),
+		mcp.WithBoolean("embed", mcp.Description("mode=bulk only: auto-embed each record after writing (default: false). Requires a configured embedding provider. mode=chunked always embeds when a provider is configured.")),
+		mcp.WithBoolean("stop_on_error", mcp.Description("mode=bulk only: stop processing on first error (default: false). When false, errors are collected per-item.")),
+		mcp.WithString("namespace", mcp.Description("mode=chunked, required there: target namespace")),
+		mcp.WithString("key_prefix", mcp.Description("mode=chunked, required there: key prefix — chunks are named <prefix>/chunk-000, chunk-001, etc.")),
+		mcp.WithString("text", mcp.Description("mode=chunked, required there: full document text to chunk")),
+		mcp.WithString("record_type", mcp.Description("mode=chunked only: context type for chunks (default: brief/summary). Under mode=bulk this is a per-item field, not a tool argument.")),
+		mcp.WithString("strategy", mcp.Description("mode=chunked only: chunking strategy — fixed, sentence, paragraph (default: sentence)")),
+		mcp.WithNumber("max_chars", mcp.Description("mode=chunked only: max characters per chunk (default: 1000)")),
+		mcp.WithNumber("overlap_pct", mcp.Description("mode=chunked only: overlap percentage for the fixed strategy (default: 10, range 0-50)")),
+		mcp.WithString("actor", mcp.Description("mode=chunked only: actor identity (default: mcp-agent). Under mode=bulk this is a per-item field, not a tool argument.")),
+	), a.handleContextIngest)
+}
+
+// handleContextIngest serves the merged context_ingest. `mode` selects the arm;
+// the two arms are the pre-merge handlers unchanged.
+func (a *Adapter) handleContextIngest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	mode := req.GetString("mode", "bulk")
+
+	reject := func(modeName string, knobs ...string) *mcp.CallToolResult {
+		for _, knob := range knobs {
+			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
+				return toolError("validation_error", knob+" is not accepted under mode="+modeName)
+			}
+		}
+		return nil
+	}
+
+	switch mode {
+	case "bulk":
+		if errResult := reject("bulk", "namespace", "key_prefix", "text", "record_type", "strategy", "max_chars", "overlap_pct", "actor"); errResult != nil {
+			return errResult, nil
+		}
+		return a.handleBulkIngest(ctx, req)
+	case "chunked":
+		if errResult := reject("chunked", "items", "embed", "stop_on_error"); errResult != nil {
+			return errResult, nil
+		}
+		return a.handleChunkedIngest(ctx, req)
+	default:
+		return toolError("validation_error",
+			"mode must be one of bulk|chunked, got "+strconv.Quote(mode)), nil
+	}
 }
 
 // bulkItem is the per-item input for bulk ingestion.

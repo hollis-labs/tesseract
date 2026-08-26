@@ -67,33 +67,29 @@ type parityOp struct {
 var surfaceCatalog = []parityOp{
 	// ── Context domain ──────────────────────────────────────────────────
 	{MCP: "context_audit", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/audit"},
-	{MCP: "context_broker_fetch", Waiver: "MCP-only convenience: plan+packet in one call"},
-	{MCP: "context_broker_plan", HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
-	{MCP: "context_bulk_ingest", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/bulk-ingest"},
-	{MCP: "context_chunked_ingest", Waiver: "MCP-only: chunked stateful ingest has no clean HTTP shape"},
+	{MCP: "context_broker", HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
 	{MCP: "context_embed", Waiver: "MCP-only: embedding-only op for agent tooling"},
 	{MCP: "context_estimate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/estimate"},
+	{MCP: "context_ingest", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/bulk-ingest"},
 	{MCP: "context_namespace_register", HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
-	{MCP: "context_namespace_show", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
-	{MCP: "context_namespaces_list", Waiver: "MCP-only: list-of-namespaces helper; HTTP caller iterates /namespaces/get"},
 	{MCP: "context_pack", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/pack"},
-	{MCP: "context_packet", Waiver: "MCP-only; HTTP /v1/context/packet has a divergent budget/manifest shape"},
-	{MCP: "context_promote_apply", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/apply"},
-	{MCP: "context_promote_approve", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/approve"},
+	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/apply"},
+	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/approve"},
+	{MCP: "context_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/request"},
 	{MCP: "context_promote_list", Waiver: "MCP-only; HTTP side lists promotions via audit query"},
-	{MCP: "context_promote_request", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/request"},
 	{MCP: "context_rag_query", Waiver: "MCP-only: convenience query over embedding search"},
+	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/types"},
+	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/views"},
+	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
+	{MCP: "context_registry_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/list"},
 	{MCP: "context_search", Waiver: "MCP-only: low-level embedding search for agent tooling"},
 	{MCP: "context_session_snapshot", Waiver: "MCP-only: per-session snapshot capture"},
-	{MCP: "context_status_deprecate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/deprecate"},
-	{MCP: "context_status_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/promote"},
+	{MCP: "context_status_set", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/deprecate"},
+	{MCP: "context_status_set", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/promote"},
 	{MCP: "context_typed_view", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/typed-view"},
 	{MCP: "context_typed_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/typed-write"},
-	{MCP: "context_types_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/types"},
-	{MCP: "context_view", Waiver: "MCP-only simplified view; views_evaluate is the full-power peer of /v1/views/evaluate"},
-	{MCP: "context_views_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/views"},
+	{MCP: "context_view", HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
 	{MCP: "context_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/write"},
-	{MCP: "views_evaluate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
 
 	// ── Memory domain ──────────────────────────────────────────────────
 	{MCP: "memory_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/promote"},
@@ -140,10 +136,25 @@ var surfaceCatalog = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/create", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/auth/tokens/list", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/revoke", Waiver: "HTTP-only security boundary per TASK-20260415-012"},
-	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/plan", Waiver: "HTTP alias of /v1/broker/plan; MCP peer is context_broker_plan"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/plan", Waiver: "HTTP alias of /v1/broker/plan; MCP peer is context_broker"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote", Waiver: "HTTP-only: returns 410 Gone; superseded by /v1/context/promote/request"},
-	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/packet", Waiver: "HTTP-only: divergent packet shape; MCP context_packet uses different budget/manifest"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/packet", Waiver: "HTTP-only: divergent packet shape; MCP context_pack shape=packet uses different budget/manifest"},
 }
+
+// Two arms of the merges above have no HTTP peer, and the catalog's row shape
+// — one (tool, route) pair — cannot say so, because the tool itself IS paired.
+// Recording them here rather than as waivers, which would have to blank out the
+// MCP name and so would misdescribe the tool:
+//
+//   - context_broker with execute=true (the former context_broker_fetch):
+//     plan+packet in one call, MCP-only. POST /v1/broker/plan is the peer of
+//     the default arm only.
+//   - context_ingest with mode=chunked (the former context_chunked_ingest):
+//     chunked stateful ingest has no clean HTTP shape. POST
+//     /v1/context/bulk-ingest is the peer of mode=bulk only.
+//
+// Both facts are also stated in the tools' own argument descriptions, which is
+// where an agent will actually read them.
 
 // observedHTTPRoutes mirrors the switch in internal/contextapi/server.go.
 // When a new route is added there without showing up in surfaceCatalog, the
@@ -164,6 +175,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/revisions/{id}"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/metrics"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
+	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/list"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/create"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/revoke"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},

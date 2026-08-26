@@ -10,21 +10,16 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// registerParityTools adds MCP tools that mirror HTTP routes for agent parity:
-// context_estimate and views_evaluate.
+// registerParityTools adds MCP tools that mirror HTTP routes for agent parity.
+//
+// The view-evaluation peer of /v1/views/evaluate is no longer a tool of its
+// own: it is the include_meta arm of context_view, registered in tools.go. Its
+// handler still lives here, next to the other selector-shaped op.
 func (a *Adapter) registerParityTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_estimate",
 		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),
 	), a.handleContextEstimate)
-
-	a.addTool(s, mcp.NewTool("views_evaluate",
-		mcp.WithDescription("Evaluate a view selector against the context store. Returns items plus evaluation metadata (sort keys, matched count, truncated flag, normalized scope). Peer of HTTP /v1/views/evaluate. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector")),
-		mcp.WithBoolean("include_payload", mcp.Description("Include record payloads in the response (default false)")),
-		mcp.WithNumber("limit", mcp.Description("Override selector.limit (0 = use selector or default)")),
-	), a.handleViewsEvaluate)
-
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -45,15 +40,14 @@ func (a *Adapter) handleContextEstimate(ctx context.Context, req mcp.CallToolReq
 	return toolJSON(result), nil
 }
 
-func (a *Adapter) handleViewsEvaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	raw := req.GetString("selector", "")
-	if raw == "" {
-		return toolError("validation_error", "selector is required"), nil
-	}
-	var sel contextstore.Selector
-	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
-		return toolError("validation_error", "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
-	}
+// handleViewsEvaluate is the include_meta arm of context_view, and the exact
+// peer of HTTP POST /v1/views/evaluate — including in what it does NOT do:
+// neither surface filters results by the capability token's namespace globs.
+// The default arm of context_view does. See viewIncludeMetaArgDescription.
+//
+// sel is resolved by handleContextView, which accepts both the JSON-selector
+// and comma-separated-glob forms.
+func (a *Adapter) handleViewsEvaluate(ctx context.Context, sel contextstore.Selector, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	includePayload := req.GetBool("include_payload", false)
 	limit, err := wholeNumberArg(req, "limit", 0)
 	if err != nil {

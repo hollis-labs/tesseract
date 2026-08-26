@@ -45,13 +45,14 @@ The response envelope carries `next_cursor` when more results are available; omi
 Event types actually emitted by the MCP surface:
 
 - `write` — a `context_write` succeeded.
-- `promote.request` — a `context_promote_request` was opened.
+- `promote.request` — a `context_promote` with `stage: "request"` was opened.
 - `promote.approve` — a pending request moved to `approved`.
 - `promote` — an approved request was applied (terminal). Also emitted by direct `memory_promote` and typed status-promote flows on the HTTP side.
 - `typed_write` — a typed-view write (`context_typed_write`).
-- `status_promote` / `status_deprecate` — `context_status_promote` / `context_status_deprecate`.
+- `status_promote` — `context_status_set` moving a record to `reviewed` or `canonical`, or advancing it one step.
+- `status_deprecate` — emitted only by the HTTP route `POST /v1/context/status/deprecate`. `context_status_set` with `status: "deprecated"` writes **no** audit event; the two doors differ here, and reconstructing a deprecation from the audit log will miss the MCP ones.
 - `session_snapshot` — `context_session_snapshot`.
-- `bulk_ingest` / `chunked_ingest` — bulk/chunked write tools.
+- `bulk_ingest` / `chunked_ingest` — `context_ingest` under `mode: "bulk"` / `mode: "chunked"`.
 - `memory.write` — a memory revision was written. Emitted by `memory_write` and internal memory paths.
 - `memory.supersede` — a memory write whose `Supersedes` field is set (the write replaces a prior revision).
 - `memory.deprecate` — a memory revision was deprecated (also fires on the source side of a promote).

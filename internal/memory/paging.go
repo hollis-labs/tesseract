@@ -38,12 +38,12 @@ func (b Budget) Set() bool { return b.Bytes > 0 || b.Tokens > 0 }
 // can take when Truncated is true.
 //
 // The FIELD names truncated / truncation_reason are taken verbatim from the
-// context_packet manifest (internal/mcpadapter/tools.go, handlePacket), which
-// is the repo's existing budget envelope. The VALUES are this domain's own,
-// because context_packet's ("budget.max_items", "budget.max_tokens_estimate")
-// name its internal variables rather than its arguments, so copying them would
-// import a naming inconsistency rather than a vocabulary. Each value below
-// names the knob a caller would change to get a different answer.
+// context_pack shape=packet manifest (internal/mcpadapter/tools.go,
+// handlePacket), which is the repo's existing budget envelope. The VALUES are
+// this domain's own, because that manifest's ("budget.max_items",
+// "budget.max_tokens_estimate") name its internal variables rather than its
+// arguments, so copying them would import a naming inconsistency rather than a
+// vocabulary. Each value below names the knob a caller would change.
 const (
 	// TruncationBudgetBytes — budget_bytes cut the page.
 	TruncationBudgetBytes = "budget_bytes"
@@ -168,7 +168,7 @@ func ClampHistoryLimit(limit int) int {
 // BytesReturned measures the marshaled results array — brackets and commas
 // included — not the enclosing envelope, and not the payload alone. It is the
 // quantity budget_bytes bounds. This differs deliberately from
-// context_packet's bytes_returned, which counts record payloads only: for a
+// the packet manifest's bytes_returned, which counts record payloads only: for a
 // projected recall the structural bytes outweigh the payload (measured at
 // limit=100 under summary: 62,320 wire against 15,238 of payload, so ~76% of
 // the response is not payload), and a payload-only count would not bound the
