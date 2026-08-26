@@ -204,6 +204,17 @@ func lookupOperation(verb string) (ToolOperation, bool) {
 func RenderVerbTableMarkdown() string {
 	var b strings.Builder
 
+	// The rule itself is rendered, not written into the doc by hand. A prose
+	// restatement outside the generated block is a second copy that nothing
+	// asserts — which is the exact defect this ticket exists to remove, one
+	// level up.
+	b.WriteString("A tool name is `<prefix>_[subject_]<verb>`. The prefix says which domain owns the tool; " +
+		"the verb says what the operation is; anything between them names what is operated on. " +
+		"One verb per operation, so an operation you know in one domain is guessable in another.\n\n")
+	b.WriteString("This whole section is generated from `internal/mcpadapter/toolvocab.go`. " +
+		"`tests/parity/toolvocab_test.go` asserts every registered name matches it and that this block is still its rendering — " +
+		"edit the Go structure, then run `go test ./tests/parity/ -run TestDocNamingSection -update-docs`.\n\n")
+
 	b.WriteString("**Prefix rule.** `tesseract_` when the tool spans domains or serves the surface itself; `<domain>_` when it is domain-specific.\n\n")
 	b.WriteString("| Prefix | Covers |\n|---|---|\n")
 	for _, p := range ToolPrefixRule {

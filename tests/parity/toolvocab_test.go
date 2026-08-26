@@ -1,6 +1,8 @@
 package parity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"os"
 	"path/filepath"
@@ -72,7 +74,7 @@ func TestToolNameExemptionsAreCurrent(t *testing.T) {
 
 // ── 2. The table is right ──────────────────────────────────────────────
 
-// TestNamingVocabularyMatchesHandStatedNames is the anchor.
+// THE ANCHOR — anchorMustAccept and anchorMustReject.
 //
 // Every name below is written out by hand. None is read from ToolVerbTable,
 // ToolPrefixRule, ToolNameExemptions or the live registry, so editing any of
@@ -80,89 +82,193 @@ func TestToolNameExemptionsAreCurrent(t *testing.T) {
 // `memory_` prefix, or admitting `head` as a verb, makes this fail — which is
 // the whole reason it exists.
 //
-// mustAccept deliberately mixes names that are registered today with names that
-// are NOT, so the list is a statement about the RULE rather than a snapshot of
-// the surface.
+// anchorMustAccept deliberately mixes names that are registered today with
+// names that are NOT, so the list is a statement about the RULE rather than a
+// snapshot of the surface.
 //
-// DO NOT let a bulk rename run over this file. The retired names in mustReject
-// are the assertion; rewriting them to their replacements makes every case pass
-// and checks nothing. That is not hypothetical — the CW-20260825-0012 rename
-// script did exactly that on its first pass and the three names below had to be
-// typed back in by hand.
+// ── How this file behaves under a bulk rename ──────────────────────────
+//
+// anchorMustReject IS SELF-PROTECTING, and structurally so. A retired name's
+// replacement is, by construction, a name the vocabulary ACCEPTS — that is why
+// it was chosen as the replacement. So a rename that rewrites an entry there
+// turns it into an assertion that a conforming name is rejected, which fails.
+// Measured, not assumed: running
+//
+//	sed -i '' -e 's/context_broker/context_plan/g' \
+//	          -e 's/context_audit/context_audit_list/g' \
+//	          -e 's/context_session_snapshot/context_session_write/g' \
+//	          tests/parity/toolvocab_test.go
+//
+// over this file produces three failures — reject/context_plan,
+// reject/context_audit_list, reject/context_session_write — not a silent pass.
+// (CW-20260825-0012's rename script did run over this file, and its author's
+// first report claimed the opposite. It was a prediction, never executed. The
+// reviewer ran it.)
+//
+// anchorMustAccept IS NOT PROTECTED that way. Rewriting a name there to another
+// live or conforming name passes silently, because both sides of the assertion
+// agree. Nor is either list protected against an edit this vocabulary does not
+// motivate — a dropped case, a typo, a tidy-up. That is the gap
+// TestAnchorListsAreFrozen closes, and both halves of it were measured: with
+// one anchorMustAccept name rewritten to another conforming name, the anchor
+// test PASSED and TestAnchorListsAreFrozen FAILED.
+
+// anchorName is one hand-written case: a tool name and why the vocabulary must
+// take the view of it that it does.
+type anchorName struct {
+	name string
+	why  string
+}
+
+var anchorMustAccept = []anchorName{
+	// Live names.
+	{"tesseract_get", "cross-domain fetch-one"},
+	{"tesseract_get_revision", "two-segment verb; must beat the shorter `revision` suffix"},
+	{"tesseract_history", "cross-domain revision history"},
+	{"tesseract_recall", "cross-domain ranked retrieval"},
+	{"tesseract_touch", "cross-domain reinforcement"},
+	{"tesseract_deprecate", "cross-domain soft-remove"},
+	{"memory_write", "per-domain write"},
+	{"knowledge_write", "per-domain write"},
+	{"context_write", "per-domain write"},
+	{"memory_promote", "promote is scoped to memory and context"},
+	{"context_typed_write", "subject `typed` between prefix and verb"},
+	{"context_registry_list", "subject `registry`"},
+	{"context_namespace_register", "subject `namespace`"},
+	{"context_status_set", "subject `status`"},
+
+	// The seven context-domain assembly and vector verbs. Without these
+	// every one of them was unanchored: widening `pack` or `plan` to all
+	// four prefixes left this test PASSING, and the only failure was the
+	// doc-rendering check — whose own documented fix, -update-docs, would
+	// then have written the wrong scoping into docs/MCP_TOOLS.md and made
+	// the suite green. `plan` is the verb this ticket introduced.
+	{"context_embed", "embed is context-domain"},
+	{"context_estimate", "estimate is context-domain"},
+	{"context_ingest", "ingest is context-domain"},
+	{"context_pack", "pack is context-domain"},
+	{"context_plan", "plan is context-domain — the verb CW-20260825-0012 introduced"},
+	{"context_search", "search is context-domain"},
+	{"context_view", "view is context-domain"},
+
+	// Not registered. These are the half that makes the list a rule and
+	// not a snapshot: a correct name for a tool that does not exist.
+	{"knowledge_typed_write", "write is per-domain, so any domain may carry it with any subject"},
+	{"context_ttl_set", "set with a subject the surface has never used"},
+	{"context_pin_list", "list with a subject the surface has never used"},
+	{"memory_session_promote", "promote with a subject, under an allowed prefix"},
+}
+
+var anchorMustReject = []anchorName{
+	// Names this parent actually retired. Each one passing again would mean
+	// the vocabulary had drifted back to what it was built to fix.
+	{"views_evaluate", "no domain prefix at all — the CW-20260825-0011 rename target"},
+	{"context_head", "`head` is not an operation — the pre-CW-20260825-0010 spelling of tesseract_get"},
+	{"context_namespace_show", "`show` is not an operation; fetch-one is `get`"},
+	{"tesseract_lookup", "`lookup` is not an operation; ranked retrieval is `recall`"},
+	{"context_broker", "`broker` names a component, not an operation; the tool plans a fetch"},
+	{"context_audit", "a bare noun with no operation segment"},
+	{"context_session_snapshot", "`snapshot` was a one-off verb for what is a write"},
+
+	// Prefix-rule violations: the verb exists, the prefix may not carry it.
+	{"memory_get", "`get` is cross-domain, so it must be tesseract_get"},
+	{"knowledge_get", "`get` is cross-domain"},
+	{"memory_recall", "`recall` is cross-domain, so it must be tesseract_recall"},
+	{"memory_history", "`history` is cross-domain"},
+	{"tesseract_write", "`write` is per-domain; there is no cross-domain write"},
+	{"knowledge_promote", "`promote` is scoped to context and memory only"},
+	{"tesseract_list", "`list` is a context-domain registry op"},
+
+	// The scoping half of the seven context-domain verbs. These are what
+	// make widening any of them to another prefix fail HERE, rather than
+	// only in the doc rendering.
+	{"memory_embed", "`embed` is context-domain only"},
+	{"knowledge_estimate", "`estimate` is context-domain only"},
+	{"memory_ingest", "`ingest` is context-domain only"},
+	{"tesseract_pack", "`pack` is context-domain only; there is no cross-domain pack"},
+	{"tesseract_plan", "`plan` is context-domain only"},
+	{"knowledge_search", "`search` is context-domain only"},
+	{"tesseract_view", "`view` is context-domain only"},
+	{"tesseract_register", "`register` is context-domain only"},
+	{"memory_set", "`set` is context-domain only"},
+
+	// Malformed.
+	{"tesseract", "single segment — no verb"},
+	{"contextwrite", "no separator, so there is no prefix and no verb"},
+	{"plugin_write", "`plugin` is not one of the four prefixes"},
+	{"Context_Write", "segments must be lower-case"},
+}
+
 func TestNamingVocabularyMatchesHandStatedNames(t *testing.T) {
-	mustAccept := []struct {
-		name string
-		why  string
-	}{
-		// Live names.
-		{"tesseract_get", "cross-domain fetch-one"},
-		{"tesseract_get_revision", "two-segment verb; must beat the shorter `revision` suffix"},
-		{"tesseract_history", "cross-domain revision history"},
-		{"tesseract_recall", "cross-domain ranked retrieval"},
-		{"tesseract_touch", "cross-domain reinforcement"},
-		{"tesseract_deprecate", "cross-domain soft-remove"},
-		{"memory_write", "per-domain write"},
-		{"knowledge_write", "per-domain write"},
-		{"context_write", "per-domain write"},
-		{"memory_promote", "promote is scoped to memory and context"},
-		{"context_typed_write", "subject `typed` between prefix and verb"},
-		{"context_registry_list", "subject `registry`"},
-		{"context_namespace_register", "subject `namespace`"},
-		{"context_status_set", "subject `status`"},
-
-		// Not registered. These are the half that makes the list a rule and
-		// not a snapshot: a correct name for a tool that does not exist.
-		{"knowledge_typed_write", "write is per-domain, so any domain may carry it with any subject"},
-		{"context_ttl_set", "set with a subject the surface has never used"},
-		{"context_pin_list", "list with a subject the surface has never used"},
-		{"memory_session_promote", "promote with a subject, under an allowed prefix"},
-	}
-
-	for _, tc := range mustAccept {
+	for _, tc := range anchorMustAccept {
 		t.Run("accept/"+tc.name, func(t *testing.T) {
 			if err := mcpadapter.ValidateToolName(tc.name); err != nil {
 				t.Fatalf("%q should be accepted (%s), got: %v", tc.name, tc.why, err)
 			}
 		})
 	}
-
-	mustReject := []struct {
-		name string
-		why  string
-	}{
-		// Names this parent actually retired. Each one passing again would mean
-		// the vocabulary had drifted back to what it was built to fix.
-		{"views_evaluate", "no domain prefix at all — the CW-20260825-0011 rename target"},
-		{"context_head", "`head` is not an operation — the pre-CW-20260825-0010 spelling of tesseract_get"},
-		{"context_namespace_show", "`show` is not an operation; fetch-one is `get`"},
-		{"tesseract_lookup", "`lookup` is not an operation; ranked retrieval is `recall`"},
-		{"context_broker", "`broker` names a component, not an operation; the tool plans a fetch"},
-		{"context_audit", "a bare noun with no operation segment"},
-		{"context_session_snapshot", "`snapshot` was a one-off verb for what is a write"},
-
-		// Prefix-rule violations: the verb exists, the prefix may not carry it.
-		{"memory_get", "`get` is cross-domain, so it must be tesseract_get"},
-		{"knowledge_get", "`get` is cross-domain"},
-		{"memory_recall", "`recall` is cross-domain, so it must be tesseract_recall"},
-		{"memory_history", "`history` is cross-domain"},
-		{"tesseract_write", "`write` is per-domain; there is no cross-domain write"},
-		{"knowledge_promote", "`promote` is scoped to context and memory only"},
-		{"tesseract_list", "`list` is a context-domain registry op"},
-
-		// Malformed.
-		{"tesseract", "single segment — no verb"},
-		{"contextwrite", "no separator, so there is no prefix and no verb"},
-		{"plugin_write", "`plugin` is not one of the four prefixes"},
-		{"Context_Write", "segments must be lower-case"},
-	}
-
-	for _, tc := range mustReject {
+	for _, tc := range anchorMustReject {
 		t.Run("reject/"+tc.name, func(t *testing.T) {
 			if err := mcpadapter.ValidateToolName(tc.name); err == nil {
 				t.Fatalf("%q should be rejected (%s), but the vocabulary accepted it", tc.name, tc.why)
 			}
 		})
 	}
+}
+
+// anchorDigest is a sha256 over the NAMES in anchorMustAccept and
+// anchorMustReject, sorted, with the accept and reject halves tagged. The `why`
+// strings are excluded on purpose: improving one is a legitimate edit and should
+// not trip this.
+//
+// PROVENANCE — required, because a frozen value without one is a guess with a
+// checksum: from the outside, an anchor someone verified and an anchor someone
+// captured are indistinguishable, permanently.
+//
+//	All 52 names — 25 accept, 27 reject — were checked BY HAND, one at a time,
+//	against ToolVerbTable and ToolPrefixRule as they stand on branch
+//	wave3/0012-verb-vocabulary (CW-20260825-0012, branched from 2004638), on
+//	2026-08-25, during the review pass that added the seven context-domain
+//	verbs. For each accept the verb's Prefixes were read and confirmed to
+//	contain the name's prefix; for each reject the specific reason — unknown
+//	prefix, unknown verb, or verb-not-scoped-to-this-prefix — was identified
+//	and is recorded in that entry's `why`. The digest was then taken from the
+//	checked state. It was NOT captured from whatever the lists happened to hold.
+//
+// WHAT THIS EARNS, stated narrowly, because the obvious justification is the
+// wrong one. anchorMustReject is ALREADY self-protecting against a rename this
+// vocabulary motivates — the replacement conforms, so the reject case flips to a
+// failure, measured above. The digest earns its place elsewhere:
+//
+//   - anchorMustAccept, where rewriting a name to another conforming name
+//     passes silently because both sides of the assertion agree;
+//   - any edit to either list that this vocabulary does not motivate — a
+//     dropped case, a typo, a "tidy-up" that removes a duplicate-looking entry.
+const anchorDigest = "f14bd323cdff2441e595dc753017b2a2115618ea67bc2ef50363da22052ddaca"
+
+// TestAnchorListsAreFrozen fails when either literal list changes.
+func TestAnchorListsAreFrozen(t *testing.T) {
+	got := digestAnchorLists()
+	if got != anchorDigest {
+		t.Errorf("the anchor lists changed: digest %s, expected %s.\n"+
+			"    If a bulk rename edited this file, REVERT THE LITERALS rather than updating this constant — "+
+			"the retired names are the assertion, and a replacement name is one the vocabulary accepts.\n"+
+			"    If you deliberately added or removed a case, check the new list by hand against ToolVerbTable, "+
+			"then update both the constant and the provenance note above it.", got, anchorDigest)
+	}
+}
+
+func digestAnchorLists() string {
+	var lines []string
+	for _, tc := range anchorMustAccept {
+		lines = append(lines, "accept:"+tc.name)
+	}
+	for _, tc := range anchorMustReject {
+		lines = append(lines, "reject:"+tc.name)
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 // ── 3. The doc derives from the same definitions ───────────────────────

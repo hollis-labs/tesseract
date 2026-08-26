@@ -12,7 +12,10 @@ import (
 	"testing"
 )
 
-// The json.RawMessage construction-site guard.
+// The json.RawMessage conversion and declared-variable guard.
+//
+// Read "WHAT THIS GUARD COVERS, AND WHAT IT DOES NOT" below before relying on
+// a green run here: the covered set is three destination shapes, not all seven.
 //
 // THE INVARIANT
 //
@@ -34,22 +37,64 @@ import (
 // WHY SITES AND NOT SYNTAX. Grepping for "[:" finds today's spelling of the
 // defect and nothing else — a helper named head(), an append, a byte-buffer
 // truncation all read differently and all break the invariant the same way.
-// The construction sites of the type are a FINITE list, so this enumerates
-// them and then decides, per site, whether the value being constructed can be
-// shown to be a complete document.
+// Destinations of the type are a FINITE list, so this enumerates the ones it
+// covers and then decides, per site, whether the value being constructed can be
+// shown to be a complete document — rather than grepping for a spelling.
 //
 // THE RULE IS A WHITELIST, not a blacklist of bad shapes, because a blacklist
 // only knows the transformations someone already thought of. An operand shape
 // this file does not recognize FAILS and someone has to look at it. That is the
 // intended cost.
 //
-// STATED BOUNDARY — what this does NOT catch. A bare identifier or field
+// ════════════════════════════════════════════════════════════════════════
+// WHAT THIS GUARD COVERS, AND WHAT IT DOES NOT
+//
+// COVERED — three destination shapes, enumerated and then checked:
+//
+//	json.RawMessage(x)                 the explicit conversion
+//	var x json.RawMessage; x = expr    assignment to a declared variable
+//	json.Unmarshal(b, &x)              decoder fill of a declared variable
+//
+// NOT COVERED — four more destination shapes, all of them real:
+//
+//	writeRequest{Payload: payload[:n]}                  composite-literal field
+//	req.Payload = payload[:n]                           selector on the left
+//	func f() json.RawMessage { return payload[:n] }     return statement
+//	EmitWrite(..., payload[:n])                         json.RawMessage parameter
+//
+// THE MECHANISM, because it is the part a future reader needs: json.RawMessage's
+// underlying type is []byte, so Go requires NO CONVERSION to reach one. The
+// conversion rule above never fires on any of the four, and the assignment rule
+// needs an *ast.Ident on the left, which rules out the field cases. Nothing at
+// those destinations spells `json.RawMessage`, so an AST walk keyed on that
+// spelling cannot see them.
+//
+// THIS IS NOT THE DATAFLOW GAP BELOW, and conflating the two sends you looking
+// in the wrong place. No dataflow is involved in any of the four: the operand is
+// built right there at the site. The guard misses them for a purely syntactic
+// reason.
+//
+// THE POPULATION IS NOT EMPTY. internal/contextapi declares SEVEN
+// json.RawMessage struct fields, and it is the package writeJSON serves:
+//
+//	w.WriteHeader(code)
+//	_ = json.NewEncoder(w).Encode(value)
+//
+// The status is committed BEFORE the encode runs, so a fragment there yields a
+// 200 OK with a truncated body and no remaining opportunity to signal anything
+// — strictly worse than the toolJSON case, which at least fails before sending.
+//
+// OWNER: CW-20260826-0017, "the response path discards its serialization
+// error", covering both doors with header-ordering as acceptance. The
+// enumeration for these four shapes belongs beside that fix, not duplicated
+// here, because the ordering constraint shapes it.
+//
+// STATED BOUNDARY, second and separate — DATAFLOW. A bare identifier or field
 // selector is accepted as a whole-value pass-through, so a payload sliced into
-// a []byte variable several lines earlier and then converted here is invisible
-// to this guard. Closing that needs dataflow, not an AST walk. What it does
-// catch is every construction site whose operand is built at the site, which is
-// where the historical defect lived and where a re-introduction would most
-// naturally go.
+// a []byte variable several lines earlier and merely named here is invisible.
+// Closing that needs a type-and-flow analysis rather than an AST walk, and it is
+// out of scope for both tickets.
+// ════════════════════════════════════════════════════════════════════════
 
 // ── Scanned packages ───────────────────────────────────────────────────
 
@@ -84,10 +129,13 @@ type rawMessageSite struct {
 
 // ── The enumeration ────────────────────────────────────────────────────
 
-// rawMessageConstructionSites walks the scanned packages and returns every site
-// where a json.RawMessage VALUE is produced. Struct field declarations and
-// function parameters of that type are not sites: they declare where such a
-// value may live, not what goes into it.
+// rawMessageConstructionSites walks the scanned packages and returns the sites
+// covered by the three shapes listed at the top of this file — NOT every site
+// where a json.RawMessage value is produced. The four shapes it does not reach,
+// and why, are stated there; CW-20260826-0017 owns closing them.
+//
+// Struct field and parameter DECLARATIONS are not sites under any reading: they
+// say where such a value may live, not what goes into it.
 func rawMessageConstructionSites(t *testing.T) []rawMessageSite {
 	t.Helper()
 	root := moduleRoot(t)
@@ -238,13 +286,18 @@ func rawMessageOperandProblem(e ast.Expr) string {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-// TestRawMessageConstructionSitesHoldCompleteDocuments is the guard.
-func TestRawMessageConstructionSitesHoldCompleteDocuments(t *testing.T) {
+// TestRawMessageConversionsAndDeclaredVarsHoldCompleteDocuments is the guard.
+//
+// The name is the coverage claim and it is deliberately narrower than
+// "construction sites": it covers json.RawMessage CONVERSIONS and DECLARED
+// VARIABLES. Four other destination shapes are out of its reach — see the
+// header, and CW-20260826-0017.
+func TestRawMessageConversionsAndDeclaredVarsHoldCompleteDocuments(t *testing.T) {
 	sites := rawMessageConstructionSites(t)
 
 	// A zero would mean the walk broke, not that the packages are clean.
 	if len(sites) == 0 {
-		t.Fatal("enumerated zero json.RawMessage construction sites across " +
+		t.Fatal("enumerated zero json.RawMessage conversion or declared-variable sites across " +
 			strings.Join(rawMessageScannedPackages, " and ") +
 			" — the AST walk is wrong, so a clean run would mean nothing")
 	}
@@ -256,21 +309,22 @@ func TestRawMessageConstructionSitesHoldCompleteDocuments(t *testing.T) {
 	}
 }
 
-// TestRawMessageConstructionSitesAreEnumerated prints the finite list this
-// guard is built on, so a reviewer can see the sites rather than take the
-// count on faith, and fails if the enumeration collapses.
+// TestRawMessageConversionAndDeclaredVarSitesAreEnumerated prints the finite list
+// the guard above is built on, so a reviewer can see the sites rather than take
+// the count on faith, and fails if the enumeration collapses. It is the list for
+// the THREE covered shapes only.
 //
 // It asserts a FLOOR, not an exact count: an equality would have to be edited
 // on every legitimate new audit-emit call, and a number nobody can justify
 // gets bumped rather than read.
-func TestRawMessageConstructionSitesAreEnumerated(t *testing.T) {
+func TestRawMessageConversionAndDeclaredVarSitesAreEnumerated(t *testing.T) {
 	sites := rawMessageConstructionSites(t)
 	for _, s := range sites {
 		t.Logf("%s — %s", s.Pos, s.Form)
 	}
 	const floor = 20
 	if len(sites) < floor {
-		t.Fatalf("enumerated only %d json.RawMessage construction sites, below the floor of %d; "+
+		t.Fatalf("enumerated only %d json.RawMessage conversion and declared-variable sites, below the floor of %d; "+
 			"either a large amount of code was deleted or the walk stopped matching", len(sites), floor)
 	}
 }

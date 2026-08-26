@@ -64,17 +64,11 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 
 ## Tool naming
 
-A tool name is `<prefix>_[subject_]<verb>`. The prefix says which domain owns the
-tool; the verb says what the operation is; anything in between names what is
-operated on. One verb per operation, so an operation you know in one domain is
-guessable in another.
-
-The tables below are **generated** from `internal/mcpadapter/toolvocab.go`.
-`tests/parity/toolvocab_test.go` asserts every registered name matches them and
-that this section is still their rendering — edit the Go structure, not this
-block.
-
 <!-- BEGIN GENERATED: tool-naming -->
+A tool name is `<prefix>_[subject_]<verb>`. The prefix says which domain owns the tool; the verb says what the operation is; anything between them names what is operated on. One verb per operation, so an operation you know in one domain is guessable in another.
+
+This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/parity/toolvocab_test.go` asserts every registered name matches it and that this block is still its rendering — edit the Go structure, then run `go test ./tests/parity/ -run TestDocNamingSection -update-docs`.
+
 **Prefix rule.** `tesseract_` when the tool spans domains or serves the surface itself; `<domain>_` when it is domain-specific.
 
 | Prefix | Covers |
