@@ -682,10 +682,10 @@ CREATE TABLE IF NOT EXISTS pointer_verifications (
 		case 14:
 			// Decay baseline (CW-20260826-0001).
 			//
-			// memory_state.last_decayed_at answers "as of when is the stored
-			// activation current?". The decay pass computes elapsed from it and
-			// advances it in the same UPDATE that writes activation, so a pass
-			// can never re-apply time it has already applied. Before this
+			// memory_state.last_decayed_at records the instant up to which decay
+			// has been applied to a row. The decay pass computes elapsed from it
+			// and advances it in the same UPDATE that writes activation, so a
+			// pass can never re-apply time it has already applied. Before this
 			// column, elapsed was computed from last_accessed_at (else
 			// created_at) — a baseline the pass never moved — so every pass
 			// re-multiplied the already-decayed value over a growing interval

@@ -74,14 +74,30 @@ func (s *Store) applyActivationDecay(ctx context.Context) error {
 // instant written back as the new baseline, so no sliver of time can be
 // double-counted or lost between the read and the write.
 //
-// THE INVARIANT: activation and last_decayed_at move together, always, in one
-// UPDATE. A row's stored activation is exactly its value at last_decayed_at.
-// Elapsed is measured from that column and from nothing else — in particular
-// never from last_accessed_at, which belongs to reads (see activation.go).
+// THE INVARIANT: every writer of activation stamps last_decayed_at, in the same
+// UPDATE. Elapsed is measured from that column and from nothing else — in
+// particular never from last_accessed_at, which belongs to reads
+// (see activation.go). No interval is therefore ever applied twice.
 //
-// This is what makes the pass idempotent in the only sense that matters:
+// That is what makes the pass idempotent in the only sense that matters:
 // running it twice with no time passing computes elapsed ~0 the second time and
 // writes nothing, instead of re-applying an interval it has already applied.
+//
+// What the invariant deliberately does NOT say is that a row's stored
+// activation equals its value at last_decayed_at. Reinforcement breaks that,
+// and always has: reinforceMemoryIDs computes activation + k*(C - activation)
+// from the value current as of the OLD baseline, then stamps the new one, so
+// the decay owed between the two is discarded rather than applied first. A
+// year-old never-decayed row at 1.0 lands at 1.1 under a touch; decayed first
+// it would be 0.05 and land at 0.245.
+//
+// The size of that discard is the interval since the row's last pass, so in
+// normal hourly operation it is one hour of decay — about 0.2% — and during job
+// downtime it is unbounded. Fixing it means applying the owed decay inside the
+// reinforce UPDATE, which is a change to the reinforcement curve's inputs and
+// belongs with the equilibrium retune, not here. Stated rather than implied,
+// because a comment claiming the strong version would be inherited as ground
+// truth by the next reader and is false.
 func (s *Store) applyActivationDecayAt(ctx context.Context, now time.Time) error {
 	now = now.UTC()
 	updates, err := s.collectDecayUpdates(ctx, now)
@@ -127,11 +143,21 @@ type decayUpdate struct {
 // decayWriteThreshold is the smallest activation change worth a row write. It
 // is a write-churn guard, not a decay rule, and the distinction is load-bearing:
 // a row below it is skipped WITHOUT advancing last_decayed_at, so the elapsed
-// time keeps accruing and lands whole in a later pass. Advancing the baseline
-// on a skipped row would discard that time permanently, which at hourly passes
+// time keeps accruing until it is worth a write. Advancing the baseline on a
+// skipped row would discard that time permanently, which at hourly passes
 // silently converts the threshold into an activation floor near 0.485 —
 // 0.485 * (1 - exp(-1*ln2/336)) is almost exactly 0.001 — and no row below it
 // would ever decay again.
+//
+// One class of row never gets its deferred time back, and that is fine. Once a
+// row is within decayWriteThreshold of activationFloor, the move it still owes
+// is capped at activation-floor, which is under the threshold no matter how
+// much elapsed accrues — so it is skipped forever and last_decayed_at stays
+// put. A row at 0.0505 is still at 0.0505, with its original baseline, after
+// 5000 hourly passes. Harmless: the floor pins the value anyway, so the only
+// thing lost is the last 0.0005 of a descent that has already finished. It is
+// also visible in the live corpus, where near-floor rows read 0.0501-0.0509
+// rather than 0.05 exactly.
 const decayWriteThreshold = 0.001
 
 func (s *Store) collectDecayUpdates(ctx context.Context, now time.Time) ([]decayUpdate, error) {
@@ -155,10 +181,10 @@ func (s *Store) collectDecayUpdates(ctx context.Context, now time.Time) ([]decay
 		}
 
 		// Baseline: last_decayed_at if set, else created_at. NULL means the row
-		// has never been decayed, and created_at is then the honest answer to
-		// "as of when is this activation current" — it is the 1.0 insert
-		// default, established at insert. last_accessed_at is deliberately not
-		// consulted; decay must not read the reinforcement signal.
+		// has never been decayed, and created_at is then the right place to
+		// start — nothing has written activation since insert, so no decay is
+		// owed from before it. last_accessed_at is deliberately not consulted;
+		// decay must not read the reinforcement signal.
 		baseline := createdAt
 		if lastDecayedAt.Valid && lastDecayedAt.String != "" {
 			baseline = lastDecayedAt.String

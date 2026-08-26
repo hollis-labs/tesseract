@@ -355,7 +355,7 @@ func TestTouchPullsOutOfRangeRowsTowardCeiling(t *testing.T) {
 // A steady state is approached, not arrived at, so the band has to cover the
 // simulation's residual. One cycle contracts the remaining distance by D*(1-k),
 // so after c cycles the residual is (a* - 0.05) * (D*(1-k))^c. At the 2h gap
-// that factor is 0.8963, and 40 cycles leaves 2.7e-2 — enough to sit outside a
+// that factor is 0.896294, and 40 cycles leaves 2.3e-2 — enough to sit outside a
 // +/-0.02 band and be mistaken for a mechanism difference. equilibriumCycles is
 // set so the worst residual is ~1e-7:
 //

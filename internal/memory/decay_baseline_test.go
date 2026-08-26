@@ -147,9 +147,19 @@ func TestMigrationStampsExistingRowsRatherThanBackfilling(t *testing.T) {
 	}
 }
 
-// TestDecayIsOneApplicationOverElapsed is the headline acceptance property: a
-// memory unread for N hours holds activation equal to ONE application of the
-// half-life over N hours — asserted at four values of N, not one.
+// TestDecayIsOneApplicationOverElapsed states the acceptance property: a memory
+// unread for N hours holds activation equal to ONE application of the half-life
+// over N hours — asserted at four values of N, not one.
+//
+// Do not mutate decay and run only this test. Each case here is a SINGLE pass,
+// and a single pass is correct whether or not it advances the baseline: this
+// test survives removing the advance entirely. What it discriminates is the
+// half-life — change halfLifeHours and all four cases fail. The multi-pass
+// semantics live in TestDecayDoesNotCompoundAcrossHourlyPasses, and the
+// baseline advance itself is guarded there and by
+// TestDecayRepeatedWithNoTimePassingChangesNothing and
+// TestDecayBaselineSurvivesRestart. Those three are where a green run means
+// the mechanism is intact.
 func TestDecayIsOneApplicationOverElapsed(t *testing.T) {
 	cases := []struct {
 		name       string
