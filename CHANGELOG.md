@@ -8,6 +8,127 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+Recall becomes bounded, projectable and pageable; the lexical arm is reachable
+directly; the knowledge `kind` vocabulary closes; and activation gains the
+deliberate-read input it was always missing. Consumers pinning `v0.8.x` should
+read the breaking-changes section before bumping — **the default recall response
+shape changed**, and that one affects every caller whether or not it adopts a new
+knob.
+
+### Breaking changes
+
+- **`memory_recall` and `tesseract_lookup` now project results by default.**
+  `payload_mode` takes `keys`, `summary`, or `full`, and the default comes from
+  config (`read.payload_mode`), which itself defaults to **`summary`** — status,
+  tags, confidence and `payload.summary`. Previously every hit serialized in full,
+  including `payload.body` and the whole `State` struct; on the reference corpus a
+  default `limit=30` recall put 69,996 bytes on the wire, 40,449 of it payload
+  text. **Callers needing the prior byte-identical response must pass
+  `payload_mode=full`**, which skips projection entirely rather than
+  round-tripping through it. `keys` returns identity rows and doubles as the
+  browse/enumerate affordance.
+- **Recall results are snake_case.** `memory.RecallResult` carried no JSON tags, so
+  both tools served `{"Revision":…,"Score":…,"State":…}` — PascalCase, against
+  snake_case everywhere else in the API. Now `{revision, score, state}`.
+- **`score` is absent under `ranking=chronological`.** It previously carried a raw
+  `CreatedAt.UnixNano()`, which is not a score; ordering there is already carried
+  by array order plus `revision.created_at`. The chronological sort now reads the
+  timestamp directly instead of smuggling it through `score`.
+- **Recall, lookup and both history tools return a manifest alongside results** —
+  `{results_total, results_returned, bytes_returned, tokens_estimate, truncated,
+  truncation_reason, next_cursor}`. Every field is emitted unconditionally:
+  `truncated:false` is how a caller learns its result set is complete and
+  `next_cursor:null` is how it learns there is nothing left, so neither is
+  `omitempty`. Callers that parsed a bare results array must read through the
+  envelope.
+- **`payload_mode=full` caps `limit` at 100**, where `keys` and `summary` keep 500.
+  The clamp is never silent — it reports `truncation_reason: payload_mode_limit_cap`
+  and issues a cursor, so rows past it are reached by paging rather than by raising
+  `limit`.
+- **Result ordering is now a total order.** `fetchCandidates` issues no `ORDER BY`,
+  so tied rows previously came back in whatever order SQLite produced, and an
+  offset over a partial order silently skips one row and repeats another.
+  `revision_id` now breaks every tie, matching what relevance recall always did.
+  Callers depending on the previous (undefined) order of tied rows will see it
+  change.
+- **`knowledge_write` rejects an off-vocabulary `kind`.** The write path previously
+  enforced only `kind != ""`, so the vocabulary drifted. The set is now closed at
+  eleven values and the error names all of them, so a caller that guessed wrong
+  does not have to read the source. Off-vocabulary rows were normalized first by a
+  reviewed plan-then-apply migration, so enforcement cannot reject a value the
+  migration left behind.
+- **Go API: `memory.RecallResult.Score` is `*float64`** (was `float64`), as is
+  `synthesisSource.Score`. Cosine similarity is legitimately 0 or negative, and a
+  value type with `omitempty` drops those real scores.
+
+### Added
+
+- **`tesseract_touch`** — explicit activation reinforcement. An agent reports which
+  recalled memories actually shaped its turn, **after reasoning** rather than at
+  recall time; those receive the deliberate-read bump. This is a tool rather than a
+  flag on recall precisely because of that timing: a `touch: true` knob would
+  reinforce the ranker's own guesses, which recall correctly refuses to do. Recall
+  results are **unreinforced until touched**. Touch only what genuinely shaped the
+  turn — under-reporting is fine, over-reporting is worse than silence, because it
+  teaches the ranking that noise is signal. HTTP peer `POST /v1/memory/touch`.
+- **`search_mode` on `ranking=relevance`** — `hybrid` (default, unchanged: both arms
+  fused by RRF and weighted by the activation-style modifiers), `lexical` (the BM25
+  arm alone, in `bm25()` order, modifiers not applied), `semantic` (the cosine arm
+  alone). BM25 was fully built and indexed but reachable only through fusion, which
+  dilutes exactly the cases an agent most needs to look up exactly — a ticket ID, a
+  symbol, a namespace, an error string. Measured on the reference corpus for a
+  query appearing in exactly one revision: hybrid ranks it 3rd of 12, lexical
+  returns it alone at 1st.
+- **`budget_bytes` / `budget_tokens`, `cursor` / `next_cursor`, and `limit` on both
+  history tools.** A 500-result recall under `payload_mode=full` serializes to
+  1,559,859 bytes on the reference corpus — roughly 390K tokens, which no caller
+  can receive. A cursor carries a fingerprint of everything determining the
+  ordering, so resuming after a changed ranking, namespace set, `revision_scope`,
+  query, filter or reranker is a validation error rather than a plausible-looking
+  wrong page.
+- **`estimate_only`** — returns the envelope describing a read without the rows, so
+  an agent can size a result before spending its context window on it. The numbers
+  are an identity rather than a prediction: the query runs and the rows are
+  fetched, projected and measured exactly as they would be otherwise, and only
+  their serialization is skipped. `results` is omitted rather than emitted empty,
+  because an empty array is indistinguishable from "nothing matched" — the question
+  a pre-flight is asked.
+- **`similarity_min`** — an inclusive floor on cosine similarity between query and
+  result. Honored only where cosine is the ordering signal (`ranking=similarity`,
+  and `ranking=relevance` with `search_mode=semantic`) and **refused elsewhere
+  rather than ignored**, because silently dropping a knob hands back a
+  differently-filtered set under the name the caller asked for. Distinct from
+  `confidence_min`, which filters on the confidence the memory's author recorded.
+- **Pointer verification and a staleness surface for knowledge** — schema 13 adds an
+  append-only `pointer_verifications` table with outcomes `resolved`,
+  `unresolvable` and `unverifiable`, plus a `verify-pointers` command with
+  plan-then-apply semantics.
+- **`contextd migrate-knowledge-kinds`** — plan-then-apply normalization of off-vocabulary
+  knowledge `kind` values, with `--expect-rows` and `--expect-digest` binding the
+  apply to the reviewed plan (exit 3 on approval mismatch, exit 2 on an unmapped
+  kind).
+- **CI guard against tool-name drift** — shipped prose naming an unregistered tool
+  now fails the build.
+
+### Fixed
+
+- **FTS5 queries beginning or ending with an operator keyword no longer fail the
+  whole recall.** `AND memory`, `memory AND` and `NOT NULL constraint` were
+  `fts5: syntax error` on the hybrid path; they are now quoted into ordinary terms
+  and return rows. Infix operators keep their operator reading and are unchanged —
+  verified by a 3,030-query differential sweep.
+- **A `similarity_min` boundary claim that described a `>` floor where the code
+  implements `>=`**, which survived in a guard's failure message — where it would
+  have been read while forming a hypothesis about what broke.
+- **Two incorrect claims about activation ranking** in `recall-and-ranking` and the
+  `memory` skill, which stated that a heavily-touched memory cannot outrank a
+  freshly written one. `ranking=activation` multiplies the stored activation by
+  status, origin, confidence and recency weights, so that never held.
+- **A data race in the pointer-resolver test stub** that could take down the whole
+  `internal/memory` package under `go test`.
+- **A configured budget leaking into history's response shape.**
+- **A fractional `limit` now rejected the way both HTTP peers already did.**
+
 ## [0.8.0] — 2026-08-24
 
 Typed memory namespaces, an admin operations surface, and the XDG on-disk
