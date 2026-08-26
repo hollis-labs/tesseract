@@ -110,6 +110,47 @@ single new knob.
   unchanged per-arm — but a client that allowlists by *tool name* loses
   granularity, since a policy permitting unauthenticated `context_head` must now
   permit `tesseract_get`.
+- **Seventeen context-domain tools were merged into seven behind selector knobs.**
+  `context_view`+`views_evaluate` → **`context_view`** (`full_evaluation`);
+  `context_pack`+`context_packet` → **`context_pack`** (`shape`);
+  `context_broker_plan`+`context_broker_fetch` → **`context_plan`** (`execute`);
+  `context_bulk_ingest`+`context_chunked_ingest` → **`context_ingest`** (`mode`);
+  `context_status_promote`+`context_status_deprecate` → **`context_status_set`**
+  (`status`); `context_types_list`+`context_views_list`+`context_namespaces_list`+
+  `context_namespace_show` → **`context_registry_list`** (`kind`, `name`);
+  `context_promote_request`/`_approve`/`_apply` → **`context_promote`** (`stage`).
+  Every selector routes to different code, and **each arm refuses the other arm's
+  knobs** rather than ignoring them.
+- **Four more tools were renamed onto one verb vocabulary**: `context_audit` →
+  `context_audit_list`, `context_broker` → `context_plan`, `context_promote_list` →
+  `context_promotion_list`, `context_session_snapshot` → `context_session_write`.
+  Tool names now follow `<prefix>_[subject_]<verb>`, with `tesseract_*` for
+  cross-domain tools and `<domain>_*` for domain-specific ones, so a prefix carries
+  information rather than decoration. The rule and its two exemptions are published
+  in `docs/MCP_TOOLS.md`.
+- **`payload_mode` is retired on the packet surfaces; only `full` is still accepted**,
+  and `head_only` is replaced by **`payload_max_bytes`**. `head_only` did not
+  truncate — it cut the payload mid-JSON, which made the enclosing response fail to
+  serialize and returned an **empty result reported as success**. Under a binding
+  `payload_max_bytes` an item now carries **no `payload` key at all**; it carries
+  `payload_head` (a JSON string), `payload_truncated` and `payload_bytes`. **An
+  absent `payload` means capped, never empty.** Applies on MCP, `POST
+  /v1/context/packet`, and the CLI's `-payload-mode` / new `-payload-max-bytes`.
+- **Retired argument names are now refused rather than ignored.**
+  `context_status_set` rejects `to_status`, and `context_registry_list` rejects
+  `namespace` (use `name`). Previously these reached the handler and were dropped —
+  `to_status="canonical"` silently advanced the status by one step and reported
+  success. A silent behavior change is worse than an error, so both are now
+  `validation_error` with the replacement named.
+- **Several previously-silent argument mistakes are now `validation_error`**: a knob
+  belonging to the other arm of a merged tool; `include_payload` without
+  `full_evaluation`; `selector` together with `namespaces`; an absent or
+  unrecognized `stage`, `kind`, `shape` or `mode`; a negative `payload_max_bytes`.
+- **`context_status_promote(to_status="deprecated")` has no exact equivalent.**
+  `draft → deprecated` was a legal *promotion* and took the promotion path, emitting
+  a `status_promote` audit event. `context_status_set(status="deprecated")` takes the
+  deprecation path. Sixteen of the seventeen merged pairs are exactly equivalent;
+  this is the one value on the one pair that is not.
 
 #### The daemon binary is renamed — coordinate before upgrading
 
