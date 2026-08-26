@@ -117,7 +117,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:234",
+		Doc:     "docs/MCP_TOOLS.md:236",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +

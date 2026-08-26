@@ -9,6 +9,18 @@ STATIC_TOKEN="${STATIC_TOKEN:-local-dev-token}"
 root_dir="$(mktemp -d)"
 log_file="$(mktemp)"
 
+# go-apppaths has no single "one base for everything" knob, so the throwaway
+# root is imposed by pinning all four $XDG_*_HOME roots at it. Kept as a
+# per-invocation prefix rather than an `export` so it scopes to the daemon
+# processes only — exactly the scope the retired single-root env var had, and
+# not the `make contracts` / `make smoke` calls below. CW-20260517-0066.
+root_env=(
+  "XDG_DATA_HOME=$root_dir"
+  "XDG_STATE_HOME=$root_dir"
+  "XDG_CACHE_HOME=$root_dir"
+  "XDG_CONFIG_HOME=$root_dir"
+)
+
 cleanup() {
   if [[ -n "${pid:-}" ]]; then
     kill "$pid" >/dev/null 2>&1 || true
@@ -35,7 +47,7 @@ case "$AUTH_MODE" in
     smoke_args+=(TOKEN="$STATIC_TOKEN")
     ;;
   managed)
-    issue_out="$(CONTEXTD_ROOT="$root_dir" go run ./cmd/contextd context token issue --label e2e-local --ttl 1h --output json)"
+    issue_out="$(env "${root_env[@]}" go run ./cmd/tesseract context token issue --label e2e-local --ttl 1h --output json)"
     managed_token="$(printf '%s' "$issue_out" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
     if [[ -z "$managed_token" ]]; then
       echo "failed to issue managed token: $issue_out" >&2
@@ -50,7 +62,7 @@ case "$AUTH_MODE" in
     ;;
 esac
 
-CONTEXTD_ROOT="$root_dir" go run ./cmd/contextd "${serve_args[@]}" >"$log_file" 2>&1 &
+env "${root_env[@]}" go run ./cmd/tesseract "${serve_args[@]}" >"$log_file" 2>&1 &
 pid=$!
 sleep 1
 

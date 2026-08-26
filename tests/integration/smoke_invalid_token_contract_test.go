@@ -42,7 +42,7 @@ func TestSmokeInvalidTokenContractAgainstGolden(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	scriptPath := filepath.Join("..", "..", "scripts", "contextd-smoke.sh")
+	scriptPath := filepath.Join("..", "..", "scripts", "tesseract-smoke.sh")
 	cmd := exec.Command("bash", scriptPath,
 		"--base-url", srv.URL,
 		"--auth-mode", "static",

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "tesseract": {
-      "command": "contextd",
+      "command": "tesseract",
       "args": ["mcp", "--token", "<paste-token-here>"],
       "env": {
         "OPENAI_API_KEY": "<optional-for-embeddings>",

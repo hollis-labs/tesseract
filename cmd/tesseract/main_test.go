@@ -13,15 +13,14 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
-// hermeticLayout isolates contextd's go-apppaths resolution into a per-test
-// temp directory by pinning all four $XDG_*_HOME roots and clearing the
-// CONTEXTD_ROOT shim input. Without this, a run()/runServe-based test would
-// resolve the real ~/.local/state/tesseract/queue.db and collide with the
-// live daemon and the per-agent MCP servers. CW-20260517-0066.
+// hermeticLayout isolates the daemon's go-apppaths resolution into a per-test
+// temp directory by pinning all four $XDG_*_HOME roots. Without this, a
+// run()/runServe-based test would resolve the real
+// ~/.local/state/tesseract/queue.db and collide with the live daemon and the
+// per-agent MCP servers. CW-20260517-0066.
 func hermeticLayout(t *testing.T) paths.Layout {
 	t.Helper()
 	base := t.TempDir()
-	t.Setenv("CONTEXTD_ROOT", "")
 	t.Setenv("XDG_DATA_HOME", filepath.Join(base, "data"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(base, "state"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(base, "cache"))

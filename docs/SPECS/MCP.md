@@ -6,7 +6,7 @@ Status: **implemented** (commit `426691d`, sprint-post-mvp-mcp)
 
 ### Prerequisites
 
-- `contextd` binary built (`go build -o contextd ./cmd/contextd`)
+- `tesseract` binary built (`go build -o tesseract ./cmd/tesseract`)
 - A capability token with required scopes (see below)
 
 ### Minimal `.mcp.json`
@@ -15,11 +15,8 @@ Status: **implemented** (commit `426691d`, sprint-post-mvp-mcp)
 {
   "mcpServers": {
     "context": {
-      "command": "/path/to/contextd",
-      "args": ["mcp", "--token", "<your-token>"],
-      "env": {
-        "CONTEXTD_ROOT": "/Users/<you>/.context"
-      }
+      "command": "/path/to/tesseract",
+      "args": ["mcp", "--token", "<your-token>"]
     }
   }
 }
@@ -27,7 +24,7 @@ Status: **implemented** (commit `426691d`, sprint-post-mvp-mcp)
 
 The `--token` value must be a token created with:
 ```bash
-contextd context token create \
+tesseract context token create \
   --name my-agent \
   --scopes write,promote.request \
   --namespaces "app/my-agent/*" \

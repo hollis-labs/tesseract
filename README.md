@@ -12,10 +12,10 @@ It is designed for workflows where agents need a trustworthy persistence layer b
 
 ## Install
 
-Install the `contextd` binary with Go:
+Install the `tesseract` binary with Go:
 
 ```bash
-go install github.com/hollis-labs/tesseract/cmd/contextd@latest
+go install github.com/hollis-labs/tesseract/cmd/tesseract@latest
 ```
 
 If you are building from source:
@@ -23,7 +23,7 @@ If you are building from source:
 ```bash
 git clone https://github.com/hollis-labs/tesseract.git
 cd tesseract
-go build -o contextd ./cmd/contextd
+go build -o tesseract ./cmd/tesseract
 ```
 
 Use `make build` only if you want to rebuild the embedded web UI as part of the binary. A normal `go install` or `go build` path does not require Node.
@@ -33,7 +33,7 @@ Use `make build` only if you want to rebuild the embedded web UI as part of the 
 1. Inspect the paths Tesseract will use on your machine:
 
 ```bash
-contextd path
+tesseract path
 ```
 
 2. Create a config file at the reported `config-file` path. Start from one of:
@@ -53,19 +53,19 @@ Use [`env.example`](env.example) as a template.
 4. Start the daemon:
 
 ```bash
-contextd serve --addr :8089
+tesseract serve --addr :8089
 ```
 
 5. Write and read your first record:
 
 ```bash
-contextd context put \
+tesseract context put \
   --namespace app/demo/session \
   --key goal \
   --actor app:demo \
   --json '{"objective":"ship beta docs"}'
 
-contextd context get --namespace app/demo/session --key goal
+tesseract context get --namespace app/demo/session --key goal
 ```
 
 ## Provider Setup
@@ -104,7 +104,7 @@ synthesis:
 Tesseract can run as an MCP stdio server:
 
 ```bash
-contextd mcp --token <capability-token>
+tesseract mcp --token <capability-token>
 ```
 
 Sample Claude Code configuration is in [`examples/mcp.json`](examples/mcp.json).
@@ -119,14 +119,14 @@ Typical setup flow:
 ## Common Commands
 
 ```bash
-contextd serve --addr :8089
-contextd path
-contextd context put --namespace app/demo/session --key state --actor app:demo --json '{"status":"ok"}'
-contextd context get --namespace app/demo/session --key state
-contextd context history --namespace app/demo/session --key state
-contextd context token create --name demo --scopes write,promote.request --namespaces "app/demo/*"
-contextd context packet --namespace "app/demo/*" --budget-items 20 --budget-tokens 4000
-contextd backfill-embeddings
+tesseract serve --addr :8089
+tesseract path
+tesseract context put --namespace app/demo/session --key state --actor app:demo --json '{"status":"ok"}'
+tesseract context get --namespace app/demo/session --key state
+tesseract context history --namespace app/demo/session --key state
+tesseract context token create --name demo --scopes write,promote.request --namespaces "app/demo/*"
+tesseract context packet --namespace "app/demo/*" --budget-items 20 --budget-tokens 4000
+tesseract backfill-embeddings
 ```
 
 ## Documentation

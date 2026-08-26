@@ -24,15 +24,15 @@ Status: active draft
   - `{"code":"auth_required","message":"missing or invalid bearer token","details":null}`
 
 ### Managed token lifecycle (local admin path)
-- Issue token: `contextd context token issue --label admin --ttl 24h`
-- Rotate token: `contextd context token rotate --token <old-token> --label admin --ttl 24h`
-- Revoke token: `contextd context token revoke --token <token>`
-- List token metadata: `contextd context token list --output table`
+- Issue token: `tesseract context token issue --label admin --ttl 24h`
+- Rotate token: `tesseract context token rotate --token <old-token> --label admin --ttl 24h`
+- Revoke token: `tesseract context token revoke --token <token>`
+- List token metadata: `tesseract context token list --output table`
 - In managed mode, revoked/expired tokens are rejected for mutating API endpoints.
 
 Safe local handling:
 - Do not commit tokens into the repository.
-- Prefer exporting tokens into a local shell session (`export CONTEXTD_TOKEN=...`) or an untracked env file.
+- Prefer holding tokens in a local shell variable or an untracked env file and passing them with `--token`; no environment variable is consulted for the token.
 - Rotate tokens after local sharing events and revoke obsolete tokens promptly.
 
 Rotation checklist:
@@ -42,14 +42,14 @@ Rotation checklist:
 4. Revoke the old token.
 
 ## Service runner
-- Start API server (default `:8080`): `contextd serve`
-- Start with managed token auth: `contextd serve --managed-auth --addr :8080`
-- Start with legacy static token: `contextd serve --static-token <token> --addr :8080`
-- Enable local diagnostics endpoint: `contextd serve --metrics --addr :8080`
-- Enable structured request logging: `contextd serve --request-logs --addr :8080`
-- Request log redaction mode (default redacted): `contextd serve --request-logs --request-log-mode redacted --addr :8080`
-- Request log full query mode (local debugging only): `contextd serve --request-logs --request-log-mode full --addr :8080`
-- Configure graceful shutdown timeout: `contextd serve --shutdown-timeout 10s`
+- Start API server (default `:8089`, see `parseServeArgs` in `cmd/tesseract/main.go`): `tesseract serve`
+- Start with managed token auth: `tesseract serve --managed-auth --addr :8080`
+- Start with legacy static token: `tesseract serve --static-token <token> --addr :8080`
+- Enable local diagnostics endpoint: `tesseract serve --metrics --addr :8080`
+- Enable structured request logging: `tesseract serve --request-logs --addr :8080`
+- Request log redaction mode (default redacted): `tesseract serve --request-logs --request-log-mode redacted --addr :8080`
+- Request log full query mode (local debugging only): `tesseract serve --request-logs --request-log-mode full --addr :8080`
+- Configure graceful shutdown timeout: `tesseract serve --shutdown-timeout 10s`
 - Managed auth guard: server startup fails if no active token exists.
 - Metrics endpoint: `GET /v1/metrics` (available only when `--metrics` is enabled).
 - Service lifecycle: `SIGINT`/`SIGTERM` trigger graceful shutdown and deterministic shutdown logs.
@@ -59,32 +59,32 @@ Rotation checklist:
   - Avoid `full` mode when tokens/session IDs may appear in query strings.
 
 ## Namespace schema contract operations
-- Register namespace: `contextd context namespace register --namespace app/editor/session --owner-type app --owner-id editor`
-- Show namespace policy: `contextd context namespace show --namespace app/editor/session`
+- Register namespace: `tesseract context namespace register --namespace app/editor/session --owner-type app --owner-id editor`
+- Show namespace policy: `tesseract context namespace show --namespace app/editor/session`
 - Use `required_keys` policy to enforce top-level payload keys for writes/promotions.
 
 ### Policy/Promote Operator Quick Reference
 1. Register app namespace policy:
-   - `contextd context namespace register --namespace app/editor/session --owner-type app --owner-id editor`
+   - `tesseract context namespace register --namespace app/editor/session --owner-type app --owner-id editor`
 2. Write app candidate record:
-   - `contextd context put --client-id editor-ui --actor app:editor-ui --namespace app/editor/session --key summary --json '{"text":"candidate summary"}'`
+   - `tesseract context put --client-id editor-ui --actor app:editor-ui --namespace app/editor/session --key summary --json '{"text":"candidate summary"}'`
 3. Promote into protected user namespace:
-   - `contextd context promote --client-id user-shell --actor user --from-namespace app/editor/session --from-key summary --to-namespace user/profile --to-key summary`
+   - `tesseract context promote --client-id user-shell --actor user --from-namespace app/editor/session --from-key summary --to-namespace user/profile --to-key summary`
 4. Verify promotion via audit trail:
-   - `contextd context audit --limit 20 --namespace user/profile --event-type promote --output table`
+   - `tesseract context audit --limit 20 --namespace user/profile --event-type promote --output table`
 
 See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 
 ## Consistency operations
-- CLI scan report: `contextd context doctor --output json`
-- CLI head rebuild + report: `contextd context repair-heads --output table`
+- CLI scan report: `tesseract context doctor --output json`
+- CLI head rebuild + report: `tesseract context repair-heads --output table`
 - API scan endpoint: `GET /v1/context/consistency/scan`
 - API repair endpoint: `POST /v1/context/consistency/repair` (mutating auth rules apply)
 
 ## Audit operations
-- CLI audit query: `contextd context audit --limit 50 --output table`
-- CLI filtered audit query: `contextd context audit --limit 50 --namespace user/notes --event-type promote --output json`
-- CLI cursor query: `contextd context audit --cursor <next_cursor> --limit 50 --output json`
+- CLI audit query: `tesseract context audit --limit 50 --output table`
+- CLI filtered audit query: `tesseract context audit --limit 50 --namespace user/notes --event-type promote --output json`
+- CLI cursor query: `tesseract context audit --cursor <next_cursor> --limit 50 --output json`
 - API audit query: `GET /v1/context/audit?limit=50`
 - API filtered audit query: `GET /v1/context/audit?limit=50&event_type=write&namespace=app/editor/session`
 - Cursor pagination flow (fixture-aligned):
@@ -94,14 +94,14 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Expected response fields: `items`, `count`, `next_cursor`.
 
 ## Backup and restore
-- Export snapshot: `contextd context backup export --out /path/to/backup.json`
-- Verify snapshot integrity: `contextd context backup verify --in /path/to/backup.json`
-- Restore snapshot: `contextd context backup restore --in /path/to/backup.json`
+- Export snapshot: `tesseract context backup export --out /path/to/backup.json`
+- Verify snapshot integrity: `tesseract context backup verify --in /path/to/backup.json`
+- Restore snapshot: `tesseract context backup restore --in /path/to/backup.json`
 - Expected behavior: deterministic record/history parity and restored audit/token metadata.
 
 ## Readiness checks
-- CLI readiness report: `contextd context health --output table`
-- CLI readiness summary: `contextd context health --summary --output table`
+- CLI readiness report: `tesseract context health --output table`
+- CLI readiness summary: `tesseract context health --summary --output table`
 - API readiness report: `GET /v1/health/readiness`
 - Readiness includes storage-path status, schema version, consistency issue count, and status tier:
   - `healthy`: all core checks pass.
@@ -109,24 +109,24 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
   - `failing`: required storage path missing or critical readiness preconditions unmet.
 
 ## First-time bootstrap
-- Run deterministic setup: `contextd context bootstrap --default-app editor --output json`
+- Run deterministic setup: `tesseract context bootstrap --default-app editor --output json`
 - Command seeds baseline namespaces and returns readiness summary.
 - Re-running bootstrap is idempotent.
 
 ## Retention and compaction
 - Compact revisions + trim audit events:
-  - `contextd context compact --keep-revisions 5 --keep-audit 5000 --output table`
+  - `tesseract context compact --keep-revisions 5 --keep-audit 5000 --output table`
 - Compaction preserves latest heads per `(namespace,key)` and rebuilds head pointers deterministically.
 - Suggested local baseline (see storage spec proposal):
   - `--keep-revisions 20`
   - `--keep-audit 10000`
 - Operational profile examples:
   - `light` (minimal local footprint):
-    - `contextd context compact --keep-revisions 5 --keep-audit 2000 --output table`
+    - `tesseract context compact --keep-revisions 5 --keep-audit 2000 --output table`
   - `standard` (recommended baseline):
-    - `contextd context compact --keep-revisions 20 --keep-audit 10000 --output table`
+    - `tesseract context compact --keep-revisions 20 --keep-audit 10000 --output table`
   - `high-trace` (extended debugging/audit retention):
-    - `contextd context compact --keep-revisions 50 --keep-audit 50000 --output table`
+    - `tesseract context compact --keep-revisions 50 --keep-audit 50000 --output table`
 - Baseline rationale and tradeoffs: `docs/SPECS/STORAGE.md#retention-baseline-proposal-local-first-default`.
 
 ## API contract fixtures
@@ -211,12 +211,12 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Script-based suites: see `docs/CONTRACT_FIXTURES.md#script-based-suites`
 
 ## Contract helper CLI
-- List suites: `contextd context contract list --output table`
-- Show suite command(s) without execution: `contextd context contract run --suite api --output json`
-- Execute suite command(s): `contextd context contract run --suite api --execute --output table`
+- List suites: `tesseract context contract list --output table`
+- Show suite command(s) without execution: `tesseract context contract run --suite api --output json`
+- Execute suite command(s): `tesseract context contract run --suite api --execute --output table`
 - Default output behavior:
-  - `contextd context contract list` defaults to `--output json`.
-  - `contextd context contract run --suite <name>` defaults to `--output json` with `executed=false` unless `--execute` is set.
+  - `tesseract context contract list` defaults to `--output json`.
+  - `tesseract context contract run --suite <name>` defaults to `--output json` with `executed=false` unless `--execute` is set.
   - Default-output contract suites:
     - `go test ./tests/integration -run ContractListDefaultOutputContract`
     - `go test ./tests/integration -run ContractRunDefaultOutputContract`
@@ -288,20 +288,20 @@ Parity pack:
   3. Match `<id>` in request logs and `/v1/metrics` `recent_request_ids`.
 
 ## Service smoke checks
-- Script: `scripts/contextd-smoke.sh`
+- Script: `scripts/tesseract-smoke.sh`
 - No-auth server:
-  - `contextd serve --addr 127.0.0.1:8080`
-  - `scripts/contextd-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode none`
+  - `tesseract serve --addr 127.0.0.1:8080`
+  - `scripts/tesseract-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode none`
 - Static auth server:
-  - `contextd serve --static-token local-dev-token --addr 127.0.0.1:8080`
-  - `scripts/contextd-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode static --token local-dev-token`
+  - `tesseract serve --static-token local-dev-token --addr 127.0.0.1:8080`
+  - `scripts/tesseract-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode static --token local-dev-token`
 - Managed auth server:
-  - `contextd context token issue --label local --ttl 24h --output table`
-  - `contextd serve --managed-auth --addr 127.0.0.1:8080 --metrics`
-  - `scripts/contextd-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode managed --token <issued-token> --metrics`
+  - `tesseract context token issue --label local --ttl 24h --output table`
+  - `tesseract serve --managed-auth --addr 127.0.0.1:8080 --metrics`
+  - `scripts/tesseract-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode managed --token <issued-token> --metrics`
 - In `static`/`managed` mode, smoke pre-checks mutating auth guard by asserting unauthenticated writes return `401`.
 - Optional invalid-token negative check:
-  - `scripts/contextd-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode managed --token <valid-token> --assert-invalid-token`
+  - `scripts/tesseract-smoke.sh --base-url http://127.0.0.1:8080 --auth-mode managed --token <valid-token> --assert-invalid-token`
 
 ## Make targets
 - Run all tests: `make test`
@@ -320,13 +320,15 @@ Parity pack:
   - `make e2e-managed`
 - Quick validation sequence:
   1. `make contracts`
-  2. Start `contextd serve ...`
+  2. Start `tesseract serve ...`
   3. `make smoke BASE_URL=http://127.0.0.1:8080 TOKEN=<token>`
 
 ## Embedding smoke test (`cmd/smoke`)
 
 A one-shot program that exercises the full embedding pipeline against the
-live `~/.tesseract` store: opens `tesseract.Open` with an OpenAI embedder and a
+live store. It calls `config.ResolveLayout()`, so it targets the same XDG
+locations as the daemon — `tesseract path` prints them. It opens
+`tesseract.Open` with an OpenAI embedder and a
 SQLite-backed queue, writes a memory revision, waits for the queue worker
 to populate `embedding_model`/`embedding_vector`, then runs a
 `RankingSimilarity` recall to confirm end-to-end correctness.
@@ -348,7 +350,7 @@ Notes:
 - Writes into `user/chrispian/project/tesseract/memory`. Clean up test
   revisions periodically or change the namespace/key in the source.
 - Opens the same `context.db` and `queue.db` files as a running daemon.
-  Running alongside `contextd serve` is fine for reads, but avoid concurrent
+  Running alongside `tesseract serve` is fine for reads, but avoid concurrent
   writers while using the smoke helper.
 - Source: `cmd/smoke/main.go`.
 

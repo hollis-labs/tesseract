@@ -10,14 +10,13 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 )
 
-// runPath implements the `contextd path` subcommand. It prints Tesseract's
+// runPath implements the `tesseract path` subcommand. It prints Tesseract's
 // resolved on-disk layout — the go-apppaths roots, the active workspace, and
-// the main database — plus the contextd-derived extras (config.yaml, the
+// the main database — plus the daemon-derived extras (config.yaml, the
 // records/ file tree, and queue.db). It is the introspection surface the
 // go-apppaths cutover uses to confirm where the daemon reads and writes.
 //
-// Resolution honors every override the running daemon would see: the
-// CONTEXTD_ROOT deprecation shim (applied by run() before dispatch),
+// Resolution honors every override the running daemon would see:
 // TESSERACT_DB_PATH, TESSERACT_WORKSPACE, and the $XDG_*_HOME vars. It uses
 // paths.WithoutMaterialize() so introspection never creates directories.
 func runPath(stdout, stderr *os.File) int {

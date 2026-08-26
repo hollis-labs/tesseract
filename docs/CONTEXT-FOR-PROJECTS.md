@@ -8,15 +8,14 @@ workflow guidance.
 
 ## Setup checklist
 
-1. **Run `contextd`** (or confirm it's already running)
+1. **Run `tesseract`** (or confirm it's already running)
    ```bash
-   export CONTEXTD_ROOT="$HOME/.context"
-   contextd serve &
+   tesseract serve &
    ```
 
 2. **Create a token** with the scopes your agent needs
    ```bash
-   contextd context token create \
+   tesseract context token create \
      --name <project-agent-name> \
      --scopes write,promote.request \
      --namespaces "app/<project-agent-name>/*" \
@@ -28,11 +27,8 @@ workflow guidance.
    {
      "mcpServers": {
        "context": {
-         "command": "/usr/local/bin/contextd",
-         "args": ["mcp", "--token", "<paste-token-here>"],
-         "env": {
-           "CONTEXTD_ROOT": "/Users/<you>/.context"
-         }
+         "command": "/usr/local/bin/tesseract",
+         "args": ["mcp", "--token", "<paste-token-here>"]
        }
      }
    }
@@ -135,15 +131,15 @@ to infer usage from the tool descriptions alone.
 
 ## Multiple agents on the same store
 
-Different agents can share one `contextd` instance. Give each agent a distinct
+Different agents can share one `tesseract` instance. Give each agent a distinct
 namespace prefix and a token scoped to that prefix:
 
 ```bash
-contextd context token create --name agent-review \
+tesseract context token create --name agent-review \
   --scopes write,promote.request \
   --namespaces "app/agent-review/*"
 
-contextd context token create --name agent-docs \
+tesseract context token create --name agent-docs \
   --scopes write,promote.request \
   --namespaces "app/agent-docs/*"
 ```

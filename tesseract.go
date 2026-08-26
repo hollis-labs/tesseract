@@ -29,7 +29,7 @@ type Config struct {
 	// RecordsDir, when set, is the explicit JSON record tree, overriding
 	// RootDir/data/records.
 	//
-	// These let a go-apppaths-resolved caller (cmd/contextd, cmd/smoke) point
+	// These let a go-apppaths-resolved caller (cmd/tesseract, cmd/smoke) point
 	// the library at the XDG layout without changing default behavior for
 	// RootDir-only consumers. Added for the go-apppaths migration
 	// (CW-20260517-0066).

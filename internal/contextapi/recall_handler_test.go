@@ -12,7 +12,7 @@ import (
 )
 
 // newRecallServer builds a test server with both memory and knowledge stores
-// wired, matching production wiring in cmd/contextd.
+// wired, matching production wiring in cmd/tesseract.
 func newRecallServer(t *testing.T) *Server {
 	t.Helper()
 	srv := newMemoryTestServer(t)
