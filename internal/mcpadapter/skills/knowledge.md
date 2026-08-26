@@ -140,7 +140,7 @@ Use `["unresolvable"]` for entries whose pointer is confirmed gone — those nee
 
 ### Recording verification
 
-Verification is a **CLI operation**, never part of a write. `contextd verify-pointers` resolves pointers and appends what it observed to a verification log keyed by revision; it is dry-run by default and opens the store read-only unless `--apply` is passed. Network schemes are opt-in via `--schemes`.
+Verification is a **CLI operation**, never part of a write. `tesseract verify-pointers` resolves pointers and appends what it observed to a verification log keyed by revision; it is dry-run by default and opens the store read-only unless `--apply` is passed. Network schemes are opt-in via `--schemes`.
 
 The authored revision is never rewritten by this: `pointer_resolved_at` stays the author's write-time assertion, and the observation log is the authority for what actually resolved.
 

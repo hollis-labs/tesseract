@@ -19,7 +19,7 @@ const AppName = "tesseract"
 // operational data move in the cutover runbook, not something the path lib
 // can do — see CW-20260517-0066.
 //
-// Callers that only introspect (the `contextd path` subcommand) pass
+// Callers that only introspect (the `tesseract path` subcommand) pass
 // paths.WithoutMaterialize() so resolution does not create directories.
 func ResolveLayout(extra ...paths.Option) (paths.Layout, error) {
 	return paths.Resolve(AppName, extra...)

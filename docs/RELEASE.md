@@ -1,6 +1,6 @@
 # Release procedure
 
-Tesseract ships as a Go module and a `contextd` binary. The release procedure below keeps the git tag, `CHANGELOG.md`, and MCP-advertised version in lockstep.
+Tesseract ships as a Go module and a `tesseract` binary. The release procedure below keeps the git tag, `CHANGELOG.md`, and MCP-advertised version in lockstep.
 
 ## Versioning
 
@@ -44,7 +44,7 @@ The release notes pull straight from `CHANGELOG.md`. No duplication.
 Consumers of Tesseract should:
 
 - Bump the `github.com/hollis-labs/tesseract` dependency in their `go.mod` to the new tag.
-- Rebuild or reinstall `contextd` if they ship the standalone binary.
+- Rebuild or reinstall `tesseract` if they ship the standalone binary.
 - Re-read `CHANGELOG.md` for new MCP tool IDs, HTTP paths, and config changes.
 
-Hot-reloading without a `contextd` rebuild is not supported — the MCP stdio server and the HTTP server share one binary, and any new tool or route is compiled in.
+Hot-reloading without a `tesseract` rebuild is not supported — the MCP stdio server and the HTTP server share one binary, and any new tool or route is compiled in.

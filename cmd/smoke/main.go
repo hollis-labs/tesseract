@@ -22,7 +22,7 @@ func main() {
 	ctx := context.Background()
 
 	// Resolve the go-apppaths layout so the smoke harness targets the same
-	// XDG locations as the contextd daemon (CW-20260517-0066).
+	// XDG locations as the tesseract daemon (CW-20260517-0066).
 	layout, err := config.ResolveLayout()
 	if err != nil {
 		log.Fatalf("resolve layout: %v", err)

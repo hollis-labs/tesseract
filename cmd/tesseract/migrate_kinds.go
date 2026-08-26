@@ -87,7 +87,7 @@ func runMigrateKnowledgeKinds(ctx context.Context, defaultDB string, args []stri
 	if !*apply {
 		if !*jsonOut {
 			fmt.Fprintf(stdout, "\n(dry-run; nothing written — the database was opened read-only)\n")
-			fmt.Fprintf(stdout, "To apply exactly this plan:\n  contextd migrate-knowledge-kinds --db %s --apply --expect-rows %d --expect-digest %s\n",
+			fmt.Fprintf(stdout, "To apply exactly this plan:\n  tesseract migrate-knowledge-kinds --db %s --apply --expect-rows %d --expect-digest %s\n",
 				*dbPath, len(plan.Rows), plan.Digest())
 		}
 		return 0

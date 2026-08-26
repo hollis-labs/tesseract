@@ -13,7 +13,7 @@ usage() {
   cat <<USAGE
 Usage: $(basename "$0") [--base-url URL] [--token TOKEN] [--metrics] [--auth-mode MODE] [--assert-auth-guard] [--assert-invalid-token] [--invalid-token TOKEN]
 
-Checks readiness, write, head, history, view routes against a running contextd service.
+Checks readiness, write, head, history, view routes against a running tesseract service.
 Use --token for static or managed auth modes on mutating routes.
 USAGE
 }
@@ -91,7 +91,7 @@ curl_json() {
   local out
   local code
   local body_file
-  body_file="$(mktemp /tmp/contextd-smoke-body.XXXXXX)"
+  body_file="$(mktemp /tmp/tesseract-smoke-body.XXXXXX)"
 
   if [[ -n "$data" ]]; then
     if ! out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" -H "Content-Type: application/json" "${AUTH_ARGS[@]}" "$@" --data "$data"); then
@@ -125,7 +125,7 @@ curl_expect_status_noauth() {
   local expected="$4"
   local url="${BASE_URL}${path}"
   local body_file
-  body_file="$(mktemp /tmp/contextd-smoke-body.XXXXXX)"
+  body_file="$(mktemp /tmp/tesseract-smoke-body.XXXXXX)"
   local out
   if [[ -n "$data" ]]; then
     out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" -H "Content-Type: application/json" --data "$data" || true)
@@ -148,7 +148,7 @@ curl_expect_status_with_token() {
   local expected="$5"
   local url="${BASE_URL}${path}"
   local body_file
-  body_file="$(mktemp /tmp/contextd-smoke-body.XXXXXX)"
+  body_file="$(mktemp /tmp/tesseract-smoke-body.XXXXXX)"
   local out
   if [[ -n "$data" ]]; then
     out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" -H "Content-Type: application/json" -H "Authorization: Bearer $token" --data "$data" || true)

@@ -6,13 +6,13 @@ This note curates pivot-aligned CLI examples. Canonical command contracts remain
 
 ## Namespace ownership setup
 ```bash
-contextd context namespace register --namespace app/editor/session --owner-type app --owner-id editor
-contextd context namespace register --namespace user/profile --owner-type user --owner-id chris
+tesseract context namespace register --namespace app/editor/session --owner-type app --owner-id editor
+tesseract context namespace register --namespace user/profile --owner-type user --owner-id chris
 ```
 
 ## App write flow
 ```bash
-contextd context put \
+tesseract context put \
   --client-id editor-ui \
   --actor app:editor-ui \
   --namespace app/editor/session \
@@ -22,7 +22,7 @@ contextd context put \
 
 ## Deterministic view selector flow
 ```bash
-contextd context view \
+tesseract context view \
   --selector '{"namespaces":["app/editor/*","user/*"],"keys":["goal","summary"],"revision_scope":"head","order":["namespace","key","revision"]}' \
   --limit 50 \
   --include-payload \
@@ -31,7 +31,7 @@ contextd context view \
 
 ## User promotion flow into `user/*`
 ```bash
-contextd context promote \
+tesseract context promote \
   --client-id user-shell \
   --actor user \
   --from-namespace app/editor/session \
@@ -42,7 +42,7 @@ contextd context promote \
 
 ## Inspect promoted head
 ```bash
-contextd context get --namespace user/profile --key summary --output json
+tesseract context get --namespace user/profile --key summary --output json
 ```
 
 ## Canonical references

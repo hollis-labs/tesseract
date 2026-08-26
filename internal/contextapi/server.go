@@ -126,12 +126,12 @@ type Server struct {
 	// MemoryStore backs the /v1/memory/* and /v1/knowledge/* routes. When
 	// nil, those routes respond with 503 service_unavailable.
 	MemoryStore *memory.Store
-	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/contextd to
+	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/tesseract to
 	// knowledge.New(MemoryStore).
 	KnowledgeStore *knowledge.Store
 	// SynthesisProvider is the LLM Provider used by /v1/synthesis/ask.
 	// When nil, the synthesis route returns 503 service_unavailable. Wired by
-	// cmd/contextd from config.Synthesis settings.
+	// cmd/tesseract from config.Synthesis settings.
 	SynthesisProvider llmcontracts.Provider
 	// SynthesisConfig carries the model id, system prompt, max output tokens,
 	// and temperature used for synthesis calls. Honoured only when

@@ -606,7 +606,7 @@ Response:
 Expose lightweight runtime request counters and latency aggregates.
 
 Behavior:
-- Endpoint is enabled only when service starts with metrics flag (`contextd serve --metrics`).
+- Endpoint is enabled only when service starts with metrics flag (`tesseract serve --metrics`).
 - When disabled, endpoint returns `404`.
 
 Response:

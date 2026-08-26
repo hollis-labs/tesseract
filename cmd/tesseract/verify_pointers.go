@@ -98,7 +98,7 @@ func runVerifyPointers(ctx context.Context, defaultDB string, args []string, std
 	} else if missing {
 		fmt.Fprintf(stderr, "error: %s has no pointer_verifications table.\n"+
 			"  It is created by schema migration 13, which runs when the store is opened by\n"+
-			"  `contextd serve` or `contextd mcp`. This command opens the database directly and\n"+
+			"  `tesseract serve` or `tesseract mcp`. This command opens the database directly and\n"+
 			"  never migrates. Open the store once with a migrating command, then re-run.\n", *dbPath)
 		return 1
 	}
@@ -147,7 +147,7 @@ func runVerifyPointers(ctx context.Context, defaultDB string, args []string, std
 	if !*apply {
 		if !*jsonOut {
 			fmt.Fprintf(stdout, "\n(dry-run; nothing written — the database was opened read-only)\n")
-			fmt.Fprintf(stdout, "To record exactly this plan:\n  contextd verify-pointers --db %s --scope %s --schemes %s --apply --expect-rows %d --expect-digest %s\n",
+			fmt.Fprintf(stdout, "To record exactly this plan:\n  tesseract verify-pointers --db %s --scope %s --schemes %s --apply --expect-rows %d --expect-digest %s\n",
 				*dbPath, plan.Scope, strings.Join(plan.Schemes, ","), len(plan.Rows), plan.Digest())
 			fmt.Fprintf(stdout, "\nNote: --expect-digest binds the apply to these exact observations. It is right for a\n"+
 				"reviewed run and wrong for an unattended one — the world moves, and a host that came\n"+
