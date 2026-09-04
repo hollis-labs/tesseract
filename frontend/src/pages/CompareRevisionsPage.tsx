@@ -1,3 +1,4 @@
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle } from "@hollis-labs/sysop-ui";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getHistory } from "../api/client";
@@ -12,7 +13,7 @@ interface Props {
   onBack: () => void;
 }
 
-type DiffLine = { type: "same" | "added" | "removed"; text: string };
+type DiffLine = { id: string; type: "same" | "added" | "removed"; text: string };
 
 export function CompareRevisionsPage({
   namespace,
@@ -23,210 +24,180 @@ export function CompareRevisionsPage({
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recA, setRecA] = useState<Record | null>(null);
-  const [recB, setRecB] = useState<Record | null>(null);
+  const [recordA, setRecordA] = useState<Record | null>(null);
+  const [recordB, setRecordB] = useState<Record | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     getHistory(namespace, recordKey, 200)
-      .then((res) => {
-        const items = res.items ?? [];
-        const a = items.find((r) => r.revision === revisionA) ?? null;
-        const b = items.find((r) => r.revision === revisionB) ?? null;
-        setRecA(a);
-        setRecB(b);
-        if (!a || !b) setError("One or both revisions not found");
+      .then((response) => {
+        const items = response.items ?? [];
+        const first = items.find((record) => record.revision === revisionA) ?? null;
+        const second = items.find((record) => record.revision === revisionB) ?? null;
+        setRecordA(first);
+        setRecordB(second);
+        if (!first || !second) setError("One or both revisions were not found.");
       })
-      .catch((err) => setError(err.message))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setLoading(false));
   }, [namespace, recordKey, revisionA, revisionB]);
 
   const diffLines =
-    recA && recB
-      ? computeDiff(JSON.stringify(recA.payload, null, 2), JSON.stringify(recB.payload, null, 2))
+    recordA && recordB
+      ? computeDiff(
+          JSON.stringify(recordA.payload, null, 2),
+          JSON.stringify(recordB.payload, null, 2),
+        )
       : [];
 
   return (
-    <div>
-      <div className="breadcrumbs">
-        <button onClick={onBack}>
-          <ArrowLeft size={12} /> History
-        </button>
-        <span style={{ color: "rgb(var(--muted))" }}>/</span>
+    <div className="min-h-full bg-bg text-text">
+      <nav
+        className="flex items-center gap-2 border-b border-border-soft px-4 py-2 text-xs text-text-subtle"
+        aria-label="Breadcrumb"
+      >
+        <Button type="button" variant="ghost" size="xs" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" />
+          History
+        </Button>
+        <span aria-hidden="true">/</span>
         <span>
-          Compare r{revisionA} ↔ r{revisionB}
+          Compare r{revisionA} and r{revisionB}
         </span>
-      </div>
+      </nav>
 
-      <div className="page-header">
-        <h2 className="page-title">
-          Compare: r{revisionA} ↔ r{revisionB}
+      <section className="border-b border-border-strong px-4 py-4">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Compare revisions r{revisionA} and r{revisionB}
         </h2>
+        <p className="mt-1 break-all font-mono text-xs text-text-subtle">
+          {namespace} / {recordKey}
+        </p>
+      </section>
+
+      <div className="space-y-4 p-4">
+        {error ? (
+          <Callout tone="danger" title="Comparison unavailable">
+            {error}
+          </Callout>
+        ) : null}
+
+        {loading ? (
+          <div className="flex justify-center py-12 text-text-subtle">
+            <Spinner size={20} />
+          </div>
+        ) : null}
+
+        {!loading && recordA && recordB ? (
+          <>
+            <section className="grid gap-3 sm:grid-cols-2" aria-label="Revision metadata">
+              <RevisionCard label={`r${revisionA}`} record={recordA} />
+              <RevisionCard label={`r${revisionB}`} record={recordB} />
+            </section>
+
+            <section aria-labelledby="payload-diff-title">
+              <h3 id="payload-diff-title" className="mb-2 text-sm font-medium">
+                Payload diff
+              </h3>
+              <Card size="sm" className="max-h-[500px] overflow-auto">
+                <CardContent className="p-0">
+                  {diffLines.length > 0 ? (
+                    <pre className="m-0 py-3 font-mono text-xs leading-6">
+                      {diffLines.map((line) => (
+                        <span
+                          key={line.id}
+                          className={
+                            line.type === "added"
+                              ? "block bg-status-done/10 px-3 text-status-done"
+                              : line.type === "removed"
+                                ? "block bg-status-blocked/10 px-3 text-status-blocked"
+                                : "block px-3 text-text-soft"
+                          }
+                        >
+                          <span className="mr-2 inline-block w-3 select-none" aria-hidden="true">
+                            {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
+                          </span>
+                          {line.text}
+                          {"\n"}
+                        </span>
+                      ))}
+                    </pre>
+                  ) : (
+                    <p className="px-4 py-8 text-center text-sm text-text-subtle">
+                      No differences in payload
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          </>
+        ) : null}
       </div>
-
-      <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", marginBottom: "0.75rem" }}>
-        {namespace} / {recordKey}
-      </div>
-
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
-        >
-          {error}
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ padding: "2rem", textAlign: "center" }}>
-          <Spinner size={20} />
-        </div>
-      )}
-
-      {!loading && recA && recB && (
-        <>
-          {/* Revision metadata comparison */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "0.75rem",
-              marginBottom: "1rem",
-            }}
-          >
-            <RevisionCard label={`r${revisionA}`} record={recA} />
-            <RevisionCard label={`r${revisionB}`} record={recB} />
-          </div>
-
-          {/* Diff view */}
-          <div className="hud-label" style={{ marginBottom: "0.4rem" }}>
-            Payload Diff
-          </div>
-          <div className="hud-panel" style={{ padding: 0, overflow: "auto", maxHeight: "500px" }}>
-            <pre
-              style={{
-                margin: 0,
-                padding: "0.75rem",
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.8rem",
-                lineHeight: 1.6,
-              }}
-            >
-              {diffLines.map((line, i) => (
-                <div
-                  key={i}
-                  className={
-                    line.type === "added"
-                      ? "diff-added"
-                      : line.type === "removed"
-                        ? "diff-removed"
-                        : ""
-                  }
-                  style={{ padding: "0 0.25rem" }}
-                >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "1.5em",
-                      color:
-                        line.type === "added"
-                          ? "rgb(var(--ok))"
-                          : line.type === "removed"
-                            ? "rgb(var(--danger))"
-                            : "rgb(var(--muted))",
-                      userSelect: "none",
-                    }}
-                  >
-                    {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
-                  </span>
-                  {line.text}
-                </div>
-              ))}
-              {diffLines.length === 0 && (
-                <span style={{ color: "rgb(var(--muted))" }}>No differences in payload</span>
-              )}
-            </pre>
-          </div>
-        </>
-      )}
     </div>
   );
 }
 
 function RevisionCard({ label, record }: { label: string; record: Record }) {
   return (
-    <div className="stat-card">
-      <div
-        style={{
-          fontSize: "0.9rem",
-          fontWeight: 600,
-          color: "rgb(var(--primary))",
-          marginBottom: "0.5rem",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", fontSize: "0.8rem" }}>
-        <Row label="Actor" value={record.actor} />
-        <Row label="Checksum" value={record.checksum?.slice(0, 16) + "..."} />
-        <Row label="Created" value={new Date(record.created_at).toLocaleString()} />
-      </div>
-    </div>
+    <Card size="sm">
+      <CardHeader className="border-b border-border-strong">
+        <CardTitle className="font-mono text-status-doing">{label}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <dl className="space-y-2 text-xs">
+          <Row label="Actor" value={record.actor} />
+          <Row label="Checksum" value={`${record.checksum?.slice(0, 16)}...`} mono />
+          <Row label="Created" value={new Date(record.created_at).toLocaleString()} />
+        </dl>
+      </CardContent>
+    </Card>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div style={{ display: "flex", gap: "0.5rem" }}>
-      <span style={{ color: "rgb(var(--muted))", minWidth: 70 }}>{label}</span>
-      <span style={{ color: "rgb(var(--text))" }}>{value}</span>
+    <div className="grid grid-cols-[5rem_1fr] gap-3">
+      <dt className="text-text-subtle">{label}</dt>
+      <dd className={mono ? "break-all font-mono text-text-soft" : "text-text-soft"}>{value}</dd>
     </div>
   );
 }
 
-// Simple line-based diff of two JSON strings
 function computeDiff(textA: string, textB: string): DiffLine[] {
   const linesA = textA.split("\n");
   const linesB = textB.split("\n");
-
-  // LCS-based diff
   const n = linesA.length;
   const m = linesB.length;
 
-  // For very large diffs, fall back to simple comparison
-  if (n * m > 100_000) {
-    return simpleDiff(linesA, linesB);
-  }
+  if (n * m > 100_000) return simpleDiff(linesA, linesB);
 
-  // Build LCS table. Loop bounds + Array.from initialiser guarantee every
-  // dp[i] / linesA[i-1] / linesB[j-1] access is in-bounds; non-null
-  // assertions satisfy noUncheckedIndexedAccess without runtime cost.
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const table: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
+      const row = table[i];
+      if (!row) continue;
       if (linesA[i - 1] === linesB[j - 1]) {
-        dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+        row[j] = cell(table, i - 1, j - 1) + 1;
       } else {
-        dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+        row[j] = Math.max(cell(table, i - 1, j), cell(table, i, j - 1));
       }
     }
   }
 
-  // Backtrack to produce diff
   const result: DiffLine[] = [];
-  let i = n,
-    j = m;
+  let i = n;
+  let j = m;
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && linesA[i - 1] === linesB[j - 1]) {
-      result.push({ type: "same", text: linesA[i - 1]! });
+      result.push({ id: `same-${i}-${j}`, type: "same", text: linesA[i - 1] ?? "" });
       i--;
       j--;
-    } else if (j > 0 && (i === 0 || dp[i]![j - 1]! >= dp[i - 1]![j]!)) {
-      result.push({ type: "added", text: linesB[j - 1]! });
+    } else if (j > 0 && (i === 0 || cell(table, i, j - 1) >= cell(table, i - 1, j))) {
+      result.push({ id: `added-${i}-${j}`, type: "added", text: linesB[j - 1] ?? "" });
       j--;
     } else {
-      result.push({ type: "removed", text: linesA[i - 1]! });
+      result.push({ id: `removed-${i}-${j}`, type: "removed", text: linesA[i - 1] ?? "" });
       i--;
     }
   }
@@ -234,9 +205,17 @@ function computeDiff(textA: string, textB: string): DiffLine[] {
   return result.reverse();
 }
 
+function cell(table: number[][], row: number, column: number): number {
+  return table[row]?.[column] ?? 0;
+}
+
 function simpleDiff(linesA: string[], linesB: string[]): DiffLine[] {
   const result: DiffLine[] = [];
-  for (const line of linesA) result.push({ type: "removed", text: line });
-  for (const line of linesB) result.push({ type: "added", text: line });
+  for (const [index, line] of linesA.entries()) {
+    result.push({ id: `removed-${index}`, type: "removed", text: line });
+  }
+  for (const [index, line] of linesB.entries()) {
+    result.push({ id: `added-${index}`, type: "added", text: line });
+  }
   return result;
 }

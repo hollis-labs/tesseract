@@ -1,4 +1,18 @@
-import { ArrowLeft, ArrowRightLeft, GitCommit } from "lucide-react";
+import {
+  Button,
+  Callout,
+  Card,
+  Checkbox,
+  Label,
+  Pill,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hollis-labs/sysop-ui";
+import { ArrowLeft, ArrowRightLeft, GitCommit, RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
 import { getHistory } from "../api/client";
 import type { Record } from "../api/types";
@@ -16,24 +30,21 @@ interface Props {
 
 export function KeyHistoryPage({ namespace, recordKey, onBack, onCompare }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
-
   const fetcher = useCallback(() => getHistory(namespace, recordKey, 100), [namespace, recordKey]);
   const { data, loading, error, refresh } = usePoll(fetcher, 15_000);
-
   const items: Record[] = data?.items ?? [];
 
-  const toggleSelect = (rev: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(rev)) {
-        next.delete(rev);
+  const toggleSelect = (revision: number) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(revision)) {
+        next.delete(revision);
       } else {
         if (next.size >= 2) {
-          // Replace oldest selection (next.size >= 2 guarantees first exists).
           const [first] = next;
-          next.delete(first!);
+          if (first !== undefined) next.delete(first);
         }
-        next.add(rev);
+        next.add(revision);
       }
       return next;
     });
@@ -41,164 +52,145 @@ export function KeyHistoryPage({ namespace, recordKey, onBack, onCompare }: Prop
 
   const canCompare = selected.size === 2;
   const handleCompare = () => {
-    // canCompare guarantees exactly 2 elements; non-null assertions satisfy
-    // noUncheckedIndexedAccess on the destructure.
-    const [a, b] = Array.from(selected).sort((x, y) => x - y);
-    onCompare(namespace, recordKey, a!, b!);
+    const [revisionA, revisionB] = Array.from(selected).sort((a, b) => a - b);
+    if (revisionA === undefined || revisionB === undefined) return;
+    onCompare(namespace, recordKey, revisionA, revisionB);
   };
 
   return (
-    <div>
-      <div className="breadcrumbs">
-        <button onClick={onBack}>
-          <ArrowLeft size={12} /> Record
-        </button>
-        <span style={{ color: "rgb(var(--muted))" }}>/</span>
+    <div className="min-h-full bg-bg text-text">
+      <nav
+        className="flex items-center gap-2 border-b border-border-soft px-4 py-2 text-xs text-text-subtle"
+        aria-label="Breadcrumb"
+      >
+        <Button type="button" variant="ghost" size="xs" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" />
+          Record
+        </Button>
+        <span aria-hidden="true">/</span>
         <span>History</span>
-      </div>
+      </nav>
 
-      <div className="page-header">
-        <h2 className="page-title">History: {recordKey}</h2>
-        <div className="page-actions">
-          {canCompare && (
-            <button className="hud-button-primary" onClick={handleCompare}>
-              <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                <ArrowRightLeft size={13} /> Compare Selected
-              </span>
-            </button>
-          )}
-          <button className="hud-button-ghost" onClick={refresh} disabled={loading}>
-            {loading ? <Spinner size={12} /> : "Refresh"}
-          </button>
+      <section className="border-b border-border-strong px-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0 max-w-2xl">
+            <h2 className="truncate text-lg font-semibold tracking-tight">
+              Revision history for <span className="font-mono">{recordKey}</span>
+            </h2>
+            <p className="mt-1 break-all font-mono text-xs text-text-subtle">{namespace}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {canCompare ? (
+              <Button type="button" size="sm" onClick={handleCompare}>
+                <ArrowRightLeft aria-hidden="true" />
+                Compare selected
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+              {loading ? <Spinner size={14} /> : <RefreshCw aria-hidden="true" />}
+              Refresh
+            </Button>
+          </div>
         </div>
-      </div>
-
-      <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", marginBottom: "0.75rem" }}>
-        {namespace} · {items.length} revision{items.length !== 1 ? "s" : ""}
-        {selected.size > 0 && (
-          <span style={{ color: "rgb(var(--primary))" }}>
-            {" "}
-            · {selected.size} selected for comparison
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
+        <p
+          id="history-selection-summary"
+          className="mt-3 text-xs text-text-subtle"
+          aria-live="polite"
         >
-          Error: {error.message}
-        </div>
-      )}
+          {items.length} revision{items.length === 1 ? "" : "s"}. Select two to compare.
+          {selected.size > 0 ? ` ${selected.size} selected.` : ""}
+        </p>
+      </section>
 
-      <div className="hud-panel">
-        {loading && !data && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <Spinner size={20} />
-          </div>
-        )}
+      <div className="space-y-4 p-4">
+        {error ? (
+          <Callout tone="danger" title="History unavailable">
+            {error.message}
+          </Callout>
+        ) : null}
 
-        {!loading && items.length === 0 && <EmptyState message="No revisions found" />}
+        <Card size="sm" className="overflow-hidden">
+          {loading && !data ? (
+            <div className="flex justify-center py-12 text-text-subtle">
+              <Spinner size={20} />
+            </div>
+          ) : null}
 
-        {items.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {items.map((item, idx) => {
-              const isSelected = selected.has(item.revision);
-              const isLatest = idx === 0;
-              return (
-                <div
-                  key={item.revision}
-                  onClick={() => toggleSelect(item.revision)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    padding: "0.6rem 0.75rem",
-                    borderBottom:
-                      idx < items.length - 1 ? "1px solid rgba(var(--border) / 0.5)" : "none",
-                    cursor: "pointer",
-                    background: isSelected ? "rgba(var(--primary) / 0.08)" : "transparent",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = "rgba(var(--panel2) / 0.6)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  {/* Selection checkbox */}
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 3,
-                      border: isSelected
-                        ? "2px solid rgb(var(--primary))"
-                        : "2px solid rgb(var(--border))",
-                      background: isSelected ? "rgba(var(--primary) / 0.2)" : "transparent",
-                      flexShrink: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {isSelected && (
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          background: "rgb(var(--primary))",
-                        }}
-                      />
-                    )}
-                  </div>
+          {!loading && items.length === 0 ? (
+            <EmptyState
+              message="No revisions found"
+              sub="This key does not have revision history."
+            />
+          ) : null}
 
-                  {/* Timeline dot */}
-                  <GitCommit
-                    size={14}
-                    style={{ color: isLatest ? "rgb(var(--primary))" : "rgb(var(--muted))" }}
-                  />
-
-                  {/* Revision info */}
-                  <span
-                    style={{
-                      fontWeight: isLatest ? 600 : 400,
-                      color: isLatest ? "rgb(var(--primary))" : "rgb(var(--text))",
-                      minWidth: 40,
-                    }}
-                  >
-                    r{item.revision}
-                  </span>
-
-                  <span style={{ flex: 1, fontSize: "0.8rem", color: "rgb(var(--muted))" }}>
-                    {item.actor}
-                  </span>
-
-                  <span style={{ fontSize: "0.75rem", color: "rgb(var(--muted))" }}>
-                    {item.checksum?.slice(0, 12)}
-                  </span>
-                  <CopyButton text={item.checksum} size={11} />
-
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "rgb(var(--muted))",
-                      minWidth: 140,
-                      textAlign: "right",
-                    }}
-                  >
-                    {new Date(item.created_at).toLocaleString()}
-                  </span>
-
-                  {isLatest && <span className="hud-badge hud-badge-primary">HEAD</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
+          {items.length > 0 ? (
+            <Table aria-describedby="history-selection-summary">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">
+                    <span className="sr-only">Select</span>
+                  </TableHead>
+                  <TableHead>Revision</TableHead>
+                  <TableHead>Actor</TableHead>
+                  <TableHead>Checksum</TableHead>
+                  <TableHead className="text-right">Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item, index) => {
+                  const isSelected = selected.has(item.revision);
+                  const isLatest = index === 0;
+                  const checkboxId = `history-revision-${item.revision}`;
+                  return (
+                    <TableRow key={item.revision} data-state={isSelected ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          id={checkboxId}
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(item.revision)}
+                          aria-label={`Select revision ${item.revision} for comparison`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Label
+                          htmlFor={checkboxId}
+                          className="flex cursor-pointer items-center gap-2 font-mono text-xs"
+                        >
+                          <GitCommit
+                            className={
+                              isLatest ? "size-3.5 text-status-doing" : "size-3.5 text-text-subtle"
+                            }
+                            aria-hidden="true"
+                          />
+                          <span
+                            className={isLatest ? "font-semibold text-status-doing" : "text-text"}
+                          >
+                            r{item.revision}
+                          </span>
+                          {isLatest ? <Pill tone="info">HEAD</Pill> : null}
+                        </Label>
+                      </TableCell>
+                      <TableCell className="max-w-48 truncate text-text-soft">
+                        {item.actor}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11px] text-text-subtle">
+                            {item.checksum?.slice(0, 12)}
+                          </span>
+                          <CopyButton text={item.checksum} size={11} />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-text-subtle">
+                        {new Date(item.created_at).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : null}
+        </Card>
       </div>
     </div>
   );

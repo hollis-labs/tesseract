@@ -1,4 +1,26 @@
-import { ArrowLeft, ArrowRight, Check, Play } from "lucide-react";
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@hollis-labs/sysop-ui";
+import { ArrowLeft, ArrowRight, Check, Play, RefreshCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getAuditEvents, promoteApply, promoteApprove, promoteRequest } from "../api/client";
@@ -18,37 +40,39 @@ export function PromotePage({ onBack }: Props) {
   const [tab, setTab] = useState<Tab>("request");
 
   return (
-    <div>
-      <div className="breadcrumbs">
-        <button onClick={onBack}>
-          <ArrowLeft size={12} /> Write & Promote
-        </button>
-        <span style={{ color: "rgb(var(--muted))" }}>/</span>
+    <div className="min-h-full bg-bg text-text">
+      <nav
+        className="flex items-center gap-2 border-b border-border-soft px-4 py-2 text-xs text-text-subtle"
+        aria-label="Breadcrumb"
+      >
+        <Button type="button" variant="ghost" size="xs" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" />
+          Write and promote
+        </Button>
+        <span aria-hidden="true">/</span>
         <span>Promote</span>
-      </div>
+      </nav>
 
-      <div className="page-header">
-        <h2 className="page-title">Promote</h2>
-      </div>
+      <section className="border-b border-border-strong px-4 py-4">
+        <h2 className="text-lg font-semibold tracking-tight">Promote a context record</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+          Move an existing record between namespaces through the request, approval, and apply
+          workflow.
+        </p>
+      </section>
 
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button
-          className={tab === "request" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("request")}
-        >
-          New Request
-        </button>
-        <button
-          className={tab === "dashboard" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("dashboard")}
-        >
-          Promotion Log
-        </button>
-      </div>
-
-      {tab === "request" && <PromoteRequestForm />}
-      {tab === "dashboard" && <PromotionDashboard />}
+      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="space-y-4 p-4">
+        <TabsList variant="line" aria-label="Promotion workflow">
+          <TabsTrigger value="request">New request</TabsTrigger>
+          <TabsTrigger value="dashboard">Promotion log</TabsTrigger>
+        </TabsList>
+        <TabsContent value="request">
+          <PromoteRequestForm />
+        </TabsContent>
+        <TabsContent value="dashboard">
+          <PromotionDashboard />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -64,13 +88,14 @@ function PromoteRequestForm() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
 
-  const canSubmit =
+  const canSubmit = Boolean(
     srcNamespace.trim() &&
-    srcKey.trim() &&
-    tgtNamespace.trim() &&
-    tgtKey.trim() &&
-    actor.trim() &&
-    !submitting;
+      srcKey.trim() &&
+      tgtNamespace.trim() &&
+      tgtKey.trim() &&
+      actor.trim() &&
+      !submitting,
+  );
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -78,179 +103,174 @@ function PromoteRequestForm() {
     setError(null);
     setResult(null);
     try {
-      const req: Parameters<typeof promoteRequest>[0] = {
+      const request: Parameters<typeof promoteRequest>[0] = {
         actor: actor.trim(),
         source_namespace: srcNamespace.trim(),
         source_key: srcKey.trim(),
         target_namespace: tgtNamespace.trim(),
         target_key: tgtKey.trim(),
       };
-      if (reason.trim()) req.reason = reason.trim();
-      const res = await promoteRequest(req);
-      setResult(res);
+      if (reason.trim()) request.reason = reason.trim();
+      const response = await promoteRequest(request);
+      setResult(response);
       toast.success("Promotion requested");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Request failed: ${msg}`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Request failed: ${message}`);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 700 }}>
-      {error && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            marginBottom: "0.75rem",
-            background: "rgba(var(--danger) / 0.1)",
-            borderRadius: "var(--radius-sm)",
-            color: "rgb(var(--danger))",
-            fontSize: "0.85rem",
-          }}
-        >
-          {error}
+    <Card size="sm" className="max-w-3xl">
+      <CardHeader className="border-b border-border-strong">
+        <div>
+          <CardTitle>Promotion route</CardTitle>
+          <CardDescription className="mt-1">
+            Required fields are marked with an asterisk.
+          </CardDescription>
         </div>
-      )}
+      </CardHeader>
 
-      {result != null && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            marginBottom: "0.75rem",
-            background: "rgba(var(--ok) / 0.1)",
-            borderRadius: "var(--radius-sm)",
-            color: "rgb(var(--ok))",
-            fontSize: "0.85rem",
-          }}
-        >
-          Promotion request created successfully. Check the Promotion Log to approve and apply.
-        </div>
-      )}
+      <CardContent className="space-y-5">
+        {error ? (
+          <Callout tone="danger" title="Request failed">
+            {error}
+          </Callout>
+        ) : null}
+        {result != null ? (
+          <Callout tone="success" title="Promotion requested">
+            Open the promotion log to approve and apply this request.
+          </Callout>
+        ) : null}
 
-      {/* Source */}
-      <div className="hud-label" style={{ marginBottom: "0.5rem", color: "rgb(var(--primary))" }}>
-        Source
-      </div>
-      <div className="form-grid">
-        <div className="form-field">
-          <label className="hud-label">Namespace *</label>
-          <input
-            className="hud-input"
-            placeholder="app/test/session"
-            value={srcNamespace}
-            onChange={(e) => setSrcNamespace(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="form-field">
-          <label className="hud-label">Key *</label>
-          <input
-            className="hud-input"
-            placeholder="status"
-            value={srcKey}
-            onChange={(e) => setSrcKey(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-      </div>
+        <div className="grid items-stretch gap-3 md:grid-cols-[1fr_auto_1fr]">
+          <fieldset className="space-y-4 border border-border-soft bg-panel p-4">
+            <legend className="px-1 text-sm font-medium text-text">Source</legend>
+            <div className="space-y-2">
+              <Label htmlFor="promote-source-namespace">
+                Namespace <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="promote-source-namespace"
+                className="font-mono"
+                placeholder="app/test/session"
+                value={srcNamespace}
+                onChange={(event) => setSrcNamespace(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="promote-source-key">
+                Key <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="promote-source-key"
+                className="font-mono"
+                placeholder="status"
+                value={srcKey}
+                onChange={(event) => setSrcKey(event.target.value)}
+                required
+              />
+            </div>
+          </fieldset>
 
-      {/* Arrow */}
-      <div style={{ textAlign: "center", padding: "0.25rem 0", color: "rgb(var(--muted))" }}>
-        <ArrowRight size={20} />
-      </div>
+          <div className="flex items-center justify-center text-text-subtle" aria-hidden="true">
+            <ArrowRight className="size-5 rotate-90 md:rotate-0" />
+          </div>
 
-      {/* Target */}
-      <div className="hud-label" style={{ marginBottom: "0.5rem", color: "rgb(var(--primary))" }}>
-        Target
-      </div>
-      <div className="form-grid">
-        <div className="form-field">
-          <label className="hud-label">Namespace *</label>
-          <input
-            className="hud-input"
-            placeholder="user/memory/project"
-            value={tgtNamespace}
-            onChange={(e) => setTgtNamespace(e.target.value)}
-            style={{ width: "100%" }}
-          />
+          <fieldset className="space-y-4 border border-border-soft bg-panel p-4">
+            <legend className="px-1 text-sm font-medium text-text">Target</legend>
+            <div className="space-y-2">
+              <Label htmlFor="promote-target-namespace">
+                Namespace <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="promote-target-namespace"
+                className="font-mono"
+                placeholder="user/memory/project"
+                value={tgtNamespace}
+                onChange={(event) => setTgtNamespace(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="promote-target-key">
+                Key <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="promote-target-key"
+                className="font-mono"
+                placeholder="status"
+                value={tgtKey}
+                onChange={(event) => setTgtKey(event.target.value)}
+                required
+              />
+            </div>
+          </fieldset>
         </div>
-        <div className="form-field">
-          <label className="hud-label">Key *</label>
-          <input
-            className="hud-input"
-            placeholder="status"
-            value={tgtKey}
-            onChange={(e) => setTgtKey(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-      </div>
 
-      <div className="form-grid" style={{ marginTop: "0.5rem" }}>
-        <div className="form-field">
-          <label className="hud-label">Actor *</label>
-          <input
-            className="hud-input"
-            placeholder="user:jane"
-            value={actor}
-            onChange={(e) => setActor(e.target.value)}
-            style={{ width: "100%" }}
-          />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="promote-actor">
+              Actor <span className="text-danger">*</span>
+            </Label>
+            <Input
+              id="promote-actor"
+              className="font-mono"
+              placeholder="user:jane"
+              value={actor}
+              onChange={(event) => setActor(event.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="promote-reason">Reason (optional)</Label>
+            <Input
+              id="promote-reason"
+              placeholder="Promote to user memory"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
         </div>
-        <div className="form-field">
-          <label className="hud-label">
-            Reason <span style={{ color: "rgb(var(--muted))" }}>(optional)</span>
-          </label>
-          <input
-            className="hud-input"
-            placeholder="Promote to user memory"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-      </div>
+      </CardContent>
 
-      <div className="form-actions">
-        <button className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            {submitting ? <Spinner size={13} /> : <ArrowRight size={13} />}
-            Request Promotion
-          </span>
-        </button>
-      </div>
-    </div>
+      <CardFooter className="justify-end border-t border-border-strong">
+        <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+          {submitting ? <Spinner size={14} /> : <ArrowRight aria-hidden="true" />}
+          Request promotion
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
 function PromotionDashboard() {
   const fetcher = useCallback(() => getAuditEvents({ event_type: "promote", limit: 50 }), []);
   const { data, loading, error, refresh } = usePoll(fetcher, 10_000);
-
-  // Also fetch promote.request / promote.approve events
-  const reqFetcher = useCallback(
+  const requestFetcher = useCallback(
     () => getAuditEvents({ event_type: "promote.request", limit: 50 }),
     [],
   );
-  const { data: reqData } = usePoll(reqFetcher, 10_000);
+  const { data: requestData } = usePoll(requestFetcher, 10_000);
 
   const allEvents = useMemo(() => {
     const events: AuditEvent[] = [];
     if (data?.items) events.push(...data.items);
-    if (reqData?.items) events.push(...reqData.items);
+    if (requestData?.items) events.push(...requestData.items);
     return events.sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [data, reqData]);
+  }, [data, requestData]);
 
   const handleApprove = async (requestId: string) => {
     try {
       await promoteApprove({ request_id: requestId, actor: "ui-user" });
       toast.success("Promotion approved");
       refresh();
-    } catch (err) {
-      toast.error(`Approve failed: ${err instanceof Error ? err.message : err}`);
+    } catch (reason) {
+      toast.error(`Approve failed: ${reason instanceof Error ? reason.message : reason}`);
     }
   };
 
@@ -259,100 +279,102 @@ function PromotionDashboard() {
       await promoteApply({ request_id: requestId, actor: "ui-user" });
       toast.success("Promotion applied");
       refresh();
-    } catch (err) {
-      toast.error(`Apply failed: ${err instanceof Error ? err.message : err}`);
+    } catch (reason) {
+      toast.error(`Apply failed: ${reason instanceof Error ? reason.message : reason}`);
     }
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: "0.5rem", display: "flex", justifyContent: "flex-end" }}>
-        <button className="hud-button-ghost" onClick={refresh} disabled={loading}>
-          {loading ? <Spinner size={12} /> : "Refresh"}
-        </button>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          {loading ? <Spinner size={14} /> : <RefreshCw aria-hidden="true" />}
+          Refresh
+        </Button>
       </div>
 
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
-        >
-          Error: {error.message}
-        </div>
-      )}
+      {error ? (
+        <Callout tone="danger" title="Promotion log unavailable">
+          {error.message}
+        </Callout>
+      ) : null}
 
-      <div className="hud-panel">
-        {loading && !data && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
+      <Card size="sm" className="overflow-hidden">
+        {loading && !data ? (
+          <div className="flex justify-center py-12 text-text-subtle">
             <Spinner size={20} />
           </div>
-        )}
+        ) : null}
 
-        {!loading && allEvents.length === 0 && (
-          <EmptyState message="No promotion events" sub="Request a promotion to get started" />
-        )}
+        {!loading && allEvents.length === 0 ? (
+          <EmptyState message="No promotion events" sub="Request a promotion to get started." />
+        ) : null}
 
-        {allEvents.length > 0 && (
-          <table className="hud-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Namespace</th>
-                <th>Key</th>
-                <th>Actor</th>
-                <th>Time</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allEvents.map((evt) => {
-                const status = evt.event_type.includes("apply")
+        {allEvents.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Namespace</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead>Actor</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allEvents.map((event) => {
+                const requestId = event.record_id;
+                const status = event.event_type.includes("apply")
                   ? "applied"
-                  : evt.event_type.includes("approve")
+                  : event.event_type.includes("approve")
                     ? "approved"
-                    : evt.event_type.includes("request")
+                    : event.event_type.includes("request")
                       ? "pending"
                       : "success";
                 return (
-                  <tr key={evt.id} style={{ cursor: "default" }}>
-                    <td>
+                  <TableRow key={event.id}>
+                    <TableCell>
                       <StatusBadge status={status} />
-                    </td>
-                    <td style={{ fontSize: "0.8rem" }}>{evt.namespace}</td>
-                    <td style={{ fontSize: "0.8rem" }}>{evt.key}</td>
-                    <td style={{ color: "rgb(var(--muted))" }}>{evt.actor}</td>
-                    <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
-                      {new Date(evt.created_at).toLocaleString()}
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", gap: "0.3rem" }}>
-                        {status === "pending" && evt.record_id && (
-                          <button
-                            className="hud-button-ghost"
-                            onClick={() => handleApprove(evt.record_id)}
-                            style={{ padding: "0.15rem 0.4rem", fontSize: "0.65rem" }}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{event.namespace}</TableCell>
+                    <TableCell className="font-mono text-xs">{event.key}</TableCell>
+                    <TableCell className="text-text-soft">{event.actor}</TableCell>
+                    <TableCell className="font-mono text-[11px] text-text-subtle">
+                      {new Date(event.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        {status === "pending" && requestId ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => void handleApprove(requestId)}
                           >
-                            <Check size={11} /> Approve
-                          </button>
-                        )}
-                        {status === "approved" && evt.record_id && (
-                          <button
-                            className="hud-button-primary"
-                            onClick={() => handleApply(evt.record_id)}
-                            style={{ padding: "0.15rem 0.4rem", fontSize: "0.65rem" }}
+                            <Check aria-hidden="true" />
+                            Approve
+                          </Button>
+                        ) : null}
+                        {status === "approved" && requestId ? (
+                          <Button
+                            type="button"
+                            size="xs"
+                            onClick={() => void handleApply(requestId)}
                           >
-                            <Play size={11} /> Apply
-                          </button>
-                        )}
+                            <Play aria-hidden="true" />
+                            Apply
+                          </Button>
+                        ) : null}
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </TableBody>
+          </Table>
+        ) : null}
+      </Card>
     </div>
   );
 }
