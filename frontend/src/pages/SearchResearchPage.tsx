@@ -1,12 +1,13 @@
+import { Button, Callout, Card, CardContent, Input, Label, Textarea } from "@hollis-labs/sysop-ui";
 import { Lightbulb, MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { tesseractLookup, listNamespaces, synthesisAsk } from "../api/client";
+import { listNamespaces, synthesisAsk, tesseractLookup } from "../api/client";
 import type {
-  TesseractLookupResponse,
-  TesseractLookupResultItem,
   MemoryStatus,
   SynthesisAskResponse,
+  TesseractLookupResponse,
+  TesseractLookupResultItem,
 } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { JsonViewer } from "../components/ui/JsonViewer";
@@ -235,7 +236,9 @@ export function SearchResearchPage({ onOpenItem }: Props) {
       if (Number.isFinite(parsedConf) && parsedConf > 0) req.confidence_min = parsedConf;
       const synth = await synthesisAsk(req);
       setThread((prev) =>
-        prev.map((e) => (e.id === active.id ? { ...e, synthesis: synth, synthesisError: null } : e)),
+        prev.map((e) =>
+          e.id === active.id ? { ...e, synthesis: synth, synthesisError: null } : e,
+        ),
       );
       toast.success(`Synthesized via ${synth.usage.provider} / ${synth.usage.model}`);
     } catch (err) {
@@ -268,854 +271,587 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Search &amp; Research</h2>
-      </div>
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <h2 className="text-lg font-semibold tracking-tight">Search and research</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+          Ask across memory and knowledge, refine the cited set, and synthesize an answer when
+          needed.
+        </p>
+      </section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "370px 1fr", gap: "1rem" }}>
-        {/* ── Left rail: thread + filters ─────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div className="hud-panel" style={{ padding: "0.75rem" }}>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="search-question">
-                Question <span style={{ color: "rgb(var(--danger))" }}>*</span>
-              </label>
-              <textarea
-                id="search-question"
-                className="hud-textarea"
-                placeholder="What does the store know about X? History of Y? Trace the concept Z..."
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAsk();
-                }}
-                rows={4}
-                style={{ width: "100%", minHeight: "5.5rem" }}
-              />
-              <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", marginTop: "0.2rem" }}>
-                ⌘/Ctrl + Enter to ask. v1 returns curated cited results; v2 (planned) adds LLM
-                synthesis via go-modelsdev.
+      <div className="grid gap-4 p-4 xl:grid-cols-[23rem_minmax(0,1fr)]">
+        <aside className="space-y-3" aria-label="Research controls">
+          <Card size="sm">
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="search-question">
+                  Question <span className="text-danger">*</span>
+                </Label>
+                <Textarea
+                  id="search-question"
+                  className="min-h-24"
+                  placeholder="What does the store know about X? History of Y? Trace the concept Z…"
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void handleAsk();
+                  }}
+                  rows={4}
+                />
+                <p className="text-xs leading-5 text-text-subtle">
+                  Press ⌘/Ctrl + Enter to ask. Curated results retain full citation data for
+                  synthesis and inspection.
+                </p>
               </div>
-            </div>
-
-            <div className="form-field" style={{ marginTop: "0.5rem" }}>
-              <label className="hud-label" htmlFor="search-namespaces">
-                Namespaces{" "}
-                <span style={{ color: "rgb(var(--muted))" }}>
-                  (comma-separated; blank = all {defaultNamespaces.length})
-                </span>
-              </label>
-              <input
-                id="search-namespaces"
-                className="hud-input"
-                list="search-namespaces-recents"
-                placeholder="user/jane/memory, user/jane/knowledge/projects"
-                value={namespacesField}
-                onChange={(e) => setNamespacesField(e.target.value)}
-                style={{ width: "100%" }}
-              />
-              <datalist id="search-namespaces-recents">
-                {recentNamespaces.map((ns) => (
-                  <option key={ns} value={ns} label="recent" />
-                ))}
-              </datalist>
-              {recentNamespaces.length > 0 && (
-                <div
-                  style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.3rem" }}
-                >
-                  {recentNamespaces.slice(0, 5).map((ns) => (
-                    <button
-                      key={ns}
-                      type="button"
-                      onClick={() => {
-                        const existing = namespacesField
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        if (existing.includes(ns)) return;
-                        setNamespacesField([...existing, ns].join(", "));
-                      }}
-                      title={`Add ${ns} to namespaces`}
-                      style={{
-                        padding: "0.1rem 0.4rem",
-                        background: "rgba(var(--panel2) / 0.6)",
-                        border: "1px solid rgb(var(--border))",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.6rem",
-                        fontFamily: "var(--font-mono)",
-                        color: "rgb(var(--muted))",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {ns}
-                    </button>
+              <div className="space-y-2">
+                <Label htmlFor="search-namespaces">
+                  Namespaces{" "}
+                  <span className="font-normal text-text-subtle">
+                    (blank searches all {defaultNamespaces.length})
+                  </span>
+                </Label>
+                <Input
+                  id="search-namespaces"
+                  className="font-mono"
+                  list="search-namespaces-recents"
+                  placeholder="user/jane/memory, user/jane/knowledge/projects"
+                  value={namespacesField}
+                  onChange={(event) => setNamespacesField(event.target.value)}
+                />
+                <datalist id="search-namespaces-recents">
+                  {recentNamespaces.map((namespace) => (
+                    <option key={namespace} value={namespace} label="recent" />
                   ))}
-                </div>
-              )}
-            </div>
-
-            <div className="form-field" style={{ marginTop: "0.5rem" }}>
-              <label className="hud-label" htmlFor="search-tags">
-                Tags <span style={{ color: "rgb(var(--muted))" }}>(comma-separated)</span>
-              </label>
-              <input
-                id="search-tags"
-                className="hud-input"
-                placeholder="decision, scope:agent-ops.steward.main"
-                value={tagsField}
-                onChange={(e) => setTagsField(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-
-            <div className="form-grid" style={{ marginTop: "0.5rem" }}>
-              <div className="form-field">
-                <span className="hud-label">Domain</span>
-                <div style={{ display: "flex", gap: "0.25rem", paddingTop: "0.2rem" }}>
-                  {(["both", "memory", "knowledge"] as const).map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setDomain(d)}
-                      style={{
-                        padding: "0.2rem 0.5rem",
-                        background: domain === d ? "rgba(var(--primary) / 0.12)" : "transparent",
-                        border: `1px solid ${domain === d ? "rgb(var(--primary))" : "rgb(var(--border))"}`,
-                        color: domain === d ? "rgb(var(--primary))" : "rgb(var(--muted))",
-                        cursor: "pointer",
-                        fontSize: "0.65rem",
-                        fontFamily: "var(--font-mono)",
-                        textTransform: "uppercase",
-                        borderRadius: "var(--radius-sm)",
-                      }}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
+                </datalist>
+                {recentNamespaces.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {recentNamespaces.slice(0, 5).map((namespace) => (
+                      <Button
+                        key={namespace}
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        className="max-w-full truncate font-mono"
+                        onClick={() => {
+                          const existing = namespacesField
+                            .split(",")
+                            .map((item) => item.trim())
+                            .filter(Boolean);
+                          if (!existing.includes(namespace))
+                            setNamespacesField([...existing, namespace].join(", "));
+                        }}
+                        title={`Add ${namespace} to namespaces`}
+                      >
+                        {namespace}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-
-              <div className="form-field">
-                <label className="hud-label" htmlFor="search-confidence">
-                  Min confidence
-                </label>
-                <input
-                  id="search-confidence"
-                  className="hud-input"
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="1"
-                  value={confidenceMin}
-                  onChange={(e) => setConfidenceMin(e.target.value)}
-                  style={{ width: "100%" }}
+              <div className="space-y-2">
+                <Label htmlFor="search-tags">
+                  Tags <span className="font-normal text-text-subtle">(comma-separated)</span>
+                </Label>
+                <Input
+                  id="search-tags"
+                  className="font-mono"
+                  placeholder="decision, scope:agent-ops.steward.main"
+                  value={tagsField}
+                  onChange={(event) => setTagsField(event.target.value)}
                 />
               </div>
-            </div>
-
-            <div className="form-field" style={{ marginTop: "0.5rem" }}>
-              <span className="hud-label">Statuses</span>
-              <div
-                style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", paddingTop: "0.2rem" }}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_8rem]">
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium">Domain</legend>
+                  <div className="flex flex-wrap gap-1">
+                    {(["both", "memory", "knowledge"] as const).map((item) => (
+                      <Button
+                        key={item}
+                        type="button"
+                        variant={domain === item ? "default" : "outline"}
+                        size="xs"
+                        onClick={() => setDomain(item)}
+                        aria-pressed={domain === item}
+                      >
+                        {item}
+                      </Button>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="space-y-2">
+                  <Label htmlFor="search-confidence">Min confidence</Label>
+                  <Input
+                    id="search-confidence"
+                    className="font-mono"
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={confidenceMin}
+                    onChange={(event) => setConfidenceMin(event.target.value)}
+                  />
+                </div>
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Statuses</legend>
+                <div className="flex flex-wrap gap-1">
+                  {STATUS_FILTERS.map((item) => (
+                    <Button
+                      key={item}
+                      type="button"
+                      variant={statusSet.has(item) ? "default" : "outline"}
+                      size="xs"
+                      onClick={() => toggleStatus(item)}
+                      aria-pressed={statusSet.has(item)}
+                    >
+                      {item}
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="space-y-2">
+                <Label htmlFor="search-limit">Limit</Label>
+                <Input
+                  id="search-limit"
+                  className="font-mono"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={limit}
+                  onChange={(event) => setLimit(event.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => void handleAsk()}
+                disabled={loading || !question.trim()}
               >
-                {STATUS_FILTERS.map((s) => (
-                  <button
-                    key={s}
+                {loading ? <Spinner size={13} /> : <Search aria-hidden="true" />}
+                {thread.length > 0 ? "Ask follow-up" : "Ask"}
+              </Button>
+
+              <section
+                className="space-y-2 border-t border-border-strong pt-3"
+                aria-labelledby="search-presets"
+              >
+                <h3 id="search-presets" className="text-sm font-medium">
+                  Presets
+                </h3>
+                <div className="flex gap-2">
+                  <Input
+                    aria-label="Preset name"
+                    className="min-w-0 flex-1 font-mono"
+                    placeholder="Preset name…"
+                    value={presetName}
+                    onChange={(event) => setPresetName(event.target.value)}
+                  />
+                  <Button
                     type="button"
-                    onClick={() => toggleStatus(s)}
-                    style={{
-                      padding: "0.2rem 0.5rem",
-                      background: statusSet.has(s) ? "rgba(var(--primary) / 0.12)" : "transparent",
-                      border: `1px solid ${statusSet.has(s) ? "rgb(var(--primary))" : "rgb(var(--border))"}`,
-                      color: statusSet.has(s) ? "rgb(var(--primary))" : "rgb(var(--muted))",
-                      cursor: "pointer",
-                      fontSize: "0.65rem",
-                      fontFamily: "var(--font-mono)",
-                      borderRadius: "var(--radius-sm)",
+                    variant="outline"
+                    size="sm"
+                    disabled={!presetName.trim() || !question.trim()}
+                    onClick={() => {
+                      const name = presetName.trim();
+                      if (!name) return;
+                      const preset: SavedPreset = {
+                        name,
+                        question: question.trim(),
+                        namespacesField,
+                        tagsField,
+                        domain,
+                        statuses: Array.from(statusSet),
+                        confidenceMin,
+                        limit,
+                      };
+                      setPresets((previous) =>
+                        [preset, ...previous.filter((item) => item.name !== name)].slice(0, 20),
+                      );
+                      setPresetName("");
+                      toast.success(`Saved preset "${name}"`);
                     }}
                   >
-                    {s}
-                  </button>
+                    Save
+                  </Button>
+                </div>
+                {presets.length === 0 ? (
+                  <p className="text-xs text-text-subtle">No saved presets yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {presets.map((preset) => (
+                      <div key={preset.name} className="flex gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="min-w-0 flex-1 justify-start truncate font-mono font-normal"
+                          onClick={() => {
+                            setQuestion(preset.question);
+                            setNamespacesField(preset.namespacesField);
+                            setTagsField(preset.tagsField);
+                            setDomain(preset.domain);
+                            setStatusSet(new Set(preset.statuses));
+                            setConfidenceMin(preset.confidenceMin);
+                            setLimit(preset.limit);
+                            toast.success(`Loaded preset "${preset.name}"`);
+                          }}
+                        >
+                          {preset.name}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => {
+                            setPresets((previous) =>
+                              previous.filter((item) => item.name !== preset.name),
+                            );
+                            toast.success(`Removed preset "${preset.name}"`);
+                          }}
+                          title="Delete preset"
+                          aria-label={`Delete preset ${preset.name}`}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </CardContent>
+          </Card>
+
+          {thread.length > 0 ? (
+            <Card size="sm">
+              <div className="flex items-center justify-between border-b border-border-strong px-3 py-2">
+                <h3 className="flex items-center gap-2 text-sm font-medium">
+                  <MessageSquare className="size-4" aria-hidden="true" />
+                  Thread ({thread.length})
+                </h3>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleClearThread}
+                  title="Clear thread"
+                  aria-label="Clear thread"
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </div>
+              <div className="p-1">
+                {thread.map((entry) => (
+                  <Button
+                    key={entry.id}
+                    type="button"
+                    variant="ghost"
+                    className={`h-auto w-full flex-col items-start rounded-none border-l-2 px-3 py-2 text-left font-normal ${entry.id === activeId ? "border-status-doing bg-panel-hover-soft" : "border-transparent"}`}
+                    onClick={() => setActiveId(entry.id)}
+                  >
+                    <span className="max-w-full truncate text-sm">{entry.question}</span>
+                    <span
+                      className={`mt-1 text-xs ${entry.error ? "text-danger" : "text-text-subtle"}`}
+                    >
+                      {entry.error
+                        ? "error"
+                        : entry.response
+                          ? `${entry.response.results.length} hits`
+                          : "loading…"}
+                    </span>
+                  </Button>
                 ))}
               </div>
-            </div>
+            </Card>
+          ) : null}
+        </aside>
 
-            <div className="form-field" style={{ marginTop: "0.5rem" }}>
-              <label className="hud-label" htmlFor="search-limit">
-                Limit
-              </label>
-              <input
-                id="search-limit"
-                className="hud-input"
-                type="number"
-                min="1"
-                max="500"
-                value={limit}
-                onChange={(e) => setLimit(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="hud-button-primary"
-              onClick={handleAsk}
-              disabled={loading || !question.trim()}
-              style={{ marginTop: "0.75rem", width: "100%" }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.3rem",
-                }}
-              >
-                {loading ? <Spinner size={13} /> : <Search size={13} />}{" "}
-                {thread.length > 0 ? "Ask follow-up" : "Ask"}
-              </span>
-            </button>
-
-            {/* Presets — save current filter set, load by name. */}
-            <div
-              style={{
-                marginTop: "0.75rem",
-                borderTop: "1px solid rgb(var(--border))",
-                paddingTop: "0.5rem",
-              }}
-            >
-              <div className="hud-label" style={{ marginBottom: "0.3rem", fontSize: "0.7rem" }}>
-                Presets
-              </div>
-              <div style={{ display: "flex", gap: "0.3rem", marginBottom: "0.4rem" }}>
-                <input
-                  className="hud-input"
-                  placeholder="preset name..."
-                  value={presetName}
-                  onChange={(e) => setPresetName(e.target.value)}
-                  style={{ flex: 1, fontSize: "0.75rem" }}
+        <main className="min-w-0" aria-label="Research results">
+          {!active ? (
+            <Card size="sm">
+              <div className="py-8">
+                <EmptyState
+                  message="Ask a question to begin."
+                  sub="Each ask becomes a thread entry that you can revisit."
+                  icon={<Lightbulb size={32} strokeWidth={1.5} />}
                 />
-                <button
-                  type="button"
-                  className="hud-button-ghost"
-                  disabled={!presetName.trim() || !question.trim()}
-                  onClick={() => {
-                    const name = presetName.trim();
-                    if (!name) return;
-                    const preset: SavedPreset = {
-                      name,
-                      question: question.trim(),
-                      namespacesField,
-                      tagsField,
-                      domain,
-                      statuses: Array.from(statusSet),
-                      confidenceMin,
-                      limit,
-                    };
-                    setPresets((prev) =>
-                      [preset, ...prev.filter((p) => p.name !== name)].slice(0, 20),
-                    );
-                    setPresetName("");
-                    toast.success(`Saved preset "${name}"`);
-                  }}
-                  style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
-                  title="Save current question + filters as a named preset"
-                >
-                  Save
-                </button>
               </div>
-              {presets.length === 0 && (
-                <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                  No saved presets yet. Save a question + filter combo to reuse.
-                </div>
-              )}
-              {presets.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                  {presets.map((p) => (
-                    <div
-                      key={p.name}
-                      style={{ display: "flex", gap: "0.2rem", alignItems: "center" }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setQuestion(p.question);
-                          setNamespacesField(p.namespacesField);
-                          setTagsField(p.tagsField);
-                          setDomain(p.domain);
-                          setStatusSet(new Set(p.statuses));
-                          setConfidenceMin(p.confidenceMin);
-                          setLimit(p.limit);
-                          toast.success(`Loaded preset "${p.name}"`);
-                        }}
-                        style={{
-                          flex: 1,
-                          textAlign: "left",
-                          padding: "0.2rem 0.4rem",
-                          background: "transparent",
-                          border: "1px solid rgb(var(--border))",
-                          borderRadius: "var(--radius-sm)",
-                          color: "rgb(var(--text))",
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "0.7rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {p.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPresets((prev) => prev.filter((x) => x.name !== p.name));
-                          toast.success(`Removed preset "${p.name}"`);
-                        }}
-                        title="Delete preset"
-                        style={{
-                          padding: "0.1rem 0.3rem",
-                          background: "transparent",
-                          border: "none",
-                          color: "rgb(var(--muted))",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {thread.length > 0 && (
-            <div className="hud-panel" style={{ padding: "0.5rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "0.4rem",
-                }}
-              >
-                <div
-                  className="hud-label"
-                  style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
-                >
-                  <MessageSquare size={11} /> Thread ({thread.length})
-                </div>
-                <button
-                  type="button"
-                  className="hud-button-ghost"
-                  onClick={handleClearThread}
-                  style={{ padding: "0.1rem 0.3rem" }}
-                  title="Clear thread"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-              {thread.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => setActiveId(e.id)}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "0.4rem 0.5rem",
-                    background: e.id === activeId ? "rgba(var(--primary) / 0.08)" : "transparent",
-                    border: "none",
-                    borderLeft:
-                      e.id === activeId ? "2px solid rgb(var(--primary))" : "2px solid transparent",
-                    color: "rgb(var(--text))",
-                    cursor: "pointer",
-                    fontSize: "0.75rem",
-                    marginBottom: "0.15rem",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
-                  <div
-                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  >
-                    {e.question}
-                  </div>
-                  <div
-                    style={{ fontSize: "0.6rem", color: "rgb(var(--muted))", marginTop: "0.1rem" }}
-                  >
-                    {e.error ? (
-                      <span style={{ color: "rgb(var(--danger))" }}>error</span>
-                    ) : e.response ? (
-                      `${e.response.results.length} hits`
-                    ) : (
-                      "loading…"
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Right pane: result ─────────────────────────── */}
-        <div>
-          {!active && (
-            <div className="hud-panel" style={{ padding: "2rem" }}>
-              <EmptyState
-                message="Ask a question to begin."
-                sub="Use the form on the left. Each ask becomes a thread entry; click thread items to revisit."
-                icon={<Lightbulb size={32} strokeWidth={1.5} />}
-              />
-            </div>
-          )}
-
-          {active && (
-            <div>
-              {/* Question header */}
-              <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.5rem" }}>
-                <div style={{ fontSize: "0.95rem", lineHeight: 1.5 }}>{active.question}</div>
-                <div
-                  style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", marginTop: "0.3rem" }}
-                >
-                  asked {active.asked_at}
-                </div>
-              </div>
-
-              {active.error && (
-                <div
-                  className="hud-panel"
-                  style={{ padding: "0.75rem", color: "rgb(var(--danger))" }}
-                >
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              <Card size="sm">
+                <CardContent>
+                  <p className="text-base leading-6">{active.question}</p>
+                  <time className="mt-2 block font-mono text-xs text-text-subtle">
+                    asked {active.asked_at}
+                  </time>
+                </CardContent>
+              </Card>
+              {active.error ? (
+                <Callout tone="danger" title="Search failed">
                   {active.error}
-                </div>
-              )}
-
-              {!active.response && !active.error && (
-                <div style={{ padding: "2rem", textAlign: "center" }}>
+                </Callout>
+              ) : null}
+              {!active.response && !active.error ? (
+                <div className="flex justify-center py-8 text-text-subtle">
                   <Spinner size={20} />
                 </div>
-              )}
-
-              {active.response && (
+              ) : null}
+              {active.response ? (
                 <>
-                  {/* Tabs */}
                   <div
-                    style={{
-                      display: "flex",
-                      gap: "0.25rem",
-                      marginBottom: "0.5rem",
-                      borderBottom: "1px solid rgb(var(--border))",
-                    }}
+                    className="flex flex-wrap items-center gap-1 border-b border-border-strong"
+                    role="tablist"
+                    aria-label="Research views"
                   >
-                    {(["answer", "synthesis", "sources"] as const).map((t) => (
-                      <button
-                        key={t}
+                    {(["answer", "synthesis", "sources"] as const).map((item) => (
+                      <Button
+                        key={item}
                         type="button"
-                        onClick={() => setTab(t)}
-                        style={{
-                          padding: "0.4rem 0.75rem",
-                          background: tab === t ? "rgba(var(--primary) / 0.08)" : "transparent",
-                          border: "none",
-                          borderBottom:
-                            tab === t ? "2px solid rgb(var(--primary))" : "2px solid transparent",
-                          color: tab === t ? "rgb(var(--primary))" : "rgb(var(--muted))",
-                          cursor: "pointer",
-                          fontSize: "0.8rem",
-                          fontFamily: "var(--font-mono)",
-                          textTransform: "uppercase",
-                        }}
+                        variant={tab === item ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-b-none"
+                        onClick={() => setTab(item)}
+                        role="tab"
+                        aria-selected={tab === item}
                       >
-                        {t}
-                      </button>
+                        {item}
+                      </Button>
                     ))}
-                    <div style={{ flex: 1 }} />
-                    <span
-                      style={{ fontSize: "0.7rem", color: "rgb(var(--muted))", padding: "0.5rem" }}
-                    >
+                    <span className="ml-auto px-2 font-mono text-xs text-text-subtle">
                       {active.response.results.length} result
                       {active.response.results.length === 1 ? "" : "s"}
-                      {active.response.facets.domains &&
-                        ` · ${Object.entries(active.response.facets.domains)
-                          .map(([d, n]) => `${d}: ${n}`)
-                          .join(", ")}`}
+                      {active.response.facets.domains
+                        ? ` · ${Object.entries(active.response.facets.domains)
+                            .map(([itemDomain, count]) => `${itemDomain}: ${count}`)
+                            .join(", ")}`
+                        : ""}
                     </span>
                   </div>
 
-                  {/* Answer tab */}
-                  {tab === "answer" && (
-                    <div>
-                      <div
-                        className="hud-panel"
-                        style={{
-                          padding: "0.75rem",
-                          marginBottom: "0.5rem",
-                          borderColor: "rgba(var(--primary) / 0.4)",
-                        }}
-                      >
-                        <div
-                          className="hud-label"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                            marginBottom: "0.4rem",
-                          }}
-                        >
-                          <Lightbulb size={12} /> v1 curated answer
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.8rem",
-                            color: "rgb(var(--muted))",
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          The store returned {active.response.results.length} relevance-ranked
-                          revision{active.response.results.length === 1 ? "" : "s"} matching your
-                          question. v1 surfaces them grouped by domain with summaries first; the
-                          Sources tab carries the full citation payload. v2 will replace this card
-                          with an LLM-synthesized answer that cites these same sources, using the
-                          portfolio go-modelsdev library so cost, tokens, and latency telemetry come
-                          through accurately.
-                        </div>
-                      </div>
-
-                      {groupedByDomain(active.response.results).map(([d, items]) => (
-                        <div key={d} style={{ marginBottom: "0.75rem" }}>
-                          <div
-                            className="hud-label"
-                            style={{
-                              padding: "0.3rem 0",
-                              color: "rgb(var(--primary))",
-                              borderBottom: "1px solid rgb(var(--border))",
-                              marginBottom: "0.4rem",
-                              textTransform: "uppercase",
-                            }}
+                  {tab === "answer" ? (
+                    <div className="space-y-4">
+                      <Callout tone="info" title="Curated answer">
+                        The store returned {active.response.results.length} relevance-ranked
+                        revision{active.response.results.length === 1 ? "" : "s"}, grouped by domain
+                        with summaries first. Open Sources for full citation payloads or Synthesis
+                        for an LLM-backed answer.
+                      </Callout>
+                      {groupedByDomain(active.response.results).map(([itemDomain, items]) => (
+                        <section key={itemDomain} aria-labelledby={`results-${itemDomain}`}>
+                          <h3
+                            id={`results-${itemDomain}`}
+                            className="border-b border-border-strong pb-2 text-sm font-medium text-status-doing"
                           >
-                            {d} · {items.length}
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                            {items.map((r) => (
-                              <button
-                                key={r.revision.revision_id}
-                                type="button"
-                                className="hud-panel"
-                                onClick={() =>
-                                  r.revision.memory_key &&
-                                  onOpenItem?.(
-                                    r.revision.domain,
-                                    r.revision.namespace,
-                                    r.revision.memory_key,
-                                  )
-                                }
-                                disabled={!r.revision.memory_key || !onOpenItem}
-                                style={{
-                                  padding: "0.6rem 0.75rem",
-                                  textAlign: "left",
-                                  background: "transparent",
-                                  color: "inherit",
-                                  width: "100%",
-                                  cursor:
-                                    r.revision.memory_key && onOpenItem ? "pointer" : "default",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "baseline",
-                                    gap: "0.5rem",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      fontFamily: "var(--font-mono)",
-                                      fontSize: "0.8rem",
-                                      color: "rgb(var(--primary))",
-                                    }}
+                            {itemDomain} · {items.length}
+                          </h3>
+                          <div className="mt-2 space-y-2">
+                            {items.map((result) => (
+                              <Card key={result.revision.revision_id} size="sm">
+                                <CardContent className="space-y-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto w-full flex-col items-stretch p-0 text-left font-normal"
+                                    onClick={() =>
+                                      result.revision.memory_key &&
+                                      onOpenItem?.(
+                                        result.revision.domain,
+                                        result.revision.namespace,
+                                        result.revision.memory_key,
+                                      )
+                                    }
+                                    disabled={!result.revision.memory_key || !onOpenItem}
                                   >
-                                    {r.revision.memory_key ?? "(no key)"}
-                                  </div>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: "0.3rem",
-                                      alignItems: "center",
-                                      fontSize: "0.65rem",
-                                    }}
-                                  >
-                                    {r.revision.status !== undefined && <StatusBadge status={r.revision.status} />}
-                                    {r.score !== undefined && (
-                                      <span
-                                        style={{
-                                          fontFamily: "var(--font-mono)",
-                                          color: "rgb(var(--muted))",
-                                        }}
-                                      >
-                                        score {r.score.toFixed(3)}
+                                    <span className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="font-mono text-sm text-status-doing">
+                                        {result.revision.memory_key ?? "(no key)"}
                                       </span>
-                                    )}
-                                    <span
-                                      style={{
-                                        fontFamily: "var(--font-mono)",
-                                        color: "rgb(var(--muted))",
-                                      }}
-                                    >
-                                      conf {r.revision.confidence?.toFixed(2) ?? "—"}
+                                      <span className="flex items-center gap-2">
+                                        {result.revision.status !== undefined ? (
+                                          <StatusBadge status={result.revision.status} />
+                                        ) : null}
+                                        {result.score !== undefined ? (
+                                          <span className="font-mono text-xs text-text-subtle">
+                                            score {result.score.toFixed(3)}
+                                          </span>
+                                        ) : null}
+                                        <span className="font-mono text-xs text-text-subtle">
+                                          conf {result.revision.confidence?.toFixed(2) ?? "—"}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <span className="mt-2 whitespace-normal text-sm leading-5 text-text">
+                                      {result.revision.payload?.summary || "(no summary)"}
+                                    </span>
+                                  </Button>
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="flex flex-wrap gap-1">
+                                      {(result.revision.tags ?? []).slice(0, 5).map((tag) => (
+                                        <Button
+                                          type="button"
+                                          key={tag}
+                                          variant="outline"
+                                          size="xs"
+                                          className="font-mono"
+                                          onClick={() => {
+                                            const existing = tagsField
+                                              .split(",")
+                                              .map((item) => item.trim())
+                                              .filter(Boolean);
+                                            if (!existing.includes(tag)) {
+                                              setTagsField([...existing, tag].join(", "));
+                                              toast.success(`Added tag: ${tag}`);
+                                            }
+                                          }}
+                                          title={`Add tag "${tag}" to filter and re-ask`}
+                                        >
+                                          <Tag aria-hidden="true" />
+                                          {tag}
+                                        </Button>
+                                      ))}
+                                    </span>
+                                    <span className="break-all font-mono text-xs text-text-subtle">
+                                      {result.revision.namespace}
                                     </span>
                                   </div>
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: "0.8rem",
-                                    marginTop: "0.3rem",
-                                    lineHeight: 1.4,
-                                  }}
-                                >
-                                  {r.revision.payload?.summary || "(no summary)"}
-                                </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    marginTop: "0.3rem",
-                                    flexWrap: "wrap",
-                                    gap: "0.3rem",
-                                  }}
-                                >
-                                  <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
-                                    {(r.revision.tags ?? []).slice(0, 5).map((t) => (
-                                      <button
-                                        type="button"
-                                        key={t}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const existing = tagsField
-                                            .split(",")
-                                            .map((x) => x.trim())
-                                            .filter(Boolean);
-                                          if (existing.includes(t)) return;
-                                          setTagsField([...existing, t].join(", "));
-                                          toast.success(`Added tag: ${t}`);
-                                        }}
-                                        title={`Add tag "${t}" to filter and re-ask`}
-                                        style={{
-                                          padding: "0.05rem 0.3rem",
-                                          background: "rgba(var(--panel2) / 0.6)",
-                                          border: "1px solid rgb(var(--border))",
-                                          borderRadius: "var(--radius-sm)",
-                                          fontSize: "0.6rem",
-                                          fontFamily: "var(--font-mono)",
-                                          color: "rgb(var(--muted))",
-                                          display: "inline-flex",
-                                          alignItems: "center",
-                                          gap: "0.15rem",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        <Tag size={8} /> {t}
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <span
-                                    style={{
-                                      fontSize: "0.6rem",
-                                      fontFamily: "var(--font-mono)",
-                                      color: "rgb(var(--muted))",
-                                    }}
-                                  >
-                                    {r.revision.namespace}
-                                  </span>
-                                </div>
-                              </button>
+                                </CardContent>
+                              </Card>
                             ))}
                           </div>
-                        </div>
+                        </section>
                       ))}
                     </div>
-                  )}
+                  ) : null}
 
-                  {/* Synthesis tab — LLM-backed answer */}
-                  {tab === "synthesis" && (
-                    <div>
-                      {!active.synthesis && !active.synthesisError && (
-                        <div
-                          className="hud-panel"
-                          style={{
-                            padding: "1rem",
-                            borderColor: "rgba(var(--primary) / 0.4)",
-                            textAlign: "center",
-                          }}
-                        >
-                          <div style={{ fontSize: "0.85rem", marginBottom: "0.75rem", color: "rgb(var(--muted))" }}>
-                            Synthesize an LLM-backed answer from the {active.response.results.length} cited
-                            source{active.response.results.length === 1 ? "" : "s"}. Cost + token
-                            telemetry resolved via go-modelsdev.
-                          </div>
-                          <button
-                            type="button"
-                            className="hud-button-primary"
-                            onClick={handleSynthesize}
-                            disabled={synthLoading}
-                          >
-                            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", justifyContent: "center" }}>
-                              {synthLoading ? <Spinner size={13} /> : <Sparkles size={13} />}
-                              Synthesize
-                            </span>
-                          </button>
-                        </div>
-                      )}
-
-                      {active.synthesisError && !active.synthesis && (
-                        <div
-                          className="hud-panel"
-                          style={{ padding: "0.75rem", color: "rgb(var(--danger))" }}
-                        >
-                          {active.synthesisError}
-                          <div style={{ marginTop: "0.4rem" }}>
-                            <button
+                  {tab === "synthesis" ? (
+                    <div className="space-y-3">
+                      {!active.synthesis && !active.synthesisError ? (
+                        <Card size="sm" className="border-status-doing">
+                          <CardContent className="text-center">
+                            <p className="text-sm leading-6 text-text-subtle">
+                              Synthesize an LLM-backed answer from {active.response.results.length}{" "}
+                              cited source{active.response.results.length === 1 ? "" : "s"}.
+                              Provider, model, token, cost, and latency telemetry remain attached.
+                            </p>
+                            <Button
                               type="button"
-                              className="hud-button-ghost"
-                              onClick={handleSynthesize}
+                              className="mt-3"
+                              onClick={() => void handleSynthesize()}
                               disabled={synthLoading}
-                              style={{ fontSize: "0.7rem" }}
+                            >
+                              {synthLoading ? (
+                                <Spinner size={13} />
+                              ) : (
+                                <Sparkles aria-hidden="true" />
+                              )}{" "}
+                              Synthesize
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ) : null}
+                      {active.synthesisError && !active.synthesis ? (
+                        <Callout tone="danger" title="Synthesis failed">
+                          <div className="space-y-2">
+                            <p>{active.synthesisError}</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleSynthesize()}
+                              disabled={synthLoading}
                             >
                               Retry
-                            </button>
+                            </Button>
                           </div>
-                        </div>
-                      )}
-
-                      {active.synthesis && (
-                        <div>
-                          <div
-                            className="hud-panel"
-                            style={{
-                              padding: "1rem",
-                              marginBottom: "0.5rem",
-                              borderColor: "rgba(var(--primary) / 0.4)",
-                            }}
-                          >
-                            <div
-                              className="hud-label"
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.3rem",
-                                marginBottom: "0.5rem",
-                              }}
-                            >
-                              <Sparkles size={12} /> Synthesized answer
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.9rem",
-                                lineHeight: 1.6,
-                                whiteSpace: "pre-wrap",
-                              }}
-                            >
-                              {active.synthesis.answer}
-                            </div>
-                          </div>
-
-                          {/* Telemetry footer */}
-                          <div
-                            className="hud-panel"
-                            style={{
-                              padding: "0.5rem 0.75rem",
-                              fontSize: "0.7rem",
-                              color: "rgb(var(--muted))",
-                              fontFamily: "var(--font-mono)",
-                              display: "flex",
-                              gap: "1rem",
-                              flexWrap: "wrap",
-                              marginBottom: "0.5rem",
-                            }}
-                          >
+                        </Callout>
+                      ) : null}
+                      {active.synthesis ? (
+                        <>
+                          <Card size="sm" className="border-status-doing">
+                            <CardContent>
+                              <h3 className="flex items-center gap-2 text-sm font-medium">
+                                <Sparkles className="size-4" aria-hidden="true" />
+                                Synthesized answer
+                              </h3>
+                              <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                                {active.synthesis.answer}
+                              </p>
+                            </CardContent>
+                          </Card>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 border-y border-border-strong bg-panel px-3 py-2 font-mono text-xs text-text-subtle">
                             <span>
                               {active.synthesis.usage.provider} / {active.synthesis.usage.model}
                             </span>
                             <span>{active.synthesis.usage.latency_ms}ms</span>
-                            {active.synthesis.usage.input_tokens > 0 && (
+                            {active.synthesis.usage.input_tokens > 0 ? (
                               <span>
-                                {active.synthesis.usage.input_tokens} in / {active.synthesis.usage.output_tokens} out tokens
+                                {active.synthesis.usage.input_tokens} in /{" "}
+                                {active.synthesis.usage.output_tokens} out tokens
                               </span>
-                            )}
-                            {active.synthesis.usage.cost && (
-                              <span>${active.synthesis.usage.cost.total_usd.toFixed(6)} total</span>
-                            )}
-                            {!active.synthesis.usage.cost && (
-                              <span style={{ color: "rgb(var(--muted))" }}>
-                                cost: unavailable (provider doesn't surface tokens on Complete)
-                              </span>
-                            )}
+                            ) : null}
+                            <span>
+                              {active.synthesis.usage.cost
+                                ? `$${active.synthesis.usage.cost.total_usd.toFixed(6)} total`
+                                : "cost unavailable"}
+                            </span>
                           </div>
-
-                          {/* Numbered sources used by the synthesis */}
-                          <div
-                            className="hud-label"
-                            style={{ marginTop: "0.75rem", marginBottom: "0.4rem", color: "rgb(var(--primary))" }}
-                          >
-                            Cited sources ({active.synthesis.sources.length})
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                            {active.synthesis.sources.map((src) => (
-                              <button
-                                key={src.revision_id}
-                                type="button"
-                                className="hud-panel"
-                                onClick={() =>
-                                  src.memory_key &&
-                                  onOpenItem?.(src.domain, src.namespace, src.memory_key)
-                                }
-                                disabled={!src.memory_key || !onOpenItem}
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "left",
-                                  background: "transparent",
-                                  color: "inherit",
-                                  width: "100%",
-                                  cursor: src.memory_key && onOpenItem ? "pointer" : "default",
-                                }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "baseline" }}>
-                                  <div style={{ fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}>
-                                    <span style={{ color: "rgb(var(--primary))", fontWeight: 600 }}>[{src.n}]</span>{" "}
-                                    {src.memory_key ?? "(no key)"}
-                                  </div>
-                                  <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-                                    {src.domain} · conf {src.confidence.toFixed(2)}
-                                  </div>
-                                </div>
-                                <div style={{ fontSize: "0.75rem", marginTop: "0.2rem", color: "rgb(var(--muted))" }}>
-                                  {src.summary || "(no summary)"}
-                                </div>
-                                <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)", marginTop: "0.2rem" }}>
-                                  {src.namespace}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium text-status-doing">
+                              Cited sources ({active.synthesis.sources.length})
+                            </h3>
+                            <div className="space-y-2">
+                              {active.synthesis.sources.map((source) => (
+                                <Button
+                                  key={source.revision_id}
+                                  type="button"
+                                  variant="outline"
+                                  className="h-auto w-full flex-col items-stretch px-3 py-2 text-left font-normal"
+                                  onClick={() =>
+                                    source.memory_key &&
+                                    onOpenItem?.(source.domain, source.namespace, source.memory_key)
+                                  }
+                                  disabled={!source.memory_key || !onOpenItem}
+                                >
+                                  <span className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="font-mono text-sm">
+                                      <strong className="text-status-doing">[{source.n}]</strong>{" "}
+                                      {source.memory_key ?? "(no key)"}
+                                    </span>
+                                    <span className="font-mono text-xs text-text-subtle">
+                                      {source.domain} · conf {source.confidence.toFixed(2)}
+                                    </span>
+                                  </span>
+                                  <span className="mt-1 whitespace-normal text-xs text-text-subtle">
+                                    {source.summary || "(no summary)"}
+                                  </span>
+                                  <span className="mt-1 break-all font-mono text-xs text-text-subtle">
+                                    {source.namespace}
+                                  </span>
+                                </Button>
+                              ))}
+                            </div>
+                          </section>
+                        </>
+                      ) : null}
                     </div>
-                  )}
+                  ) : null}
 
-                  {/* Sources tab */}
-                  {tab === "sources" && (
-                    <div className="hud-panel" style={{ padding: "0.75rem" }}>
-                      <div className="hud-label" style={{ marginBottom: "0.4rem" }}>
-                        Raw cited revisions ({active.response.results.length})
-                      </div>
-                      <JsonViewer data={active.response.results} maxHeight="600px" />
-                    </div>
-                  )}
+                  {tab === "sources" ? (
+                    <Card size="sm">
+                      <CardContent>
+                        <h3 className="mb-3 text-sm font-medium">
+                          Raw cited revisions ({active.response.results.length})
+                        </h3>
+                        <JsonViewer data={active.response.results} maxHeight="600px" />
+                      </CardContent>
+                    </Card>
+                  ) : null}
                 </>
-              )}
+              ) : null}
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );

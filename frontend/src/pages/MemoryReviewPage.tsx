@@ -1,4 +1,20 @@
 import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  Checkbox,
+  Input,
+  Label,
+  Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@hollis-labs/sysop-ui";
+import {
   AlertTriangle,
   ArrowRight,
   CheckSquare,
@@ -12,17 +28,17 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  tesseractLookup,
   listNamespaces,
   memoryDeprecate,
   memoryPromote,
   memoryWrite,
+  tesseractLookup,
 } from "../api/client";
-import { isFullLookupResult } from "../api/types";
 import type { FullLookupResultItem, MemoryRevision, MemoryStatus } from "../api/types";
+import { isFullLookupResult } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -80,7 +96,8 @@ function getReviewReasons(revision: MemoryRevision, threshold: number): string[]
   if (revision.status === "draft") reasons.push("Draft");
   if (revision.status === "reviewed") reasons.push("Reviewed, not canonical");
   if (revision.status === "deprecated") reasons.push("Deprecated / superseded");
-  if (revision.confidence < threshold) reasons.push(`Low confidence (${revision.confidence.toFixed(2)})`);
+  if (revision.confidence < threshold)
+    reasons.push(`Low confidence (${revision.confidence.toFixed(2)})`);
   if (revision.supersedes) reasons.push("Supersedes an older revision");
   if (revision.dedup_match) reasons.push("Potential duplicate");
   if (isSessionNamespace(revision.namespace) && revision.status !== "deprecated") {
@@ -315,15 +332,19 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
         return false;
       }
       if (q) {
-        const haystack = `${item.revision.namespace} ${item.revision.memory_key ?? ""} ${item.revision.payload.summary}`.toLowerCase();
+        const haystack =
+          `${item.revision.namespace} ${item.revision.memory_key ?? ""} ${item.revision.payload.summary}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [dismissedIds, includeDismissed, items, mode, namespaceFilter, threshold]);
+  }, [activePreset, dismissedIds, includeDismissed, items, mode, namespaceFilter, threshold]);
 
   const focusedItem = useMemo(
-    () => visibleItems.find((item) => item.revision.revision_id === focusedId) ?? visibleItems[0] ?? null,
+    () =>
+      visibleItems.find((item) => item.revision.revision_id === focusedId) ??
+      visibleItems[0] ??
+      null,
     [focusedId, visibleItems],
   );
 
@@ -334,11 +355,13 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
 
   useEffect(() => {
     if (!focusedItem) return;
-    setClarifyStatus(focusedItem.revision.status === "deprecated" ? "reviewed" : focusedItem.revision.status);
+    setClarifyStatus(
+      focusedItem.revision.status === "deprecated" ? "reviewed" : focusedItem.revision.status,
+    );
     setClarifyConfidence(String(focusedItem.revision.confidence.toFixed(2)));
     setClarifySummary(focusedItem.revision.payload.summary);
     setClarifyBody(focusedItem.revision.payload.body ?? "");
-  }, [focusedItem?.revision.revision_id]);
+  }, [focusedItem]);
 
   const counts = useMemo(() => {
     let draft = 0;
@@ -374,9 +397,13 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (everySelected) {
-        visibleIds.forEach((id) => next.delete(id));
+        visibleIds.forEach((id) => {
+          next.delete(id);
+        });
       } else {
-        visibleIds.forEach((id) => next.add(id));
+        visibleIds.forEach((id) => {
+          next.add(id);
+        });
       }
       return next;
     });
@@ -385,10 +412,14 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
   const dismissSelected = () => {
     if (selectedIds.size === 0) return;
     const next = new Set(dismissedIds);
-    selectedIds.forEach((id) => next.add(id));
+    selectedIds.forEach((id) => {
+      next.add(id);
+    });
     setDismissedIds(next);
     setSelectedIds(new Set());
-    toast.success(`Dismissed ${selectionSummary.total} item${selectionSummary.total === 1 ? "" : "s"} from the review queue`);
+    toast.success(
+      `Dismissed ${selectionSummary.total} item${selectionSummary.total === 1 ? "" : "s"} from the review queue`,
+    );
   };
 
   const restoreDismissed = () => {
@@ -404,7 +435,11 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       toast.error("Select at least one non-deprecated item to deprecate");
       return;
     }
-    if (!window.confirm(`Deprecate ${targets.length} selected item${targets.length === 1 ? "" : "s"}?`)) {
+    if (
+      !window.confirm(
+        `Deprecate ${targets.length} selected item${targets.length === 1 ? "" : "s"}?`,
+      )
+    ) {
       return;
     }
     setActing(true);
@@ -437,7 +472,9 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
       toast.error("Target namespace and actor are required for promotion");
       return;
     }
-    const targets = visibleItems.filter((item) => selectedIds.has(item.revision.revision_id) && isPromotable(item));
+    const targets = visibleItems.filter(
+      (item) => selectedIds.has(item.revision.revision_id) && isPromotable(item),
+    );
     if (targets.length === 0) {
       toast.error("Select at least one session-scoped item to promote");
       return;
@@ -509,7 +546,9 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
           agent_id: author,
         },
         trigger: "manual",
-        confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : focusedItem.revision.confidence,
+        confidence: Number.isFinite(parsedConfidence)
+          ? parsedConfidence
+          : focusedItem.revision.confidence,
         tags: focusedItem.revision.tags,
         payload: {
           summary,
@@ -531,599 +570,562 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Memory Review</h2>
-        <div className="page-actions" style={{ display: "flex", gap: "0.4rem" }}>
-          {onOpenWrite && (
-            <button type="button" className="hud-button-ghost" onClick={onOpenWrite}>
-              Manual Write
-            </button>
-          )}
-          <button type="button" className="hud-button-ghost" onClick={restoreDismissed} disabled={dismissedIds.size === 0}>
-            Restore Dismissed
-          </button>
-          <button type="button" className="hud-button-primary" onClick={() => void loadQueue()} disabled={loading || acting}>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {loading ? <Spinner size={13} /> : <RefreshCw size={13} />} Refresh Queue
-            </span>
-          </button>
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Memory review</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+              Triage low-confidence, draft, reviewed, duplicate, and session-scoped memory.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {onOpenWrite ? (
+              <Button type="button" variant="outline" size="sm" onClick={onOpenWrite}>
+                Manual write
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={restoreDismissed}
+              disabled={dismissedIds.size === 0}
+            >
+              Restore dismissed
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void loadQueue()}
+              disabled={loading || acting}
+            >
+              {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />} Refresh queue
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {activePreset && (
-        <div
-          className="hud-panel"
-          style={{
-            padding: "0.75rem 0.9rem",
-            marginBottom: "0.9rem",
-            borderColor: "rgba(var(--primary) / 0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "0.75rem",
-          }}
-        >
-          <div style={{ fontSize: "0.8rem", color: "rgb(var(--text))" }}>
-            Preset active:{" "}
-            <span style={{ color: "rgb(var(--primary))" }}>
-              {activePreset === "lowConfidence"
-                ? "Low Confidence"
-                : activePreset === "reviewed"
-                  ? "Reviewed"
-                  : "Pending Review"}
-            </span>
-          </div>
-          <button type="button" className="hud-button-ghost" onClick={() => setActivePreset(null)}>
-            Clear Preset
-          </button>
-        </div>
-      )}
-
-      <div className="hud-panel" style={{ padding: "0.9rem", marginBottom: "0.9rem" }}>
-        <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="review-filter">
-              Filter
-            </label>
-            <input
-              id="review-filter"
-              className="hud-input"
-              placeholder="Namespace, key, summary"
-              value={namespaceFilter}
-              onChange={(e) => setNamespaceFilter(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="review-limit">
-              Queue Size
-            </label>
-            <input
-              id="review-limit"
-              className="hud-input"
-              type="number"
-              min="25"
-              max="500"
-              value={resultLimit}
-              onChange={(e) => setResultLimit(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="review-threshold">
-              Low Confidence
-            </label>
-            <input
-              id="review-threshold"
-              className="hud-input"
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              value={confidenceThreshold}
-              onChange={(e) => setConfidenceThreshold(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label">Domain</label>
-            <div style={{ display: "flex", gap: "0.25rem" }}>
-              {(["both", "memory", "knowledge"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={domain === value ? "hud-button-primary" : "hud-button-ghost"}
-                  onClick={() => setDomain(value)}
-                >
-                  {value}
-                </button>
-              ))}
+      <div className="space-y-4 p-4">
+        {activePreset ? (
+          <Callout tone="info" title="Preset active">
+            <div className="flex items-center justify-between gap-3">
+              <span>
+                {activePreset === "lowConfidence"
+                  ? "Low confidence"
+                  : activePreset === "reviewed"
+                    ? "Reviewed"
+                    : "Pending review"}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() => setActivePreset(null)}
+              >
+                Clear preset
+              </Button>
             </div>
-          </div>
-          <div className="form-field">
-            <label className="hud-label">Mode</label>
-            <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-              {(["actionable", "all"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={mode === value ? "hud-button-primary" : "hud-button-ghost"}
-                  onClick={() => setMode(value)}
-                >
-                  {value}
-                </button>
-              ))}
+          </Callout>
+        ) : null}
+
+        <Card size="sm">
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1.4fr_1fr]">
+              <ReviewField id="review-filter" label="Filter">
+                <Input
+                  id="review-filter"
+                  className="font-mono"
+                  placeholder="Namespace, key, summary"
+                  value={namespaceFilter}
+                  onChange={(event) => setNamespaceFilter(event.target.value)}
+                />
+              </ReviewField>
+              <ReviewField id="review-limit" label="Queue size">
+                <Input
+                  id="review-limit"
+                  className="font-mono"
+                  type="number"
+                  min="25"
+                  max="500"
+                  value={resultLimit}
+                  onChange={(event) => setResultLimit(event.target.value)}
+                />
+              </ReviewField>
+              <ReviewField id="review-threshold" label="Low confidence">
+                <Input
+                  id="review-threshold"
+                  className="font-mono"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={confidenceThreshold}
+                  onChange={(event) => setConfidenceThreshold(event.target.value)}
+                />
+              </ReviewField>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Domain</legend>
+                <div className="flex flex-wrap gap-1">
+                  {(["both", "memory", "knowledge"] as const).map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant={domain === value ? "default" : "outline"}
+                      size="xs"
+                      onClick={() => setDomain(value)}
+                      aria-pressed={domain === value}
+                    >
+                      {value}
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Mode</legend>
+                <div className="flex flex-wrap gap-1">
+                  {(["actionable", "all"] as const).map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant={mode === value ? "default" : "outline"}
+                      size="xs"
+                      onClick={() => setMode(value)}
+                      aria-pressed={mode === value}
+                    >
+                      {value}
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
             </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", marginTop: "0.8rem", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-            <StatusBadge status={`draft ${counts.draft}`} variant="warn" />
-            <StatusBadge status={`reviewed ${counts.reviewed}`} variant="primary" />
-            <StatusBadge status={`canonical ${counts.canonical}`} variant="ok" />
-            <StatusBadge status={`deprecated ${counts.deprecated}`} variant="muted" />
-            <span style={{ color: "rgb(var(--muted))", fontSize: "0.75rem" }}>
-              {visibleItems.length} shown across {namespaces.length} namespaces
-            </span>
-          </div>
-
-          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "rgb(var(--muted))" }}>
-            <input
-              type="checkbox"
-              checked={includeDismissed}
-              onChange={(e) => setIncludeDismissed(e.target.checked)}
-              style={{ accentColor: "rgb(var(--primary))" }}
-            />
-            Include dismissed
-          </label>
-        </div>
-      </div>
-
-      {selectedIds.size > 0 && (
-        <div className="hud-panel" style={{ padding: "0.9rem", marginBottom: "0.9rem", borderColor: "rgba(var(--primary) / 0.45)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.8rem" }}>
-            <div>
-              <div style={{ fontSize: "0.9rem", color: "rgb(var(--text))" }}>
-                {selectionSummary.total} selected
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))" }}>
-                {selectionSummary.promotable} promotable · {selectionSummary.deprecatable} deprecatable
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-              <button type="button" className="hud-button-ghost" onClick={() => setSelectedIds(new Set())}>
-                Clear Selection
-              </button>
-              <button type="button" className="hud-button-ghost" onClick={dismissSelected}>
-                Dismiss
-              </button>
-              <button type="button" className="hud-button-danger" onClick={() => void handleBulkDeprecate()} disabled={acting || selectionSummary.deprecatable === 0}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {acting ? <Spinner size={13} /> : <Trash2 size={13} />} Deprecate Selected
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-soft pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={`draft ${counts.draft}`} variant="warn" />
+                <StatusBadge status={`reviewed ${counts.reviewed}`} variant="primary" />
+                <StatusBadge status={`canonical ${counts.canonical}`} variant="ok" />
+                <StatusBadge status={`deprecated ${counts.deprecated}`} variant="muted" />
+                <span className="text-xs text-text-subtle">
+                  {visibleItems.length} shown across {namespaces.length} namespaces
                 </span>
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "2fr 1fr 1fr auto" }}>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="bulk-promote-target">
-                Promote To Namespace
-              </label>
-              <input
-                id="bulk-promote-target"
-                className="hud-input"
-                placeholder="user/<actor>/memory or user/<actor>/project/<id>/memory"
-                value={promoteTargetNamespace}
-                onChange={(e) => setPromoteTargetNamespace(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="bulk-promote-actor">
-                Actor
-              </label>
-              <input
-                id="bulk-promote-actor"
-                className="hud-input"
-                value={promoteActorId}
-                onChange={(e) => setPromoteActorId(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="bulk-promote-version">
-                Version
-              </label>
-              <input
-                id="bulk-promote-version"
-                className="hud-input"
-                placeholder="optional"
-                value={promoteActorVersion}
-                onChange={(e) => setPromoteActorVersion(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field" style={{ alignSelf: "end" }}>
-              <button type="button" className="hud-button-primary" onClick={() => void handleBulkPromote()} disabled={acting || selectionSummary.promotable === 0}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {acting ? <Spinner size={13} /> : <ArrowRight size={13} />} Promote Selected
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.9rem", borderColor: "rgba(var(--danger) / 0.4)", color: "rgb(var(--danger))" }}>
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="hud-panel" style={{ padding: "2rem", display: "flex", justifyContent: "center" }}>
-          <Spinner size={18} />
-        </div>
-      ) : visibleItems.length === 0 ? (
-        <EmptyState
-          icon={<Inbox size={18} />}
-          message="No items match the current filters. Try widening the queue or restoring dismissed items."
-          sub="Try widening the queue or restoring dismissed items."
-        />
-      ) : (
-        <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "1.3fr 1fr" }}>
-          <div className="hud-panel" style={{ overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 0.9rem", borderBottom: "1px solid rgb(var(--border))" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", fontSize: "0.85rem" }}>
-                <Filter size={13} />
-                Review Queue
               </div>
-              <button type="button" className="hud-button-ghost" onClick={toggleSelectAllVisible}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.revision.revision_id)) ? <CheckSquare size={12} /> : <Square size={12} />}
-                  Toggle All
-                </span>
-              </button>
+              <Label className="flex items-center gap-2 text-text-subtle">
+                <Checkbox checked={includeDismissed} onCheckedChange={setIncludeDismissed} />{" "}
+                Include dismissed
+              </Label>
             </div>
+          </CardContent>
+        </Card>
 
-            <div style={{ maxHeight: "calc(100vh - 320px)", overflow: "auto" }}>
-              {visibleItems.map((item) => {
-                const active = focusedItem?.revision.revision_id === item.revision.revision_id;
-                const selected = selectedIds.has(item.revision.revision_id);
-                const dismissed = dismissedIds.has(item.revision.revision_id);
-                return (
-                  <div
-                    key={item.revision.revision_id}
-                    style={{
-                      padding: "0.85rem 0.9rem",
-                      borderBottom: "1px solid rgba(var(--border) / 0.6)",
-                      background: active ? "rgba(var(--primary) / 0.07)" : "transparent",
-                      opacity: dismissed && includeDismissed ? 0.65 : 1,
-                    }}
+        {selectedIds.size > 0 ? (
+          <Card size="sm" className="border-status-doing">
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{selectionSummary.total} selected</p>
+                  <p className="mt-1 text-xs text-text-subtle">
+                    {selectionSummary.promotable} promotable · {selectionSummary.deprecatable}{" "}
+                    deprecatable
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedIds(new Set())}
                   >
-                    <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                      <button
+                    Clear selection
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={dismissSelected}>
+                    Dismiss
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => void handleBulkDeprecate()}
+                    disabled={acting || selectionSummary.deprecatable === 0}
+                  >
+                    {acting ? <Spinner size={13} /> : <Trash2 aria-hidden="true" />} Deprecate
+                    selected
+                  </Button>
+                </div>
+              </div>
+              <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto]">
+                <ReviewField id="bulk-promote-target" label="Promote to namespace">
+                  <Input
+                    id="bulk-promote-target"
+                    className="font-mono"
+                    placeholder="user/<actor>/memory or user/<actor>/project/<id>/memory"
+                    value={promoteTargetNamespace}
+                    onChange={(event) => setPromoteTargetNamespace(event.target.value)}
+                  />
+                </ReviewField>
+                <ReviewField id="bulk-promote-actor" label="Actor">
+                  <Input
+                    id="bulk-promote-actor"
+                    className="font-mono"
+                    value={promoteActorId}
+                    onChange={(event) => setPromoteActorId(event.target.value)}
+                  />
+                </ReviewField>
+                <ReviewField id="bulk-promote-version" label="Version">
+                  <Input
+                    id="bulk-promote-version"
+                    className="font-mono"
+                    placeholder="optional"
+                    value={promoteActorVersion}
+                    onChange={(event) => setPromoteActorVersion(event.target.value)}
+                  />
+                </ReviewField>
+                <Button
+                  type="button"
+                  onClick={() => void handleBulkPromote()}
+                  disabled={acting || selectionSummary.promotable === 0}
+                >
+                  {acting ? <Spinner size={13} /> : <ArrowRight aria-hidden="true" />} Promote
+                  selected
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {error ? (
+          <Callout tone="danger" title="Review queue unavailable">
+            {error}
+          </Callout>
+        ) : null}
+        {loading ? (
+          <Card size="sm">
+            <div className="flex justify-center py-8 text-text-subtle">
+              <Spinner size={18} />
+            </div>
+          </Card>
+        ) : visibleItems.length === 0 ? (
+          <EmptyState
+            icon={<Inbox size={18} />}
+            message="No items match the current filters."
+            sub="Try widening the queue or restoring dismissed items."
+          />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
+            <Card size="sm" className="overflow-hidden">
+              <div className="flex items-center justify-between border-b border-border-strong px-4 py-3">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <Filter className="size-4" aria-hidden="true" />
+                  Review queue
+                </span>
+                <Button type="button" variant="outline" size="xs" onClick={toggleSelectAllVisible}>
+                  {visibleItems.every((item) => selectedIds.has(item.revision.revision_id)) ? (
+                    <CheckSquare aria-hidden="true" />
+                  ) : (
+                    <Square aria-hidden="true" />
+                  )}{" "}
+                  Toggle all
+                </Button>
+              </div>
+              <div className="max-h-[calc(100vh-20rem)] overflow-auto">
+                {visibleItems.map((item) => {
+                  const active = focusedItem?.revision.revision_id === item.revision.revision_id;
+                  const selected = selectedIds.has(item.revision.revision_id);
+                  const dismissed = dismissedIds.has(item.revision.revision_id);
+                  return (
+                    <div
+                      key={item.revision.revision_id}
+                      className={`flex items-start gap-2 border-b border-border-soft p-3 last:border-b-0 ${active ? "bg-panel-hover-soft" : ""} ${dismissed && includeDismissed ? "opacity-60" : ""}`}
+                    >
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className={selected ? "text-status-doing" : "text-text-subtle"}
                         onClick={() => toggleSelection(item.revision.revision_id)}
-                        style={{
-                          marginTop: "0.05rem",
-                          border: "none",
-                          background: "none",
-                          color: selected ? "rgb(var(--primary))" : "rgb(var(--muted))",
-                          cursor: "pointer",
-                        }}
                         aria-label={selected ? "Deselect item" : "Select item"}
                       >
-                        {selected ? <CheckSquare size={15} /> : <Square size={15} />}
-                      </button>
-
-                      <button
+                        {selected ? (
+                          <CheckSquare aria-hidden="true" />
+                        ) : (
+                          <Square aria-hidden="true" />
+                        )}
+                      </Button>
+                      <Button
                         type="button"
+                        variant="ghost"
+                        className="h-auto min-w-0 flex-1 flex-col items-start rounded-none p-0 text-left font-normal"
                         onClick={() => setFocusedId(item.revision.revision_id)}
-                        style={{ flex: 1, background: "none", border: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}
                       >
-                        <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.35rem" }}>
+                        <span className="flex flex-wrap gap-1.5">
                           <StatusBadge status={item.revision.status} />
-                          {item.revision.confidence < threshold ? (
-                            <StatusBadge status={`conf ${item.revision.confidence.toFixed(2)}`} variant="warn" />
-                          ) : (
-                            <StatusBadge status={`conf ${item.revision.confidence.toFixed(2)}`} variant="ok" />
-                          )}
-                          {dismissed && includeDismissed && <StatusBadge status="dismissed" variant="muted" />}
-                        </div>
-
-                        <div style={{ fontSize: "0.9rem", color: "rgb(var(--text))", marginBottom: "0.2rem" }}>
+                          <StatusBadge
+                            status={`conf ${item.revision.confidence.toFixed(2)}`}
+                            variant={item.revision.confidence < threshold ? "warn" : "ok"}
+                          />
+                          {dismissed && includeDismissed ? (
+                            <StatusBadge status="dismissed" variant="muted" />
+                          ) : null}
+                        </span>
+                        <span className="mt-2 whitespace-normal text-sm text-text">
                           {item.revision.payload.summary}
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-                          {item.revision.namespace} / {item.revision.memory_key ?? item.revision.memory_id}
-                        </div>
-
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.45rem" }}>
+                        </span>
+                        <span className="mt-1 max-w-full truncate font-mono text-xs text-text-subtle">
+                          {item.revision.namespace} /{" "}
+                          {item.revision.memory_key ?? item.revision.memory_id}
+                        </span>
+                        <span className="mt-2 flex flex-wrap gap-1.5">
                           {item.reviewReasons.slice(0, 3).map((reason) => (
-                            <span
-                              key={reason}
-                              style={{
-                                padding: "0.15rem 0.35rem",
-                                borderRadius: "999px",
-                                border: "1px solid rgba(var(--border) / 0.9)",
-                                fontSize: "0.68rem",
-                                color: "rgb(var(--muted))",
-                              }}
-                            >
+                            <Pill key={reason} tone="neutral">
                               {reason}
-                            </span>
+                            </Pill>
                           ))}
+                        </span>
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card size="sm" className="min-h-[31rem]">
+              <CardContent>
+                {focusedItem ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={focusedItem.revision.status} />
+                          {focusedItem.revision.confidence < threshold ? (
+                            <span className="flex items-center gap-1 text-xs text-status-paused">
+                              <AlertTriangle className="size-3" aria-hidden="true" /> Low confidence
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-xs text-status-done">
+                              <ShieldAlert className="size-3" aria-hidden="true" /> Stable
+                            </span>
+                          )}
                         </div>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="hud-panel" style={{ padding: "0.95rem", minHeight: 500 }}>
-            {focusedItem ? (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.8rem" }}>
-                  <div>
-                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.35rem" }}>
-                      <StatusBadge status={focusedItem.revision.status} />
-                      {focusedItem.revision.confidence < threshold ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "rgb(var(--warn))", fontSize: "0.78rem" }}>
-                          <AlertTriangle size={12} /> Low confidence
-                        </span>
-                      ) : (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "rgb(var(--ok))", fontSize: "0.78rem" }}>
-                          <ShieldAlert size={12} /> Stable
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>
-                      {focusedItem.revision.payload.summary}
-                    </div>
-                    <div style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-                      {focusedItem.revision.namespace} / {focusedItem.revision.memory_key ?? focusedItem.revision.memory_id}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {onOpenItem && focusedItem.revision.memory_key && (
-                      <button
-                        type="button"
-                        className="hud-button-ghost"
-                        onClick={() =>
-                          onOpenItem(
-                            focusedItem.revision.domain,
-                            focusedItem.revision.namespace,
-                            focusedItem.revision.memory_key!,
-                          )
-                        }
-                      >
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                          <Eye size={12} /> Open Detail
-                        </span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="hud-button-ghost"
-                      onClick={() => {
-                        setDismissedIds((prev) => {
-                          const next = new Set(prev);
-                          next.add(focusedItem.revision.revision_id);
-                          return next;
-                        });
-                        toast.success("Item dismissed from review queue");
-                      }}
-                    >
-                      <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                        <X size={12} /> Dismiss
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="hud-panel2" style={{ padding: "0.75rem", marginBottom: "0.8rem" }}>
-                  <div style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
-                    Why This Is Surfaced
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                    {focusedItem.reviewReasons.map((reason) => (
-                      <span
-                        key={reason}
-                        style={{
-                          padding: "0.2rem 0.4rem",
-                          borderRadius: "999px",
-                          background: "rgba(var(--panel) / 0.9)",
-                          border: "1px solid rgba(var(--border) / 0.9)",
-                          fontSize: "0.7rem",
-                          color: "rgb(var(--text))",
-                        }}
-                      >
-                        {reason}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="hud-panel2" style={{ padding: "0.75rem" }}>
-                    <div className="hud-label">Details</div>
-                    <div style={{ display: "grid", gap: "0.35rem", fontSize: "0.78rem", color: "rgb(var(--muted))" }}>
-                      <div>Revision: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.revision_id}</span></div>
-                      <div>Memory: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.memory_id}</span></div>
-                      <div>Author: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.revision.author.agent_id}</span></div>
-                      <div>Origin: <span style={{ color: "rgb(var(--text))" }}>{focusedItem.revision.origin ?? "unknown"}</span></div>
-                      <div>Created: <span style={{ color: "rgb(var(--text))" }}>{formatTimestamp(focusedItem.revision.created_at)}</span></div>
-                      {focusedItem.revision.supersedes && (
-                        <div>Supersedes: <span style={{ color: "rgb(var(--text))", fontFamily: "var(--font-mono)" }}>{focusedItem.revision.supersedes}</span></div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="hud-panel2" style={{ padding: "0.75rem" }}>
-                    <div className="hud-label">Tags</div>
-                    {focusedItem.revision.tags.length > 0 ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                        {focusedItem.revision.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            style={{
-                              padding: "0.2rem 0.4rem",
-                              borderRadius: "999px",
-                              border: "1px solid rgba(var(--border) / 0.9)",
-                              fontSize: "0.68rem",
-                              color: "rgb(var(--muted))",
-                            }}
+                        <p className="mt-2 text-base">{focusedItem.revision.payload.summary}</p>
+                        <p className="mt-1 break-all font-mono text-xs text-text-subtle">
+                          {focusedItem.revision.namespace} /{" "}
+                          {focusedItem.revision.memory_key ?? focusedItem.revision.memory_id}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {onOpenItem && focusedItem.revision.memory_key ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() =>
+                              onOpenItem(
+                                focusedItem.revision.domain,
+                                focusedItem.revision.namespace,
+                                focusedItem.revision.memory_key ?? "",
+                              )
+                            }
                           >
-                            {tag}
-                          </span>
+                            <Eye aria-hidden="true" /> Open detail
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            setDismissedIds((previous) =>
+                              new Set(previous).add(focusedItem.revision.revision_id),
+                            );
+                            toast.success("Item dismissed from review queue");
+                          }}
+                        >
+                          <X aria-hidden="true" /> Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                    <section className="rounded-md border border-border-soft bg-panel-hover-soft p-3">
+                      <h3 className="text-xs font-medium text-text-subtle">Why this is surfaced</h3>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {focusedItem.reviewReasons.map((reason) => (
+                          <Pill key={reason} tone="neutral">
+                            {reason}
+                          </Pill>
                         ))}
                       </div>
-                    ) : (
-                      <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))" }}>No tags</div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "0.8rem" }}>
-                  <div className="hud-label">Body</div>
-                  <div className="hud-panel2" style={{ padding: "0.75rem", minHeight: 90, whiteSpace: "pre-wrap", fontSize: "0.82rem", color: focusedItem.revision.payload.body ? "rgb(var(--text))" : "rgb(var(--muted))" }}>
-                    {focusedItem.revision.payload.body || "No body content on this revision."}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "0.9rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.6rem" }}>
-                    <Edit3 size={14} />
-                    <span style={{ fontSize: "0.85rem" }}>Clarify / Update</span>
-                  </div>
-                  {!canClarify(focusedItem) ? (
-                    <div className="hud-panel2" style={{ padding: "0.75rem", color: "rgb(var(--muted))", fontSize: "0.78rem" }}>
-                      Quick clarify currently requires a keyed memory. This item has no `memory_key`, so use a manual write flow instead.
+                    </section>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <section className="rounded-md border border-border-soft bg-panel-hover-soft p-3">
+                        <h3 className="text-xs font-medium text-text-subtle">Details</h3>
+                        <dl className="mt-2 grid gap-1.5 text-xs text-text-subtle">
+                          <Detail label="Revision" value={focusedItem.revision.revision_id} mono />
+                          <Detail label="Memory" value={focusedItem.revision.memory_id} mono />
+                          <Detail label="Author" value={focusedItem.revision.author.agent_id} />
+                          <Detail label="Origin" value={focusedItem.revision.origin ?? "unknown"} />
+                          <Detail
+                            label="Created"
+                            value={formatTimestamp(focusedItem.revision.created_at)}
+                          />
+                          {focusedItem.revision.supersedes ? (
+                            <Detail
+                              label="Supersedes"
+                              value={focusedItem.revision.supersedes}
+                              mono
+                            />
+                          ) : null}
+                        </dl>
+                      </section>
+                      <section className="rounded-md border border-border-soft bg-panel-hover-soft p-3">
+                        <h3 className="text-xs font-medium text-text-subtle">Tags</h3>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {focusedItem.revision.tags.length > 0 ? (
+                            focusedItem.revision.tags.map((tag) => (
+                              <Pill key={tag} tone="neutral">
+                                {tag}
+                              </Pill>
+                            ))
+                          ) : (
+                            <span className="text-xs text-text-subtle">No tags</span>
+                          )}
+                        </div>
+                      </section>
                     </div>
-                  ) : (
-                    <div className="hud-panel2" style={{ padding: "0.85rem" }}>
-                      <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
-                        <div className="form-field">
-                          <label className="hud-label" htmlFor="clarify-author">
-                            Author
-                          </label>
-                          <input
-                            id="clarify-author"
-                            className="hud-input"
-                            value={clarifyAuthor}
-                            onChange={(e) => setClarifyAuthor(e.target.value)}
-                            style={{ width: "100%" }}
-                          />
+                    <section>
+                      <h3 className="text-xs font-medium text-text-subtle">Body</h3>
+                      <pre
+                        className={`mt-2 min-h-24 whitespace-pre-wrap rounded-md border border-border-soft bg-panel-hover-soft p-3 font-mono text-xs leading-5 ${focusedItem.revision.payload.body ? "text-text" : "text-text-subtle"}`}
+                      >
+                        {focusedItem.revision.payload.body || "No body content on this revision."}
+                      </pre>
+                    </section>
+                    <section className="border-t border-border-strong pt-4">
+                      <h3 className="flex items-center gap-2 text-sm font-medium">
+                        <Edit3 className="size-4" aria-hidden="true" />
+                        Clarify or update
+                      </h3>
+                      {!canClarify(focusedItem) ? (
+                        <Callout tone="warning" title="Quick clarify unavailable">
+                          This item has no memory key. Use the manual write flow instead.
+                        </Callout>
+                      ) : (
+                        <div className="mt-3 space-y-3 rounded-md border border-border-soft bg-panel-hover-soft p-3">
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <ReviewField id="clarify-author" label="Author">
+                              <Input
+                                id="clarify-author"
+                                className="font-mono"
+                                value={clarifyAuthor}
+                                onChange={(event) => setClarifyAuthor(event.target.value)}
+                              />
+                            </ReviewField>
+                            <ReviewField id="clarify-version" label="Version">
+                              <Input
+                                id="clarify-version"
+                                className="font-mono"
+                                value={clarifyVersion}
+                                onChange={(event) => setClarifyVersion(event.target.value)}
+                              />
+                            </ReviewField>
+                            <ReviewField id="clarify-status" label="New status">
+                              <Select
+                                value={clarifyStatus}
+                                onValueChange={(value) => {
+                                  if (value) setClarifyStatus(value as MemoryStatus);
+                                }}
+                              >
+                                <SelectTrigger id="clarify-status" className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ALL_STATUSES.filter((status) => status !== "deprecated").map(
+                                    (status) => (
+                                      <SelectItem key={status} value={status}>
+                                        {status}
+                                      </SelectItem>
+                                    ),
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </ReviewField>
+                            <ReviewField id="clarify-confidence" label="Confidence">
+                              <Input
+                                id="clarify-confidence"
+                                className="font-mono"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={clarifyConfidence}
+                                onChange={(event) => setClarifyConfidence(event.target.value)}
+                              />
+                            </ReviewField>
+                          </div>
+                          <ReviewField id="clarify-summary" label="Summary">
+                            <Textarea
+                              id="clarify-summary"
+                              rows={2}
+                              value={clarifySummary}
+                              onChange={(event) => setClarifySummary(event.target.value)}
+                            />
+                          </ReviewField>
+                          <ReviewField id="clarify-body" label="Body">
+                            <Textarea
+                              id="clarify-body"
+                              className="font-mono"
+                              rows={6}
+                              value={clarifyBody}
+                              onChange={(event) => setClarifyBody(event.target.value)}
+                            />
+                          </ReviewField>
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              onClick={() => void handleClarify()}
+                              disabled={
+                                clarifySubmitting || !clarifyAuthor.trim() || !clarifySummary.trim()
+                              }
+                            >
+                              {clarifySubmitting ? (
+                                <Spinner size={13} />
+                              ) : (
+                                <Edit3 aria-hidden="true" />
+                              )}{" "}
+                              Save clarification
+                            </Button>
+                          </div>
                         </div>
-                        <div className="form-field">
-                          <label className="hud-label" htmlFor="clarify-version">
-                            Version
-                          </label>
-                          <input
-                            id="clarify-version"
-                            className="hud-input"
-                            value={clarifyVersion}
-                            onChange={(e) => setClarifyVersion(e.target.value)}
-                            style={{ width: "100%" }}
-                          />
-                        </div>
-                        <div className="form-field">
-                          <label className="hud-label" htmlFor="clarify-status">
-                            New Status
-                          </label>
-                          <select
-                            id="clarify-status"
-                            className="hud-input"
-                            value={clarifyStatus}
-                            onChange={(e) => setClarifyStatus(e.target.value as MemoryStatus)}
-                            style={{ width: "100%" }}
-                          >
-                            {ALL_STATUSES.filter((status) => status !== "deprecated").map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="form-field">
-                          <label className="hud-label" htmlFor="clarify-confidence">
-                            Confidence
-                          </label>
-                          <input
-                            id="clarify-confidence"
-                            className="hud-input"
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value={clarifyConfidence}
-                            onChange={(e) => setClarifyConfidence(e.target.value)}
-                            style={{ width: "100%" }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="form-field" style={{ marginTop: "0.6rem" }}>
-                        <label className="hud-label" htmlFor="clarify-summary">
-                          Summary
-                        </label>
-                        <textarea
-                          id="clarify-summary"
-                          className="hud-textarea"
-                          rows={2}
-                          value={clarifySummary}
-                          onChange={(e) => setClarifySummary(e.target.value)}
-                          style={{ width: "100%" }}
-                        />
-                      </div>
-
-                      <div className="form-field" style={{ marginTop: "0.6rem" }}>
-                        <label className="hud-label" htmlFor="clarify-body">
-                          Body
-                        </label>
-                        <textarea
-                          id="clarify-body"
-                          className="hud-textarea"
-                          rows={6}
-                          value={clarifyBody}
-                          onChange={(e) => setClarifyBody(e.target.value)}
-                          style={{ width: "100%" }}
-                        />
-                      </div>
-
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.75rem" }}>
-                        <button
-                          type="button"
-                          className="hud-button-primary"
-                          onClick={() => void handleClarify()}
-                          disabled={clarifySubmitting || !clarifyAuthor.trim() || !clarifySummary.trim()}
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                            {clarifySubmitting ? <Spinner size={13} /> : <Edit3 size={13} />} Save Clarification
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <EmptyState
-                icon={<Inbox size={18} />}
-                message="Choose a memory from the queue to inspect, update, promote, deprecate, or dismiss."
-                sub="Pick an item from the left to review it."
-              />
-            )}
+                      )}
+                    </section>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={<Inbox size={18} />}
+                    message="Choose a memory from the queue to inspect."
+                    sub="Pick an item from the left to review it."
+                  />
+                )}
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewField({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function Detail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <dt className="inline">{label}: </dt>
+      <dd className={`inline text-text ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
 }

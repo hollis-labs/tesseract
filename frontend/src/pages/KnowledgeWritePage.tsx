@@ -1,12 +1,15 @@
-import { BookOpen, Send } from "lucide-react";
-import { useState } from "react";
+import { Button, Callout, Card, CardContent, Input, Label, Textarea } from "@hollis-labs/sysop-ui";
+import { BookOpen } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { knowledgeWrite } from "../api/client";
 import type { KnowledgeRevision, KnowledgeWriteRequest } from "../api/types";
 import { Spinner } from "../components/ui/Spinner";
 
 interface Props {
-  onOpenItem?: ((domain: "memory" | "knowledge", namespace: string, key: string) => void) | undefined;
+  onOpenItem?:
+    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
+    | undefined;
 }
 
 export function KnowledgeWritePage({ onOpenItem }: Props) {
@@ -86,230 +89,220 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Knowledge Write</h2>
-      </div>
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <h2 className="text-lg font-semibold tracking-tight">Write knowledge</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+          Capture a durable reference with its source pointer, provenance, and retrieval metadata.
+        </p>
+      </section>
 
-      <div className="hud-panel" style={{ padding: "1rem" }}>
-        {error && (
-          <div
-            style={{
-              padding: "0.5rem 0.75rem",
-              marginBottom: "0.75rem",
-              background: "rgba(var(--danger) / 0.1)",
-              color: "rgb(var(--danger))",
-              fontSize: "0.85rem",
-              borderRadius: "var(--radius-sm)",
-            }}
-          >
-            {error}
-          </div>
-        )}
+      <div className="max-w-6xl p-4">
+        <Card size="sm">
+          <CardContent className="space-y-4">
+            {error ? (
+              <Callout tone="danger" title="Knowledge write failed">
+                {error}
+              </Callout>
+            ) : null}
+            {result ? (
+              <Callout tone="success" title={`Wrote revision ${result.revision_id}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-xs">
+                    {result.namespace} / {result.memory_key ?? "(no key)"} · kind{" "}
+                    {result.facets?.kind ?? kind} · source {result.facets?.source ?? source}
+                  </span>
+                  {onOpenItem && result.memory_key ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() =>
+                        onOpenItem("knowledge", result.namespace, result.memory_key ?? "")
+                      }
+                    >
+                      Open detail
+                    </Button>
+                  ) : null}
+                </div>
+              </Callout>
+            ) : null}
 
-        {result && (
-          <div
-            className="hud-panel"
-            style={{
-              padding: "0.75rem",
-              marginBottom: "0.75rem",
-              borderColor: "rgba(var(--ok) / 0.4)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "0.35rem",
-              }}
-            >
-              <div style={{ fontSize: "0.85rem", color: "rgb(var(--ok))" }}>
-                Wrote revision <span style={{ fontFamily: "var(--font-mono)" }}>{result.revision_id}</span>
-              </div>
-              {onOpenItem && result.memory_key && (
-                <button
-                  type="button"
-                  className="hud-button-ghost"
-                  onClick={() => onOpenItem("knowledge", result.namespace, result.memory_key!)}
-                  style={{ fontSize: "0.7rem", padding: "0.2rem 0.4rem" }}
-                >
-                  Open detail
-                </button>
-              )}
+            <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
+              <Field id="kw-namespace" label="Namespace" required>
+                <Input
+                  id="kw-namespace"
+                  className="font-mono"
+                  placeholder="user/<actor>/knowledge/<scope>"
+                  value={namespace}
+                  onChange={(event) => setNamespace(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-key" label="Key">
+                <Input
+                  id="kw-key"
+                  className="font-mono"
+                  placeholder="design.doc"
+                  value={key}
+                  onChange={(event) => setKey(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-supersedes" label="Supersedes">
+                <Input
+                  id="kw-supersedes"
+                  className="font-mono"
+                  placeholder="revision id"
+                  value={supersedes}
+                  onChange={(event) => setSupersedes(event.target.value)}
+                />
+              </Field>
             </div>
-            <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-              {result.namespace} / {result.memory_key ?? "(no key)"} · kind {result.facets?.kind ?? kind} · source {result.facets?.source ?? source}
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_2fr]">
+              <Field id="kw-kind" label="Kind" required>
+                <Input
+                  id="kw-kind"
+                  className="font-mono"
+                  value={kind}
+                  onChange={(event) => setKind(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-source" label="Source" required>
+                <Input
+                  id="kw-source"
+                  className="font-mono"
+                  value={source}
+                  onChange={(event) => setSource(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-pointer-scheme" label="Pointer scheme" required>
+                <Input
+                  id="kw-pointer-scheme"
+                  className="font-mono"
+                  value={pointerScheme}
+                  onChange={(event) => setPointerScheme(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-pointer-locator" label="Pointer locator" required>
+                <Input
+                  id="kw-pointer-locator"
+                  className="font-mono"
+                  placeholder="/docs/spec.md or https://…"
+                  value={pointerLocator}
+                  onChange={(event) => setPointerLocator(event.target.value)}
+                />
+              </Field>
             </div>
-          </div>
-        )}
 
-        <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-namespace">
-              Namespace <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input
-              id="kw-namespace"
-              className="hud-input"
-              placeholder="user/<actor>/knowledge/<scope>"
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-key">
-              Key
-            </label>
-            <input
-              id="kw-key"
-              className="hud-input"
-              placeholder="design.doc"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-supersedes">
-              Supersedes
-            </label>
-            <input
-              id="kw-supersedes"
-              className="hud-input"
-              placeholder="revision id"
-              value={supersedes}
-              onChange={(e) => setSupersedes(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Field id="kw-author" label="Author agent_id" required>
+                <Input
+                  id="kw-author"
+                  className="font-mono"
+                  value={authorAgentId}
+                  onChange={(event) => setAuthorAgentId(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-author-version" label="Author version">
+                <Input
+                  id="kw-author-version"
+                  className="font-mono"
+                  value={authorVersion}
+                  onChange={(event) => setAuthorVersion(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-session-id" label="Session ID" required>
+                <Input
+                  id="kw-session-id"
+                  className="font-mono"
+                  value={sessionId}
+                  onChange={(event) => setSessionId(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-confidence" label="Confidence">
+                <Input
+                  id="kw-confidence"
+                  className="font-mono"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={confidence}
+                  onChange={(event) => setConfidence(event.target.value)}
+                />
+              </Field>
+            </div>
 
-        <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr 2fr", marginTop: "0.5rem" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-kind">
-              Kind <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input id="kw-kind" className="hud-input" value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-source">
-              Source <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input id="kw-source" className="hud-input" value={source} onChange={(e) => setSource(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-pointer-scheme">
-              Pointer Scheme <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input id="kw-pointer-scheme" className="hud-input" value={pointerScheme} onChange={(e) => setPointerScheme(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-pointer-locator">
-              Pointer Locator <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input
-              id="kw-pointer-locator"
-              className="hud-input"
-              placeholder="/docs/spec.md or https://…"
-              value={pointerLocator}
-              onChange={(e) => setPointerLocator(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
+            <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+              <Field id="kw-tags" label="Tags">
+                <Input
+                  id="kw-tags"
+                  className="font-mono"
+                  placeholder="doc, architecture, source:repo"
+                  value={tagsField}
+                  onChange={(event) => setTagsField(event.target.value)}
+                />
+              </Field>
+              <Field id="kw-ttl" label="TTL seconds">
+                <Input
+                  id="kw-ttl"
+                  className="font-mono"
+                  type="number"
+                  min="0"
+                  value={ttlSeconds}
+                  onChange={(event) => setTtlSeconds(event.target.value)}
+                />
+              </Field>
+            </div>
 
-        <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginTop: "0.5rem" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-author">
-              Author agent_id <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input id="kw-author" className="hud-input" value={authorAgentId} onChange={(e) => setAuthorAgentId(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-author-version">
-              Author version
-            </label>
-            <input id="kw-author-version" className="hud-input" value={authorVersion} onChange={(e) => setAuthorVersion(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-session-id">
-              Session ID <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input id="kw-session-id" className="hud-input" value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ width: "100%" }} />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-confidence">
-              Confidence
-            </label>
-            <input id="kw-confidence" className="hud-input" type="number" min="0" max="1" step="0.05" value={confidence} onChange={(e) => setConfidence(e.target.value)} style={{ width: "100%" }} />
-          </div>
-        </div>
+            <Field id="kw-summary" label="Summary" required>
+              <Textarea
+                id="kw-summary"
+                rows={2}
+                placeholder="Short operator-facing summary of the knowledge item."
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+              />
+            </Field>
+            <Field id="kw-body" label="Body">
+              <Textarea
+                id="kw-body"
+                className="font-mono"
+                rows={7}
+                placeholder="Long-form body content…"
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+              />
+            </Field>
 
-        <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr", marginTop: "0.5rem" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-tags">
-              Tags
-            </label>
-            <input
-              id="kw-tags"
-              className="hud-input"
-              placeholder="doc, architecture, source:repo"
-              value={tagsField}
-              onChange={(e) => setTagsField(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="kw-ttl">
-              TTL Seconds
-            </label>
-            <input id="kw-ttl" className="hud-input" type="number" min="0" value={ttlSeconds} onChange={(e) => setTtlSeconds(e.target.value)} style={{ width: "100%" }} />
-          </div>
-        </div>
-
-        <div className="form-field" style={{ marginTop: "0.5rem" }}>
-          <label className="hud-label" htmlFor="kw-summary">
-            Summary <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <textarea
-            id="kw-summary"
-            className="hud-textarea"
-            rows={2}
-            placeholder="Short operator-facing summary of the knowledge item."
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-
-        <div className="form-field" style={{ marginTop: "0.5rem" }}>
-          <label className="hud-label" htmlFor="kw-body">
-            Body
-          </label>
-          <textarea
-            id="kw-body"
-            className="hud-textarea"
-            rows={7}
-            placeholder="Long-form body content..."
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-          />
-        </div>
-
-        <div style={{ marginTop: "0.75rem" }}>
-          <button type="button" className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {submitting ? <Spinner size={13} /> : <BookOpen size={13} />}
-              <Send size={13} style={{ marginLeft: "0.15rem" }} />
-              Write Knowledge
-            </span>
-          </button>
-        </div>
+            <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+              {submitting ? <Spinner size={13} /> : <BookOpen aria-hidden="true" />} Write knowledge
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+function Field({
+  id,
+  label,
+  required = false,
+  children,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>
+        {label}
+        {required ? <span className="text-danger"> *</span> : null}
+      </Label>
+      {children}
     </div>
   );
 }

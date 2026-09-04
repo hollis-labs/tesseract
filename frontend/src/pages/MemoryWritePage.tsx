@@ -1,5 +1,19 @@
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@hollis-labs/sysop-ui";
 import { ArrowRight, PenSquare, Send, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { memoryDeprecate, memoryPromote, memoryWrite } from "../api/client";
 import type {
@@ -16,7 +30,9 @@ type Tab = "write" | "promote" | "deprecate";
 const STATUS_OPTIONS: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
 
 interface Props {
-  onOpenItem?: ((domain: "memory" | "knowledge", namespace: string, key: string) => void) | undefined;
+  onOpenItem?:
+    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
+    | undefined;
   onOpenReview?: (() => void) | undefined;
 }
 
@@ -24,44 +40,48 @@ export function MemoryWritePage({ onOpenItem, onOpenReview }: Props) {
   const [tab, setTab] = useState<Tab>("write");
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Memory Write</h2>
-        {onOpenReview && (
-          <div className="page-actions">
-            <button type="button" className="hud-button-ghost" onClick={onOpenReview}>
-              Review Queue
-            </button>
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Memory operations</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+              Write, promote, or deprecate memory revisions with explicit provenance.
+            </p>
           </div>
-        )}
-      </div>
+          {onOpenReview ? (
+            <Button type="button" variant="outline" size="sm" onClick={onOpenReview}>
+              Review queue
+            </Button>
+          ) : null}
+        </div>
+      </section>
 
-      <div style={{ display: "flex", gap: "0.25rem", marginBottom: "0.75rem", borderBottom: "1px solid rgb(var(--border))" }}>
-        {(["write", "promote", "deprecate"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            style={{
-              padding: "0.4rem 0.75rem",
-              background: tab === t ? "rgba(var(--primary) / 0.08)" : "transparent",
-              border: "none",
-              borderBottom: tab === t ? "2px solid rgb(var(--primary))" : "2px solid transparent",
-              color: tab === t ? "rgb(var(--primary))" : "rgb(var(--muted))",
-              cursor: "pointer",
-              fontSize: "0.8rem",
-              fontFamily: "var(--font-mono)",
-              textTransform: "uppercase",
-            }}
-          >
-            {t}
-          </button>
-        ))}
+      <div className="max-w-6xl p-4">
+        <div
+          className="mb-3 flex gap-1 border-b border-border-strong"
+          role="tablist"
+          aria-label="Memory operations"
+        >
+          {(["write", "promote", "deprecate"] as const).map((item) => (
+            <Button
+              key={item}
+              type="button"
+              variant={tab === item ? "default" : "ghost"}
+              size="sm"
+              className="rounded-b-none"
+              onClick={() => setTab(item)}
+              role="tab"
+              aria-selected={tab === item}
+            >
+              {item}
+            </Button>
+          ))}
+        </div>
+        {tab === "write" ? <WriteForm onOpenItem={onOpenItem} /> : null}
+        {tab === "promote" ? <PromoteForm onOpenItem={onOpenItem} /> : null}
+        {tab === "deprecate" ? <DeprecateForm /> : null}
       </div>
-
-      {tab === "write" && <WriteForm onOpenItem={onOpenItem} />}
-      {tab === "promote" && <PromoteForm onOpenItem={onOpenItem} />}
-      {tab === "deprecate" && <DeprecateForm />}
     </div>
   );
 }
@@ -69,7 +89,9 @@ export function MemoryWritePage({ onOpenItem, onOpenReview }: Props) {
 function WriteForm({
   onOpenItem,
 }: {
-  onOpenItem?: ((domain: "memory" | "knowledge", namespace: string, key: string) => void) | undefined;
+  onOpenItem?:
+    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
+    | undefined;
 }) {
   const [namespace, setNamespace] = useState("");
   const [memoryKey, setMemoryKey] = useState("");
@@ -85,8 +107,7 @@ function WriteForm({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MemoryRevision | null>(null);
 
-  const canSubmit =
-    namespace.trim() && authorAgentId.trim() && summary.trim() && !submitting;
+  const canSubmit = namespace.trim() && authorAgentId.trim() && summary.trim() && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -125,124 +146,156 @@ function WriteForm({
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem" }}>
-      {error && (
-        <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
-          {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem", borderColor: "rgba(var(--ok) / 0.4)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
-            <div style={{ fontSize: "0.85rem", color: "rgb(var(--ok))" }}>
-              Wrote revision <span style={{ fontFamily: "var(--font-mono)" }}>{result.revision_id}</span>
+    <Card size="sm">
+      <CardContent className="space-y-4">
+        {error ? (
+          <Callout tone="danger" title="Memory write failed">
+            {error}
+          </Callout>
+        ) : null}
+        {result ? (
+          <Callout tone="success" title={`Wrote revision ${result.revision_id}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono text-xs">
+                {result.namespace} / {result.memory_key ?? "(no key)"} · status {result.status} ·
+                conf {result.confidence.toFixed(2)}
+              </span>
+              {onOpenItem && result.memory_key ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => onOpenItem("memory", result.namespace, result.memory_key ?? "")}
+                >
+                  Open detail
+                </Button>
+              ) : null}
             </div>
-            {onOpenItem && result.memory_key && (
-              <button
-                type="button"
-                className="hud-button-ghost"
-                onClick={() => onOpenItem("memory", result.namespace, result.memory_key!)}
-                style={{ fontSize: "0.7rem", padding: "0.2rem 0.4rem" }}
-              >
-                Open detail
-              </button>
-            )}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", fontFamily: "var(--font-mono)" }}>
-            {result.namespace} / {result.memory_key ?? "(no key)"} · status {result.status} · conf {result.confidence.toFixed(2)}
-          </div>
-        </div>
-      )}
+          </Callout>
+        ) : null}
 
-      <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr" }}>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-namespace">
-            Namespace <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mw-namespace" className="hud-input" placeholder="user/<actor>/memory" value={namespace} onChange={(e) => setNamespace(e.target.value)} style={{ width: "100%" }} />
+        <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
+          <Field id="mw-namespace" label="Namespace" required>
+            <Input
+              id="mw-namespace"
+              className="font-mono"
+              placeholder="user/<actor>/memory"
+              value={namespace}
+              onChange={(event) => setNamespace(event.target.value)}
+            />
+          </Field>
+          <Field id="mw-key" label="Memory key">
+            <Input
+              id="mw-key"
+              className="font-mono"
+              placeholder="decisions_…"
+              value={memoryKey}
+              onChange={(event) => setMemoryKey(event.target.value)}
+            />
+          </Field>
+          <Field id="mw-status" label="Status">
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                if (value) setStatus(value as MemoryStatus);
+              }}
+            >
+              <SelectTrigger id="mw-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-key">
-            Memory key <span style={{ color: "rgb(var(--muted))" }}>(optional)</span>
-          </label>
-          <input id="mw-key" className="hud-input" placeholder="decisions_…" value={memoryKey} onChange={(e) => setMemoryKey(e.target.value)} style={{ width: "100%" }} />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Field id="mw-author" label="Author agent_id" required>
+            <Input
+              id="mw-author"
+              className="font-mono"
+              placeholder="steward / nanite / …"
+              value={authorAgentId}
+              onChange={(event) => setAuthorAgentId(event.target.value)}
+            />
+          </Field>
+          <Field id="mw-author-ver" label="Author version">
+            <Input
+              id="mw-author-ver"
+              className="font-mono"
+              placeholder="0.1.0"
+              value={authorVersion}
+              onChange={(event) => setAuthorVersion(event.target.value)}
+            />
+          </Field>
+          <Field id="mw-confidence" label="Confidence">
+            <Input
+              id="mw-confidence"
+              className="font-mono"
+              type="number"
+              step="0.05"
+              min="0"
+              max="1"
+              value={confidence}
+              onChange={(event) => setConfidence(event.target.value)}
+            />
+          </Field>
+          <Field id="mw-supersedes" label="Supersedes (revision ID)">
+            <Input
+              id="mw-supersedes"
+              className="font-mono"
+              placeholder="01HX…"
+              value={supersedes}
+              onChange={(event) => setSupersedes(event.target.value)}
+            />
+          </Field>
         </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-status">
-            Status
-          </label>
-          <select id="mw-status" className="hud-input" value={status} onChange={(e) => setStatus(e.target.value as MemoryStatus)} style={{ width: "100%" }}>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginTop: "0.5rem" }}>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-author">
-            Author agent_id <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mw-author" className="hud-input" placeholder="steward / nanite / …" value={authorAgentId} onChange={(e) => setAuthorAgentId(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-author-ver">
-            Author version
-          </label>
-          <input id="mw-author-ver" className="hud-input" placeholder="0.1.0" value={authorVersion} onChange={(e) => setAuthorVersion(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-confidence">
-            Confidence
-          </label>
-          <input id="mw-confidence" className="hud-input" type="number" step="0.05" min="0" max="1" value={confidence} onChange={(e) => setConfidence(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mw-supersedes">
-            Supersedes <span style={{ color: "rgb(var(--muted))" }}>(revision id)</span>
-          </label>
-          <input id="mw-supersedes" className="hud-input" placeholder="01HX…" value={supersedes} onChange={(e) => setSupersedes(e.target.value)} style={{ width: "100%" }} />
-        </div>
-      </div>
-
-      <div className="form-field" style={{ marginTop: "0.5rem" }}>
-        <label className="hud-label" htmlFor="mw-tags">
-          Tags <span style={{ color: "rgb(var(--muted))" }}>(comma-separated)</span>
-        </label>
-        <input id="mw-tags" className="hud-input" placeholder="decision, scope:agent-ops.steward.main" value={tagsField} onChange={(e) => setTagsField(e.target.value)} style={{ width: "100%" }} />
-      </div>
-
-      <div className="form-field" style={{ marginTop: "0.5rem" }}>
-        <label className="hud-label" htmlFor="mw-summary">
-          Summary <span style={{ color: "rgb(var(--danger))" }}>*</span>
-        </label>
-        <textarea id="mw-summary" className="hud-textarea" placeholder="One-sentence summary of the memory." value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} style={{ width: "100%" }} />
-      </div>
-
-      <div className="form-field" style={{ marginTop: "0.5rem" }}>
-        <label className="hud-label" htmlFor="mw-body">
-          Body <span style={{ color: "rgb(var(--muted))" }}>(optional, supports markdown)</span>
-        </label>
-        <textarea id="mw-body" className="hud-textarea" placeholder="Long-form body content..." value={body} onChange={(e) => setBody(e.target.value)} rows={6} style={{ width: "100%", fontFamily: "var(--font-mono)" }} />
-      </div>
-
-      <div style={{ marginTop: "0.75rem" }}>
-        <button type="button" className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            {submitting ? <Spinner size={13} /> : <Send size={13} />} Write Memory
-          </span>
-        </button>
-      </div>
-    </div>
+        <Field id="mw-tags" label="Tags (comma-separated)">
+          <Input
+            id="mw-tags"
+            className="font-mono"
+            placeholder="decision, scope:agent-ops.steward.main"
+            value={tagsField}
+            onChange={(event) => setTagsField(event.target.value)}
+          />
+        </Field>
+        <Field id="mw-summary" label="Summary" required>
+          <Textarea
+            id="mw-summary"
+            placeholder="One-sentence summary of the memory."
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            rows={2}
+          />
+        </Field>
+        <Field id="mw-body" label="Body (optional, supports Markdown)">
+          <Textarea
+            id="mw-body"
+            className="font-mono"
+            placeholder="Long-form body content…"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            rows={6}
+          />
+        </Field>
+        <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+          {submitting ? <Spinner size={13} /> : <Send aria-hidden="true" />} Write memory
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
 function PromoteForm({
   onOpenItem,
 }: {
-  onOpenItem?: ((domain: "memory" | "knowledge", namespace: string, key: string) => void) | undefined;
+  onOpenItem?:
+    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
+    | undefined;
 }) {
   const [srcNamespace, setSrcNamespace] = useState("");
   const [srcMemoryId, setSrcMemoryId] = useState("");
@@ -254,7 +307,11 @@ function PromoteForm({
   const [result, setResult] = useState<MemoryRevision | null>(null);
 
   const canSubmit =
-    srcNamespace.trim() && srcMemoryId.trim() && tgtNamespace.trim() && actorAgentId.trim() && !submitting;
+    srcNamespace.trim() &&
+    srcMemoryId.trim() &&
+    tgtNamespace.trim() &&
+    actorAgentId.trim() &&
+    !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -282,85 +339,96 @@ function PromoteForm({
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem" }}>
-      {error && (
-        <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
-          {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem", borderColor: "rgba(var(--ok) / 0.4)" }}>
-          <div style={{ fontSize: "0.85rem", color: "rgb(var(--ok))", marginBottom: "0.4rem" }}>
-            Promoted to <span style={{ fontFamily: "var(--font-mono)" }}>{result.namespace}</span> as revision <span style={{ fontFamily: "var(--font-mono)" }}>{result.revision_id}</span>
+    <Card size="sm">
+      <CardContent className="space-y-4">
+        {error ? (
+          <Callout tone="danger" title="Promotion failed">
+            {error}
+          </Callout>
+        ) : null}
+        {result ? (
+          <Callout tone="success" title="Memory promoted">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono text-xs">
+                {result.namespace} · revision {result.revision_id}
+              </span>
+              {onOpenItem && result.memory_key ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => onOpenItem("memory", result.namespace, result.memory_key ?? "")}
+                >
+                  Open detail
+                </Button>
+              ) : null}
+            </div>
+          </Callout>
+        ) : null}
+        <p className="text-sm leading-6 text-text-subtle">
+          Promote a memory revision into an existing target namespace.
+        </p>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium text-status-doing">Source</legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="mp-src-ns" label="Namespace" required>
+              <Input
+                id="mp-src-ns"
+                className="font-mono"
+                placeholder="app/<id>/memory"
+                value={srcNamespace}
+                onChange={(event) => setSrcNamespace(event.target.value)}
+              />
+            </Field>
+            <Field id="mp-src-id" label="Memory ID" required>
+              <Input
+                id="mp-src-id"
+                className="font-mono"
+                placeholder="01KP… (memory_id, not revision_id)"
+                value={srcMemoryId}
+                onChange={(event) => setSrcMemoryId(event.target.value)}
+              />
+            </Field>
           </div>
-          {onOpenItem && result.memory_key && (
-            <button
-              type="button"
-              className="hud-button-ghost"
-              onClick={() => onOpenItem("memory", result.namespace, result.memory_key!)}
-              style={{ fontSize: "0.7rem", padding: "0.2rem 0.4rem" }}
-            >
-              Open detail
-            </button>
-          )}
-        </div>
-      )}
-
-      <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", marginBottom: "0.75rem" }}>
-        Promotes a memory revision from a source namespace into a target namespace. Both namespaces must already be registered.
-      </div>
-
-      <div className="hud-label" style={{ color: "rgb(var(--primary))", marginBottom: "0.5rem" }}>Source</div>
-      <div className="form-grid" style={{ gridTemplateColumns: "2fr 2fr" }}>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mp-src-ns">
-            Namespace <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mp-src-ns" className="hud-input" placeholder="app/<id>/memory" value={srcNamespace} onChange={(e) => setSrcNamespace(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mp-src-id">
-            Memory ID <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mp-src-id" className="hud-input" placeholder="01KP… (memory_id, not revision_id)" value={srcMemoryId} onChange={(e) => setSrcMemoryId(e.target.value)} style={{ width: "100%" }} />
-        </div>
-      </div>
-
-      <div style={{ textAlign: "center", padding: "0.4rem 0", color: "rgb(var(--muted))" }}>
-        <ArrowRight size={20} />
-      </div>
-
-      <div className="hud-label" style={{ color: "rgb(var(--primary))", marginBottom: "0.5rem" }}>Target</div>
-      <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr" }}>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mp-tgt-ns">
-            Namespace <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mp-tgt-ns" className="hud-input" placeholder="user/<actor>/memory" value={tgtNamespace} onChange={(e) => setTgtNamespace(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mp-actor">
-            Actor agent_id <span style={{ color: "rgb(var(--danger))" }}>*</span>
-          </label>
-          <input id="mp-actor" className="hud-input" placeholder="steward" value={actorAgentId} onChange={(e) => setActorAgentId(e.target.value)} style={{ width: "100%" }} />
-        </div>
-        <div className="form-field">
-          <label className="hud-label" htmlFor="mp-actor-ver">
-            Actor version
-          </label>
-          <input id="mp-actor-ver" className="hud-input" placeholder="0.1.0" value={actorVersion} onChange={(e) => setActorVersion(e.target.value)} style={{ width: "100%" }} />
-        </div>
-      </div>
-
-      <div style={{ marginTop: "0.75rem" }}>
-        <button type="button" className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            {submitting ? <Spinner size={13} /> : <PenSquare size={13} />} Promote
-          </span>
-        </button>
-      </div>
-    </div>
+        </fieldset>
+        <ArrowRight className="mx-auto text-text-subtle" aria-hidden="true" />
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium text-status-doing">Target</legend>
+          <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
+            <Field id="mp-tgt-ns" label="Namespace" required>
+              <Input
+                id="mp-tgt-ns"
+                className="font-mono"
+                placeholder="user/<actor>/memory"
+                value={tgtNamespace}
+                onChange={(event) => setTgtNamespace(event.target.value)}
+              />
+            </Field>
+            <Field id="mp-actor" label="Actor agent_id" required>
+              <Input
+                id="mp-actor"
+                className="font-mono"
+                placeholder="steward"
+                value={actorAgentId}
+                onChange={(event) => setActorAgentId(event.target.value)}
+              />
+            </Field>
+            <Field id="mp-actor-ver" label="Actor version">
+              <Input
+                id="mp-actor-ver"
+                className="font-mono"
+                placeholder="0.1.0"
+                value={actorVersion}
+                onChange={(event) => setActorVersion(event.target.value)}
+              />
+            </Field>
+          </div>
+        </fieldset>
+        <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+          {submitting ? <Spinner size={13} /> : <PenSquare aria-hidden="true" />} Promote
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -391,40 +459,65 @@ function DeprecateForm() {
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem" }}>
-      {error && (
-        <div style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", background: "rgba(var(--danger) / 0.1)", color: "rgb(var(--danger))", fontSize: "0.85rem", borderRadius: "var(--radius-sm)" }}>
-          {error}
-        </div>
-      )}
+    <Card size="sm">
+      <CardContent className="space-y-4">
+        {error ? (
+          <Callout tone="danger" title="Deprecation failed">
+            {error}
+          </Callout>
+        ) : null}
+        {result ? (
+          <Callout tone="warning" title="Revision deprecated">
+            <span className="flex items-center gap-2">
+              <StatusBadge status={result.status} />
+              <span className="font-mono text-xs">{result.revision_id}</span>
+            </span>
+          </Callout>
+        ) : null}
+        <p className="text-sm leading-6 text-text-subtle">
+          Mark a memory revision as deprecated. It remains in history but no longer surfaces as the
+          head, and the operation is recorded in the audit log.
+        </p>
+        <Field id="md-revision" label="Revision ID" required>
+          <Input
+            id="md-revision"
+            className="font-mono"
+            placeholder="01HX… (revision_id, not memory_id)"
+            value={revisionId}
+            onChange={(event) => setRevisionId(event.target.value)}
+          />
+        </Field>
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={() => void handleSubmit()}
+          disabled={!canSubmit}
+        >
+          {submitting ? <Spinner size={13} /> : <Trash2 aria-hidden="true" />} Deprecate
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {result && (
-        <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem", borderColor: "rgba(var(--warn) / 0.4)" }}>
-          <div style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <StatusBadge status={result.status} />
-            <span style={{ fontFamily: "var(--font-mono)" }}>{result.revision_id}</span>
-          </div>
-        </div>
-      )}
-
-      <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))", marginBottom: "0.75rem" }}>
-        Marks a memory revision as deprecated. The revision is not deleted — it remains in history but no longer surfaces as the head. Audit log records the deprecation.
-      </div>
-
-      <div className="form-field">
-        <label className="hud-label" htmlFor="md-revision">
-          Revision ID <span style={{ color: "rgb(var(--danger))" }}>*</span>
-        </label>
-        <input id="md-revision" className="hud-input" placeholder="01HX… (revision_id, not memory_id)" value={revisionId} onChange={(e) => setRevisionId(e.target.value)} style={{ width: "100%", fontFamily: "var(--font-mono)" }} />
-      </div>
-
-      <div style={{ marginTop: "0.75rem" }}>
-        <button type="button" className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            {submitting ? <Spinner size={13} /> : <Trash2 size={13} />} Deprecate
-          </span>
-        </button>
-      </div>
+function Field({
+  id,
+  label,
+  required = false,
+  children,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>
+        {label}
+        {required ? <span className="text-danger"> *</span> : null}
+      </Label>
+      {children}
     </div>
   );
 }

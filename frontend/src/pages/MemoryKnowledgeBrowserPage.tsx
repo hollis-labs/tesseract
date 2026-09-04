@@ -1,4 +1,17 @@
 import {
+  Button,
+  Callout,
+  Card,
+  Input,
+  Label,
+  Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@hollis-labs/sysop-ui";
+import {
   ChevronDown,
   ChevronRight,
   FileText,
@@ -200,324 +213,256 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Memory &amp; Knowledge Browser</h2>
-        <div className="page-actions" style={{ display: "flex", gap: "0.3rem" }}>
-          <button
-            type="button"
-            className="hud-button-ghost"
-            onClick={() => setRegisterOpen((v) => !v)}
-            title="Register a new namespace"
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {registerOpen ? <X size={11} /> : <PenSquare size={11} />}
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Memory and knowledge browser</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+              Inspect registered namespaces and their current memory or knowledge keys.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRegisterOpen((value) => !value)}
+              title="Register a new namespace"
+            >
+              {registerOpen ? <X aria-hidden="true" /> : <PenSquare aria-hidden="true" />}
               {registerOpen ? "Cancel" : "Register"}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="hud-button-ghost"
-            onClick={loadAllCounts}
-            disabled={loadingAllCounts || filtered.length === 0}
-            title="Load record counts for every visible namespace (parallel recall)"
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {loadingAllCounts ? <Spinner size={11} /> : <ListChecks size={11} />} Load counts
-            </span>
-          </button>
-          <button
-            type="button"
-            className="hud-button-ghost"
-            onClick={loadNamespaces}
-            disabled={loadingNs}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {loadingNs ? <Spinner size={11} /> : <RefreshCw size={11} />} Refresh
-            </span>
-          </button>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadAllCounts()}
+              disabled={loadingAllCounts || filtered.length === 0}
+              title="Load record counts for every visible namespace"
+            >
+              {loadingAllCounts ? <Spinner size={11} /> : <ListChecks aria-hidden="true" />} Load
+              counts
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={loadNamespaces}
+              disabled={loadingNs}
+            >
+              {loadingNs ? <Spinner size={11} /> : <RefreshCw aria-hidden="true" />} Refresh
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Inline register-namespace form. Minimal: namespace + owner. Policy
-          fields are deferred to PolicyManagerPage to keep this surface light. */}
-      {registerOpen && (
-        <div
-          className="hud-panel"
-          style={{
-            padding: "0.75rem",
-            marginBottom: "0.75rem",
-            borderColor: "rgba(var(--primary) / 0.4)",
-          }}
-        >
-          <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr auto" }}>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="reg-ns">
-                Namespace
-              </label>
-              <input
-                id="reg-ns"
-                className="hud-input"
-                placeholder="user/<actor>/memory or user/<actor>/knowledge/<scope>"
-                value={regNs}
-                onChange={(e) => setRegNs(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="reg-owner-type">
-                Owner Type
-              </label>
-              <select
-                id="reg-owner-type"
-                className="hud-input"
-                value={regOwnerType}
-                onChange={(e) => setRegOwnerType(e.target.value)}
-                style={{ width: "100%" }}
-              >
-                <option value="user">user</option>
-                <option value="app">app</option>
-                <option value="system">system</option>
-              </select>
-            </div>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="reg-owner-id">
-                Owner ID
-              </label>
-              <input
-                id="reg-owner-id"
-                className="hud-input"
-                placeholder="chrispian / hadron / ..."
-                value={regOwnerId}
-                onChange={(e) => setRegOwnerId(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field" style={{ alignSelf: "end" }}>
-              <button
+      <div className="space-y-3 p-4">
+        {registerOpen ? (
+          <Card size="sm" className="border-status-doing">
+            <div className="grid items-end gap-4 p-4 md:grid-cols-[2fr_1fr_1fr_auto]">
+              <div className="space-y-2">
+                <Label htmlFor="reg-ns">Namespace</Label>
+                <Input
+                  id="reg-ns"
+                  className="font-mono"
+                  placeholder="user/<actor>/memory or user/<actor>/knowledge/<scope>"
+                  value={regNs}
+                  onChange={(event) => setRegNs(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reg-owner-type">Owner type</Label>
+                <Select
+                  value={regOwnerType}
+                  onValueChange={(value) => {
+                    if (value) setRegOwnerType(value);
+                  }}
+                >
+                  <SelectTrigger id="reg-owner-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["user", "app", "system"].map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reg-owner-id">Owner ID</Label>
+                <Input
+                  id="reg-owner-id"
+                  className="font-mono"
+                  placeholder="chrispian / hadron / …"
+                  value={regOwnerId}
+                  onChange={(event) => setRegOwnerId(event.target.value)}
+                />
+              </div>
+              <Button
                 type="button"
-                className="hud-button-primary"
-                onClick={handleRegister}
+                onClick={() => void handleRegister()}
                 disabled={regSubmitting || !regNs.trim() || !regOwnerId.trim()}
               >
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {regSubmitting ? <Spinner size={11} /> : <PenSquare size={11} />} Register
-                </span>
-              </button>
+                {regSubmitting ? <Spinner size={11} /> : <PenSquare aria-hidden="true" />} Register
+              </Button>
             </div>
-          </div>
-          <div style={{ fontSize: "0.65rem", color: "rgb(var(--muted))", marginTop: "0.3rem" }}>
-            Registers with default (empty) policy. Use Policy Manager to set tier, retention,
-            allowed_ops.
-          </div>
-        </div>
-      )}
+            <p className="border-t border-border-soft px-4 py-2 text-xs text-text-subtle">
+              Registers with an empty policy. Use Policy Manager to configure tier, retention, and
+              allowed operations.
+            </p>
+          </Card>
+        ) : null}
 
-      {/* Domain tabs + search */}
-      <div
-        style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem" }}
-      >
-        <div style={{ display: "flex", gap: "0.25rem" }}>
-          {(["both", "memory", "knowledge"] as const).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDomain(d)}
-              style={{
-                padding: "0.3rem 0.7rem",
-                background: domain === d ? "rgba(var(--primary) / 0.12)" : "transparent",
-                border: `1px solid ${domain === d ? "rgb(var(--primary))" : "rgb(var(--border))"}`,
-                color: domain === d ? "rgb(var(--primary))" : "rgb(var(--muted))",
-                cursor: "pointer",
-                fontSize: "0.75rem",
-                fontFamily: "var(--font-mono)",
-                textTransform: "uppercase",
-                borderRadius: "var(--radius-sm)",
-              }}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
-        <Search size={13} style={{ color: "rgb(var(--muted))", marginLeft: "0.5rem" }} />
-        <input
-          className="hud-input"
-          placeholder="Filter namespaces..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          style={{ flex: 1 }}
-        />
-        <span style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-          {filtered.length} namespace{filtered.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {nsError && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
+        <section
+          className="flex flex-wrap items-center gap-3 border-y border-border-strong bg-panel px-3 py-2"
+          aria-label="Browser filters"
         >
-          {nsError}
-        </div>
-      )}
-
-      <div className="hud-panel" style={{ overflow: "auto" }}>
-        {loadingNs && namespaces.length === 0 && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <Spinner size={20} />
-          </div>
-        )}
-
-        {!loadingNs && groups.length === 0 && (
-          <EmptyState
-            message="No namespaces match"
-            sub={filter ? "Try a different filter" : "Register a namespace to get started"}
+          <fieldset className="flex gap-1">
+            <legend className="sr-only">Domain</legend>
+            {(["both", "memory", "knowledge"] as const).map((item) => (
+              <Button
+                key={item}
+                type="button"
+                variant={domain === item ? "default" : "outline"}
+                size="xs"
+                onClick={() => setDomain(item)}
+                aria-pressed={domain === item}
+              >
+                {item}
+              </Button>
+            ))}
+          </fieldset>
+          <Search className="size-4 text-text-subtle" aria-hidden="true" />
+          <Input
+            className="min-w-52 flex-1 font-mono"
+            aria-label="Filter namespaces"
+            placeholder="Filter namespaces…"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
           />
-        )}
+          <span className="font-mono text-xs text-text-subtle" aria-live="polite">
+            {filtered.length} namespace{filtered.length === 1 ? "" : "s"}
+          </span>
+        </section>
 
-        {groups.map((group) => (
-          <div key={group.prefix}>
-            <div
-              style={{
-                padding: "0.4rem 0.75rem",
-                background: "rgba(var(--panel2) / 0.4)",
-                borderBottom: "1px solid rgb(var(--border))",
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.7rem",
-                color: "rgb(var(--muted))",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              {group.prefix}/ &middot; {group.namespaces.length} namespace
-              {group.namespaces.length === 1 ? "" : "s"}
+        {nsError ? (
+          <Callout tone="danger" title="Namespace list failed">
+            {nsError}
+          </Callout>
+        ) : null}
+
+        <Card size="sm" className="overflow-hidden">
+          {loadingNs && namespaces.length === 0 ? (
+            <div className="flex justify-center py-8 text-text-subtle">
+              <Spinner size={20} />
             </div>
-            {group.namespaces.map((ns) => {
-              const isExpanded = expanded.has(ns.namespace);
-              const isLoading = loadingKeys.has(ns.namespace);
-              const keys = keysByNamespace[ns.namespace];
-              const inferred = inferDomain(ns.namespace);
-              return (
-                <div
-                  key={ns.namespace}
-                  style={{ borderBottom: "1px solid rgba(var(--border) / 0.5)" }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(ns.namespace)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      width: "100%",
-                      padding: "0.5rem 0.75rem",
-                      background: "none",
-                      border: "none",
-                      color: "rgb(var(--text))",
-                      cursor: "pointer",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "0.8rem",
-                      textAlign: "left",
-                    }}
+          ) : null}
+          {!loadingNs && groups.length === 0 ? (
+            <EmptyState
+              message="No namespaces match"
+              sub={filter ? "Try a different filter" : "Register a namespace to get started"}
+            />
+          ) : null}
+          {groups.map((group) => (
+            <section key={group.prefix} aria-label={`${group.prefix} namespaces`}>
+              <div className="border-b border-border-strong bg-panel-hover-soft px-3 py-2 font-mono text-xs text-text-subtle">
+                {group.prefix}/ · {group.namespaces.length} namespace
+                {group.namespaces.length === 1 ? "" : "s"}
+              </div>
+              {group.namespaces.map((namespaceItem) => {
+                const isExpanded = expanded.has(namespaceItem.namespace);
+                const isLoading = loadingKeys.has(namespaceItem.namespace);
+                const keys = keysByNamespace[namespaceItem.namespace];
+                const inferred = inferDomain(namespaceItem.namespace);
+                const regionId = `browser-${encodeURIComponent(namespaceItem.namespace)}`;
+                return (
+                  <div
+                    key={namespaceItem.namespace}
+                    className="border-b border-border-soft last:border-b-0"
                   >
-                    {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                    <FolderOpen size={13} style={{ color: "rgb(var(--primary))" }} />
-                    <span style={{ flex: 1 }}>{ns.namespace}</span>
-                    <span
-                      style={{
-                        padding: "0.05rem 0.3rem",
-                        background: "rgba(var(--panel2) / 0.6)",
-                        border: "1px solid rgb(var(--border))",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.6rem",
-                        color: "rgb(var(--muted))",
-                      }}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto w-full justify-start rounded-none px-3 py-2 font-normal"
+                      onClick={() => void toggleExpand(namespaceItem.namespace)}
+                      aria-expanded={isExpanded}
+                      aria-controls={regionId}
                     >
-                      {inferred}
-                    </span>
-                    {totalKeysFor(ns.namespace) !== undefined && (
-                      <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                        {totalKeysFor(ns.namespace)} key
-                        {totalKeysFor(ns.namespace) === 1 ? "" : "s"}
-                      </span>
-                    )}
-                    {isLoading && <Spinner size={11} />}
-                  </button>
-
-                  {isExpanded && keys && (
-                    <div style={{ paddingLeft: "2rem", paddingBottom: "0.4rem" }}>
-                      {keys.length === 0 && (
-                        <div
-                          style={{
-                            padding: "0.5rem",
-                            fontSize: "0.75rem",
-                            color: "rgb(var(--muted))",
-                          }}
-                        >
-                          (no records under this namespace)
-                        </div>
+                      {isExpanded ? (
+                        <ChevronDown aria-hidden="true" />
+                      ) : (
+                        <ChevronRight aria-hidden="true" />
                       )}
-                      {keys.map((item) => {
-                        const itemDomain = (item.domain === "knowledge" ? "knowledge" : "memory") as
-                          | "memory"
-                          | "knowledge";
-                        return (
-                          <button
-                            type="button"
-                            key={item.revision_id}
-                            onClick={() =>
-                              item.memory_key &&
-                              onOpenItem?.(itemDomain, item.namespace, item.memory_key)
-                            }
-                            disabled={!item.memory_key || !onOpenItem}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              width: "100%",
-                              padding: "0.35rem 0.5rem",
-                              background: "none",
-                              border: "none",
-                              color: "rgb(var(--text))",
-                              cursor: item.memory_key && onOpenItem ? "pointer" : "default",
-                              fontFamily: "var(--font-mono)",
-                              fontSize: "0.75rem",
-                              textAlign: "left",
-                              borderRadius: "var(--radius-sm)",
-                            }}
-                          >
-                            <FileText size={11} style={{ color: "rgb(var(--muted))" }} />
-                            <span style={{ flex: 1 }}>{item.memory_key ?? "(no key)"}</span>
-                            <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                              {item.domain}
-                            </span>
-                            <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                              conf {item.confidence.toFixed(2)}
-                            </span>
-                            {item.tags.length > 0 && (
-                              <span
-                                style={{
-                                  fontSize: "0.6rem",
-                                  color: "rgb(var(--muted))",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "0.15rem",
-                                }}
-                                title={item.tags.join(", ")}
-                              >
-                                <Tag size={9} /> {item.tags.length}
+                      <FolderOpen className="text-status-doing" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-left font-mono text-xs">
+                        {namespaceItem.namespace}
+                      </span>
+                      <Pill tone="neutral">{inferred}</Pill>
+                      {totalKeysFor(namespaceItem.namespace) !== undefined ? (
+                        <span className="font-mono text-[11px] text-text-subtle">
+                          {totalKeysFor(namespaceItem.namespace)} key
+                          {totalKeysFor(namespaceItem.namespace) === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {isLoading ? <Spinner size={11} /> : null}
+                    </Button>
+                    {isExpanded && keys ? (
+                      <div
+                        id={regionId}
+                        className="border-t border-border-soft bg-panel-hover-soft py-1 pl-8"
+                      >
+                        {keys.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-text-subtle">
+                            No records under this namespace.
+                          </p>
+                        ) : null}
+                        {keys.map((item) => {
+                          const itemDomain = item.domain === "knowledge" ? "knowledge" : "memory";
+                          return (
+                            <Button
+                              type="button"
+                              key={item.revision_id}
+                              variant="ghost"
+                              className="h-auto w-full justify-start rounded-none px-3 py-2 font-normal"
+                              onClick={() =>
+                                item.memory_key &&
+                                onOpenItem?.(itemDomain, item.namespace, item.memory_key)
+                              }
+                              disabled={!item.memory_key || !onOpenItem}
+                            >
+                              <FileText className="text-text-subtle" aria-hidden="true" />
+                              <span className="min-w-0 flex-1 truncate text-left font-mono text-xs">
+                                {item.memory_key ?? "(no key)"}
                               </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                              <span className="font-mono text-[11px] text-text-subtle">
+                                {item.domain}
+                              </span>
+                              <span className="font-mono text-[11px] text-text-subtle">
+                                conf {item.confidence.toFixed(2)}
+                              </span>
+                              {item.tags.length > 0 ? (
+                                <span
+                                  className="flex items-center gap-1 font-mono text-[11px] text-text-subtle"
+                                  title={item.tags.join(", ")}
+                                >
+                                  <Tag className="size-3" aria-hidden="true" />
+                                  {item.tags.length}
+                                </span>
+                              ) : null}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        </Card>
       </div>
     </div>
   );
