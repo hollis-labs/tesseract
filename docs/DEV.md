@@ -100,10 +100,25 @@ See policy semantics: `docs/SPECS/API.md#actor-namespace-contract-matrix`.
 - Expected response fields: `items`, `count`, `next_cursor`.
 
 ## Backup and restore
-- Export snapshot: `tesseract context backup export --out /path/to/backup.json`
-- Verify snapshot integrity: `tesseract context backup verify --in /path/to/backup.json`
-- Restore snapshot: `tesseract context backup restore --in /path/to/backup.json`
-- Expected behavior: deterministic record/history parity and restored audit/token metadata.
+A backup is a directory (format v2), not a single file. It holds `manifest.json`
+(format + schema version, per-file checksums, declared omissions), `main.db` (a
+whole-database `VACUUM INTO` snapshot, so every table is covered), `records/`
+(the payload tree), and `config.yaml` when one is supplied. It is created
+`0700`, with every file `0600`, because it embeds auth token hashes.
+
+- Export: `tesseract context backup export --out /path/to/backup-dir [--config /path/to/config.yaml]`
+- Verify integrity: `tesseract context backup verify --in /path/to/backup-dir`
+- Restore: `tesseract context backup restore --in /path/to/backup-dir`
+- Expected behavior: full round-trip parity across records (including typed
+  columns and tags), namespace policies, embeddings, audit, tokens, and the
+  memory/knowledge tables.
+- Restore is a replacement, not a merge, and it is failure-atomic: it validates
+  and stages beside the live store, then swaps by rename. A failure before the
+  swap leaves the store untouched; a crash during the swap is completed on the
+  next open.
+- Legacy single-file v1 snapshots are still restorable (`--in
+  /path/to/backup.json`). They carry only records, audit events, and tokens, so
+  restoring one drops everything else.
 
 ## Readiness checks
 - CLI readiness report: `tesseract context health --output table`
