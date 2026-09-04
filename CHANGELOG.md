@@ -139,6 +139,14 @@ next open; backups taken by earlier versions remain restorable.
   the chained frontend build.
 - The web UI kit resolves from npm rather than a private git ref, so
   `npm install` works without organization access.
+- **The public build floor is Go 1.26.6.** Runtime dependencies move to patched
+  gRPC, OpenTelemetry, `x/net`, and `x/text` releases; `govulncheck` reports no
+  reachable vulnerabilities in the resulting module graph.
+- **Frontend contributors need Node.js 20.19–20.x or 22.12+.** Vite moves to 8.2.2,
+  the React plugin to 5.2.0, and Tiptap to 3.31.3. Both the complete and
+  production-only npm audits report zero vulnerabilities, and build-only
+  tooling published through the Sysop dependency does not enter the browser
+  bundle.
 - `internal/webui` serves the SPA through `github.com/hollis-labs/go-webui`
   instead of a local copy, and an unbuilt bundle serves a placeholder rather
   than panicking at startup.

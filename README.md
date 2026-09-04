@@ -28,7 +28,8 @@ Requirements:
 
 - Go 1.26.6
 - Git
-- Node.js/npm only when changing and rebuilding `frontend/`
+- Node.js 20.19–20.x or 22.12+ with npm only when changing and rebuilding
+  `frontend/`
 
 ```bash
 git clone https://github.com/hollis-labs/tesseract.git

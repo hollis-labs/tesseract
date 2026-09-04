@@ -4,7 +4,7 @@
 
 - Go 1.26.6
 - Git
-- Node.js and npm only for frontend changes
+- Node.js 20.19–20.x or 22.12+ and npm only for frontend changes
 
 The normal Go build consumes the committed bundle in `internal/webui/dist/`.
 

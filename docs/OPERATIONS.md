@@ -9,7 +9,7 @@ and upgrade safety.
 | Area | Public-preview status |
 |---|---|
 | Distribution | Source only; no supported prebuilt binary, package-manager formula, container image, or desktop installer |
-| Toolchain | Go 1.26.6; Node.js/npm is needed only to rebuild `frontend/` |
+| Toolchain | Go 1.26.6; Node.js 20.19–20.x or 22.12+ with npm is needed only to rebuild `frontend/` |
 | macOS | Current development and qualification environment |
 | Linux | Source-build target; verify the release on the intended distribution and filesystem before production use |
 | Windows | Source may build, but POSIX `0700`/`0600` protection is not enforceable; do not treat it as security-equivalent to the POSIX deployment |
