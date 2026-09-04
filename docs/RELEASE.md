@@ -1,50 +1,85 @@
 # Release procedure
 
-Tesseract ships as a Go module and a `tesseract` binary. The release procedure below keeps the git tag, `CHANGELOG.md`, and MCP-advertised version in lockstep.
+Tesseract is pre-1.0 and currently distributed as source. A git tag is a source
+release; do not imply that prebuilt binaries, installers, packages, or container
+images exist unless a release actually publishes and verifies them.
 
 ## Versioning
 
-Pre-1.0 semver:
+Use semantic versioning with explicit pre-1.0 compatibility notes:
 
-- **Minor** (`0.x.0` → `0.(x+1).0`) — additive surface: new MCP tools, new HTTP routes, new exported store methods, new config keys. Default for feature work.
-- **Patch** (`0.x.y` → `0.x.(y+1)`) — fixes only. No new public surface.
-- Breaking changes — allowed in any minor pre-1.0; call them out in `### Changed` with a migration note.
+- minor release for additive features and intentional breaking changes
+- patch release for compatible fixes
+- every breaking change must have a changelog migration note
 
-The MCP server advertises its name and version via `server.NewMCPServer("tesseract", "<X.Y.Z>", …)` in `internal/mcpadapter/adapter.go`. Keep this in lockstep with the released git tag.
+There is one runtime version identity. `make build` and `make install` stamp it
+from `git describe`; `go install module@tag` receives its module version from
+the Go toolchain. The binary passes that value to the MCP adapter. There is no
+literal MCP version string to update separately.
 
-## Per-PR checklist
+## Every user-visible pull request
 
-Every PR that lands user-visible surface (new tool, route, store method, config key, behavior change) must:
+1. Add an entry under `[Unreleased]` in [`CHANGELOG.md`](../CHANGELOG.md).
+2. Update the relevant public contract and examples.
+3. Name MCP tools, HTTP paths, flags, config keys, and errors exactly.
+4. Run the project gates:
 
-1. Add a `## [Unreleased]` entry in `CHANGELOG.md` describing the change. Group by `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated`. Name MCP tool IDs and HTTP paths exactly as agents will see them.
-2. If the PR is the cut-line for a release, also bump:
-   - The `## [Unreleased]` heading to `## [X.Y.Z] — YYYY-MM-DD` and start a fresh empty `## [Unreleased]` above it.
-   - The `MCPServer` version string in `internal/mcpadapter/adapter.go`.
-   - The compare links at the bottom of `CHANGELOG.md`.
-3. Pass `go test ./...`.
-4. Pass the parity test (`go test ./tests/parity/`) — this fails if a new MCP tool or HTTP route is missing from `surfaceCatalog`.
+   ```bash
+   gofmt -w path/to/changed.go
+   go vet ./...
+   make test
+   make validate
+   git diff --check
+   ```
 
-## Cutting a tagged release
+5. For frontend changes, run frontend lint/test/build and commit the refreshed
+   `internal/webui/dist/` bundle.
+6. For storage, auth, or restore changes, include focused failure-path and
+   cross-surface tests.
 
-After the release-cut PR merges to `main`:
+## Prepare a release candidate
+
+1. Confirm the release commit is on `main` through the normal reviewed merge
+   process.
+2. Ensure the worktree is clean.
+3. Re-run all required gates on that exact commit.
+4. Exercise the source install in a clean environment with no private Go/npm
+   configuration or local module replacements.
+5. Run an isolated CLI/HTTP/MCP smoke test. Set all four XDG roots, unset
+   `TESSERACT_DB_PATH` and `TESSERACT_WORKSPACE`, and confirm `tesseract path`
+   resolves beneath the temporary root before any stateful command.
+6. Verify a v2 backup and restore against disposable data, including a
+   representative context record and memory/knowledge revision.
+7. Review the [support matrix](OPERATIONS.md#support-matrix), security boundary,
+   provider egress, and known limitations for accuracy.
+8. Move the accumulated changelog entries from `[Unreleased]` to the release
+   heading and start a fresh empty `[Unreleased]` section.
+
+## Tag the source release
+
+Only after the release commit has merged and the release candidate is accepted:
 
 ```bash
-git checkout main && git pull
-git tag -a v<X.Y.Z> -m "tesseract v<X.Y.Z>"
-git push origin v<X.Y.Z>
-gh release create v<X.Y.Z> \
-  --title "v<X.Y.Z>" \
-  --notes-file <(awk '/^## \[<X.Y.Z>\]/{flag=1;next} /^## \[/{flag=0} flag' CHANGELOG.md)
+git switch main
+git pull --ff-only
+git tag -a vX.Y.Z -m "tesseract vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
-The release notes pull straight from `CHANGELOG.md`. No duplication.
+If a GitHub release page is created, derive its notes from the matching
+changelog section. List only artifacts that were actually built, checksummed,
+and attached; for a source-only release, say so directly.
 
-## Upgrade notes
+## Consumer upgrade note
 
-Consumers of Tesseract should:
+Release notes must tell operators to:
 
-- Bump the `github.com/hollis-labs/tesseract` dependency in their `go.mod` to the new tag.
-- Rebuild or reinstall `tesseract` if they ship the standalone binary.
-- Re-read `CHANGELOG.md` for new MCP tool IDs, HTTP paths, and config changes.
+- read breaking CLI, HTTP, MCP, Go, config, and schema changes
+- stop all processes that share a store before a schema-changing upgrade
+- create and verify a backup plus an offline layout copy when downgrade
+  recovery matters
+- rebuild/reinstall the binary and restart MCP hosts so tool schemas refresh
+- verify health and representative reads before resuming writers
 
-Hot-reloading without a `tesseract` rebuild is not supported — the MCP stdio server and the HTTP server share one binary, and any new tool or route is compiled in.
+The complete upgrade, downgrade, backup, and restore runbooks are in
+[`OPERATIONS.md`](OPERATIONS.md).

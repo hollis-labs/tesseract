@@ -87,4 +87,3 @@ Trade-offs:
 - `docs/knowledge-memory-direction.md`
 - `docs/DECISIONS/ADR-0001-storage-and-namespaces.md`
 - `docs/DECISIONS/ADR-0002-generalized-context-registry.md`
-- `/Users/chrispian/dev/hollis-labs/docs/portfolio-sweep/05-identity-tesseract.md`

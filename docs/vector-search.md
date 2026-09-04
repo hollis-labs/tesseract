@@ -1,96 +1,92 @@
-# Vector Search
+# Vector search
 
-Tesseract provides semantic search over stored records via embeddings. This extends the existing deterministic namespace/key/tag-based retrieval with meaning-based ranking.
+Tesseract supports semantic ranking by storing embeddings beside its local
+record indexes. The current daemon uses OpenAI for embeddings; no external
+vector database or SQLite extension is required.
 
-## Architecture
+## What stays local
 
-Embeddings are stored in a dedicated `embeddings` table alongside the existing `records` table. Each record can have embeddings from multiple models, keyed by `(record_id, model)`. Vectors are stored as packed float32 BLOBs in SQLite.
+- embedding vectors are stored in the local SQLite store
+- candidate filtering and cosine-similarity ranking run locally
+- lexical/BM25 recall works without an embedding provider
+- deterministic namespace, key, tag, type, and status filters do not require a
+  provider
 
-Similarity search uses brute-force cosine similarity in Go — no external vector database or C extensions required. This is efficient for Tesseract's expected scale (hundreds to low thousands of records).
+## What leaves the machine
 
-## Embedding Provider
+When the OpenAI embedder is configured, Tesseract sends text to OpenAI to
+produce a vector:
 
-Tesseract uses a pluggable `Provider` interface for embedding generation:
+- memory and knowledge summary/body text when their revisions are embedded
+- extracted context record payload text for explicit or auto-embedding paths
+- the caller's query for semantic search, semantic recall, or RAG retrieval
 
-```go
-type Provider interface {
-    Embed(ctx context.Context, text string) ([]float32, error)
-    Model() string
-    Dimensions() int
-}
+The returned vector is stored locally. Do not enable embedding for content that
+must not be processed by OpenAI. See the complete
+[data egress disclosure](OPERATIONS.md#outbound-connections-and-data-egress).
+
+## Configure embeddings
+
+At the `config-file` reported by `tesseract path`:
+
+```yaml
+embedding:
+  provider: openai
+  model: text-embedding-3-large
 ```
 
-The default provider is **Ollama** with the `nomic-embed-text` model (768 dimensions). Requires Ollama running locally at `http://127.0.0.1:11434`.
+Then set the credential before starting `tesseract serve` or `tesseract mcp`:
 
-A mock provider is available for testing (deterministic vectors from SHA-256 hashing).
-
-## MCP Tools
-
-### `context_embed`
-
-Generate and store an embedding for a record.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `record_id` | yes | Record ID to embed |
-| `namespace` | yes | Record namespace |
-| `key` | yes | Record key |
-| `model` | no | Embedding model (default: provider's configured model) |
-
-Idempotent: re-embedding the same record with the same model overwrites the previous vector.
-
-### `context_search`
-
-Semantic search across records using embeddings.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `query` | yes | Search query text |
-| `limit` | no | Max results (default 10, max 25) |
-| `namespace` | no | Namespace prefix filter |
-| `type` | no | Record type filter |
-| `tags` | no | Comma-separated tag filter (any match) |
-| `threshold` | no | Minimum similarity score (default 0.7) |
-
-Returns ranked results with `record_id`, `namespace`, `key`, and `score` fields.
-
-## Usage Examples
-
-### Embed a record
-
-```json
-{
-  "tool": "context_embed",
-  "arguments": {
-    "record_id": "rec_abc123",
-    "namespace": "app/notes",
-    "key": "meeting-2026-03-08"
-  }
-}
+```bash
+export OPENAI_API_KEY='...'
 ```
 
-### Search for similar content
+If the provider is unsupported or the key is absent, Tesseract disables the
+embedding runtime and keeps lexical retrieval available. Operations that
+explicitly require embeddings return an unavailable/error response rather than
+pretending an empty semantic result is success.
 
-```json
-{
-  "tool": "context_search",
-  "arguments": {
-    "query": "authentication design decisions",
-    "namespace": "app/notes",
-    "limit": 5
-  }
-}
+## When embeddings are created
+
+Memory and knowledge writes enqueue background embedding work when the runtime
+has an embedder. The job queue is stored separately in `queue.db`. Context
+records are embedded through explicit MCP embedding tools and the context tool
+paths whose schemas state that they auto-embed, such as chunked ingestion and
+session snapshots.
+
+To fill missing memory/knowledge vectors after enabling or repairing a provider:
+
+```bash
+tesseract backfill-embeddings
 ```
 
-## Limitations
+Operator queue status and backfill routes are also available through the admin
+surface. The separate queue database is not part of a store backup; see
+[Backup format](OPERATIONS.md#backup-format).
 
-- Requires Ollama running locally for embedding generation (or another configured provider)
-- Brute-force similarity search — suitable for <50k embedded records
-- Embeddings may become stale when records are updated; re-embed to refresh
-- No automatic embedding on write (planned for future namespace policy flag)
+## Retrieval modes
 
-## Future
+Memory and knowledge recall distinguish lexical, semantic, and hybrid search:
 
-- Auto-embed on write via namespace policy `auto_embed: true`
-- Cloud provider support (OpenAI, Voyage, Cohere)
-- sqlite-vec upgrade path if dataset exceeds ~50k records
+- lexical uses the local full-text index
+- semantic embeds the query and ranks stored vectors by cosine similarity
+- hybrid combines lexical and semantic rankings
+
+Similarity scores are meaningful only within the response that produced them.
+Changing model, query, corpus, filters, or ranking mode changes their meaning.
+Use payload projection and response budgets to avoid returning full bodies when
+summaries are enough.
+
+The MCP context-domain tools `context_embed`, `context_search`, and
+`context_rag_query` expose the lower-level record embedding/search surface.
+Consult [MCP tools](MCP_TOOLS.md) or the live tool schema for exact arguments.
+
+## Current limitations
+
+- OpenAI is the only embedding provider wired into the daemon
+- semantic operations require network access and send input text to OpenAI
+- vectors are model-specific; switching models requires backfill
+- ranking is local and does not use a dedicated vector database
+- queued embedding work is operational state and is excluded from store backups
+- there is no namespace-policy `auto_embed` field; embedding is driven by the
+  implemented write/tool paths described above

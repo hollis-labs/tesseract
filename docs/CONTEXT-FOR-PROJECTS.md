@@ -1,150 +1,114 @@
-# Context Memory Service — Project Integration Guide
+# Project integration guidance
 
-This document explains how to wire the Context Memory Service into another project's
-Claude Code setup and provides a ready-to-paste CLAUDE.md block that gives agents
-workflow guidance.
+This page provides a minimal MCP setup and a prompt block for a project that
+wants Tesseract-backed working context. It is optional: the MCP tool schemas and
+`tesseract_skills` remain the authoritative discovery surface.
 
----
+## Setup
 
-## Setup checklist
+1. Build or install Tesseract from the current source checkout.
+2. Confirm the intended store with `tesseract path`.
+3. Create a project-specific capability token:
 
-1. **Run `tesseract`** (or confirm it's already running)
-   ```bash
-   tesseract serve &
-   ```
-
-2. **Create a token** with the scopes your agent needs
    ```bash
    tesseract context token create \
-     --name <project-agent-name> \
-     --scopes write,promote.request \
-     --namespaces "app/<project-agent-name>/*" \
+     --name project-agent \
+     --client-id app:project-agent \
+     --scopes write,promote.request,memory:read \
+     --namespaces 'app/project-agent/*' \
      --ttl 8760h
    ```
 
-3. **Add `.mcp.json`** to the project root (or `~/.claude/.mcp.json` for global)
+4. Add an MCP server entry to the client configuration:
+
    ```json
    {
      "mcpServers": {
-       "context": {
-         "command": "/usr/local/bin/tesseract",
-         "args": ["mcp", "--token", "<paste-token-here>"]
+       "tesseract": {
+         "command": "tesseract",
+         "args": ["mcp", "--token", "<capability-token>"]
        }
      }
    }
    ```
 
-4. **Paste the CLAUDE.md block below** into your project's `CLAUDE.md`
+5. Keep the real token in a protected local/secret-aware configuration, never
+   in the repository, and restart the MCP host.
 
-5. **Restart Claude Code**
+`tesseract mcp` opens the store directly. Do not start `tesseract serve` solely
+for an MCP client.
 
----
+## Prompt block
 
-## CLAUDE.md block (copy and paste)
+Replace `<agent-id>` with the identifier used in the token grant.
 
-Paste this into the relevant project's `CLAUDE.md`. Replace `<project-agent-name>`
-with the namespace prefix you want your agent to use (e.g. `my-project`, `code-review`).
+````markdown
+## Tesseract context
 
-```markdown
-## Context Memory Service
+This project has a local Tesseract MCP server. Begin discovery with
+`tesseract_skills`, then load the `start-here` skill and any domain skill needed
+for the current operation.
 
-This project has persistent memory via the Context Memory Service MCP adapter.
-The `context_*` tools are available in every session.
+### Session start
 
-### On session start
+Use `context_plan` with `execute=true` and an honest intent/summary, or use
+`context_pack` with `shape="packet"` and explicit namespace globs when the
+required context set is already known. Inspect the returned manifest before
+assuming the packet is complete.
 
-Call `context_plan` with `execute=true` and your intent before doing anything else:
+### During work
 
-```
-context_plan(execute=true, intent="resume_task", summary="<brief task description>")
-```
+Write resumable working state only beneath:
 
-This loads prior context from your session namespace and pinned user memory.
-Check the manifest — if `pins_included > 0` the pinned records were prepended.
+`app/<agent-id>/session/<task-id>`
 
-### During the session
+Use `context_write` with a stable key and a JSON-string payload. Exact reads use
+`tesseract_get` and must name `domain`, `namespace`, and `key`.
 
-Write observations after significant steps:
+### Session end
 
-```
-context_write(
-  namespace="app/<project-agent-name>/session/<task-id>",
-  key="state",
-  payload='{"status":"in_progress","step":3,"checkpoint":{...}}',
-  actor="app:<project-agent-name>"
-)
-```
+Write a concise outcome under the session namespace. If it belongs in protected
+user memory, call `context_promote` with `stage="request"`; do not bypass the
+human approval/apply stages.
 
-Use structured JSON payloads. Include enough for the next session to resume
-without re-reading everything.
+### Recall discipline
 
-### On session end
+Prefer summary projection, hydrate only selected revision IDs, and call
+`tesseract_touch` only for summary-only results that actually affected the work.
+Do not turn Tesseract into a task tracker; persist durable context and reasoning,
+while the project's task system remains authoritative for work state.
 
-Write a summary and request promotion for anything worth keeping long-term:
+### Security and privacy
 
-```
-context_write(namespace="app/<project-agent-name>/session/<task-id>",
-              key="summary", payload='{"outcome":"...", "key_findings":[...]}')
+The capability token restricts mutations and grants memory/knowledge reads via
+`memory:read`, but it is not a complete read-isolation boundary. Several context
+and audit reads remain available without a token. Treat the client as able to
+read the context store. Provider-backed embedding/semantic tools can send
+record or query text to OpenAI.
+````
 
-context_promote(
-  stage="request",
-  source_namespace="app/<project-agent-name>/session/<task-id>",
-  source_key="summary",
-  target_namespace="user/memory/<project-agent-name>",
-  target_key="<task-id>-summary",
-  reason="<why this should be retained>"
-)
-```
+## Multi-agent stores
 
-### Namespace conventions
-
-| Namespace | Purpose |
-|---|---|
-| `app/<project-agent-name>/session/<task-id>` | Per-task working memory |
-| `app/<project-agent-name>/observations` | Cross-task findings |
-| `user/memory/<project-agent-name>` | Promoted long-term memory (human-approved) |
-| `user/pins/*` | Always-loaded pinned context |
-
-### Tool quick-reference
-
-| Tool | Auth | Use when |
-|---|---|---|
-| `context_plan` (`execute=true`) | none | Session boot — load prior context |
-| `context_write` | write scope | Save state or observations |
-| `context_pack` (`shape="packet"`) | none | Targeted context load (when you know the namespaces) |
-| `tesseract_get` | none for `domain: "context"` | Read a specific record |
-| `context_promote` (`stage="request"`) | promote.request scope | Promote findings to long-term memory |
-| `context_promotion_list` | none | Check pending promotions from prior sessions |
-| `context_audit_list` | none | Investigate what happened in a namespace |
-```
-
----
-
-## How agents discover tools
-
-The MCP protocol's `tools/list` response includes every tool's name and description.
-Claude Code reads this on startup and understands what each tool does without any
-CLAUDE.md guidance. The CLAUDE.md block above adds *workflow* guidance on top:
-when to call which tool, and in what order. You can omit it if you want the agent
-to infer usage from the tool descriptions alone.
-
----
-
-## Multiple agents on the same store
-
-Different agents can share one `tesseract` instance. Give each agent a distinct
-namespace prefix and a token scoped to that prefix:
+Give each writer a distinct app prefix and token. This prevents one agent from
+mutating another agent's namespace:
 
 ```bash
-tesseract context token create --name agent-review \
-  --scopes write,promote.request \
-  --namespaces "app/agent-review/*"
+tesseract context token create \
+  --name review-agent \
+  --client-id app:review-agent \
+  --scopes write,promote.request,memory:read \
+  --namespaces 'app/review-agent/*'
 
-tesseract context token create --name agent-docs \
-  --scopes write,promote.request \
-  --namespaces "app/agent-docs/*"
+tesseract context token create \
+  --name docs-agent \
+  --client-id app:docs-agent \
+  --scopes write,promote.request,memory:read \
+  --namespaces 'app/docs-agent/*'
 ```
 
-Each agent's token restricts writes to its own prefix. All agents can read each
-other's namespaces (read tools require no token) unless you add a read-only token
-policy via the namespace policy system.
+This is mutation separation plus an explicit grant for memory/knowledge reads,
+not complete read tenancy. If agents must not see each other's content, use
+separate Tesseract layouts and verify each with `tesseract path`.
+
+See [Agent setup](AGENT-SETUP.md) for tool examples and
+[Operations](OPERATIONS.md) for isolation and data egress.

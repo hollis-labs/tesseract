@@ -1,216 +1,182 @@
-# Tesseract by Hollis Labs
+# Tesseract
 
-Tesseract is a local-first context and memory service for humans, tools, and AI agents. It stores append-only, revisioned records in deterministic namespaces and exposes them over a Go library, CLI, HTTP API, and MCP.
+Tesseract is a local-first context, memory, and knowledge service for people,
+tools, and AI agents. It keeps append-only revision history, applies namespace
+and capability policy, and exposes the same store through a Go library, CLI,
+HTTP API, embedded web UI, and MCP server.
 
-It is designed for workflows where agents need a trustworthy persistence layer before reaching for the filesystem or the web:
+Tesseract is currently a public preview. Its contracts are documented and
+tested, but pre-1.0 releases may contain breaking changes. Read
+[`CHANGELOG.md`](CHANGELOG.md) before upgrading.
 
-- append-only record history with stable heads
-- namespace-scoped ownership and token-gated writes
-- deterministic views and context packets
-- app-to-user promotion workflow instead of silent memory mutation
-- optional semantic recall via embeddings
+## What it provides
 
-## Install
+- revisioned context records with deterministic heads and history
+- separate memory and pointer-backed knowledge domains
+- namespace ownership and scoped capability tokens
+- explicit request, approval, and apply stages for cross-namespace promotion
+- lexical recall plus optional OpenAI-backed embeddings and synthesis
+- a local operator UI embedded in the Go binary
+- integrity-checked, failure-atomic store backup and restore
 
-Install the `tesseract` binary with Go:
+## Install from source
 
-```bash
-go install github.com/hollis-labs/tesseract/cmd/tesseract@latest
-```
+The current preview is distributed as source. There are no supported prebuilt
+binaries, package-manager formulae, container images, or desktop installers.
 
-If you are building from source:
+Requirements:
+
+- Go 1.26.1
+- Git
+- Node.js/npm only when changing and rebuilding `frontend/`
 
 ```bash
 git clone https://github.com/hollis-labs/tesseract.git
 cd tesseract
-go build -o tesseract ./cmd/tesseract
+make build
+./tesseract --version
 ```
 
-`make build` and `make install` compile the committed web UI bundle with Go alone. Use `make build-all` / `make install-all` only if you want to rebuild the embedded web UI from source first, which requires Node. A normal `go install` or `go build` path does not require Node.
+`make build` compiles the committed web UI bundle and needs only Go. Use
+`make install` to install the binary into your Go bin directory. Frontend
+contributors use `make build-all` or regenerate the embedded bundle explicitly.
 
-## Quick Start
+## Quick start
 
-`tesseract --help` lists every command and `tesseract --version` reports the
-build. Neither reads or creates anything on disk, so they are safe to run
-before any setup.
-
-1. Inspect the paths Tesseract will use on your machine:
+Inspect the paths Tesseract will use before creating data:
 
 ```bash
-tesseract path
+./tesseract path
 ```
 
-2. Create a config file at the reported `config-file` path. Start from one of:
-
-- [`examples/config.openai.yaml`](examples/config.openai.yaml)
-- [`examples/config.anthropic-openai.yaml`](examples/config.anthropic-openai.yaml)
-
-3. Export the provider keys you need:
+Start the daemon:
 
 ```bash
-export OPENAI_API_KEY=...
-export ANTHROPIC_API_KEY=...
+./tesseract serve
 ```
 
-Use [`env.example`](env.example) as a template.
+The default listener is `http://127.0.0.1:8089`: loopback-only and
+unauthenticated. The API is under `/v1/`, and the web UI is at `/`.
 
-4. Start the daemon:
-
-```bash
-tesseract serve
-```
-
-It binds `127.0.0.1:8089` and runs unauthenticated — that is the local-first
-default. To reach it from another machine you must also configure
-authentication; see [Exposing the daemon](#exposing-the-daemon).
-
-5. Write and read your first record:
+In another terminal, write and read a context record:
 
 ```bash
-tesseract context put \
+./tesseract context put \
+  --client-id demo \
   --namespace app/demo/session \
   --key goal \
   --actor app:demo \
-  --json '{"objective":"ship beta docs"}'
+  --json '{"objective":"evaluate tesseract"}'
 
-tesseract context get --namespace app/demo/session --key goal
+./tesseract context get \
+  --namespace app/demo/session \
+  --key goal
 ```
 
-## Exposing The Daemon
+Provider credentials are optional. Core context, memory, knowledge, lexical
+recall, CLI, HTTP, UI, and MCP workflows work without them. To enable
+embeddings or synthesis, copy one of the sample configs to the `config-file`
+reported by `tesseract path` and set the matching environment variables:
 
-`tesseract serve` binds `127.0.0.1:8089` by default and runs without
-authentication. That combination is safe because nothing outside the machine
-can reach it.
+- [`examples/config.openai.yaml`](examples/config.openai.yaml)
+- [`examples/config.anthropic-openai.yaml`](examples/config.anthropic-openai.yaml)
+- [`env.example`](env.example)
 
-Binding anywhere else changes that, so it requires a token mode:
+Provider-backed features transmit selected content to the configured provider.
+Review the [data egress table](docs/OPERATIONS.md#outbound-connections-and-data-egress)
+before enabling them.
+
+The complete first-run flow is in [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+## Network and authentication boundary
+
+Tesseract refuses an unauthenticated non-loopback bind unless the operator uses
+the explicit `--allow-unauthenticated-remote` override. For remote access,
+choose managed authentication or a static token:
 
 ```bash
-# managed capability tokens (recommended)
-tesseract context token create --name laptop --scopes write --namespaces "app/*"
-tesseract serve --managed-auth --addr 0.0.0.0:8089
+# Create a managed token before starting managed-auth mode.
+./tesseract context token create \
+  --name remote-client \
+  --client-id app:remote-client \
+  --scopes write,promote.request,packet \
+  --namespaces 'app/remote-client/*' \
+  --ttl 24h
 
-# single shared bearer token
-tesseract serve --static-token "$TESSERACT_TOKEN" --addr 0.0.0.0:8089
+./tesseract serve --managed-auth --addr 0.0.0.0:8089
 ```
-
-With either mode configured, every route requires a valid token — reads
-included. The only exceptions are `GET /v1/health/readiness` and, when enabled
-with `--metrics`, `GET /v1/metrics`.
-
-Note that the bare `:8089` form binds every interface, not loopback. Starting
-on a non-loopback address with no token mode is refused; if you truly want an
-unauthenticated daemon on the network, say so explicitly with
-`--allow-unauthenticated-remote`.
-
-## Backups
-
-A backup is a directory: a consistent snapshot of the database taken while
-writes are in flight, the record payload tree, an optional copy of your config,
-and a manifest recording the schema version and a checksum per file.
 
 ```bash
-tesseract context backup export --out ~/tesseract-backup-2026-09-04
-tesseract context backup verify --in ~/tesseract-backup-2026-09-04
-tesseract context backup restore --in ~/tesseract-backup-2026-09-04
+export TESSERACT_TOKEN='replace-with-a-long-random-token'
+./tesseract serve --static-token "$TESSERACT_TOKEN" --addr 0.0.0.0:8089
 ```
 
-`verify` re-checks every checksum, refuses a directory carrying files the
-manifest does not list, and confirms each record row resolves to its payload.
-`restore` validates the whole snapshot before touching live state, stages the
-new store beside the old one, and swaps atomically — a failure at any point
-leaves the existing store unchanged, and an interrupted swap is resolved on the
-next start. Restore is a replacement, not a merge: it does not preserve data
-present only in the destination.
+When either token mode is active, every HTTP route requires
+`Authorization: Bearer <token>` except readiness and the optional metrics
+endpoint. A static token deliberately has no `admin` scope. Mutating the
+runtime settings or its config backups therefore requires managed auth and a
+managed token created with the explicit `admin` scope.
 
-Backups contain authentication token hashes, so they are written owner-only.
-So is everything else Tesseract owns — its directories are `0700` and its files
-`0600`, including the database, the record payloads, and your config. Stores
-created by earlier versions are tightened in place the next time they are
-opened.
+Authentication is not transport encryption. Tesseract has no built-in TLS;
+put any remotely reachable listener behind TLS, a VPN, an SSH tunnel, or a
+trusted TLS-terminating reverse proxy. See [`SECURITY.md`](SECURITY.md).
 
-## Provider Setup
+## MCP
 
-Tesseract currently supports these runtime provider paths:
-
-- Embeddings: `openai`
-- Synthesis: `openai`, `anthropic`
-
-Recommended beta setups:
-
-- OpenAI only:
-  - embeddings enabled
-  - synthesis enabled
-- Anthropic + OpenAI:
-  - Anthropic for synthesis
-  - OpenAI for embeddings
-- No provider keys:
-  - core context, memory, knowledge, CLI, API, and MCP still work
-  - embedding-backed recall and synthesis are unavailable
-
-Example config:
-
-```yaml
-embedding:
-  provider: openai
-  model: text-embedding-3-large
-
-synthesis:
-  provider: anthropic
-  model: claude-sonnet-4-5
-```
-
-## MCP Setup
-
-Tesseract can run as an MCP stdio server:
+Tesseract can run as an MCP stdio server; a separate HTTP daemon is not
+required:
 
 ```bash
-tesseract mcp --token <capability-token>
+./tesseract mcp --token '<capability-token>'
 ```
 
-Sample Claude Code configuration is in [`examples/mcp.json`](examples/mcp.json).
+Use [`examples/mcp.json`](examples/mcp.json) as a client configuration starting
+point. The token controls mutations, memory/knowledge read scopes, and some
+namespace filtering, but it is not a complete read-isolation boundary for the
+local stdio server. See
+[`docs/AGENT-SETUP.md`](docs/AGENT-SETUP.md) and
+[`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md).
 
-Typical setup flow:
+## Backup before real use
 
-1. Create a token with the scopes you need.
-2. Add a Tesseract entry to your MCP client config.
-3. Restart the MCP client.
-4. Use `context_*`, `memory_*`, and related tools from the client.
-
-## Common Commands
+A current backup is a directory containing a whole-database snapshot, record
+payloads, and a checksummed manifest. Configuration is included only when
+`--config` is supplied.
 
 ```bash
-tesseract --help
-tesseract --version
-tesseract serve
-tesseract path
-tesseract context put --namespace app/demo/session --key state --actor app:demo --json '{"status":"ok"}'
-tesseract context get --namespace app/demo/session --key state
-tesseract context history --namespace app/demo/session --key state
-tesseract context token create --name demo --scopes write,promote.request --namespaces "app/demo/*"
-tesseract context packet --namespace "app/demo/*" --max-items 20 --max-tokens-estimate 4000
-tesseract backfill-embeddings
-tesseract context backup export --out ~/tesseract-backup
+./tesseract context backup export \
+  --out "$PWD/tesseract-backup" \
+  --config /path/reported/by/tesseract-path/config.yaml
+
+./tesseract context backup verify --in "$PWD/tesseract-backup"
 ```
+
+Stop every daemon and MCP process that uses the store before restoring. Restore
+replaces the destination; it does not merge. Detailed recovery and upgrade
+guidance is in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## Documentation
 
-- [docs/README.md](docs/README.md) for the public docs entrypoint
-- [docs/QUICKSTART.md](docs/QUICKSTART.md) for the end-to-end first-run flow
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the core model and invariants
-- [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) for MCP and Claude Code setup
-- [docs/guides/tesseract-adoption-and-v0.9-migration.md](docs/guides/tesseract-adoption-and-v0.9-migration.md) for consumer adoption and the v0.8-to-v0.9 breaking migration
-- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the MCP tool catalog
-- [docs/SPECS/API.md](docs/SPECS/API.md) for the HTTP surface
-- [docs/SPECS/CLI.md](docs/SPECS/CLI.md) for CLI behavior
-- [CHANGELOG.md](CHANGELOG.md) for user-visible changes
+- [`docs/README.md`](docs/README.md) — documentation index
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — installation and first run
+- [`docs/AGENT-SETUP.md`](docs/AGENT-SETUP.md) — MCP client setup
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — support, auth, egress, backup, and upgrades
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — storage and service design
+- [`docs/SPECS/API.md`](docs/SPECS/API.md) — HTTP contract
+- [`docs/SPECS/CLI.md`](docs/SPECS/CLI.md) — CLI contract
+- [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md) — MCP tool catalog
+- [`SECURITY.md`](SECURITY.md) — security policy and deployment boundary
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow
 
-## Build And Test
+## Develop
 
 ```bash
-go test ./...
-make build
-make smoke
+make test
+make validate
+go vet ./...
 ```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the complete contributor checks.
 
 ## License
 

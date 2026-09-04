@@ -1,18 +1,19 @@
-# Specs
+# Tesseract specifications
 
-Specification documents for the Context Memory Service.
+These documents describe the current public contracts and the invariants they
+share across adapters:
 
-Planned baseline specs:
-- [`MVP.md`](./MVP.md)
-- [`API.md`](./API.md)
-- [`CLI.md`](./CLI.md)
-- [`STORAGE.md`](./STORAGE.md)
-- [`VIEWS.md`](./VIEWS.md)
-- [`MCP.md`](./MCP.md)
+- [HTTP API](API.md)
+- [CLI](CLI.md)
+- [MCP](MCP.md)
+- [Namespaces](NAMESPACES.md)
+- [Promotion](PROMOTION.md)
+- [Storage](STORAGE.md)
+- [Views](VIEWS.md)
 
-Output notes:
-- [`outputs/api-diff.md`](./outputs/api-diff.md)
-- [`outputs/cli-examples.md`](./outputs/cli-examples.md)
+The [MVP specification](MVP.md) is an archived planning document retained for
+inbound links. Files under [`outputs/`](outputs/) are historical comparison and
+example outputs; use the live binary and current specs above for behavior.
 
-Pivot output index:
-- [`docs/outputs/README.md`](../outputs/README.md)
+For installation, support, and the deployment boundary, return to the
+[public docs index](../README.md).

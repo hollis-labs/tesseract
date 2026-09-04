@@ -1,190 +1,171 @@
-# Agent Setup Guide
+# Agent and MCP setup
 
-This guide covers the supported path for using Tesseract as a persistent memory backend for Claude Code or another MCP-compatible client.
+Tesseract's MCP stdio server gives a trusted local agent deterministic context
+reads, memory/knowledge recall, scoped writes, promotion requests, and
+budget-bounded session boot.
 
-## What this gives an agent
+## Prerequisites
 
-Tesseract over MCP gives an agent:
+Build Tesseract from source as described in [Quick start](QUICKSTART.md). A
+separate HTTP daemon is not required: the MCP host starts `tesseract mcp`, which
+opens the local store itself.
 
-- deterministic read access to context, memory, knowledge, and audit data
-- optional scoped write access to `app/*` namespaces
-- promotion requests into protected `user/*` namespaces
-- budget-bounded context packet loading for session boot
-
-## Install and prerequisites
-
-Install `tesseract` first:
-
-```bash
-go install github.com/hollis-labs/tesseract/cmd/tesseract@latest
-```
-
-Then make sure you have:
-
-- a Tesseract config file in the normal app config location
-- provider env vars if you want embeddings or synthesis
-- a capability token if the agent needs mutating tools
-
-See [QUICKSTART.md](QUICKSTART.md) for the base install and provider setup.
+Provider keys are optional. Without them, context and lexical memory/knowledge
+workflows remain available; semantic retrieval and synthesis are unavailable.
 
 ## Create a capability token
 
-Read-only tools do not require a token. Mutating tools do.
-
-Typical agent token:
-
-```bash
-tesseract context token create \
-  --name claude-agent \
-  --client-id app:claude \
-  --scopes write,promote.request \
-  --namespaces "app/claude/*" \
-  --ttl 8760h
-```
-
-Copy the raw token value immediately.
-
-Human operator token:
+Read-only context tools in the local MCP adapter do not require a token.
+Memory and knowledge reads require `memory:read`, and mutations require their
+operation-specific scopes. Create a token with the smallest scope and namespace
+set the agent needs:
 
 ```bash
 tesseract context token create \
-  --name operator \
-  --client-id user \
-  --scopes promote.approve,promote.apply,namespace.admin \
-  --namespaces "*" \
+  --name coding-agent \
+  --client-id app:coding-agent \
+  --scopes write,promote.request,memory:read \
+  --namespaces 'app/coding-agent/*' \
   --ttl 8760h
 ```
 
-## Add Tesseract to `.mcp.json`
+The plaintext token is shown once. Add `memory:write` only if the agent should
+write the memory/knowledge revision store. Namespace globs and scopes prevent
+ungranted mutations, but they do not turn the local MCP process into a fully
+read-isolated tenant: several context and audit reads remain available.
 
-Project-local example:
+Promotion approval and apply should normally use a different operator token
+with `promote.approve` and/or `promote.apply`, rather than adding those scopes
+to every coding agent.
+
+## Configure the MCP host
+
+Start from [`../examples/mcp.json`](../examples/mcp.json):
 
 ```json
 {
   "mcpServers": {
     "tesseract": {
       "command": "tesseract",
-      "args": ["mcp", "--token", "<paste-token-here>"],
-      "env": {
-        "OPENAI_API_KEY": "<optional-for-embeddings>",
-        "ANTHROPIC_API_KEY": "<optional-for-synthesis>"
-      }
+      "args": ["mcp", "--token", "<capability-token>"]
     }
   }
 }
 ```
 
-You can place this in:
+Prefer a secret-aware host configuration or a protected user-level config over
+committing the raw token to a repository. Provider credentials should come from
+the host process environment or its secret manager. If you put a token in a
+local config file, restrict the file permissions and keep it out of source
+control.
 
-- project root `.mcp.json` for one repository
-- global Claude Code MCP config if you want it everywhere
+Restart the MCP host after changing its configuration so it refreshes the tool
+registry.
 
-See [`../examples/mcp.json`](../examples/mcp.json) for the sample file in this repo.
+## Discover before calling
 
-## Restart the MCP client
+Call `tesseract_skills` first, then load `start-here` and the domain-specific
+skill needed for the task. The shipped schemas and skill text are more reliable
+than a copied tool list in a project prompt.
 
-After adding or changing MCP config, restart Claude Code or your MCP client so the tool registry refreshes.
+The main groups are:
 
-## Tool groups
+- `context_*` for context records, views, packets, plans, promotion, and audit
+- `memory_*` for memory writes and domain workflows
+- `knowledge_*` for pointer-backed knowledge writes
+- `tesseract_*` for cross-domain reads, history, recall, revision access, and touch
 
-The most important tool groups for agents are:
+The full inventory is in [MCP tools](MCP_TOOLS.md).
 
-- `context_*` for record reads, writes, packets, promotions, namespace policy, and audit
-- `memory_*` for memory-domain workflows when the memory store is enabled
-- `knowledge_*` for pointer-first knowledge records when the knowledge store is enabled
+## Recommended session workflow
 
-For the complete catalog, see [MCP_TOOLS.md](MCP_TOOLS.md).
+1. Use `context_plan` with `execute: true` for an intent-driven boot, or
+   `context_pack` with `shape: "packet"` when the namespace set is known.
+2. Read exact current values with `tesseract_get`, always naming the `domain`.
+3. Write working state only beneath the agent's `app/<id>/*` grant.
+4. Request promotion into protected user memory; do not silently write around
+   the ownership boundary.
+5. Hydrate only the recall results that matter, then touch summary-only results
+   only when they actually informed the work.
 
-## Recommended agent workflow
+## Minimal calls
 
-For a typical Claude Code session:
-
-1. Boot from `context_pack` with `shape: "packet"`, or from `context_plan` with `execute: true`.
-2. Read current app session state from `app/<agent>/*`.
-3. Write new session state only inside the namespaces granted by the token.
-4. Request promotions instead of writing directly to `user/*`.
-5. Use embedding-backed tools only when providers are configured.
-
-## Minimal tool examples
-
-### Read a head record
-
-```json
-{
-  "namespace": "app/claude/session/task-001",
-  "key": "state"
-}
-```
-
-### Load a session packet
-
-`context_pack` with `shape: "packet"`:
+Load a session packet:
 
 ```json
 {
   "shape": "packet",
-  "namespaces": "app/claude/session/*,user/memory/*",
-  "include_pins": true,
+  "namespaces": "app/coding-agent/session/*",
+  "include_pins": false,
   "max_items": 50,
   "max_tokens_estimate": 8000
 }
 ```
 
-Add `"payload_max_bytes": 512` to survey a wide namespace set cheaply. A capped
-item carries `payload_head`, `payload_truncated` and `payload_bytes` in place of
-`payload`.
-
-### Write app state
+Read an exact context head:
 
 ```json
 {
-  "namespace": "app/claude/session/task-001",
+  "domain": "context",
+  "namespace": "app/coding-agent/session/task-001",
+  "key": "state"
+}
+```
+
+Write state:
+
+```json
+{
+  "namespace": "app/coding-agent/session/task-001",
   "key": "state",
   "payload": "{\"status\":\"in_progress\",\"step\":3}",
-  "actor": "app:claude",
+  "actor": "app:coding-agent",
   "record_type": "state"
 }
 ```
 
-### Request a promotion
+Request promotion:
 
 ```json
 {
-  "source_namespace": "app/claude/session/task-001",
+  "stage": "request",
+  "source_namespace": "app/coding-agent/session/task-001",
   "source_key": "summary",
-  "target_namespace": "user/memory/claude",
+  "target_namespace": "user/memory/coding-agent",
   "target_key": "task-001-summary",
-  "reason": "session complete, promoting for long-term memory",
-  "actor": "app:claude"
+  "reason": "retain the reviewed session outcome",
+  "actor": "app:coding-agent"
 }
 ```
 
-## Scope model
+## Data boundary for agents
 
-Common capability scopes:
-
-- `write`
-- `promote.request`
-- `promote.approve`
-- `promote.apply`
-- `namespace.admin`
-
-The token must also allow the target namespace glob.
+An MCP client can cause outbound provider calls when it invokes embedding,
+semantic recall, RAG, or other provider-backed tools. OpenAI receives record
+text or query text for embeddings. The HTTP synthesis surface can send the
+question plus selected summaries and bodies to OpenAI or Anthropic. Review
+[data egress](OPERATIONS.md#outbound-connections-and-data-egress) before making
+provider-backed tools available to an agent.
 
 ## Common failures
 
 ### `auth_required`
 
-The MCP server was started without `--token`, or the configured token is invalid or expired.
+A mutating MCP tool was called without a configured token, or the token is no
+longer valid.
 
 ### `insufficient_scope`
 
-The token exists but does not include the capability required by the tool call.
+The token does not contain the capability required by the selected operation or
+promotion stage.
+
+### `namespace_not_permitted`
+
+The target does not match the token's namespace globs.
 
 ### `embedding_unavailable`
 
-No supported embedding provider is configured, or the required API key is missing.
+No supported embedder is available. Configure OpenAI and its API key or use a
+lexical/deterministic operation.
 
-## Optional project guidance
-
-MCP tool descriptions are usually enough for discovery, but you can add a short project-specific usage note for agents. If you want a copy-paste snippet, see [CONTEXT-FOR-PROJECTS.md](CONTEXT-FOR-PROJECTS.md).
+For a compact project prompt, see [Project integration](CONTEXT-FOR-PROJECTS.md).
