@@ -138,7 +138,7 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 		RetryAfter: 30 * time.Second,
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
 	})
-	worker.Register("embed", tesseract.NewEmbedHandler(memStore, tesseractCfg.Embedding.Model, log.Printf))
+	worker.Register(memory.EmbedJobKind, tesseract.NewEmbedHandler(memStore, tesseractCfg.Embedding.Model, log.Printf))
 	subsystem.startWorker(func(ctx context.Context) {
 		if err := worker.Start(ctx); err != nil {
 			log.Printf("queue worker stopped with error: %v", err)
@@ -159,6 +159,17 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 		Logger:   log.Printf,
 	}
 	subsystem.startWorker(decayJob.Run)
+
+	// Say out loud which of the two deferred-embedding worlds this process is
+	// in. Production always wires a real queue, so a disabled line here means
+	// the wiring regressed; a non-zero failure count later means committed
+	// revisions are going unembedded and need a queue backfill.
+	// CW-20260826-0018.
+	if status := memStore.DeferredEmbeddingStatus(); status.Enabled {
+		log.Printf("deferred embedding enabled (queue=%s db=%s)", status.Queue, queueDBPath)
+	} else {
+		log.Printf("deferred embedding DISABLED (queue=%s): revisions will commit unembedded", status.Queue)
+	}
 
 	subsystem.Store = memStore
 	return subsystem, nil

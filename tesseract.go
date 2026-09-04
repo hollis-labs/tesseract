@@ -125,9 +125,17 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 		return nil, err
 	}
 
+	// No queue means no deferred embedding. That is a legitimate way to run
+	// the library, but it must not be something a consumer discovers from
+	// missing embeddings months later, so it is stated at Open and is
+	// readable afterwards via MemoryStore().DeferredEmbeddingStatus().
+	// CW-20260826-0018.
 	var jobQueue memory.JobQueue = memory.NoopQueue{}
 	if o.queue != nil {
 		jobQueue = memory.NewQueueAdapter(o.queue, "tesseract")
+	} else {
+		o.logger("tesseract: deferred embedding disabled (no queue configured via WithQueue); " +
+			"revisions commit unembedded until a backfill runs")
 	}
 
 	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
@@ -167,7 +175,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 			RetryAfter: 30 * time.Second,
 			OnError:    func(err error) { o.logger("queue worker error: %v", err) },
 		})
-		w.Register("embed", NewEmbedHandler(memStore, o.embeddingModel, o.logger))
+		w.Register(memory.EmbedJobKind, NewEmbedHandler(memStore, o.embeddingModel, o.logger))
 		tesseract.workers.Add(1)
 		go func() {
 			defer tesseract.workers.Done()
