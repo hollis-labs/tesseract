@@ -471,7 +471,7 @@ Request:
 
 Response:
 - `items` (deterministically ordered)
-- `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`)
+- `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`)
 
 Selector limits:
 - `namespaces`: max 32 patterns
@@ -519,7 +519,8 @@ Valid response example:
   "evaluation_meta": {
     "sort_keys": ["namespace", "key", "revision"],
     "matched_count": 2,
-    "truncated": false
+    "truncated": false,
+    "normalized_scope": "head"
   }
 }
 ```
