@@ -84,7 +84,7 @@ type MigrationCollision struct {
 type MigrationPlan struct {
 	Rows         []MigrationRow       `json:"rows"`
 	Collisions   []MigrationCollision `json:"collisions"`
-	ProjectSet   []string             `json:"project_set"` // detected projects (corpus-derived)
+	ProjectSet   []string             `json:"project_set"`   // detected projects (corpus-derived)
 	SourceFilter string               `json:"source_filter"` // SQL WHERE used to select source rows
 }
 

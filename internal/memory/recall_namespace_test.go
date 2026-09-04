@@ -70,9 +70,9 @@ func TestBuildNamespaceClause(t *testing.T) {
 
 func TestMemoryPrefix(t *testing.T) {
 	cases := []struct {
-		input   string
-		want    string
-		wantOk  bool
+		input  string
+		want   string
+		wantOk bool
 	}{
 		{"user/x/memory", "user/x/memory", true},
 		{"user/x/memory/*", "user/x/memory", true},

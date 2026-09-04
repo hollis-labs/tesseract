@@ -13,14 +13,14 @@ func TestMapRow_TypeStripAndProjectExtraction(t *testing.T) {
 		"agent_ops": {},
 	}
 	cases := []struct {
-		name      string
-		oldNS     string
-		oldKey    string
-		oldTags   []string
-		wantNS    string
-		wantKey   string
-		wantTags  []string
-		wantNote  string // substring of Reason
+		name     string
+		oldNS    string
+		oldKey   string
+		oldTags  []string
+		wantNS   string
+		wantKey  string
+		wantTags []string
+		wantNote string // substring of Reason
 	}{
 		{
 			name:     "decisions with project and ticket",
@@ -90,11 +90,11 @@ func TestMapRow_TypeStripAndProjectExtraction(t *testing.T) {
 			wantTags: []string{"ticket:cw_20260101_0001"},
 		},
 		{
-			name:     "session namespace gets type appended",
-			oldNS:    "user/default/session/sess1/memory",
-			oldKey:   "notes.something",
-			wantNS:   "user/default/session/sess1/memory/notes",
-			wantKey:  "something",
+			name:    "session namespace gets type appended",
+			oldNS:   "user/default/session/sess1/memory",
+			oldKey:  "notes.something",
+			wantNS:  "user/default/session/sess1/memory/notes",
+			wantKey: "something",
 		},
 		{
 			name:     "existing tags are preserved + deduped",
