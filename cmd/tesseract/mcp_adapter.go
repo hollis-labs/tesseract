@@ -19,6 +19,8 @@ import (
 // answer with embedding_unavailable when called.
 func newMCPAdapter(store *contextstore.Store, token string, mem *memorySubsystem, cfg config.Config, logWriter io.Writer) *mcpadapter.Adapter {
 	adapter := mcpadapter.New(store, token)
+	// One source of version truth: the handshake reports what --version reports.
+	adapter.Version = buildVersion()
 	if mem != nil {
 		adapter.MemoryStore = mem.Store
 		adapter.KnowledgeStore = knowledge.New(mem.Store)

@@ -19,6 +19,11 @@ CONTRACT_ROOT ?= .tesseract/tmp/contract
 CONTRACT_ENV := XDG_DATA_HOME=$(CONTRACT_ROOT) XDG_STATE_HOME=$(CONTRACT_ROOT) \
                 XDG_CACHE_HOME=$(CONTRACT_ROOT) XDG_CONFIG_HOME=$(CONTRACT_ROOT)
 SUITE ?= all
+# Stamped into main.version so `tesseract --version` reports a release rather
+# than falling back to the VCS pseudo-version debug.ReadBuildInfo yields for a
+# plain checkout build. `go install module@vX.Y.Z` needs no stamp — the module
+# proxy supplies the real tag — so this exists for locally built binaries.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 TEST ?= go test ./...
 
@@ -56,10 +61,10 @@ frontend:
 	cp -r frontend/dist internal/webui/dist
 
 build:
-	go build -o tesseract ./cmd/tesseract/
+	go build -ldflags "-X main.version=$(VERSION)" -o tesseract ./cmd/tesseract/
 
 install:
-	go install ./cmd/tesseract/
+	go install -ldflags "-X main.version=$(VERSION)" ./cmd/tesseract/
 
 build-all: frontend build
 
