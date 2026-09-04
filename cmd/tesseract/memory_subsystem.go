@@ -17,6 +17,7 @@ import (
 	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 )
@@ -84,8 +85,14 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 	// queue.db is STATE (the embed-job queue), so it lands under the
 	// go-apppaths StateDir alongside records/ — not under DataDir with the
 	// main DB. CW-20260517-0066.
+	//
+	// StateDir is Tesseract's own XDG state root, but go-apppaths materializes
+	// it 0755 and cannot be told otherwise, so it is tightened here after the
+	// fact. Only the directory itself: records/ also lives under StateDir and
+	// converting that tree is contextstore.Open's job, which has the marker
+	// that keeps it from re-walking a large store on every start.
 	queueDBDir := layout.StateDir()
-	if err := os.MkdirAll(queueDBDir, 0o755); err != nil {
+	if err := fsperm.EnsureDir(queueDBDir); err != nil {
 		return nil, fmt.Errorf("mkdir queue db dir: %w", err)
 	}
 	queueDBPath := filepath.Join(queueDBDir, "queue.db")
@@ -98,6 +105,16 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 	if err != nil {
 		_ = queueDB.Close()
 		return nil, fmt.Errorf("init queue driver: %w", err)
+	}
+	// The driver has now created queue.db (and possibly its WAL sidecars); the
+	// SQLite layer knows nothing of the owner-only policy, so the mode is
+	// corrected once the files exist. This also converts a queue.db left at
+	// 0644 by an older build.
+	for _, path := range []string{queueDBPath, queueDBPath + "-wal", queueDBPath + "-shm"} {
+		if err := fsperm.TightenPath(path); err != nil {
+			_ = queueDB.Close()
+			return nil, fmt.Errorf("secure queue db: %w", err)
+		}
 	}
 	// The subsystem intentionally owns cancel beyond this function's return;
 	// Close invokes it before joining the registered workers.

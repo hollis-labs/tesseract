@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -110,12 +109,13 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 	if dbPath == "" {
 		dbPath = filepath.Join(dataDir, "index", "context.db")
 	}
-	for _, dir := range []string{recordsDir, filepath.Dir(dbPath)} {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return nil, err
-		}
-	}
-
+	// These two directories are deliberately not created here. contextstore.Open
+	// creates exactly the same pair on the next line and applies the store's
+	// permission policy to them (fsperm: 0700, plus a tighten pass over an
+	// existing records tree). Creating them first only meant whichever call ran
+	// first won the mode, and this one did — so an embedded-library install got
+	// 0750 while the daemon's own store got 0755 for identical paths, and
+	// neither matched the policy. One owner, one mode. See CW-20260904-0078.
 	store, err := contextstore.Open(ctx, contextstore.Config{
 		RootDir:    cfg.RootDir,
 		RecordsDir: recordsDir,

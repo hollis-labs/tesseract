@@ -29,6 +29,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"gopkg.in/yaml.v3"
@@ -1606,11 +1607,16 @@ func (s *Server) handleAdminConfigRestore(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "config_file_unavailable", "config file path is not available", nil)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
+	// config.yaml holds provider credentials, so the restored copy and the
+	// directory around it are owner-only. fsperm forces the mode after the
+	// write, which matters most here: the file being overwritten already
+	// exists, so O_CREATE's mode would be ignored and a legacy 0644 config
+	// would survive every restore.
+	if err = fsperm.EnsureDir(filepath.Dir(configFile)); err != nil {
 		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
 		return
 	}
-	if err := os.WriteFile(configFile, data, 0o644); err != nil {
+	if err = fsperm.WriteFile(configFile, data); err != nil {
 		writeError(w, http.StatusInternalServerError, "config_restore_failed", err.Error(), nil)
 		return
 	}
@@ -2056,7 +2062,14 @@ func (s *Server) createAdminConfigBackup(source string) (adminConfigBackupInfo, 
 	if backupDir == "" {
 		return adminConfigBackupInfo{}, errors.New("config backup directory is not available")
 	}
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+	// Every file in here is a verbatim copy of config.yaml, credentials
+	// included, so the backup tree is the sharpest exposure of the lot. It is
+	// Tesseract-owned end to end (adminConfigBackupDir is always
+	// <config dir>/backups and only createAdminConfigBackup writes into it),
+	// which is what makes the recursive form legitimate: backups written at
+	// 0644 by an older build are tightened on the next backup rather than
+	// being left readable forever.
+	if err := fsperm.EnsureTree(backupDir); err != nil {
 		return adminConfigBackupInfo{}, err
 	}
 	configFile := s.adminConfigFile()
@@ -2081,7 +2094,7 @@ func (s *Server) createAdminConfigBackup(source string) (adminConfigBackupInfo, 
 	}
 	name := fmt.Sprintf("config-%s-%s.yaml", source, time.Now().UTC().Format("20060102T150405Z"))
 	target := filepath.Join(backupDir, name)
-	if err := os.WriteFile(target, data, 0o644); err != nil {
+	if err := fsperm.WriteFile(target, data); err != nil {
 		return adminConfigBackupInfo{}, err
 	}
 	return s.statAdminBackup(target, source)

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/memorytime"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 
@@ -202,10 +203,19 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(cfg.RecordsDir, 0o755); err != nil {
+	// Both paths are Tesseract's own, so they are owner-only (fsperm). The
+	// records tree gets the recursive form: every file under it was written by
+	// AppendRecord, and a store created by a build older than CW-20260904-0078
+	// still holds 0644 payloads that nothing else will ever fix. The walk is
+	// skipped once the tree has converted — see fsperm.TightenTree.
+	if err := fsperm.EnsureTree(cfg.RecordsDir); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+	// The database's directory is tightened but deliberately not walked: an
+	// embedding caller chooses DBPath, and it may name a directory holding
+	// files that are not ours. The database itself and its sidecars are
+	// tightened by name below instead.
+	if err := fsperm.EnsureDir(filepath.Dir(cfg.DBPath)); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +230,30 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 
+	// The database file and its WAL sidecars are created by the SQLite driver,
+	// which knows nothing of this policy, so their mode can only be corrected
+	// after the fact. Doing it here also converts a pre-existing 0644 database.
+	if err := tightenDBFiles(cfg.DBPath); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
 	return s, nil
+}
+
+// tightenDBFiles applies the owner-only file mode to a SQLite database and the
+// sidecars SQLite keeps beside it. Sidecars come and go with the WAL, so a
+// missing one is not an error.
+func tightenDBFiles(dbPath string) error {
+	if err := fsperm.TightenPath(dbPath); err != nil {
+		return err
+	}
+	for _, suffix := range sqliteSidecarSuffixes {
+		if err := fsperm.TightenPath(dbPath + suffix); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // openStoreDB opens the live database with the store's standard connection
@@ -948,10 +981,10 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 
 	relPath := filepath.Join(ns, key, fmt.Sprintf("%d.json", rev))
 	absPath := filepath.Join(s.recordsDir, relPath)
-	if err = os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+	if err = fsperm.EnsureDir(filepath.Dir(absPath)); err != nil {
 		return Record{}, err
 	}
-	if err = os.WriteFile(absPath, compactPayload, 0o644); err != nil {
+	if err = fsperm.WriteFile(absPath, compactPayload); err != nil {
 		return Record{}, err
 	}
 
