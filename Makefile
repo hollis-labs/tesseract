@@ -1,4 +1,4 @@
-.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install
+.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all
 
 BASE_URL ?= http://127.0.0.1:8089
 TOKEN ?=
@@ -40,16 +40,30 @@ else
 SMOKE_INVALID_TOKEN_ARG :=
 endif
 
+# The built web UI is committed at internal/webui/dist, so `build` and
+# `install` deliberately do NOT depend on `frontend`: they compile the bundle
+# already in the tree and need no Node toolchain, which keeps them working on
+# a clone that has only Go — the same guarantee plain `go build`/`go install`
+# already give. Chaining `frontend` into them made a Node install mandatory
+# for everyone, including contributors who never touch frontend/.
+#
+# Rebuild the bundle explicitly with `make frontend`, or with `build-all` /
+# `install-all` when a frontend change needs to reach the binary. Note that
+# `frontend` rewrites internal/webui/dist, which is tracked — expect a diff.
 frontend:
 	cd frontend && npm install && npm run build
 	rm -rf internal/webui/dist
 	cp -r frontend/dist internal/webui/dist
 
-build: frontend
+build:
 	go build -o tesseract ./cmd/tesseract/
 
-install: frontend
+install:
 	go install ./cmd/tesseract/
+
+build-all: frontend build
+
+install-all: frontend install
 
 test:
 	$(TEST)

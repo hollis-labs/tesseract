@@ -13,6 +13,7 @@ require (
 	github.com/hollis-labs/go-modelsdev v0.2.0
 	github.com/hollis-labs/go-otel v0.1.0
 	github.com/hollis-labs/go-queue v0.1.0
+	github.com/hollis-labs/go-webui v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.3.0
 	github.com/mark3labs/mcp-go v0.47.0
 	github.com/oklog/ulid/v2 v2.1.1

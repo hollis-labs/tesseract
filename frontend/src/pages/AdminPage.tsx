@@ -1,20 +1,17 @@
 import {
   Button,
   Callout,
-  type ColumnDef,
   CopyableId,
   cn,
-  DataTable,
   EmptyState,
-  ListPageLayout,
   Pill,
   SettingsField,
   SettingsGrid,
   SettingsPanel,
   SummaryCards,
-  TabStrip,
-  type TabStripItem,
 } from "@hollis-labs/sysop-ui";
+import { type ColumnDef, DataTable } from "@hollis-labs/sysop-ui/data";
+import { ListPageLayout, TabStrip, type TabStripItem } from "@hollis-labs/sysop-ui/layout";
 import {
   AlertTriangle,
   Archive,
