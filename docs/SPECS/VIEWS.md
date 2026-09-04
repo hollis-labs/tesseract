@@ -117,12 +117,17 @@ Truncation example (deterministic):
 
 ## Response envelope
 - `items`: ordered record references (and payloads if requested)
-- `evaluation_meta`:
-  - `normalized_selector`
+- `evaluation_meta` — exactly these four fields, on both the HTTP and MCP surfaces:
   - `sort_keys`
   - `matched_count`
-  - `returned_count`
   - `truncated` (boolean)
+  - `normalized_scope` — the canonicalized `revision_scope` (`head` unless the
+    selector asked for `all`)
+
+The set is closed. `evaluation_meta` previously advertised `normalized_selector`
+and `returned_count` here; neither has ever existed in `EvaluateResult` or in
+either handler projection, and `normalized_scope`, which both surfaces do emit,
+was missing. Use `len(items)` for the returned count.
 
 ## Validation rules
 - Reject unknown selector fields.
