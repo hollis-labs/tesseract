@@ -1,15 +1,15 @@
 import { demo, isDemoMode } from "../demo/data";
 import type {
-  AdminQueueBackfillResponse,
-  AdminQueueFailuresResponse,
-  AdminQueueRetryFailedResponse,
-  AdminNamespaceHistoryResponse,
-  AdminNamespacePreviewResponse,
   AdminConfigBackupResponse,
   AdminConfigBackupsResponse,
   AdminConfigRestoreResponse,
-  AdminSettingsMutationResponse,
+  AdminNamespaceHistoryResponse,
+  AdminNamespacePreviewResponse,
+  AdminQueueBackfillResponse,
+  AdminQueueFailuresResponse,
   AdminQueueResponse,
+  AdminQueueRetryFailedResponse,
+  AdminSettingsMutationResponse,
   AdminSettingsResponse,
   AdminSettingsUpdateRequest,
   AdminSetupResponse,
@@ -20,8 +20,6 @@ import type {
   BrokerPlanResponse,
   CompactRequest,
   CompactResponse,
-  TesseractLookupRequest,
-  TesseractLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
@@ -46,6 +44,8 @@ import type {
   Selector,
   SynthesisAskRequest,
   SynthesisAskResponse,
+  TesseractLookupRequest,
+  TesseractLookupResponse,
   TokenCreateRequest,
   TokenCreateResponse,
   TrimRequest,
@@ -612,7 +612,9 @@ export async function synthesisAsk(req: SynthesisAskRequest): Promise<SynthesisA
 
 // ── Tesseract lookup (unified search) ─────────────────────────────────
 
-export async function tesseractLookup(req: TesseractLookupRequest): Promise<TesseractLookupResponse> {
+export async function tesseractLookup(
+  req: TesseractLookupRequest,
+): Promise<TesseractLookupResponse> {
   if (isDemoMode()) return demo.tesseractLookup(req);
   return apiFetch<TesseractLookupResponse>("/v1/tesseract/lookup", {
     method: "POST",

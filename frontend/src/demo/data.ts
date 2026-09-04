@@ -7,8 +7,6 @@ import type {
   AuthToken,
   BrokerPlanResponse,
   CompactResponse,
-  TesseractLookupRequest,
-  TesseractLookupResponse,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
@@ -29,6 +27,8 @@ import type {
   Record,
   SynthesisAskRequest,
   SynthesisAskResponse,
+  TesseractLookupRequest,
+  TesseractLookupResponse,
   TokenCreateResponse,
   TrimResponse,
   TTLCleanupResponse,
@@ -515,8 +515,8 @@ export const demo = {
 
   createToken(): TokenCreateResponse {
     return {
-      token: "ctx_demo_" + Math.random().toString(36).slice(2, 18),
-      id: "tok_demo_" + Date.now(),
+      token: `ctx_demo_${Math.random().toString(36).slice(2, 18)}`,
+      id: `tok_demo_${Date.now()}`,
       name: "demo-token",
       client_id: "demo:user",
       scopes: ["read", "write"],
@@ -802,7 +802,7 @@ export const demo = {
   },
 
   promoteRequest(): unknown {
-    return { status: "pending", request_id: "promo_demo_" + Date.now() };
+    return { status: "pending", request_id: `promo_demo_${Date.now()}` };
   },
   promoteApprove(): unknown {
     return { status: "approved" };

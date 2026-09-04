@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface PollResult<T> {
   data: T | null;
@@ -73,11 +73,11 @@ export function usePoll<T>(
     runFetch();
     startTimer();
 
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       stopTimer();
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [enabled, interval, runFetch]);
 

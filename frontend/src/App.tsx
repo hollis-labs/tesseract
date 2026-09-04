@@ -1,5 +1,4 @@
 import {
-  cn,
   LiveDot,
   NavRail,
   type NavRailItem,
@@ -231,8 +230,6 @@ export default function App() {
       : status === "degraded"
         ? "warning"
         : "neutral";
-  const fullBleed = page === "dashboard" || page === "explorer" || page === "recall";
-
   return (
     <div className="flex h-dvh w-dvw flex-col overflow-hidden bg-bg text-text">
       <a href="#main-content" className="skip-link">
@@ -253,10 +250,7 @@ export default function App() {
             <ThemeSwitcher />
           </PageHeader>
 
-          <main
-            className={cn("app-content min-h-0", fullBleed && "app-content--full-bleed")}
-            id="main-content"
-          >
+          <main className="min-h-0 flex-1 overflow-auto" id="main-content">
             {/* ── Sprint 2: Read paths ─────────────────── */}
             {page === "explorer" && (
               <ExplorerPage
