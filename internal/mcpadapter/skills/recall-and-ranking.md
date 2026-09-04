@@ -1,6 +1,6 @@
 ---
 name: recall-and-ranking
-description: The four ranking modes — activation, chronological, similarity, relevance (RRF) — plus search_mode, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
+description: The four ranking modes — activation, chronological, similarity, relevance — plus search_mode, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
 scope_hint: memory:read
 related: [memory, revisions]
 ---
@@ -14,7 +14,7 @@ related: [memory, revisions]
 - **`activation`** — combines recency, reinforcement, and confidence. Best when you have no query and want "what's top-of-mind." Reinforcement comes from `tesseract_touch` and the deliberate-read paths, never from recall itself — see [Access reinforcement](#access-reinforcement--recall--use--touch) below, because this mode is only as good as what callers report back. Activation decay is a stable, empirically-tuned formula — don't tune without data.
 - **`chronological`** — newest first, no scoring. Use when you want a timeline or an audit-style scan.
 - **`similarity`** — pure cosine similarity between the query embedding and each candidate's stored vector. Requires `query` to be set and target revisions to be embedded. Unembedded revisions are silently skipped.
-- **`relevance`** — RRF fusion of BM25 (keyword) and cosine (semantic). Best default for "search for this topic." Surfaces fresh, pre-embedding memories via the BM25 arm that similarity-only would miss.
+- **`relevance`** — query relevance using the retrieval arm(s) selected by `search_mode`. The default `hybrid` mode fuses BM25 (keyword) and cosine (semantic) with RRF and surfaces fresh, pre-embedding memories through the BM25 arm.
 
 ## `search_mode` — which signal answers the query
 
@@ -75,7 +75,7 @@ Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` resul
 |---|---|
 | `activation` | activation strength — recency x reinforcement x confidence |
 | `similarity` | cosine similarity between query and revision embeddings; legitimately 0 (orthogonal) or negative (opposite) |
-| `relevance` | RRF-fused BM25 + cosine, weighted by status, origin, confidence, recency, and activation |
+| `relevance` + `search_mode=hybrid` | RRF-fused BM25 + cosine, weighted by status, origin, confidence, recency, and activation |
 | `relevance` + `search_mode=semantic` | cosine similarity only |
 | `relevance` + `search_mode=lexical` | **absent** |
 | `chronological` | **absent** |
@@ -149,7 +149,7 @@ All rankings accept the same filter set:
 
 ## Access reinforcement — recall → use → touch
 
-**Recall results are unreinforced.** Recall does not bump `activation`, and that is deliberate: being returned by a search is the ranker's guess, not a deliberate read, and letting the ranker's guesses self-reinforce turns popular-because-returned into actually-useful within a few cycles.
+**Recall does not reinforce a result merely for returning it.** That is deliberate: being returned by a search is the ranker's guess, not a deliberate read, and letting the ranker's guesses self-reinforce turns popular-because-returned into actually-useful within a few cycles.
 
 So the loop is three steps, and this is the default shape of a turn — not an option:
 
@@ -159,7 +159,7 @@ So the loop is three steps, and this is the default shape of a turn — not an o
 3. tesseract_touch revision_ids=["01HXA..."]       -> the ones that actually shaped it
 ```
 
-Step 3 is what tells the ranking your guess was right. It is the **only** input activation has, and `activation` is the default ranking whenever you recall without a query — so a corpus nobody touches ranks by nothing.
+Step 2 reinforces once when it is a deliberate `tesseract_get` or `tesseract_get_revision`. Step 3 covers projected hits that shaped the work without a fetch, or adds a second reinforcement only when that extra signal is intentional. `activation` is the default ranking whenever you recall without a query, so these honest use signals matter.
 
 **Timing is the whole point.** Call `tesseract_touch` *after* the reasoning, not when the results arrive. Touching on arrival reinforces the guess at the moment it was made, which is the failure recall refuses to commit for you.
 

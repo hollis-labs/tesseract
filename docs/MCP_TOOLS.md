@@ -58,7 +58,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 ## Domains
 
 - **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `full_evaluation`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
-- **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity rankings).
+- **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity/relevance rankings).
 - **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
 
@@ -129,23 +129,23 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `context_promotion_list` | — | — (MCP-only; HTTP equivalents iterate audit) | List promotion requests |
 | `context_plan` | — | `POST /v1/context/plan`, `POST /v1/broker/plan` | `execute` selects the arm: `false` (default) returns the plan; `true` runs it and returns the records (MCP-only). Both routes are the same handler; both are peers of the default arm. |
 | `context_namespace_register` | `namespace.admin` | `POST /v1/namespaces/register` | Register a namespace ownership policy |
-| `context_embed` | — | — (MCP-only) | Embedding-only op |
-| `context_search` | — | — (MCP-only) | Low-level embedding search |
-| `context_rag_query` | — | — (MCP-only) | Convenience RAG query |
+| `context_embed` | — | — (MCP-only) | Embedding-only op; uses the configured shared provider/model and returns `embedding_unavailable` when disabled |
+| `context_search` | — | — (MCP-only) | Low-level embedding search; provider failures return `embedding_error` rather than an empty success |
+| `context_rag_query` | — | — (MCP-only) | Convenience RAG query; requires the configured embedding provider |
 | `context_session_write` | `write` | — (MCP-only) | Write a session snapshot record with an enforced schema, and embed it |
 
 ### Memory
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup) |
+| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup); memory revisions cannot carry knowledge facets |
 | `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `tesseract_skills promotion` | Promote session → user / project |
 
 ### Knowledge
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with `kind`/`source`/`pointer` facets |
+| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with required canonical `kind`, non-empty `source`, and complete `pointer` facets |
 
 ### Cross-domain
 
@@ -164,9 +164,16 @@ Each of these covers several HTTP routes rather than one; the parity catalog car
 | `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` only, and only on a match. |
 | `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain |
 | `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over memory + knowledge (activation / chronological / similarity / relevance). Narrow with `domains`. |
-| `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain |
+| `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
-| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn — the only input activation has. Memory and knowledge revision ids both resolve. |
+| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn, especially projected hits not deliberately fetched. Memory and knowledge revision ids both resolve. |
+
+Under the default `revision_scope=current`, omitted `statuses` continue to hide
+deprecated revisions. When `statuses` explicitly includes `deprecated`, current
+scope additionally returns terminal deprecated revisions (deprecated revisions
+with no incoming `supersedes` edge) and excludes ordinary superseded history.
+Use `revision_scope=timeline` when the complete deprecated revision history is
+the intended result.
 
 ### Meta
 
@@ -251,7 +258,7 @@ and `context_pack` with `shape: "packet"` assembles it.
 mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }
 ```
 
-Useful when a `tesseract_recall` hit references a revision you want to inspect in full. Every result carries `revision_id` under every `payload_mode`, so this hydrate step is always available.
+Useful when a `tesseract_recall` hit references a revision you want to inspect in full. Every result carries `revision_id` under every `payload_mode`, so this hydrate step is always available. The deliberate fetch reinforces the parent entry once.
 
 ### 6. Close the loop after using what you recalled
 
@@ -259,7 +266,7 @@ Useful when a `tesseract_recall` hit references a revision you want to inspect i
 mcp__tesseract__tesseract_touch { "revision_ids": ["01HXYZ…"] }
 ```
 
-Recall returns results **unreinforced** — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning, naming only the revisions that actually shaped the turn. It is the only input `ranking=activation` has.
+Recall itself does not reinforce results — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning for projected hits that shaped the turn without a deliberate fetch. `tesseract_get` under `domain=memory` and `tesseract_get_revision` already reinforce once; touching the same hit adds a second reinforcement and should be intentional.
 
 Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal. See `tesseract_skills memory` for the worked loop.
 

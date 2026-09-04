@@ -240,15 +240,24 @@ func (s *Store) ExportExpireTTLRevisions(ctx context.Context) error {
 	return s.expireTTLRevisions(ctx)
 }
 
+// ExportExpireTTLRevisionsAt is exported for deterministic timestamp tests.
+func (s *Store) ExportExpireTTLRevisionsAt(ctx context.Context, now time.Time) error {
+	return s.expireTTLRevisionsAt(ctx, now)
+}
+
 // expireTTLRevisions marks as deprecated all revisions whose expires_at has
 // passed. It reuses the authorized Deprecate path which also recomputes
 // current_revision.
 func (s *Store) expireTTLRevisions(ctx context.Context) error {
-	now := time.Now().UTC().Format(memoryTimeFormat)
+	return s.expireTTLRevisionsAt(ctx, time.Now().UTC())
+}
+
+func (s *Store) expireTTLRevisionsAt(ctx context.Context, now time.Time) error {
+	nowText := now.UTC().Format(memoryTimeFormat)
 	rows, queryErr := s.db.QueryContext(ctx,
 		`SELECT revision_id FROM memory_revisions
 		 WHERE expires_at IS NOT NULL AND expires_at <= ? AND status != ?`,
-		now, string(StatusDeprecated),
+		nowText, string(StatusDeprecated),
 	)
 	if queryErr != nil {
 		return fmt.Errorf("query expired revisions: %w", queryErr)

@@ -692,6 +692,10 @@ func PointerHealthDistribution(ctx context.Context, db *sql.DB, scope Verificati
 // It is the post-apply assertion, and it is a different code path from the
 // insert loop's own return value on purpose: a count the writer reports about
 // itself cannot catch a write that silently did not land.
+//
+// Schema 16 normalizes the append-only log to fixed-width UTC nanoseconds and
+// all writers use the same codec, so this range predicate is chronologically
+// correct and can use idx_pointer_verifications_checked_at.
 func CountObservationsSince(ctx context.Context, db *sql.DB, t time.Time) (int, error) {
 	var n int
 	err := db.QueryRowContext(ctx,

@@ -67,7 +67,7 @@ func (memoryPolicy) ValidateNamespace(ns string) error {
 
 // knowledgePolicy requires a namespace segment of exactly "knowledge". Shape:
 // user/{user}/knowledge/{...} or app/{app}/knowledge/{...}. Facet validation
-// lives with the knowledge write path (TASK-009/010), not here.
+// lives at the shared revision persistence boundary, not in namespace policy.
 type knowledgePolicy struct{}
 
 func (knowledgePolicy) Name() Domain { return Knowledge }

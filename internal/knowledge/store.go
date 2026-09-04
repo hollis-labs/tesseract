@@ -7,16 +7,16 @@ package knowledge
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-// Store is a thin wrapper over *memory.Store that enforces knowledge-domain
-// invariants (required facets, Domain=Knowledge) and provides a narrower
-// write API than the raw memory.WriteInput.
+// Store is a thin wrapper over *memory.Store that supplies knowledge defaults,
+// fixes Domain=Knowledge, and provides a narrower write API than raw
+// memory.WriteInput. The underlying memory.Store is authoritative for required
+// facets and the closed kind vocabulary.
 type Store struct {
 	mem *memory.Store
 }
@@ -56,28 +56,10 @@ type WriteInput struct {
 	Supersedes string
 }
 
-// Write validates the knowledge-specific invariants and forwards to the
-// underlying memory.Store with Domain=domains.Knowledge. Returns the created
-// revision (Domain will equal domains.Knowledge, Facets populated).
+// Write applies knowledge-specific defaults and forwards to the underlying
+// memory.Store with Domain=domains.Knowledge. Returns the created revision
+// (Domain will equal domains.Knowledge, Facets populated).
 func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, error) {
-	if in.Kind == "" {
-		return memory.Revision{}, fmt.Errorf("%w: facet.kind is required (allowed kinds: %s)",
-			memory.ErrInvalidInput, memory.KnowledgeKindList())
-	}
-	if !memory.IsCanonicalKnowledgeKind(in.Kind) {
-		return memory.Revision{}, fmt.Errorf("%w: facet.kind %q is not a canonical knowledge kind (allowed kinds: %s)",
-			memory.ErrInvalidInput, in.Kind, memory.KnowledgeKindList())
-	}
-	if in.Source == "" {
-		return memory.Revision{}, fmt.Errorf("%w: facet.source is required", memory.ErrInvalidInput)
-	}
-	if in.Pointer.Scheme == "" || in.Pointer.Locator == "" {
-		return memory.Revision{}, fmt.Errorf("%w: facet.pointer.scheme and facet.pointer.locator are required", memory.ErrInvalidInput)
-	}
-	if in.Summary == "" {
-		return memory.Revision{}, fmt.Errorf("%w: payload.summary is required", memory.ErrInvalidInput)
-	}
-
 	confidence := in.Confidence
 	if confidence == 0 {
 		// Ingested references default to high confidence; downstream callers

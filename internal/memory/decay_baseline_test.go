@@ -9,6 +9,7 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/memorytime"
 )
 
 // Decay baseline properties — CW-20260826-0001.
@@ -37,7 +38,7 @@ func setDecayBaseline(t *testing.T, ms *memory.Store, memoryID string, at time.T
 	t.Helper()
 	if _, err := ms.DB().ExecContext(context.Background(),
 		`UPDATE memory_state SET last_decayed_at = ? WHERE memory_id = ?`,
-		at.UTC().Format(time.RFC3339Nano), memoryID,
+		memorytime.Format(at), memoryID,
 	); err != nil {
 		t.Fatalf("set last_decayed_at for %s: %v", memoryID, err)
 	}
@@ -360,7 +361,7 @@ func TestDecayDoesNotCompoundAcrossHourlyPasses(t *testing.T) {
 	// No unapplied tail: the last pass must have written, so the whole 336h is
 	// accounted for. Without this, a run that skipped its final passes could
 	// land near 0.5 for the wrong reason.
-	wantBaseline := decayEpoch.Add(passes * time.Hour).Format(time.RFC3339Nano)
+	wantBaseline := memorytime.Format(decayEpoch.Add(passes * time.Hour))
 	if gotBaseline, _ := decayBaselineOf(t, ms, rev.MemoryID); gotBaseline != wantBaseline {
 		t.Errorf("last_decayed_at = %q, want %q — some elapsed time was never applied",
 			gotBaseline, wantBaseline)

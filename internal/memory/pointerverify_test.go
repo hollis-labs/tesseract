@@ -303,6 +303,50 @@ func TestApplyVerificationPlan_AppendsAndRefusesBadOutcome(t *testing.T) {
 	}
 }
 
+// RFC3339Nano removes trailing zeroes, so textual comparison reverses the
+// order when one fractional timestamp is a prefix of the other. Both cases
+// below are real encodings emitted by time.Time.Format(time.RFC3339Nano).
+func TestCountObservationsSinceComparesRFC3339NanoTimestampsChronologically(t *testing.T) {
+	boundary := time.Date(2026, 9, 4, 13, 34, 55, 92_340_000, time.UTC)
+
+	for _, tc := range []struct {
+		name          string
+		checkedAt     time.Time
+		wantSinceRows int
+	}{
+		{
+			name:          "later timestamp extends boundary precision",
+			checkedAt:     time.Date(2026, 9, 4, 13, 34, 55, 92_342_000, time.UTC),
+			wantSinceRows: 1,
+		},
+		{
+			name:          "earlier timestamp is boundary prefix",
+			checkedAt:     boundary,
+			wantSinceRows: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ms, ks := newHealthFixture(t)
+			db := ms.DB()
+			rev := seedKnowledge(t, ks, "count.entry", "file", "/tmp/count")
+			recordObservation(t, db, rev.RevisionID, "file", "/tmp/count", memory.OutcomeResolved, "stat_ok", tc.checkedAt)
+
+			from := boundary
+			if tc.wantSinceRows == 0 {
+				from = boundary.Add(time.Nanosecond)
+			}
+			got, err := memory.CountObservationsSince(context.Background(), db, from)
+			if err != nil {
+				t.Fatalf("CountObservationsSince: %v", err)
+			}
+			if got != tc.wantSinceRows {
+				t.Fatalf("CountObservationsSince(%s) = %d for checked_at %s, want %d",
+					from.Format(time.RFC3339Nano), got, tc.checkedAt.Format(time.RFC3339Nano), tc.wantSinceRows)
+			}
+		})
+	}
+}
+
 // TestVerification_EndToEndAgainstRealFilesystem drives the whole pipeline
 // with the real resolver over a temp tree, so plan → apply → surface is proved
 // without a stub anywhere in the path.

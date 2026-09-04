@@ -3,17 +3,18 @@ package tesseract
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // ErrEmbedderUnavailable is returned when an embedding operation is attempted
-// but no embedder has been configured on the Tesseract instance.
-var ErrEmbedderUnavailable = errors.New("embedder unavailable")
+// but no embedder has been configured on the Tesseract instance. It is the
+// same sentinel exposed by memory.ErrEmbedderUnavailable.
+var ErrEmbedderUnavailable = memory.ErrEmbedderUnavailable
 
 // SearchOptions controls the behavior of a Search call.
 type SearchOptions struct {

@@ -31,12 +31,6 @@ const (
 	RevisionScopeTimeline RevisionScope = "timeline"
 )
 
-// ErrSimilarityUnavailable is returned when similarity ranking is requested
-// but no embedder is configured.
-//
-// Deprecated: use ErrEmbedderUnavailable instead.
-var ErrSimilarityUnavailable = ErrEmbedderUnavailable
-
 // RecallInput carries parameters for a recall query.
 type RecallInput struct {
 	Namespaces    []string
@@ -164,7 +158,9 @@ type RecallFilters struct {
 //
 //	activation   activation strength (recency x reinforcement x confidence)
 //	similarity   cosine similarity between query and revision embeddings
-//	relevance    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + semantic  cosine similarity
+//	relevance + lexical   no score — nil; order is the signal
 //	chronological  no score — nil
 //
 // Under chronological ranking the field has no job: ordering is already
@@ -562,7 +558,7 @@ func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision
 	case RevisionScopeCurrent:
 		query = `SELECT ` + recallRevisionColumns + `
 FROM memory_revisions r
-INNER JOIN memory_state s ON s.current_revision = r.revision_id
+` + currentRevisionJoin(in) + `
 WHERE ` + whereClause
 	case RevisionScopeTimeline:
 		query = `SELECT ` + recallRevisionColumns + `
@@ -587,6 +583,45 @@ WHERE ` + whereClause
 		revs = append(revs, rev)
 	}
 	return revs, rows.Err()
+}
+
+// currentRevisionJoin defines what "current" means for recall.
+//
+// Ordinarily it is exactly memory_state.current_revision. Explicitly asking
+// for deprecated status widens that set to terminal deprecated revisions:
+// leaves in the supersedes graph, identified by the absence of a revision
+// whose supersedes column points at them. Deprecate clears or rewinds the
+// current_revision pointer, so without this branch a caller could ask for
+// deprecated current entries and receive an empty result even when a memory
+// had deliberately been retired without a replacement.
+//
+// A deprecated revision with an incoming supersedes edge is ordinary history
+// and stays excluded under current scope. Timeline scope never uses this join
+// and remains the full status-filtered revision log.
+func currentRevisionJoin(in RecallInput) string {
+	if !includesStatus(in.Filters.Statuses, StatusDeprecated) {
+		return `INNER JOIN memory_state s ON s.current_revision = r.revision_id`
+	}
+	return `INNER JOIN memory_state s ON s.memory_id = r.memory_id
+AND (
+    s.current_revision = r.revision_id
+    OR (
+        r.status = 'deprecated'
+        AND NOT EXISTS (
+            SELECT 1 FROM memory_revisions newer
+            WHERE newer.supersedes = r.revision_id
+        )
+    )
+)`
+}
+
+func includesStatus(statuses []Status, want Status) bool {
+	for _, status := range statuses {
+		if status == want {
+			return true
+		}
+	}
+	return false
 }
 
 // recallRevisionColumns is the same column list as revisionColumns but with

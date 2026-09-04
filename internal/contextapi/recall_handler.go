@@ -109,7 +109,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 
 	results, err := s.MemoryStore.Recall(r.Context(), in)
 	if err != nil {
-		if errors.Is(err, memory.ErrSimilarityUnavailable) {
+		if errors.Is(err, memory.ErrEmbedderUnavailable) {
 			writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
 			return
 		}

@@ -55,7 +55,7 @@ Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; 
 
 Note what step 3 does **not** contain. Ten revisions came back, two were read, one actually shaped the answer — so one is what gets reported.
 
-**Why the third step exists at all.** `tesseract_recall` returns results **unreinforced**. Being returned by a search is the ranker's guess about what you need; if that guess reinforced itself, popular-because-returned would beat actually-useful within a few cycles. `tesseract_touch` is you telling the ranking, after the reasoning, which guesses were right. That is the only input activation has, and activation is the default ranking whenever you recall without a query.
+**Why the third step exists at all.** `tesseract_recall` does not reinforce a result merely for returning it. Being returned by a search is the ranker's guess about what you need; if that guess reinforced itself, popular-because-returned would beat actually-useful within a few cycles. A deliberate `tesseract_get` or `tesseract_get_revision` reinforces once. `tesseract_touch` reports use of a projected hit that did not need a fetch, or adds a second reinforcement only when that extra signal is intentional.
 
 **Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** There is little to win by inflating: reinforcement has diminishing returns — each touch closes a fraction of the remaining distance to a ceiling, so the tenth touch moves a memory far less than the first, and no amount of touching passes the ceiling.
 

@@ -39,6 +39,13 @@ type Pointer = internal.Pointer
 // Facets are structured knowledge-domain attributes (kind, source, pointer).
 type Facets = internal.Facets
 
+// PointerHealth is the derived verification state of a revision's pointer.
+type PointerHealth = internal.PointerHealth
+
+// PointerHealthStatus is the closed status vocabulary reported by pointer
+// health on recall results.
+type PointerHealthStatus = internal.PointerHealthStatus
+
 // Origin categorizes why a memory exists.
 type Origin = internal.Origin
 
@@ -58,7 +65,7 @@ type RecallInput = internal.RecallInput
 type RecallFilters = internal.RecallFilters
 
 // RecallResult pairs a revision with its ranking score and the parent state.
-// It serializes as {revision, score, state}.
+// It serializes as {revision, score, state, pointer_health?}.
 //
 // Score is ranking-relative: comparable only against other results in the
 // same response, never across responses or across ranking modes. Its units
@@ -66,7 +73,9 @@ type RecallFilters = internal.RecallFilters
 //
 //	activation     activation strength (recency x reinforcement x confidence)
 //	similarity     cosine similarity between query and revision embeddings
-//	relevance      RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + semantic  cosine similarity
+//	relevance + lexical   nil — order is the signal
 //	chronological  nil — no score
 //
 // Under chronological ranking the field is absent rather than set to a sort
@@ -92,9 +101,47 @@ type ProjectedRevision = internal.ProjectedRevision
 // Ranking determines how recall results are ordered.
 type Ranking = internal.Ranking
 
+// SearchMode selects the retrieval signal used by relevance ranking.
+type SearchMode = internal.SearchMode
+
 // RevisionScope controls whether recall returns only the current revision
 // per memory or all revisions.
 type RevisionScope = internal.RevisionScope
+
+// RecallPageResult is the unprojected result and paging metadata returned by
+// Store.RecallPage.
+type RecallPageResult = internal.RecallPageResult
+
+// Budget bounds the serialized size of a paged read.
+type Budget = internal.Budget
+
+// Manifest describes the rows returned by a paged read and how to resume it.
+type Manifest = internal.Manifest
+
+// PageRequest carries cursor, budget, projection, and limit options for a
+// paged read.
+type PageRequest = internal.PageRequest
+
+// PagedRecall is the projected recall result envelope.
+type PagedRecall = internal.PagedRecall
+
+// PagedRevisions is the revision-history result envelope.
+type PagedRevisions = internal.PagedRevisions
+
+// TouchResult reports the outcome of a Store.TouchRevisions call.
+type TouchResult = internal.TouchResult
+
+// Reranker reorders recall candidates against a query.
+type Reranker = internal.Reranker
+
+// RerankerFunc adapts a function to the Reranker interface.
+type RerankerFunc = internal.RerankerFunc
+
+// HTTPRerankerConfig configures the Cohere/Voyage-compatible HTTP reranker.
+type HTTPRerankerConfig = internal.HTTPRerankerConfig
+
+// HTTPReranker is a Cohere/Voyage-compatible Reranker implementation.
+type HTTPReranker = internal.HTTPReranker
 
 // PromoteInput carries parameters for promoting a memory.
 type PromoteInput = internal.PromoteInput
@@ -137,6 +184,12 @@ const (
 	RankingActivation    = internal.RankingActivation
 	RankingChronological = internal.RankingChronological
 	RankingSimilarity    = internal.RankingSimilarity
+	RankingRelevance     = internal.RankingRelevance
+
+	SearchModeHybrid   = internal.SearchModeHybrid
+	SearchModeLexical  = internal.SearchModeLexical
+	SearchModeSemantic = internal.SearchModeSemantic
+	DefaultSearchMode  = internal.DefaultSearchMode
 
 	RevisionScopeCurrent  = internal.RevisionScopeCurrent
 	RevisionScopeTimeline = internal.RevisionScopeTimeline
@@ -145,6 +198,22 @@ const (
 	PayloadModeSummary = internal.PayloadModeSummary
 	PayloadModeFull    = internal.PayloadModeFull
 	DefaultPayloadMode = internal.DefaultPayloadMode
+
+	TruncationBudgetBytes         = internal.TruncationBudgetBytes
+	TruncationBudgetTokens        = internal.TruncationBudgetTokens
+	TruncationLimit               = internal.TruncationLimit
+	TruncationPayloadModeLimitCap = internal.TruncationPayloadModeLimitCap
+	DefaultRecallLimit            = internal.DefaultRecallLimit
+	MaxRecallLimit                = internal.MaxRecallLimit
+	MaxRecallLimitFull            = internal.MaxRecallLimitFull
+	MaxHistoryLimit               = internal.MaxHistoryLimit
+	MaxTouchRevisions             = internal.MaxTouchRevisions
+
+	PointerHealthResolved      = internal.PointerHealthResolved
+	PointerHealthUnresolvable  = internal.PointerHealthUnresolvable
+	PointerHealthUnverifiable  = internal.PointerHealthUnverifiable
+	PointerHealthUnchecked     = internal.PointerHealthUnchecked
+	PointerHealthNotApplicable = internal.PointerHealthNotApplicable
 
 	ScopeUnknown = internal.ScopeUnknown
 	ScopeUser    = internal.ScopeUser
@@ -158,11 +227,13 @@ const (
 // ---- Re-exported sentinel errors ----
 
 var (
-	ErrInvalidInput          = internal.ErrInvalidInput
-	ErrNotFound              = internal.ErrNotFound
-	ErrSimilarityUnavailable = internal.ErrSimilarityUnavailable
-	ErrInvalidNamespace      = internal.ErrInvalidNamespace
-	ErrInvalidKey            = internal.ErrInvalidKey
+	ErrInvalidInput        = internal.ErrInvalidInput
+	ErrNotFound            = internal.ErrNotFound
+	ErrEmbedderUnavailable = internal.ErrEmbedderUnavailable
+	ErrRerankerUnavailable = internal.ErrRerankerUnavailable
+	ErrInvalidCursor       = internal.ErrInvalidCursor
+	ErrInvalidNamespace    = internal.ErrInvalidNamespace
+	ErrInvalidKey          = internal.ErrInvalidKey
 )
 
 // ---- Re-exported functions ----
@@ -179,3 +250,13 @@ var ParseNamespace = internal.ParseNamespace
 // ProjectResults renders recall results under a payload mode for
 // serialization. Full mode returns the results unchanged.
 var ProjectResults = internal.ProjectResults
+
+// SearchModeVocabulary returns the accepted search modes in stable order.
+var SearchModeVocabulary = internal.SearchModeVocabulary
+
+// PointerHealthStatusVocabulary returns the accepted pointer-health statuses
+// in stable order.
+var PointerHealthStatusVocabulary = internal.PointerHealthStatusVocabulary
+
+// NewHTTPReranker constructs a Cohere/Voyage-compatible HTTP reranker.
+var NewHTTPReranker = internal.NewHTTPReranker

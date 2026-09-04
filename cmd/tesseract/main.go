@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,8 +28,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
-	"github.com/hollis-labs/tesseract/internal/mcpadapter"
-	"github.com/hollis-labs/tesseract/internal/memory"
 	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
 	"github.com/hollis-labs/tesseract/internal/webui"
 	_ "modernc.org/sqlite"
@@ -265,18 +262,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	}
 	defer mem.Close()
 
-	adapter := mcpadapter.New(store, token)
-	adapter.MemoryStore = mem.Store
-	adapter.KnowledgeStore = knowledge.New(mem.Store)
-	adapter.DefaultPayloadMode = memory.PayloadMode(tesseractCfg.Read.PayloadMode)
-	adapter.DefaultBudget = memory.Budget{
-		Bytes:  tesseractCfg.Read.BudgetBytes,
-		Tokens: tesseractCfg.Read.BudgetTokens,
-	}
-	// Wire a slog logger that writes to stderr so the go-mcp-sanitize warn
-	// telemetry surfaces in the daemon's logs without colliding with the
-	// stdout MCP protocol stream.
-	adapter.Logger = slog.New(slog.NewTextHandler(stderr, nil))
+	adapter := newMCPAdapter(store, token, mem, tesseractCfg, stderr)
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1

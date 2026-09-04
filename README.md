@@ -135,6 +135,7 @@ tesseract backfill-embeddings
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) for the end-to-end first-run flow
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the core model and invariants
 - [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) for MCP and Claude Code setup
+- [docs/guides/tesseract-adoption-and-v0.9-migration.md](docs/guides/tesseract-adoption-and-v0.9-migration.md) for consumer adoption and the v0.8-to-v0.9 breaking migration
 - [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the MCP tool catalog
 - [docs/SPECS/API.md](docs/SPECS/API.md) for the HTTP surface
 - [docs/SPECS/CLI.md](docs/SPECS/CLI.md) for CLI behavior

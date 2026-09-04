@@ -295,17 +295,22 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 				Payload:   payloadBytes,
 			})
 			if text != "" {
-				embResult, err := a.EmbeddingProvider.Embed(ctx, text, a.EmbeddingModel)
-				if err == nil {
-					_ = a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
+				embResult, embedErr := a.EmbeddingProvider.Embed(ctx, text, a.EmbeddingModel)
+				if embedErr == nil {
+					if storeErr := a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
 						RecordID:   rec.RecordID,
 						Model:      a.EmbeddingModel,
 						Dimensions: len(embResult.Embedding),
 						Vector:     embResult.Embedding,
-					})
-					res.Status = "embedded"
-					res.Embedded = true
-					embedded++
+					}); storeErr != nil {
+						res.Error = "embedding store failed: " + storeErr.Error()
+					} else {
+						res.Status = "embedded"
+						res.Embedded = true
+						embedded++
+					}
+				} else {
+					res.Error = "embedding failed: " + embedErr.Error()
 				}
 			}
 		}
@@ -376,6 +381,7 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 		RecordID string `json:"record_id"`
 		Embedded bool   `json:"embedded"`
 		Chars    int    `json:"chars"`
+		Error    string `json:"error,omitempty"`
 	}
 
 	results := make([]chunkResult, 0, len(chunks))
@@ -384,7 +390,7 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 	for _, chunk := range chunks {
 		key := fmt.Sprintf("%s/chunk-%03d", keyPrefix, chunk.Index)
 
-		payload, _ := json.Marshal(map[string]any{
+		payload, err := json.Marshal(map[string]any{
 			"text":         chunk.Text,
 			"chunk_index":  chunk.Index,
 			"total_chunks": chunk.TotalCount,
@@ -392,6 +398,9 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 			"end_char":     chunk.EndChar,
 			"source_key":   keyPrefix,
 		})
+		if err != nil {
+			return toolError(codeInternalError, fmt.Sprintf("serialize chunk %d: %v", chunk.Index, err)), nil
+		}
 
 		rec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 			Namespace:  ns,
@@ -415,16 +424,21 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 
 		// Auto-embed.
 		if a.EmbeddingProvider != nil {
-			embResult, err := a.EmbeddingProvider.Embed(ctx, chunk.Text, a.EmbeddingModel)
-			if err == nil {
-				_ = a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
+			embResult, embedErr := a.EmbeddingProvider.Embed(ctx, chunk.Text, a.EmbeddingModel)
+			if embedErr == nil {
+				if storeErr := a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
 					RecordID:   rec.RecordID,
 					Model:      a.EmbeddingModel,
 					Dimensions: len(embResult.Embedding),
 					Vector:     embResult.Embedding,
-				})
-				res.Embedded = true
-				embeddedCount++
+				}); storeErr != nil {
+					res.Error = "embedding store failed: " + storeErr.Error()
+				} else {
+					res.Embedded = true
+					embeddedCount++
+				}
+			} else {
+				res.Error = "embedding failed: " + embedErr.Error()
 			}
 		}
 

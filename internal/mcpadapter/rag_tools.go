@@ -24,9 +24,7 @@ func (a *Adapter) registerRAGTools(s *server.MCPServer) {
 	), a.handleRAGQuery)
 }
 
-func (a *Adapter) handleRAGQuery(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ctx := context.Background()
-
+func (a *Adapter) handleRAGQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured — RAG queries require an embedding provider"), nil
 	}

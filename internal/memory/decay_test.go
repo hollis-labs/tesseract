@@ -162,6 +162,60 @@ func TestTTLExpiry_UpdatesCurrentRevision(t *testing.T) {
 	}
 }
 
+func TestTTLExpiryComparesRFC3339NanoChronologically(t *testing.T) {
+	cases := []struct {
+		name       string
+		expiresAt  string
+		now        time.Time
+		wantStatus memory.Status
+	}{
+		{
+			name:       "later prefix timestamp remains live",
+			expiresAt:  "2026-09-04T13:34:55.092342000Z",
+			now:        time.Date(2026, 9, 4, 13, 34, 55, 92_340_000, time.UTC),
+			wantStatus: memory.StatusDraft,
+		},
+		{
+			name:       "earlier short timestamp expires",
+			expiresAt:  "2026-09-04T13:34:55.092340000Z",
+			now:        time.Date(2026, 9, 4, 13, 34, 55, 92_340_001, time.UTC),
+			wantStatus: memory.StatusDeprecated,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			ms, cleanup := newTestStore(t)
+			defer cleanup()
+
+			in := sampleInput("ttl.prefix")
+			in.TTL = time.Hour
+			rev, writeErr := ms.WriteRevision(ctx, in)
+			if writeErr != nil {
+				t.Fatalf("WriteRevision: %v", writeErr)
+			}
+			if _, dbErr := ms.DB().ExecContext(ctx,
+				`UPDATE memory_revisions SET expires_at = ? WHERE revision_id = ?`,
+				tc.expiresAt, rev.RevisionID); dbErr != nil {
+				t.Fatalf("set deterministic expiry: %v", dbErr)
+			}
+
+			if expireErr := ms.ExportExpireTTLRevisionsAt(ctx, tc.now); expireErr != nil {
+				t.Fatalf("ExportExpireTTLRevisionsAt: %v", expireErr)
+			}
+			got, getErr := ms.GetRevisionByID(ctx, rev.RevisionID)
+			if getErr != nil {
+				t.Fatalf("GetRevisionByID: %v", getErr)
+			}
+			if got.Status != tc.wantStatus {
+				t.Fatalf("status = %s, want %s (expires_at=%s now=%s)",
+					got.Status, tc.wantStatus, tc.expiresAt, tc.now.Format(time.RFC3339Nano))
+			}
+		})
+	}
+}
+
 // TestDecayJob_SuccessiveRunsDecayFurtherOnlyAsTimePasses verifies the two
 // halves of "successive runs": a second run over a further interval reduces
 // activation again, and the reduction is bounded by the floor. Whether a repeat

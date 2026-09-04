@@ -329,6 +329,11 @@ func TestTouchRevisions_SpansDomains(t *testing.T) {
 	knowIn := sampleInput("touch.domain_knowledge")
 	knowIn.Domain = domains.Knowledge
 	knowIn.Namespace = "user/chrispian/knowledge/portfolio"
+	knowIn.Facets = memory.Facets{
+		Kind:    "note",
+		Source:  "manual",
+		Pointer: &memory.Pointer{Scheme: "nil", Locator: "inline"},
+	}
 	knowRev, err := ms.WriteRevision(ctx, knowIn)
 	if err != nil {
 		t.Fatalf("write knowledge revision: %v", err)

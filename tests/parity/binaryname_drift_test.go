@@ -93,6 +93,12 @@ var binaryNameExclusions = map[string]nameExclusion{
 			"this file may name the retired environment variable and nothing else, so a " +
 			"stray reference to the old binary name in it still fails the guard.",
 	},
+	"docs/guides/tesseract-adoption-and-v0.9-migration.md": {
+		Tokens: []string{retiredBinaryName, retiredRootEnvVar},
+		Why: "The v0.9 migration guide must identify the retired binary and single-root " +
+			"environment variable so operators can remove them safely. Scoped to those two " +
+			"tokens: any other identifier containing the retired name still fails the guard.",
+	},
 }
 
 // nonBinaryIdentifiers are whole identifiers that contain the retired name as

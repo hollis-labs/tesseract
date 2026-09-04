@@ -61,7 +61,21 @@ func TestGetHistoryReturnsAllRevisionsNewestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 		written = append(written, rev.RevisionID)
-		time.Sleep(2 * time.Millisecond)
+	}
+
+	// Fixed-width fractional seconds keep SQLite's TEXT order chronological
+	// even for the prefix-shaped instants that RFC3339Nano used to invert.
+	stamps := []string{
+		"2026-09-04T13:34:55.092339000Z",
+		"2026-09-04T13:34:55.092340000Z",
+		"2026-09-04T13:34:55.092342000Z",
+	}
+	for i, revisionID := range written {
+		if _, err := ms.DB().ExecContext(ctx,
+			`UPDATE memory_revisions SET created_at = ? WHERE revision_id = ?`,
+			stamps[i], revisionID); err != nil {
+			t.Fatalf("set deterministic timestamp for revision %d: %v", i, err)
+		}
 	}
 
 	revs, err := ms.GetHistory(ctx, "user/chrispian/memory/notes", "user.preferences.verbosity")

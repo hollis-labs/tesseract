@@ -382,6 +382,78 @@ func TestRecall_TTLExpiry(t *testing.T) {
 	}
 }
 
+func TestRecall_TimeFiltersCompareRFC3339NanoChronologically(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	earlyIn := sampleInput("time.prefix.early")
+	earlyIn.Payload.Summary = "prefixneedle early"
+	early, err := ms.WriteRevision(ctx, earlyIn)
+	if err != nil {
+		t.Fatalf("write early: %v", err)
+	}
+	laterIn := sampleInput("time.prefix.later")
+	laterIn.Payload.Summary = "prefixneedle later"
+	later, err := ms.WriteRevision(ctx, laterIn)
+	if err != nil {
+		t.Fatalf("write later: %v", err)
+	}
+
+	for revisionID, stamp := range map[string]string{
+		early.RevisionID: "2026-09-04T13:34:55.092340000Z",
+		later.RevisionID: "2026-09-04T13:34:55.092342000Z",
+	} {
+		if _, updateErr := ms.DB().ExecContext(ctx,
+			`UPDATE memory_revisions SET created_at = ? WHERE revision_id = ?`,
+			stamp, revisionID); updateErr != nil {
+			t.Fatalf("set timestamp for %s: %v", revisionID, updateErr)
+		}
+	}
+
+	since := time.Date(2026, 9, 4, 13, 34, 55, 92_340_000, time.UTC)
+	until := time.Date(2026, 9, 4, 13, 34, 55, 92_340_001, time.UTC)
+	cases := []struct {
+		name       string
+		query      string
+		ranking    memory.Ranking
+		searchMode memory.SearchMode
+	}{
+		{name: "dense", ranking: memory.RankingChronological},
+		{name: "bm25", query: "prefixneedle", ranking: memory.RankingRelevance, searchMode: memory.SearchModeLexical},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := memory.RecallInput{
+				Namespaces: []string{"user/chrispian/memory/notes"},
+				Query:      tc.query,
+				Ranking:    tc.ranking,
+				SearchMode: tc.searchMode,
+				Limit:      10,
+			}
+
+			base.Filters.Since = &since
+			got, recallErr := ms.Recall(ctx, base)
+			if recallErr != nil {
+				t.Fatalf("Recall since: %v", recallErr)
+			}
+			if len(got) != 2 {
+				t.Fatalf("since returned %d revisions, want both prefix timestamps", len(got))
+			}
+
+			base.Filters.Since = nil
+			base.Filters.Until = &until
+			got, recallErr = ms.Recall(ctx, base)
+			if recallErr != nil {
+				t.Fatalf("Recall until: %v", recallErr)
+			}
+			if len(got) != 1 || got[0].Revision.RevisionID != early.RevisionID {
+				t.Fatalf("until returned revisions %+v, want only early %s", got, early.RevisionID)
+			}
+		})
+	}
+}
+
 func TestRecall_OriginFilter(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()

@@ -32,9 +32,7 @@ func (a *Adapter) registerEmbeddingTools(s *server.MCPServer) {
 	), a.handleSearch)
 }
 
-func (a *Adapter) handleEmbed(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ctx := context.Background()
-
+func (a *Adapter) handleEmbed(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}
@@ -85,9 +83,7 @@ func (a *Adapter) handleEmbed(_ context.Context, req mcp.CallToolRequest) (*mcp.
 	}), nil
 }
 
-func (a *Adapter) handleSearch(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ctx := context.Background()
-
+func (a *Adapter) handleSearch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}

@@ -302,9 +302,9 @@ func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, domain domains.Domai
 		keyVal = sql.NullString{String: key, Valid: true}
 	}
 	_, err := tx.ExecContext(ctx, `
-INSERT INTO memory_state (memory_id, domain, namespace, memory_key, activation, access_count)
-VALUES (?, ?, ?, ?, 1.0, 0)`,
-		memoryID, string(domain), namespace, keyVal,
+INSERT INTO memory_state (memory_id, domain, namespace, memory_key, activation, access_count, created_at)
+VALUES (?, ?, ?, ?, 1.0, 0, ?)`,
+		memoryID, string(domain), namespace, keyVal, time.Now().UTC().Format(memoryTimeFormat),
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert memory_state: %w", err)
@@ -327,6 +327,9 @@ func deprecateRevisionTx(ctx context.Context, tx *sql.Tx, revisionID string) err
 func validateWriteInput(in WriteInput) error {
 	if !in.Domain.Valid() {
 		return fmt.Errorf("%w: invalid domain %q", ErrInvalidInput, in.Domain)
+	}
+	if err := validateFacets(in.Domain, in.Facets); err != nil {
+		return err
 	}
 	policy, err := in.Domain.Policy()
 	if err != nil {
@@ -386,6 +389,35 @@ func validateWriteInput(in WriteInput) error {
 	}
 	if in.DedupThreshold < 0 || in.DedupThreshold > 1.0 {
 		return fmt.Errorf("%w: dedup_threshold must be in [0, 1.0], got %f", ErrInvalidInput, in.DedupThreshold)
+	}
+	return nil
+}
+
+// validateFacets is the authoritative persistence-boundary check for the
+// domain/facet contract. Every production writer ultimately reaches
+// WriteRevision, including the root facade, knowledge wrapper, HTTP, MCP, and
+// memory promotion paths, so no outer adapter can bypass these invariants.
+func validateFacets(domain domains.Domain, facets Facets) error {
+	switch domain {
+	case domains.Memory:
+		if !facets.IsZero() {
+			return fmt.Errorf("%w: memory revisions must not carry knowledge facets", ErrInvalidInput)
+		}
+	case domains.Knowledge:
+		if facets.Kind == "" {
+			return fmt.Errorf("%w: facet.kind is required (allowed kinds: %s)",
+				ErrInvalidInput, KnowledgeKindList())
+		}
+		if !IsCanonicalKnowledgeKind(facets.Kind) {
+			return fmt.Errorf("%w: facet.kind %q is not a canonical knowledge kind (allowed kinds: %s)",
+				ErrInvalidInput, facets.Kind, KnowledgeKindList())
+		}
+		if facets.Source == "" {
+			return fmt.Errorf("%w: facet.source is required", ErrInvalidInput)
+		}
+		if facets.Pointer == nil || facets.Pointer.Scheme == "" || facets.Pointer.Locator == "" {
+			return fmt.Errorf("%w: facet.pointer.scheme and facet.pointer.locator are required", ErrInvalidInput)
+		}
 	}
 	return nil
 }

@@ -27,21 +27,36 @@ func newKindFixture(t *testing.T) (*memory.Store, *sql.DB) {
 	return memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{}), cs.DB()
 }
 
-// writeKnowledge writes one knowledge revision carrying the given facet kind
-// and returns its revision ID.
+// writeKnowledge writes one knowledge fixture and returns its revision ID.
+// Off-vocabulary kinds are intentionally legacy/corrupt migration inputs: the
+// production persistence boundary must reject them, so this test-only helper
+// first writes a conformant row and then uses explicit raw SQL to recreate the
+// pre-enforcement database state the migration is responsible for repairing.
 func writeKnowledge(t *testing.T, ms *memory.Store, key, kind string) string {
 	t.Helper()
 	in := sampleInput(key)
 	in.Domain = domains.Knowledge
 	in.Namespace = "user/chrispian/knowledge/tools/mcp"
+	writeKind := kind
+	if !memory.IsCanonicalKnowledgeKind(writeKind) {
+		writeKind = "note"
+	}
 	in.Facets = memory.Facets{
-		Kind:    kind,
+		Kind:    writeKind,
 		Source:  "agent",
 		Pointer: &memory.Pointer{Scheme: "nil", Locator: "inline"},
 	}
 	rev, err := ms.WriteRevision(context.Background(), in)
 	if err != nil {
 		t.Fatalf("WriteRevision(%s, kind=%s): %v", key, kind, err)
+	}
+	if writeKind != kind {
+		if _, err := ms.DB().Exec(
+			`UPDATE memory_revisions SET facet_kind = ? WHERE revision_id = ?`,
+			kind, rev.RevisionID,
+		); err != nil {
+			t.Fatalf("raw legacy facet fixture (%s, kind=%s): %v", key, kind, err)
+		}
 	}
 	return rev.RevisionID
 }
@@ -304,8 +319,15 @@ func TestBuildKindMigrationPlan_IgnoresMemoryDomain(t *testing.T) {
 	// A memory-domain row is out of scope even if it somehow carries a kind.
 	writeKnowledge(t, ms, "mcp.server.cerberus", "mcp-server")
 	in := sampleInput("some.memory.note")
-	if _, err := ms.WriteRevision(ctx, in); err != nil {
+	memRev, err := ms.WriteRevision(ctx, in)
+	if err != nil {
 		t.Fatalf("WriteRevision (memory): %v", err)
+	}
+	// WriteRevision correctly refuses this combination. Raw SQL is explicit
+	// here because the migration planner must still scope itself safely when
+	// inspecting a legacy/corrupt database.
+	if _, fixtureErr := db.Exec(`UPDATE memory_revisions SET facet_kind = 'mcp-server' WHERE revision_id = ?`, memRev.RevisionID); fixtureErr != nil {
+		t.Fatalf("raw invalid memory facet fixture: %v", fixtureErr)
 	}
 
 	plan, err := memory.BuildKindMigrationPlan(ctx, db)

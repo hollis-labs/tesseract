@@ -357,8 +357,8 @@ const (
 	//
 	// The under- vs over-reporting sentence is caller guidance the ranking
 	// depends on and is worded to be read as a rule, not a preference.
-	touchLoopDescription = "• **Results are unreinforced until you touch them.** Recall does not bump `activation` — being returned by a search is the ranker's guess about what you need, and letting a guess reinforce itself is how popular-because-returned beats actually-useful within a few cycles. " +
-		"So the loop has three steps, not two: **recall → use → `tesseract_touch`**. When you have finished reasoning, pass the `revision_id`s that actually shaped the turn to `tesseract_touch`. That is what tells the ranking your guess was right, and it is the only input activation has. " +
+	touchLoopDescription = "• **Recall does not reinforce a result merely for returning it.** Being returned by a search is the ranker's guess about what you need, and letting a guess reinforce itself is how popular-because-returned beats actually-useful within a few cycles. " +
+		"Use **recall → choose → hydrate/use → touch**: a deliberate `tesseract_get` or `tesseract_get_revision` reinforces once, while `tesseract_touch` supplies the use signal for projected hits you did not fetch. Touching an already-fetched hit adds a second reinforcement, so do that only when the extra signal is intentional. " +
 		"Touch only what genuinely shaped the turn. **Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.**\n"
 
 	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +
@@ -377,7 +377,7 @@ func New(store *contextstore.Store, token string) *Adapter {
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
 		"tesseract",
-		"0.7.0",
+		"0.9.0",
 		server.WithToolCapabilities(true),
 	)
 	a.RegisterAllTools(s)
@@ -456,12 +456,21 @@ func (a *Adapter) checkScope(ctx context.Context, scope string) (*mcp.CallToolRe
 // code that does not exist. The wire shape is unchanged — the constant's value
 // is the same literal that used to be written here.
 func toolError(code errorCode, message string) *mcp.CallToolResult {
-	body, _ := json.Marshal(map[string]string{"code": string(code), "message": message})
+	// This value contains strings only, so encoding/json cannot reject it.
+	// Keep the fallback explicit nevertheless: toolError is the last-resort
+	// path used when serializing an ordinary result has already failed.
+	body, err := json.Marshal(map[string]string{"code": string(code), "message": message})
+	if err != nil {
+		body = []byte(`{"code":"internal_error","message":"failed to serialize MCP error result"}`)
+	}
 	return mcp.NewToolResultText(string(body))
 }
 
 // toolJSON marshals v to JSON and wraps it as a tool result.
 func toolJSON(v any) *mcp.CallToolResult {
-	body, _ := json.Marshal(v)
+	body, err := json.Marshal(v)
+	if err != nil {
+		return toolError(codeInternalError, "failed to serialize MCP tool result: "+err.Error())
+	}
 	return mcp.NewToolResultText(string(body))
 }

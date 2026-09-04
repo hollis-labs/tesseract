@@ -53,6 +53,7 @@ func TestWriteRevision_KnowledgeDomain(t *testing.T) {
 	in := sampleInput("framework.go-providers")
 	in.Domain = domains.Knowledge
 	in.Namespace = "user/chrispian/knowledge/framework"
+	in.Facets = validKnowledgeFacets()
 
 	rev, err := ms.WriteRevision(context.Background(), in)
 	if err != nil {
@@ -72,6 +73,7 @@ func TestWriteRevision_KnowledgeDomainRejectsMemoryNamespace(t *testing.T) {
 	in := sampleInput("framework.bad")
 	in.Domain = domains.Knowledge
 	in.Namespace = "user/chrispian/memory/notes"
+	in.Facets = validKnowledgeFacets()
 
 	_, err := ms.WriteRevision(context.Background(), in)
 	if err == nil {
@@ -82,6 +84,14 @@ func TestWriteRevision_KnowledgeDomainRejectsMemoryNamespace(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "knowledge") {
 		t.Errorf("err message missing 'knowledge' hint: %v", err)
+	}
+}
+
+func validKnowledgeFacets() memory.Facets {
+	return memory.Facets{
+		Kind:    "package",
+		Source:  "filesystem",
+		Pointer: &memory.Pointer{Scheme: "file", Locator: "/abs/path/to/pkg"},
 	}
 }
 
@@ -150,6 +160,162 @@ func TestWriteRevision_MemoryDomainLeavesFactsZero(t *testing.T) {
 	}
 	if !got.Facets.IsZero() {
 		t.Errorf("memory-domain facets not zero: %+v", got.Facets)
+	}
+}
+
+func TestWriteRevision_EnforcesDomainFacetContract(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*memory.WriteInput)
+		wantErr string
+	}{
+		{
+			name: "memory accepts zero facets",
+		},
+		{
+			name: "memory rejects kind",
+			mutate: func(in *memory.WriteInput) {
+				in.Facets.Kind = "note"
+			},
+			wantErr: "memory revisions must not carry knowledge facets",
+		},
+		{
+			name: "memory rejects source",
+			mutate: func(in *memory.WriteInput) {
+				in.Facets.Source = "manual"
+			},
+			wantErr: "memory revisions must not carry knowledge facets",
+		},
+		{
+			name: "memory rejects even an empty pointer object",
+			mutate: func(in *memory.WriteInput) {
+				in.Facets.Pointer = &memory.Pointer{}
+			},
+			wantErr: "memory revisions must not carry knowledge facets",
+		},
+		{
+			name: "knowledge accepts complete canonical facets",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+			},
+		},
+		{
+			name: "knowledge rejects missing kind",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Kind = ""
+			},
+			wantErr: "facet.kind is required",
+		},
+		{
+			name: "knowledge rejects kind outside the closed vocabulary",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Kind = "mcp-server"
+			},
+			wantErr: "not a canonical knowledge kind",
+		},
+		{
+			name: "knowledge rejects missing source",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Source = ""
+			},
+			wantErr: "facet.source is required",
+		},
+		{
+			name: "knowledge rejects nil pointer",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Pointer = nil
+			},
+			wantErr: "facet.pointer.scheme and facet.pointer.locator are required",
+		},
+		{
+			name: "knowledge rejects missing pointer scheme",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Pointer.Scheme = ""
+			},
+			wantErr: "facet.pointer.scheme and facet.pointer.locator are required",
+		},
+		{
+			name: "knowledge rejects missing pointer locator",
+			mutate: func(in *memory.WriteInput) {
+				in.Domain = domains.Knowledge
+				in.Namespace = "user/chrispian/knowledge/framework"
+				in.Facets = validKnowledgeFacets()
+				in.Facets.Pointer.Locator = ""
+			},
+			wantErr: "facet.pointer.scheme and facet.pointer.locator are required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ms, cleanup := newTestStore(t)
+			defer cleanup()
+			in := sampleInput("facet.contract")
+			if tc.mutate != nil {
+				tc.mutate(&in)
+			}
+			rev, err := ms.WriteRevision(context.Background(), in)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("WriteRevision: %v", err)
+				}
+				if rev.RevisionID == "" {
+					t.Fatal("valid control returned no revision")
+				}
+				return
+			}
+			if !errors.Is(err, memory.ErrInvalidInput) {
+				t.Fatalf("error = %v, want ErrInvalidInput", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %q, want substring %q", err, tc.wantErr)
+			}
+			var count int
+			if countErr := ms.DB().QueryRow(`SELECT COUNT(*) FROM memory_revisions`).Scan(&count); countErr != nil {
+				t.Fatalf("count revisions: %v", countErr)
+			}
+			if count != 0 {
+				t.Fatalf("rejected input persisted %d revision rows", count)
+			}
+		})
+	}
+}
+
+func TestWriteRevision_AcceptsEveryCanonicalKnowledgeKind(t *testing.T) {
+	kinds := memory.KnowledgeKindVocabulary()
+	if len(kinds) == 0 {
+		t.Fatal("canonical knowledge kind vocabulary is empty")
+	}
+	for _, kind := range kinds {
+		t.Run(kind, func(t *testing.T) {
+			ms, cleanup := newTestStore(t)
+			defer cleanup()
+			in := sampleInput("kind." + kind)
+			in.Domain = domains.Knowledge
+			in.Namespace = "user/chrispian/knowledge/framework"
+			in.Facets = validKnowledgeFacets()
+			in.Facets.Kind = kind
+			if _, err := ms.WriteRevision(context.Background(), in); err != nil {
+				t.Fatalf("canonical kind rejected at persistence boundary: %v", err)
+			}
+		})
 	}
 }
 

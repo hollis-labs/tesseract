@@ -8,6 +8,8 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-04
+
 The memory, knowledge and context domains get one read surface instead of three.
 Recall becomes bounded, projectable and pageable; the lexical arm is reachable
 directly; the knowledge `kind` vocabulary closes; and activation gains both the
@@ -17,7 +19,8 @@ it within the day.
 Consumers pinning `v0.8.x` should read the breaking-changes section in full.
 **Ten read tools are retired with no aliases**, and **the default recall response
 shape changed** — the second affects every caller whether or not it adopts a
-single new knob.
+single new knob. The complete consumer runbook is
+[`docs/guides/tesseract-adoption-and-v0.9-migration.md`](docs/guides/tesseract-adoption-and-v0.9-migration.md).
 
 ### Breaking changes
 
@@ -40,13 +43,16 @@ single new knob.
   `CreatedAt.UnixNano()`, which is not a score; ordering there is already carried
   by array order plus `revision.created_at`. The chronological sort now reads the
   timestamp directly instead of smuggling it through `score`.
-- **Recall, lookup and both history tools return a manifest alongside results** —
-  `{results_total, results_returned, bytes_returned, tokens_estimate, truncated,
+- **Recall and lookup return a manifest alongside results** — `{results_total,
+  results_returned, bytes_returned, tokens_estimate, truncated,
   truncation_reason, next_cursor}`. Every field is emitted unconditionally:
   `truncated:false` is how a caller learns its result set is complete and
   `next_cursor:null` is how it learns there is nothing left, so neither is
-  `omitempty`. Callers that parsed a bare results array must read through the
-  envelope.
+  `omitempty`. Memory/knowledge `tesseract_history` preserves its bare-array
+  response when no paging knob is passed and returns `{results, manifest}` only
+  when the caller passes `limit`, `cursor`, `budget_bytes`, or `budget_tokens`;
+  context history always returns its existing context budget envelope and ignores
+  the cursor/budget knobs.
 - **`payload_mode=full` caps `limit` at 100**, where `keys` and `summary` keep 500.
   The clamp is never silent — it reports `truncation_reason: payload_mode_limit_cap`
   and issues a cursor, so rows past it are reached by paging rather than by raising
@@ -63,6 +69,15 @@ single new knob.
   does not have to read the source. Off-vocabulary rows were normalized first by a
   reviewed plan-then-apply migration, so enforcement cannot reject a value the
   migration left behind.
+- **Knowledge facets are now enforced at the shared persistence boundary.** Every
+  supported Go, HTTP, MCP, promotion, and wrapper write path rejects memory-domain
+  revisions carrying knowledge facets and knowledge-domain revisions missing a
+  canonical kind, source, pointer scheme, or pointer locator. Callers that used the
+  lower-level memory store or root facade to persist off-contract combinations now
+  receive the canonical validation error instead.
+- **Go API: `ErrSimilarityUnavailable` is removed.** Use
+  `memory.ErrEmbedderUnavailable`; `tesseract.ErrEmbedderUnavailable` is the same
+  sentinel for root-package operations, so `errors.Is` works across both facades.
 - **Go API: `memory.RecallResult.Score` is `*float64`** (was `float64`), as is
   `synthesisSource.Score`. Cosine similarity is legitimately 0 or negative, and a
   value type with `omitempty` drops those real scores.
@@ -196,9 +211,12 @@ process must be updated first.**
   recall time; those receive the deliberate-read bump. This is a tool rather than a
   flag on recall precisely because of that timing: a `touch: true` knob would
   reinforce the ranker's own guesses, which recall correctly refuses to do. Recall
-  results are **unreinforced until touched**. Touch only what genuinely shaped the
-  turn — under-reporting is fine, over-reporting is worse than silence, because it
-  teaches the ranking that noise is signal. HTTP peer `POST /v1/memory/touch`.
+  does not reinforce a result merely for returning it. Deliberate
+  `tesseract_get`/`tesseract_get_revision` calls reinforce once; touch supplies the
+  use signal for projected hits that were not fetched, or an intentional second
+  reinforcement for a fetched hit. Touch only what genuinely shaped the turn —
+  under-reporting is fine, over-reporting is worse than silence, because it teaches
+  the ranking that noise is signal. HTTP peer `POST /v1/memory/touch`.
 - **`search_mode` on `ranking=relevance`** — `hybrid` (default, unchanged: both arms
   fused by RRF and weighted by the activation-style modifiers), `lexical` (the BM25
   arm alone, in `bm25()` order, modifiers not applied), `semantic` (the cosine arm
@@ -239,8 +257,49 @@ process must be updated first.**
   tool now fails `go test ./tests/parity/`. It walks `docs/` and the embedded
   skills recursively; `CHANGELOG.md` is deliberately outside its scope, because
   release notes legitimately name superseded identifiers.
+- **The public memory facade now exposes every documented consumer contract** used
+  for bounded recall and relevance ranking: `RankingRelevance`, `SearchMode` and
+  its vocabulary, paging budgets/manifests/requests/results, payload truncation and
+  limit constants, cursor errors, pointer-health result/status types and vocabulary,
+  touch results and request cap, and the supported reranker types and constructor.
+  External consumers no longer need string casts or internal imports.
+- **A versioned adoption and migration guide** covering embedded Go lifecycle,
+  MCP replacements, projection/paging, terminal deprecation, XDG cutover, and a
+  Nanite-ready `v0.9.0` checklist, with a compile-checked external Go example.
 
 ### Fixed
+
+- **Explicit current-scope deprecated recall no longer reports a false empty
+  result.** When `statuses` explicitly contains `deprecated`, current scope admits
+  terminal deprecated lineage leaves (no incoming `supersedes` edge) while still
+  excluding ordinary superseded history. Omitted statuses remain unchanged and
+  hide deprecated rows; timeline remains the full status-filtered history. The
+  rule is shared by metadata, semantic, lexical, hybrid, MCP, and both HTTP recall
+  paths, with an indexed lineage anti-lookup.
+- **The production MCP adapter now receives the configured embedding provider and
+  model.** It shares the memory subsystem's provider instance, making
+  `context_embed`, semantic `context_search`, and `context_rag_query` reachable
+  when configured. Missing credentials or an unsupported provider leave lexical
+  recall available and produce explicit unavailable errors on semantic-only work.
+- **Early server exits now stop background memory workers before closing their
+  databases.** The memory subsystem owns a cancellation context and shutdown
+  barrier for its queue and decay workers, closing the queue database only after
+  both have joined; this removes the intermittent temporary-directory cleanup
+  failure under managed-auth startup errors.
+- **Serialization failures are no longer reported as empty success or partial
+  success.** MCP tool result marshaling returns a structured internal error, and
+  HTTP JSON responses buffer serialization before committing a status so failures
+  return `500 serialization_failed`. Guards cover direct and composite
+  `json.RawMessage` destinations and audited persistence/ID/glob error paths now
+  propagate their failures.
+- **Memory timestamps now preserve chronological TEXT ordering.** Schema 16
+  atomically normalizes every memory-owned timestamp to fixed-width UTC
+  nanoseconds, preserving the existing indexes used by history, deprecation,
+  recall time filters, TTL expiry, and pointer-health queries. This fixes the
+  RFC3339Nano prefix inversion that also made `verify-pointers --apply`
+  intermittently reject its own committed observations; that post-apply range
+  count now uses the same canonical encoding and a dedicated index. Migration,
+  ordering, index-plan, and race/non-race regressions cover the affected paths.
 
 - **`memory_key` is in the lexical index, and outranks a mention of it
   (schema 15).** `memory_revisions_fts` indexed `payload.summary`,
@@ -761,7 +820,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/hollis-labs/tesseract/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hollis-labs/tesseract/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/hollis-labs/tesseract/compare/v0.6.1...v0.7.0
 [0.6.0]: https://github.com/hollis-labs/tesseract/compare/v0.5.3...v0.6.0

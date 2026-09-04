@@ -63,6 +63,9 @@ func TestWrite_Success(t *testing.T) {
 	if rev.Facets.Pointer == nil || rev.Facets.Pointer.ResolvedAt == nil {
 		t.Error("ResolvedAt should be auto-populated when nil")
 	}
+	if rev.Confidence != 0.9 {
+		t.Errorf("default Confidence = %v, want 0.9", rev.Confidence)
+	}
 }
 
 func TestWrite_MissingKindRejected(t *testing.T) {

@@ -154,30 +154,49 @@ func TestPromote_KeylessMemory(t *testing.T) {
 func TestDeprecate_UpdatesCurrentRevision(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
+	ctx := context.Background()
 
-	// Write two revisions for the same key.
-	rev1, err := ms.WriteRevision(context.Background(), sampleInput("prefs.output_style"))
+	// Write three revisions for the same key.
+	rev1, err := ms.WriteRevision(ctx, sampleInput("prefs.output_style"))
 	if err != nil {
 		t.Fatalf("WriteRevision rev1: %v", err)
 	}
-	rev2, err := ms.WriteRevision(context.Background(), sampleInput("prefs.output_style"))
+	rev2, err := ms.WriteRevision(ctx, sampleInput("prefs.output_style"))
 	if err != nil {
 		t.Fatalf("WriteRevision rev2: %v", err)
 	}
+	rev3, err := ms.WriteRevision(ctx, sampleInput("prefs.output_style"))
+	if err != nil {
+		t.Fatalf("WriteRevision rev3: %v", err)
+	}
 
-	// Deprecate the current revision (rev2).
-	err = ms.Deprecate(context.Background(), rev2.RevisionID)
+	// Use the fixed-width versions of the prefix-shaped timestamps that
+	// RFC3339Nano used to invert under SQLite TEXT ordering.
+	for revisionID, stamp := range map[string]string{
+		rev1.RevisionID: "2026-09-04T13:34:55.092340000Z",
+		rev2.RevisionID: "2026-09-04T13:34:55.092342000Z",
+		rev3.RevisionID: "2026-09-04T13:34:55.092343000Z",
+	} {
+		if _, updateErr := ms.DB().ExecContext(ctx,
+			`UPDATE memory_revisions SET created_at = ? WHERE revision_id = ?`,
+			stamp, revisionID); updateErr != nil {
+			t.Fatalf("set timestamp for %s: %v", revisionID, updateErr)
+		}
+	}
+
+	// Deprecate the current revision (rev3).
+	err = ms.Deprecate(ctx, rev3.RevisionID)
 	if err != nil {
 		t.Fatalf("Deprecate: %v", err)
 	}
 
-	// GetCurrent should now return rev1 (the previous non-deprecated revision).
-	current, err := ms.GetCurrent(context.Background(), "user/chrispian/memory/notes", "prefs.output_style")
+	// GetCurrent should now return rev2 (the previous non-deprecated revision).
+	current, err := ms.GetCurrent(ctx, "user/chrispian/memory/notes", "prefs.output_style")
 	if err != nil {
 		t.Fatalf("GetCurrent after deprecate: %v", err)
 	}
-	if current.RevisionID != rev1.RevisionID {
-		t.Fatalf("expected current=%s (rev1), got %s", rev1.RevisionID, current.RevisionID)
+	if current.RevisionID != rev2.RevisionID {
+		t.Fatalf("expected current=%s (rev2), got %s", rev2.RevisionID, current.RevisionID)
 	}
 }
 

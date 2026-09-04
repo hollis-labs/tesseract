@@ -432,7 +432,7 @@ func (s *Store) fetchBM25Candidates(ctx context.Context, in RecallInput, n int) 
 		sqlText = `SELECT ` + recallRevisionColumns + `
 FROM memory_revisions_fts fts
 INNER JOIN memory_revisions r ON r.rowid = fts.rowid
-INNER JOIN memory_state s ON s.current_revision = r.revision_id
+` + currentRevisionJoin(in) + `
 WHERE memory_revisions_fts MATCH ? AND ` + whereClause + `
 ORDER BY ` + bm25RankExpr + `, r.revision_id
 LIMIT ?`

@@ -7,9 +7,9 @@ import (
 
 // The canonical knowledge `facet_kind` vocabulary.
 //
-// This is a CLOSED set and the enforcement authority: `knowledge.Store.Write`
-// rejects any kind outside it. The vocabulary lives in this package rather
-// than in `internal/knowledge` because `internal/knowledge` imports
+// This is a CLOSED set. `Store.WriteRevision`, the persistence boundary,
+// rejects any knowledge kind outside it. The vocabulary lives in this package
+// rather than in `internal/knowledge` because `internal/knowledge` imports
 // `internal/memory` and not the reverse, and because `facet_kind` is a column
 // this package owns.
 //

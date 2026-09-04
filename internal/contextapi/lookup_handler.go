@@ -359,9 +359,6 @@ func writeRecallError(w http.ResponseWriter, err error, failCode string) {
 	switch {
 	case errors.Is(err, memory.ErrInvalidCursor):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-	// ErrEmbedderUnavailable, not the ErrSimilarityUnavailable alias: the two
-	// are the same value, but the alias is deprecated and this is new code.
-	// Renaming the alias itself is fenced to CW-20260825-0020.
 	case errors.Is(err, memory.ErrEmbedderUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
 	case errors.Is(err, memory.ErrInvalidInput):

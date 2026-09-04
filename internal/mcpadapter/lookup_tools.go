@@ -204,7 +204,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		if errors.Is(err, memory.ErrInvalidCursor) {
 			return toolError(codeValidationError, err.Error()), nil
 		}
-		if errors.Is(err, memory.ErrSimilarityUnavailable) {
+		if errors.Is(err, memory.ErrEmbedderUnavailable) {
 			return toolError(codeSimilarityUnavailable, err.Error()), nil
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {

@@ -87,9 +87,9 @@ type Pointer struct {
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
-// Facets are structured knowledge-domain attributes. All fields are optional
-// at the storage layer; the knowledge write path enforces required facets.
-// Memory-domain revisions leave Facets zero-valued.
+// Facets are structured knowledge-domain attributes. WriteRevision requires
+// all fields for knowledge revisions and rejects every non-zero field for
+// memory revisions.
 type Facets struct {
 	Kind    string   `json:"kind,omitempty"`
 	Source  string   `json:"source,omitempty"`

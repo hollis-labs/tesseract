@@ -7,9 +7,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/go-apppaths/paths"
+	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/go-queue/driver/sqlite"
 	tesseract "github.com/hollis-labs/tesseract"
@@ -22,20 +24,46 @@ import (
 // memorySubsystem holds the components wired up by setupMemorySubsystem.
 // Callers must invoke Close when shutting down to release the queue DB.
 type memorySubsystem struct {
-	Store       *memory.Store
-	Queue       queue.Queue
-	QueueDBPath string
-	queueDB     *sql.DB
+	Store          *memory.Store
+	Queue          queue.Queue
+	QueueDBPath    string
+	Embedder       embedcontracts.Embedder
+	EmbeddingModel string
+	queueDB        *sql.DB
+	lifecycleCtx   context.Context
+	cancel         context.CancelFunc
+	workers        sync.WaitGroup
+	closeOnce      sync.Once
+	closeErr       error
 }
 
-// Close releases the queue DB handle. Safe to call multiple times.
+// startWorker registers a background worker with the subsystem shutdown
+// barrier. Close does not release queueDB until every registered worker has
+// observed lifecycleCtx cancellation and returned.
+func (m *memorySubsystem) startWorker(run func(context.Context)) {
+	m.workers.Add(1)
+	go func() {
+		defer m.workers.Done()
+		run(m.lifecycleCtx)
+	}()
+}
+
+// Close stops and joins the queue and decay workers before releasing their
+// queue DB handle. Safe to call multiple times.
 func (m *memorySubsystem) Close() error {
-	if m == nil || m.queueDB == nil {
+	if m == nil {
 		return nil
 	}
-	db := m.queueDB
-	m.queueDB = nil
-	return db.Close()
+	m.closeOnce.Do(func() {
+		if m.cancel != nil {
+			m.cancel()
+		}
+		m.workers.Wait()
+		if m.queueDB != nil {
+			m.closeErr = m.queueDB.Close()
+		}
+	})
+	return m.closeErr
 }
 
 // setupMemorySubsystem wires the memory store, queue, embedder, embed
@@ -46,6 +74,13 @@ func (m *memorySubsystem) Close() error {
 // embedder AND no queue is strictly required — but we always wire the
 // queue so the embed path is consistent.
 func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
+	return setupMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+}
+
+// setupMemorySubsystemWithEmbedder is the single assembly path for the memory
+// runtime. Production passes createEmbedder's configured instance; tests can
+// pass a deterministic implementation without changing process credentials.
+func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config, embedder embedcontracts.Embedder) (*memorySubsystem, error) {
 	// queue.db is STATE (the embed-job queue), so it lands under the
 	// go-apppaths StateDir alongside records/ — not under DataDir with the
 	// main DB. CW-20260517-0066.
@@ -64,10 +99,21 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		_ = queueDB.Close()
 		return nil, fmt.Errorf("init queue driver: %w", err)
 	}
+	// The subsystem intentionally owns cancel beyond this function's return;
+	// Close invokes it before joining the registered workers.
+	lifecycleCtx, cancel := context.WithCancel(ctx) //nolint:gosec // cancel ownership is transferred to memorySubsystem.Close.
+	subsystem := &memorySubsystem{
+		QueueDBPath:    queueDBPath,
+		Queue:          q,
+		Embedder:       embedder,
+		EmbeddingModel: tesseractCfg.Embedding.Model,
+		queueDB:        queueDB,
+		lifecycleCtx:   lifecycleCtx,
+		cancel:         cancel,
+	}
 
 	queueAdapter := memory.NewQueueAdapter(q, "tesseract")
 
-	embedder := createEmbedder(tesseractCfg)
 	memStore := memory.NewStore(
 		store.DB(),
 		embedder,
@@ -93,7 +139,11 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
 	})
 	worker.Register("embed", tesseract.NewEmbedHandler(memStore, tesseractCfg.Embedding.Model, log.Printf))
-	go worker.Start(ctx)
+	subsystem.startWorker(func(ctx context.Context) {
+		if err := worker.Start(ctx); err != nil {
+			log.Printf("queue worker stopped with error: %v", err)
+		}
+	})
 
 	decayInterval := 1 * time.Hour
 	if v := os.Getenv("TESSERACT_MEMORY_DECAY_INTERVAL"); v != "" {
@@ -108,7 +158,8 @@ func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr
 		Interval: decayInterval,
 		Logger:   log.Printf,
 	}
-	go decayJob.Run(ctx)
+	subsystem.startWorker(decayJob.Run)
 
-	return &memorySubsystem{Store: memStore, Queue: q, QueueDBPath: queueDBPath, queueDB: queueDB}, nil
+	subsystem.Store = memStore
+	return subsystem, nil
 }

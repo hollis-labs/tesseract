@@ -131,8 +131,11 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 			"Namespace. Memory: user/{id}/memory/{type}. Knowledge: {user|app}/{id}/knowledge/... . Context: any registered namespace path.")),
 		mcp.WithString("key", mcp.Required(), mcp.Description(
 			"Entry key within the namespace. This is the field memory and knowledge revisions carry as `memory_key`.")),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithIdempotentHintAnnotation(true),
+		// The unified tool must advertise the strongest effect of any arm. The
+		// memory arm reinforces activation/access_count, so this is neither
+		// read-only nor idempotent even though the context and knowledge arms are.
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleTesseractGet)
@@ -180,8 +183,9 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 				"• **Deeper:** `tesseract_skills revisions`.",
 		),
 		mcp.WithString("revision_id", mcp.Required(), mcp.Description("Revision ID to fetch (e.g. 01HX...)")),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithIdempotentHintAnnotation(true),
+		// Fetching by revision ID deliberately reinforces the parent entry.
+		mcp.WithReadOnlyHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleTesseractGetRevision)
@@ -216,7 +220,7 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 			"**Report which recalled entries actually informed your work.** The closing step of `tesseract_recall` → use → touch.\n"+
 				"• **Kind of content:** none returned. Answers `{touched, not_found}` — `touched` is how many distinct memories were reinforced, `not_found` lists revision IDs that resolved to nothing.\n"+
 				"• **Scope:** `memory:read`. It writes, but what it writes is the deliberate-read signal `tesseract_get` already emits on every memory-domain call; a read-only agent that could not close the loop would leave the loop open.\n"+
-				"• **Use this when:** you have finished reasoning over a recall result and know which hits shaped the turn. **Call it after the work, not after the search.** Recall deliberately does not reinforce — being returned is the ranker's guess. Touch is you telling it the guess was right, and it is the only input activation has.\n"+
+				"• **Use this when:** you have finished reasoning over a recall result and know which hits shaped the turn. **Call it after the work, not after the search.** Recall deliberately does not reinforce a hit merely for returning it. Touch supplies the use signal for projected hits you did not deliberately fetch, and may add an intentional second reinforcement for a hit already fetched through `tesseract_get` or `tesseract_get_revision`.\n"+
 				"• **Touch only what genuinely shaped the turn.** Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.\n"+
 				"• **Don't use this for:** everything you recalled, everything you skimmed, anything you merely saw in a result list, or as a way to pin a memory you want ranked highly. Reinforcement has diminishing returns — each touch closes a fraction of the remaining distance to a ceiling, so the tenth touch moves a memory far less than the first and no amount of touching passes the ceiling. Inflating a report buys very little ranking and costs the ranking its ability to tell signal from noise.\n"+
 				"• **Effect per distinct memory:** `activation` moves a fixed fraction of the way toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once.\n"+

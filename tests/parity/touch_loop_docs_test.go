@@ -1,9 +1,9 @@
 package parity
 
 // CW-20260825-0008 ships in two halves, and the docs half is the one that
-// decides whether any of it works: tesseract_touch is the only input activation
-// has, so if agents do not learn to call it, activation stays flat and the tool
-// was added for nothing.
+// decides whether any of it works: tesseract_touch is the explicit post-recall
+// use signal for hits that were not deliberately fetched. The keyed and
+// revision-id get paths also reinforce, so the docs must teach both facts.
 //
 // The code half defends itself — a broken curve fails a test. The docs half had
 // nothing. Deleting the touch-loop paragraph from the recall tool's description
@@ -35,7 +35,10 @@ var touchLoopClaims = []struct {
 	why      string
 }{
 	{"tesseract_touch", "names the tool, or the reader cannot act on any of this"},
-	{"unreinforced", "states the fact: a recall result carries no reinforcement until touched"},
+	{"does not reinforce a result merely for returning it", "states that recall itself never supplies the use signal"},
+	{"`tesseract_get`", "names the known-key deliberate-read path that already reinforces"},
+	{"`tesseract_get_revision`", "names the hydration path that already reinforces"},
+	{"reinforces once", "prevents touch guidance from hiding the deliberate-read side effect"},
 	{"under-reporting is fine", "the caller guidance, verbatim from the ticket"},
 	{"over-reporting is worse than silence", "the other half of that guidance — the half that keeps noise out of the ranking"},
 }

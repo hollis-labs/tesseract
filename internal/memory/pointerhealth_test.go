@@ -218,6 +218,30 @@ func TestPointerHealth_LatestObservationWinsAndHistorySurvives(t *testing.T) {
 	}
 }
 
+func TestPointerHealth_LastResolvedAtComparesRFC3339NanoChronologically(t *testing.T) {
+	ms, ks := newHealthFixture(t)
+	ctx := context.Background()
+	rev := seedKnowledge(t, ks, "e.resolved-prefix", "https", "https://example.test/prefix")
+
+	shorter := time.Date(2026, 9, 4, 13, 34, 55, 92_340_000, time.UTC)
+	later := time.Date(2026, 9, 4, 13, 34, 55, 92_342_000, time.UTC)
+	recordObservation(t, ms.DB(), rev.RevisionID, "https", "https://example.test/prefix", memory.OutcomeResolved, "first", shorter)
+	recordObservation(t, ms.DB(), rev.RevisionID, "https", "https://example.test/prefix", memory.OutcomeResolved, "second", later)
+
+	results, err := ms.Recall(ctx, memory.RecallInput{
+		Namespaces: []string{healthNamespace}, Ranking: memory.RankingChronological, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Recall: %v", err)
+	}
+	if len(results) != 1 || results[0].PointerHealth == nil {
+		t.Fatalf("pointer health result = %+v, want one observed pointer", results)
+	}
+	if got := results[0].PointerHealth.LastResolvedAt; got == nil || !got.Equal(later) {
+		t.Fatalf("last_resolved_at = %v, want later instant %s", got, later.Format(time.RFC3339Nano))
+	}
+}
+
 // TestPointerHealth_VerificationNeverTouchesTheRevision is the append-only
 // guarantee from the write side. Recording an observation must leave
 // memory_revisions byte-for-byte alone, including the write-time assertion in

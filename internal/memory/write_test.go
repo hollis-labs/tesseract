@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -67,6 +68,41 @@ func TestWriteRevision_KeyedCreatesLogicalMemory(t *testing.T) {
 	}
 	if state.Activation != 1.0 {
 		t.Fatalf("expected activation=1.0, got %f", state.Activation)
+	}
+}
+
+func TestWriteRevisionStoresFixedWidthMemoryTimestamps(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	in := sampleInput("timestamps.fixed_width")
+	in.TTL = time.Hour
+	rev, err := ms.WriteRevision(ctx, in)
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+
+	var stateCreated, revisionCreated, expiresAt string
+	if err := ms.DB().QueryRowContext(ctx,
+		`SELECT created_at FROM memory_state WHERE memory_id = ?`, rev.MemoryID).Scan(&stateCreated); err != nil {
+		t.Fatalf("read memory_state.created_at: %v", err)
+	}
+	if err := ms.DB().QueryRowContext(ctx,
+		`SELECT created_at, expires_at FROM memory_revisions WHERE revision_id = ?`, rev.RevisionID).
+		Scan(&revisionCreated, &expiresAt); err != nil {
+		t.Fatalf("read revision timestamps: %v", err)
+	}
+
+	fixedUTC := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
+	for name, got := range map[string]string{
+		"memory_state.created_at":     stateCreated,
+		"memory_revisions.created_at": revisionCreated,
+		"memory_revisions.expires_at": expiresAt,
+	} {
+		if !fixedUTC.MatchString(got) {
+			t.Errorf("%s = %q, want fixed-width UTC nanoseconds", name, got)
+		}
 	}
 }
 

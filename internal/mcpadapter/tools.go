@@ -519,7 +519,11 @@ func (a *Adapter) handlePacket(_ context.Context, req mcp.CallToolRequest) (*mcp
 		tokenGlobs = claims.NamespaceGlobs
 	}
 
-	reqID := newMCPRequestID()
+	reqID, err := newMCPRequestID()
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "generate packet request ID: "+err.Error()), nil
+	}
 	var items []map[string]any
 	pinsIncluded := 0
 	bytesSoFar := 0
@@ -687,7 +691,12 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 		return toolError(codeValidationError, fmt.Sprintf("source record not found: %v", err)), nil
 	}
 
-	requestID := "req-" + newMCPRequestID()[4:]
+	generatedID, err := newMCPRequestID()
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "generate promotion request ID: "+err.Error()), nil
+	}
+	requestID := "req-" + generatedID[4:]
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	pr := contextstore.PromoteRequest{
@@ -704,7 +713,11 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 		RequestedAt:      now,
 		RequestedBy:      actor,
 	}
-	payload, _ := json.Marshal(pr)
+	payload, err := json.Marshal(pr)
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "serialize promotion request: "+err.Error()), nil
+	}
 
 	namespace := "app/mcp-agent/promotions"
 	_, err = a.Store.AppendRecord(ctx, contextstore.AppendInput{
@@ -790,7 +803,12 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 		return toolError(codeInvalidState, fmt.Sprintf("request status is %q, must be pending to approve", pr.Status)), nil
 	}
 
-	approvalID := "appr-" + newMCPRequestID()[4:]
+	generatedID, err := newMCPRequestID()
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "generate approval ID: "+err.Error()), nil
+	}
+	approvalID := "appr-" + generatedID[4:]
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	pa := contextstore.PromoteApproval{
@@ -802,7 +820,11 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 		ApprovedBy:       actor,
 		Notes:            notes,
 	}
-	approvalPayload, _ := json.Marshal(pa)
+	approvalPayload, err := json.Marshal(pa)
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "serialize promotion approval: "+err.Error()), nil
+	}
 	if _, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: "user/promotions",
 		Key:       approvalID,
@@ -815,7 +837,11 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 	pr.Status = "approved"
 	pr.ApprovalID = approvalID
 	pr.ApprovedBy = actor
-	updPayload, _ := json.Marshal(pr)
+	updPayload, err := json.Marshal(pr)
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "serialize approved promotion request: "+err.Error()), nil
+	}
 	updRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
@@ -872,13 +898,20 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 	}
 
 	pr.Status = "applied"
-	appliedPayload, _ := json.Marshal(pr)
-	_, _ = a.Store.AppendRecord(ctx, contextstore.AppendInput{
+	appliedPayload, err := json.Marshal(pr)
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "serialize applied promotion request: "+err.Error()), nil
+	}
+	if _, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
 		Actor:     actor,
 		Payload:   appliedPayload,
-	})
+	}); err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeApplyFailed, "record applied promotion state: "+err.Error()), nil
+	}
 
 	_ = a.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
 		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"source":"mcp"}`, requestID)))
@@ -915,10 +948,12 @@ func argsMap(req mcp.CallToolRequest) map[string]any {
 	return nil
 }
 
-func newMCPRequestID() string {
+func newMCPRequestID() (string, error) {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return "mcp-" + hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return "mcp-" + hex.EncodeToString(b), nil
 }
 
 // --- Context planner tools ---
@@ -965,7 +1000,11 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req mcp.CallToolRequest)
 		tokenGlobs = claims.NamespaceGlobs
 	}
 
-	reqID := newMCPRequestID()
+	reqID, err := newMCPRequestID()
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "generate fetch request ID: "+err.Error()), nil
+	}
 	var items []map[string]any
 	pinsIncluded := 0
 	bytesSoFar, tokensSoFar := 0, 0
@@ -1269,8 +1308,15 @@ func (a *Adapter) handleAuditList(_ context.Context, req mcp.CallToolRequest) (*
 	env := budget.Apply(items, budget.Config{Limit: limit}, "%d audit events available. Use cursor parameter for pagination.")
 	// Preserve cursor in the envelope for pagination continuity.
 	envMap := map[string]any{}
-	envJSON, _ := json.Marshal(env)
-	_ = json.Unmarshal(envJSON, &envMap)
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "serialize audit envelope: "+err.Error()), nil
+	}
+	if err := json.Unmarshal(envJSON, &envMap); err != nil {
+		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
+		return toolError(codeInternalError, "normalize audit envelope: "+err.Error()), nil
+	}
 	if nextCursor != nil {
 		envMap["next_cursor"] = *nextCursor
 	}
@@ -1304,7 +1350,8 @@ func globsPermit(globs []string, namespace string) bool {
 		if g == "" || g == "*" || g == namespace {
 			return true
 		}
-		if matched, _ := path.Match(g, namespace); matched {
+		// Invalid configured globs fail closed: they must never grant access.
+		if matched, err := path.Match(g, namespace); err == nil && matched {
 			return true
 		}
 		if strings.HasSuffix(g, "/*") {

@@ -17,13 +17,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/tesseract/internal/memorytime"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 
 	_ "modernc.org/sqlite"
 )
 
 const (
-	schemaVersion = 15
+	schemaVersion = 16
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -629,10 +630,13 @@ END`); err != nil {
 			// proportional to corpus size x run frequency for something nobody
 			// authored.
 			//
-			// Append-only by construction: rows are only ever INSERTed. There
-			// is no UPDATE or DELETE path, so the full observation history for
-			// a pointer survives, which is what lets a caller tell one bad
-			// afternoon from a pointer that has never resolved.
+			// Observation content is append-only by construction: runtime paths
+			// only INSERT rows and never UPDATE or DELETE observations. Schema
+			// migration 16 performs a one-time representation-only UPDATE of
+			// checked_at into a sortable fixed-width timestamp; it preserves the
+			// instant and every observation row. The full history therefore
+			// survives, which lets a caller tell one bad afternoon from a pointer
+			// that has never resolved.
 			//
 			// scheme/locator are denormalized onto the row on purpose: a
 			// revision is immutable, so they cannot drift, and carrying them
@@ -730,7 +734,7 @@ CREATE TABLE IF NOT EXISTS pointer_verifications (
 			// crushed to the floor, and re-accumulates real signal from touches
 			// after this point. That is the recovery path; there is no other.
 			if _, err = tx.ExecContext(ctx, `UPDATE memory_state SET last_decayed_at = ?`,
-				time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				memorytime.Format(time.Now())); err != nil {
 				return err
 			}
 		case 15:
@@ -841,6 +845,36 @@ BEGIN
     INSERT INTO memory_revisions_fts(rowid, memory_key, payload_summary, payload_body, tags)
     VALUES (new.rowid, new.memory_key, new.payload_summary, new.payload_body, new.tags);
 END`); err != nil {
+				return err
+			}
+		case 16:
+			// Terminal-deprecation lookup (CW-20260903-0061).
+			//
+			// revision_scope=current normally joins through
+			// memory_state.current_revision. When a caller explicitly requests
+			// deprecated status, recall also admits a deprecated revision only
+			// when no later revision points at it through supersedes. That
+			// anti-lookup runs once per candidate on metadata, dense, and BM25
+			// paths, so leaving supersedes unindexed turns it into a correlated
+			// full-table scan. NULL rows cannot match an equality lookup and are
+			// omitted from the index to keep it proportional to real lineage
+			// edges rather than to all revisions.
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_supersedes ON memory_revisions(supersedes) WHERE supersedes IS NOT NULL`); err != nil {
+				return err
+			}
+			// verify-pointers --apply validates newly committed observations with
+			// a checked_at range count. Keep that postcondition proportional to
+			// the new batch rather than to the append-only verification history.
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_pointer_verifications_checked_at ON pointer_verifications(checked_at)`); err != nil {
+				return err
+			}
+			// Memory timestamps used RFC3339Nano, whose omitted trailing
+			// fractional zeroes break chronological TEXT ordering inside one
+			// second (.092342Z sorts before .09234Z). Normalize every
+			// memory-owned timestamp atomically to fixed-width UTC nanoseconds.
+			// This preserves the existing created_at/expires_at indexes and the
+			// direct SQL ORDER BY/range/MAX paths that rely on them.
+			if err = normalizeMemoryTimestamps(ctx, tx); err != nil {
 				return err
 			}
 		}

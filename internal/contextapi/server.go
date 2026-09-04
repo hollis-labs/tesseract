@@ -2619,9 +2619,29 @@ func decodeJSON(r *http.Request, dst any) error {
 }
 
 func writeJSON(w http.ResponseWriter, code int, value any) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		marshalErr := err
+		code = http.StatusInternalServerError
+		body, err = json.Marshal(map[string]any{
+			"code":    "serialization_failed",
+			"message": "failed to serialize response",
+			"details": map[string]any{"error": marshalErr.Error()},
+		})
+		if err != nil {
+			// The fallback contains only string keys and values and is always
+			// supported by encoding/json. Retain a valid JSON response even if
+			// that guarantee changes in the future.
+			body = []byte(`{"code":"serialization_failed","message":"failed to serialize response","details":null}`)
+		}
+	}
+	body = append(body, '\n')
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(value)
+	// A ResponseWriter can fail only after the status has necessarily been
+	// committed. There is no second HTTP response available at that point;
+	// the server/transport owns reporting such connection write failures.
+	_, _ = w.Write(body)
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string, details map[string]any) {

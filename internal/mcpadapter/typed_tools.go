@@ -267,20 +267,24 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 			Payload:   payloadBytes,
 		})
 		if text != "" {
-			embResult, err := a.EmbeddingProvider.Embed(ctx, text, a.EmbeddingModel)
-			if err == nil {
-				_ = a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
+			embResult, embedErr := a.EmbeddingProvider.Embed(ctx, text, a.EmbeddingModel)
+			if embedErr == nil {
+				if storeErr := a.Store.UpsertEmbedding(ctx, contextstore.EmbeddingRow{
 					RecordID:   rec.RecordID,
 					Model:      a.EmbeddingModel,
 					Dimensions: len(embResult.Embedding),
 					Vector:     embResult.Embedding,
-				})
-				result["embedded"] = true
-				result["embedding_model"] = a.EmbeddingModel
-				result["embedding_dimensions"] = len(embResult.Embedding)
+				}); storeErr != nil {
+					result["embedded"] = false
+					result["embedding_error"] = "store embedding: " + storeErr.Error()
+				} else {
+					result["embedded"] = true
+					result["embedding_model"] = a.EmbeddingModel
+					result["embedding_dimensions"] = len(embResult.Embedding)
+				}
 			} else {
 				result["embedded"] = false
-				result["embedding_error"] = err.Error()
+				result["embedding_error"] = embedErr.Error()
 			}
 		}
 	}

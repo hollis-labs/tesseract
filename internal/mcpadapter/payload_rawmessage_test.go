@@ -14,9 +14,6 @@ import (
 
 // The json.RawMessage conversion and declared-variable guard.
 //
-// Read "WHAT THIS GUARD COVERS, AND WHAT IT DOES NOT" below before relying on
-// a green run here: the covered set is three destination shapes, not all seven.
-//
 // THE INVARIANT
 //
 //	No value derived from stored JSON by slicing, or by any other byte-level
@@ -26,8 +23,8 @@ import (
 // must hold a COMPLETE JSON document. The prefix of a JSON object is not one.
 // `payload_mode=head_only` used to cut a stored payload mid-document and hand
 // the fragment to a RawMessage; the enclosing json.Marshal then failed, and
-// toolJSON discards that error — so an oversized record came back as an EMPTY
-// tool result presented as success. See
+// toolJSON once discarded that error, so an oversized record came back as an
+// EMPTY tool result presented as success. See
 // TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot.
 //
 // The current design holds the invariant BY CONSTRUCTION: capPayload does not
@@ -47,16 +44,13 @@ import (
 // intended cost.
 //
 // ════════════════════════════════════════════════════════════════════════
-// WHAT THIS GUARD COVERS, AND WHAT IT DOES NOT
+// WHAT THIS GUARD COVERS
 //
-// COVERED — three destination shapes, enumerated and then checked:
+// COVERED — all seven direct destination shapes, enumerated and then checked:
 //
 //	json.RawMessage(x)                 the explicit conversion
 //	var x json.RawMessage; x = expr    assignment to a declared variable
 //	json.Unmarshal(b, &x)              decoder fill of a declared variable
-//
-// NOT COVERED — four more destination shapes, all of them real:
-//
 //	writeRequest{Payload: payload[:n]}                  composite-literal field
 //	req.Payload = payload[:n]                           selector on the left
 //	func f() json.RawMessage { return payload[:n] }     return statement
@@ -64,30 +58,16 @@ import (
 //
 // THE MECHANISM, because it is the part a future reader needs: json.RawMessage's
 // underlying type is []byte, so Go requires NO CONVERSION to reach one. The
-// conversion rule above never fires on any of the four, and the assignment rule
-// needs an *ast.Ident on the left, which rules out the field cases. Nothing at
-// those destinations spells `json.RawMessage`, so an AST walk keyed on that
-// spelling cannot see them.
+// conversion rule alone never fires on the last four. The package catalog below
+// therefore records RawMessage struct fields, result positions, and parameter
+// positions, then checks values placed at those typed destinations.
 //
-// THIS IS NOT THE DATAFLOW GAP BELOW, and conflating the two sends you looking
-// in the wrong place. No dataflow is involved in any of the four: the operand is
-// built right there at the site. The guard misses them for a purely syntactic
-// reason.
-//
-// THE POPULATION IS NOT EMPTY. internal/contextapi declares SEVEN
-// json.RawMessage struct fields, and it is the package writeJSON serves:
-//
-//	w.WriteHeader(code)
-//	_ = json.NewEncoder(w).Encode(value)
-//
-// The status is committed BEFORE the encode runs, so a fragment there yields a
-// 200 OK with a truncated body and no remaining opportunity to signal anything
-// — strictly worse than the toolJSON case, which at least fails before sending.
-//
-// OWNER: CW-20260826-0017, "the response path discards its serialization
-// error", covering both doors with header-ordering as acceptance. The
-// enumeration for these four shapes belongs beside that fix, not duplicated
-// here, because the ordering constraint shapes it.
+// THE POPULATION IS NOT EMPTY. internal/contextapi declares seven
+// json.RawMessage struct fields, and it is the package writeJSON serves. The
+// HTTP helper now marshals the complete body before it writes either headers or
+// status. That prevents a malformed RawMessage from committing a success and
+// then failing mid-response; this guard still matters because rejecting a bad
+// representation during review is better than converting it to a runtime 500.
 //
 // STATED BOUNDARY, second and separate — DATAFLOW. A bare identifier or field
 // selector is accepted as a whole-value pass-through, so a payload sliced into
@@ -108,6 +88,15 @@ var rawMessageScannedPackages = []string{
 	"internal/contextapi",
 }
 
+// contextstore is cataloged, but not treated as a response package. Its
+// AppendInput fields and Emit* parameters are destinations used directly by
+// both response packages and must be known to the syntax walk.
+var rawMessageCatalogPackages = []string{
+	"internal/mcpadapter",
+	"internal/contextapi",
+	"internal/contextstore",
+}
+
 // ── Allowed operand shapes ─────────────────────────────────────────────
 
 // allowedRawMessageBuilders are calls whose result is a complete JSON document
@@ -123,100 +112,300 @@ var allowedRawMessageBuilders = map[string]string{
 // rawMessageSite is one place a json.RawMessage value is constructed.
 type rawMessageSite struct {
 	Pos     string // pkg/file.go:line
+	Package string
 	Form    string // how the value is built, for the report
 	Operand ast.Expr
 }
 
+type rawMessageCatalog struct {
+	structFields map[string][]rawMessageField
+	callParams   map[string]map[int]bool
+}
+
+type rawMessageField struct {
+	Name string
+	Raw  bool
+}
+
 // ── The enumeration ────────────────────────────────────────────────────
 
-// rawMessageConstructionSites walks the scanned packages and returns the sites
-// covered by the three shapes listed at the top of this file — NOT every site
-// where a json.RawMessage value is produced. The four shapes it does not reach,
-// and why, are stated there; CW-20260826-0017 owns closing them.
-//
-// Struct field and parameter DECLARATIONS are not sites under any reading: they
-// say where such a value may live, not what goes into it.
+// rawMessageConstructionSites walks the response packages and returns all
+// direct syntactic sites where a json.RawMessage value is produced. Struct
+// field and parameter declarations are catalog entries, not construction
+// sites; the values written into those destinations are the sites.
 func rawMessageConstructionSites(t *testing.T) []rawMessageSite {
 	t.Helper()
 	root := moduleRoot(t)
+	catalog := buildRawMessageCatalog(t, root)
 
 	var sites []rawMessageSite
 	for _, pkg := range rawMessageScannedPackages {
 		dir := filepath.Join(root, pkg)
 		fset, files := parseGoDir(t, dir)
 		for _, f := range files {
-			// (1) Explicit conversions, anywhere in the file. Scope is
-			// irrelevant: json.RawMessage(x) constructs one wherever it sits.
-			ast.Inspect(f, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok || !isRawMessageSelector(call.Fun) || len(call.Args) != 1 {
-					return true
-				}
-				sites = append(sites, rawMessageSite{
-					Pos:     position(fset, pkg, call.Pos()),
-					Form:    "json.RawMessage(...) conversion",
-					Operand: call.Args[0],
-				})
-				return true
-			})
-
-			// (2) and (3) are about a NAMED variable of the type, so they are
-			// walked per function. File scope would collide: handleTypedWrite
-			// declares `var payload json.RawMessage` while handleSessionWrite
-			// has an unrelated `payload := map[string]any{}` two hundred lines
-			// away, and treating those as the same variable flags the wrong one.
-			for _, decl := range f.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
-					continue
-				}
-				declared := declaredRawMessageVars(fn.Body)
-				if len(declared) == 0 {
-					continue
-				}
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					switch node := n.(type) {
-					case *ast.CallExpr:
-						// json.Unmarshal(b, &x): the decoder validates before
-						// it fills, so nothing is constructed at the site.
-						if callName(node.Fun) == "json.Unmarshal" && len(node.Args) == 2 {
-							if u, ok := node.Args[1].(*ast.UnaryExpr); ok && u.Op == token.AND {
-								if id, ok := u.X.(*ast.Ident); ok && declared[id.Name] {
-									sites = append(sites, rawMessageSite{
-										Pos:     position(fset, pkg, node.Pos()),
-										Form:    "json.Unmarshal fill of a declared json.RawMessage",
-										Operand: nil,
-									})
-								}
-							}
-						}
-					case *ast.AssignStmt:
-						for i, lhs := range node.Lhs {
-							id, ok := lhs.(*ast.Ident)
-							if !ok || !declared[id.Name] {
-								continue
-							}
-							operand := ast.Expr(nil)
-							switch {
-							case len(node.Rhs) == len(node.Lhs):
-								operand = node.Rhs[i]
-							case len(node.Rhs) == 1:
-								operand = node.Rhs[0]
-							}
-							sites = append(sites, rawMessageSite{
-								Pos:     position(fset, pkg, node.Pos()),
-								Form:    "assignment to a declared json.RawMessage variable",
-								Operand: operand,
-							})
-						}
-					}
-					return true
-				})
-			}
+			sites = append(sites, rawMessageSitesInFile(fset, pkg, f, catalog)...)
 		}
 	}
 	sort.Slice(sites, func(i, j int) bool { return sites[i].Pos < sites[j].Pos })
 	return sites
+}
+
+func buildRawMessageCatalog(t *testing.T, root string) rawMessageCatalog {
+	t.Helper()
+	c := rawMessageCatalog{
+		structFields: map[string][]rawMessageField{},
+		callParams:   map[string]map[int]bool{},
+	}
+	for _, pkg := range rawMessageCatalogPackages {
+		_, files := parseGoDir(t, filepath.Join(root, pkg))
+		for _, f := range files {
+			addRawMessageDeclarations(f, c)
+		}
+	}
+	return c
+}
+
+func addRawMessageDeclarations(f *ast.File, c rawMessageCatalog) {
+	for _, decl := range f.Decls {
+		switch node := decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range node.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				c.structFields[ts.Name.Name] = rawMessageFields(st.Fields)
+			}
+		case *ast.FuncDecl:
+			indexes := rawMessagePositions(node.Type.Params)
+			if len(indexes) != 0 {
+				c.callParams[node.Name.Name] = indexes
+			}
+		}
+	}
+}
+
+func rawMessageFields(fields *ast.FieldList) []rawMessageField {
+	if fields == nil {
+		return nil
+	}
+	var out []rawMessageField
+	for _, field := range fields.List {
+		names := field.Names
+		if len(names) == 0 {
+			names = []*ast.Ident{{Name: exprTypeName(field.Type)}}
+		}
+		for _, name := range names {
+			out = append(out, rawMessageField{Name: name.Name, Raw: isRawMessageSelector(field.Type)})
+		}
+	}
+	return out
+}
+
+func rawMessagePositions(fields *ast.FieldList) map[int]bool {
+	out := map[int]bool{}
+	if fields == nil {
+		return out
+	}
+	index := 0
+	for _, field := range fields.List {
+		count := len(field.Names)
+		if count == 0 {
+			count = 1
+		}
+		for range count {
+			if isRawMessageSelector(field.Type) {
+				out[index] = true
+			}
+			index++
+		}
+	}
+	return out
+}
+
+func rawMessageSitesInFile(fset *token.FileSet, pkg string, f *ast.File, catalog rawMessageCatalog) []rawMessageSite {
+	var sites []rawMessageSite
+	add := func(pos token.Pos, form string, operand ast.Expr) {
+		sites = append(sites, rawMessageSite{
+			Pos: position(fset, pkg, pos), Package: pkg, Form: form, Operand: operand,
+		})
+	}
+
+	// Explicit conversions are independent of function scope.
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if ok && isRawMessageSelector(call.Fun) && len(call.Args) == 1 {
+			add(call.Pos(), "json.RawMessage(...) conversion", call.Args[0])
+		}
+		return true
+	})
+
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		declaredRaw := declaredRawMessageVars(fn.Body)
+		declaredTypes := declaredVariableTypes(fn)
+		returnRaw := rawMessagePositions(fn.Type.Results)
+
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.CallExpr:
+				// json.Unmarshal validates the complete document before filling x.
+				if callName(node.Fun) == "json.Unmarshal" && len(node.Args) == 2 {
+					if u, ok := node.Args[1].(*ast.UnaryExpr); ok && u.Op == token.AND {
+						if id, ok := u.X.(*ast.Ident); ok && declaredRaw[id.Name] {
+							add(node.Pos(), "json.Unmarshal fill of a declared json.RawMessage", nil)
+						}
+					}
+				}
+				for i := range catalog.callParams[callableName(node.Fun)] {
+					if i < len(node.Args) {
+						add(node.Args[i].Pos(), "argument to a json.RawMessage parameter", node.Args[i])
+					}
+				}
+			case *ast.CompositeLit:
+				fields := fieldsForComposite(node.Type, catalog)
+				for i, elt := range node.Elts {
+					if kv, ok := elt.(*ast.KeyValueExpr); ok {
+						key, ok := kv.Key.(*ast.Ident)
+						if ok && fieldIsRaw(fields, key.Name) {
+							add(kv.Value.Pos(), "json.RawMessage composite-literal field", kv.Value)
+						}
+					} else if i < len(fields) && fields[i].Raw {
+						add(elt.Pos(), "json.RawMessage positional composite-literal field", elt)
+					}
+				}
+			case *ast.AssignStmt:
+				for i, lhs := range node.Lhs {
+					operand := assignmentOperand(node, i)
+					switch target := lhs.(type) {
+					case *ast.Ident:
+						if declaredRaw[target.Name] {
+							add(node.Pos(), "assignment to a declared json.RawMessage variable", operand)
+						}
+					case *ast.SelectorExpr:
+						if selectorIsRawField(target, declaredTypes, catalog) {
+							add(node.Pos(), "assignment to a json.RawMessage selector field", operand)
+						}
+					}
+				}
+			case *ast.ReturnStmt:
+				for i := range returnRaw {
+					if i < len(node.Results) {
+						add(node.Results[i].Pos(), "return as json.RawMessage result", node.Results[i])
+					}
+				}
+			}
+			return true
+		})
+	}
+	return sites
+}
+
+func fieldsForComposite(expr ast.Expr, catalog rawMessageCatalog) []rawMessageField {
+	if st, ok := expr.(*ast.StructType); ok {
+		return rawMessageFields(st.Fields)
+	}
+	return catalog.structFields[exprTypeName(expr)]
+}
+
+func fieldIsRaw(fields []rawMessageField, name string) bool {
+	for _, field := range fields {
+		if field.Name == name {
+			return field.Raw
+		}
+	}
+	return false
+}
+
+func assignmentOperand(node *ast.AssignStmt, index int) ast.Expr {
+	switch {
+	case len(node.Rhs) == len(node.Lhs):
+		return node.Rhs[index]
+	case len(node.Rhs) == 1:
+		return node.Rhs[0]
+	default:
+		return nil
+	}
+}
+
+func declaredVariableTypes(fn *ast.FuncDecl) map[string]string {
+	out := map[string]string{}
+	addFields := func(fields *ast.FieldList) {
+		if fields == nil {
+			return
+		}
+		for _, field := range fields.List {
+			for _, name := range field.Names {
+				out[name.Name] = exprTypeName(field.Type)
+			}
+		}
+	}
+	addFields(fn.Recv)
+	addFields(fn.Type.Params)
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.ValueSpec:
+			if node.Type != nil {
+				for _, name := range node.Names {
+					out[name.Name] = exprTypeName(node.Type)
+				}
+			}
+		case *ast.AssignStmt:
+			if node.Tok != token.DEFINE || len(node.Lhs) != len(node.Rhs) {
+				return true
+			}
+			for i, lhs := range node.Lhs {
+				id, ok := lhs.(*ast.Ident)
+				cl, isComposite := node.Rhs[i].(*ast.CompositeLit)
+				if ok && isComposite {
+					out[id.Name] = exprTypeName(cl.Type)
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
+func selectorIsRawField(sel *ast.SelectorExpr, vars map[string]string, catalog rawMessageCatalog) bool {
+	id, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return fieldIsRaw(catalog.structFields[vars[id.Name]], sel.Sel.Name)
+}
+
+func exprTypeName(expr ast.Expr) string {
+	switch node := expr.(type) {
+	case *ast.Ident:
+		return node.Name
+	case *ast.SelectorExpr:
+		return node.Sel.Name
+	case *ast.StarExpr:
+		return exprTypeName(node.X)
+	case *ast.IndexExpr:
+		return exprTypeName(node.X)
+	case *ast.IndexListExpr:
+		return exprTypeName(node.X)
+	}
+	return ""
+}
+
+func callableName(expr ast.Expr) string {
+	switch node := expr.(type) {
+	case *ast.Ident:
+		return node.Name
+	case *ast.SelectorExpr:
+		return node.Sel.Name
+	}
+	return ""
 }
 
 // declaredRawMessageVars collects names declared `var x json.RawMessage` inside
@@ -266,6 +455,9 @@ func rawMessageOperandProblem(e ast.Expr) string {
 		}
 		return rawMessageOperandProblem(node.Y)
 	case *ast.CallExpr:
+		if isRawMessageSelector(node.Fun) && len(node.Args) == 1 {
+			return rawMessageOperandProblem(node.Args[0])
+		}
 		name := callName(node.Fun)
 		if _, ok := allowedRawMessageBuilders[name]; ok {
 			return ""
@@ -286,18 +478,14 @@ func rawMessageOperandProblem(e ast.Expr) string {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-// TestRawMessageConversionsAndDeclaredVarsHoldCompleteDocuments is the guard.
-//
-// The name is the coverage claim and it is deliberately narrower than
-// "construction sites": it covers json.RawMessage CONVERSIONS and DECLARED
-// VARIABLES. Four other destination shapes are out of its reach — see the
-// header, and CW-20260826-0017.
-func TestRawMessageConversionsAndDeclaredVarsHoldCompleteDocuments(t *testing.T) {
+// TestRawMessageDirectConstructionSitesHoldCompleteDocuments is the production
+// guard over all seven direct destination forms listed in the file header.
+func TestRawMessageDirectConstructionSitesHoldCompleteDocuments(t *testing.T) {
 	sites := rawMessageConstructionSites(t)
 
 	// A zero would mean the walk broke, not that the packages are clean.
 	if len(sites) == 0 {
-		t.Fatal("enumerated zero json.RawMessage conversion or declared-variable sites across " +
+		t.Fatal("enumerated zero json.RawMessage construction sites across " +
 			strings.Join(rawMessageScannedPackages, " and ") +
 			" — the AST walk is wrong, so a clean run would mean nothing")
 	}
@@ -309,23 +497,94 @@ func TestRawMessageConversionsAndDeclaredVarsHoldCompleteDocuments(t *testing.T)
 	}
 }
 
-// TestRawMessageConversionAndDeclaredVarSitesAreEnumerated prints the finite list
+// TestRawMessageDirectConstructionSitesAreEnumerated prints the finite list
 // the guard above is built on, so a reviewer can see the sites rather than take
-// the count on faith, and fails if the enumeration collapses. It is the list for
-// the THREE covered shapes only.
+// the count on faith, and fails if the enumeration collapses.
 //
 // It asserts a FLOOR, not an exact count: an equality would have to be edited
 // on every legitimate new audit-emit call, and a number nobody can justify
 // gets bumped rather than read.
-func TestRawMessageConversionAndDeclaredVarSitesAreEnumerated(t *testing.T) {
+func TestRawMessageDirectConstructionSitesAreEnumerated(t *testing.T) {
 	sites := rawMessageConstructionSites(t)
 	for _, s := range sites {
 		t.Logf("%s — %s", s.Pos, s.Form)
 	}
 	const floor = 20
 	if len(sites) < floor {
-		t.Fatalf("enumerated only %d json.RawMessage conversion and declared-variable sites, below the floor of %d; "+
+		t.Fatalf("enumerated only %d json.RawMessage direct construction sites, below the floor of %d; "+
 			"either a large amount of code was deleted or the walk stopped matching", len(sites), floor)
+	}
+}
+
+// TestContextAPIRawMessageSitesAreClassified makes the HTTP population visible
+// and non-vacuous. In particular it anchors the response-bearing PacketItem
+// selector assignment and the request/store composites and audit arguments;
+// those were the real syntax classes omitted by the original guard.
+func TestContextAPIRawMessageSitesAreClassified(t *testing.T) {
+	counts := map[string]int{}
+	for _, site := range rawMessageConstructionSites(t) {
+		if site.Package != "internal/contextapi" {
+			continue
+		}
+		counts[site.Form]++
+		t.Logf("%s — %s", site.Pos, site.Form)
+	}
+	for _, form := range []string{
+		"json.RawMessage(...) conversion",
+		"json.RawMessage composite-literal field",
+		"assignment to a json.RawMessage selector field",
+		"argument to a json.RawMessage parameter",
+	} {
+		if counts[form] == 0 {
+			t.Errorf("enumerated no contextapi sites classified as %q; counts=%v", form, counts)
+		}
+	}
+}
+
+// TestRawMessageGuardCoversEveryDirectDestinationShape is a synthetic,
+// deliberately bad package. Each of the four formerly omitted destinations
+// receives the same sliced JSON prefix and must be both enumerated and rejected.
+func TestRawMessageGuardCoversEveryDirectDestinationShape(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "fixture.go", `package fixture
+import "encoding/json"
+type envelope struct { Payload json.RawMessage }
+func consume(payload json.RawMessage) {}
+func bad(payload []byte) json.RawMessage {
+	value := envelope{Payload: payload[:4]}
+	value.Payload = payload[:4]
+	consume(payload[:4])
+	return payload[:4]
+}`, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	catalog := rawMessageCatalog{
+		structFields: map[string][]rawMessageField{},
+		callParams:   map[string]map[int]bool{},
+	}
+	addRawMessageDeclarations(f, catalog)
+	sites := rawMessageSitesInFile(fset, "fixture", f, catalog)
+
+	wantForms := map[string]bool{
+		"json.RawMessage composite-literal field":        false,
+		"assignment to a json.RawMessage selector field": false,
+		"argument to a json.RawMessage parameter":        false,
+		"return as json.RawMessage result":               false,
+	}
+	for _, site := range sites {
+		if _, wanted := wantForms[site.Form]; !wanted {
+			continue
+		}
+		wantForms[site.Form] = true
+		if problem := rawMessageOperandProblem(site.Operand); problem == "" {
+			t.Errorf("%s was enumerated but the sliced operand passed", site.Form)
+		}
+	}
+	for form, seen := range wantForms {
+		if !seen {
+			t.Errorf("did not enumerate %s; got %#v", form, sites)
+		}
 	}
 }
 

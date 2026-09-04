@@ -1140,10 +1140,12 @@ func TestPaging_AttachesPointerHealthToEveryPage(t *testing.T) {
 	ms, _, cleanup := newPagingStore(t)
 	defer cleanup()
 
-	const ns = "user/chrispian/memory/notes"
+	const ns = "user/chrispian/knowledge/notes"
 	for i := 0; i < 6; i++ {
 		in := sampleInput("")
 		in.MemoryKey = ""
+		in.Domain = domains.Knowledge
+		in.Namespace = ns
 		in.Facets = memory.Facets{
 			Kind:    "note",
 			Source:  "manual",

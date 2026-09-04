@@ -1203,6 +1203,7 @@ func TestMigrationCreatesMemoryTables(t *testing.T) {
 		"idx_memory_revisions_created_at",
 		"idx_memory_revisions_status",
 		"idx_memory_revisions_expires_at",
+		"idx_memory_revisions_supersedes",
 	} {
 		var name string
 		err := db.QueryRow(

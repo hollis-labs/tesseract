@@ -59,6 +59,44 @@ var scannedFiles = []string{
 	"README.md",
 }
 
+// retiredToolReferences is the file-scoped exception for migration material.
+// A migration table cannot tell a consumer what to replace without naming the
+// old tool, but those names must not become globally accepted vocabulary: that
+// would hide a stale executable instruction in an unrelated current doc.
+var retiredToolReferences = map[string]map[string]string{
+	"docs/guides/tesseract-adoption-and-v0.9-migration.md": {
+		"context_head":             "v0.8-to-v0.9 replacement table",
+		"memory_get":               "v0.8-to-v0.9 replacement table",
+		"knowledge_get":            "v0.8-to-v0.9 replacement table",
+		"context_history":          "v0.8-to-v0.9 replacement table",
+		"memory_history":           "v0.8-to-v0.9 replacement table",
+		"knowledge_history":        "v0.8-to-v0.9 replacement table",
+		"memory_get_revision":      "v0.8-to-v0.9 replacement table",
+		"memory_deprecate":         "v0.8-to-v0.9 replacement table",
+		"memory_recall":            "v0.8-to-v0.9 replacement table",
+		"tesseract_lookup":         "v0.8-to-v0.9 replacement table",
+		"views_evaluate":           "v0.8-to-v0.9 replacement table",
+		"context_packet":           "v0.8-to-v0.9 replacement table",
+		"context_broker_plan":      "v0.8-to-v0.9 replacement table",
+		"context_broker_fetch":     "v0.8-to-v0.9 replacement table",
+		"context_broker":           "v0.8-to-v0.9 replacement table",
+		"context_bulk_ingest":      "v0.8-to-v0.9 replacement table",
+		"context_chunked_ingest":   "v0.8-to-v0.9 replacement table",
+		"context_status_promote":   "v0.8-to-v0.9 replacement table and non-equivalence warning",
+		"context_status_deprecate": "v0.8-to-v0.9 replacement table",
+		"context_types_list":       "v0.8-to-v0.9 replacement table",
+		"context_views_list":       "v0.8-to-v0.9 replacement table",
+		"context_namespaces_list":  "v0.8-to-v0.9 replacement table",
+		"context_namespace_show":   "v0.8-to-v0.9 replacement table",
+		"context_promote_request":  "v0.8-to-v0.9 replacement table",
+		"context_promote_approve":  "v0.8-to-v0.9 replacement table",
+		"context_promote_apply":    "v0.8-to-v0.9 replacement table",
+		"context_audit":            "v0.8-to-v0.9 replacement table",
+		"context_promote_list":     "v0.8-to-v0.9 replacement table",
+		"context_session_snapshot": "v0.8-to-v0.9 replacement table",
+	},
+}
+
 // ── The allowlist ──────────────────────────────────────────────────────
 //
 // Two buckets, because they mean different things to a reviewer and rot in
@@ -119,7 +157,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:274",
+		Doc:     "docs/MCP_TOOLS.md:281",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +
@@ -259,6 +297,11 @@ func (ts toolShape) unresolved(hits []tokenHit) []tokenHit {
 		}
 		if _, ok := plannedTools[h.Token]; ok {
 			continue
+		}
+		if tokens := retiredToolReferences[h.File]; tokens != nil {
+			if _, ok := tokens[h.Token]; ok {
+				continue
+			}
 		}
 		if ts.looksLikeTool(h.Token) {
 			out = append(out, h)
@@ -423,8 +466,13 @@ func TestDriftGuardCatchesUnregisteredToolName(t *testing.T) {
 func TestToolNameAllowlistIsCurrent(t *testing.T) {
 	registered := registeredToolNames(t)
 	seen := map[string]struct{}{}
+	seenByFile := map[string]map[string]struct{}{}
 	for _, h := range scanShippedProse(t) {
 		seen[h.Token] = struct{}{}
+		if seenByFile[h.File] == nil {
+			seenByFile[h.File] = map[string]struct{}{}
+		}
+		seenByFile[h.File][h.Token] = struct{}{}
 	}
 
 	entries := map[string]map[string]string{
@@ -451,6 +499,23 @@ func TestToolNameAllowlistIsCurrent(t *testing.T) {
 	for token := range plannedTools {
 		if _, ok := nonToolVocabulary[token]; ok {
 			t.Errorf("%q is in both allowlist buckets — it is either a tool or it is not", token)
+		}
+	}
+
+	for file, tokens := range retiredToolReferences {
+		if len(tokens) == 0 {
+			t.Errorf("retiredToolReferences[%q] is empty — remove the file entry", file)
+		}
+		for token, why := range tokens {
+			if strings.TrimSpace(why) == "" {
+				t.Errorf("retiredToolReferences[%q][%q] has no reason", file, token)
+			}
+			if _, ok := registered[token]; ok {
+				t.Errorf("retiredToolReferences[%q][%q] is registered again — it is no longer a retired-only reference", file, token)
+			}
+			if _, ok := seenByFile[file][token]; !ok {
+				t.Errorf("retiredToolReferences[%q][%q] no longer appears in that file — remove the stale exception", file, token)
+			}
 		}
 	}
 }

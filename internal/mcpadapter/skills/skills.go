@@ -65,7 +65,10 @@ func Get(name string) (string, error) {
 	data, err := fs.ReadFile(skillsFS, name+".md")
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			avail, _ := listNames()
+			avail, listErr := listNames()
+			if listErr != nil {
+				return "", fmt.Errorf("%w: %q (list available skills: %w)", ErrSkillNotFound, name, listErr)
+			}
 			return "", fmt.Errorf("%w: %q. Available: [%s]", ErrSkillNotFound, name, strings.Join(avail, ", "))
 		}
 		return "", fmt.Errorf("read skill %q: %w", name, err)

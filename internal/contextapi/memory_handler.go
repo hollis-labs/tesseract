@@ -52,8 +52,8 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// This endpoint is memory-domain only. Knowledge writes must go through
-	// POST /v1/knowledge/write so facet invariants (kind/source/pointer) are
-	// enforced by knowledge.Store.
+	// POST /v1/knowledge/write for its knowledge-specific request shape. The
+	// shared revision store remains authoritative for domain/facet invariants.
 	if req.Domain != "" && req.Domain != domains.Memory {
 		writeError(w, http.StatusBadRequest, "wrong_endpoint",
 			"domain must be empty or 'memory' on /v1/memory/write; use /v1/knowledge/write for knowledge revisions",

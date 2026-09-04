@@ -1175,10 +1175,10 @@ func TestPromoteGate_PositiveControl(t *testing.T) {
 //
 // head_only cut rec.Payload at 512 bytes and handed the prefix to
 // json.RawMessage. The prefix of a JSON object is not valid JSON, so the
-// ENCLOSING json.Marshal failed, and toolJSON discards that error — so an
-// oversized record came back as an empty tool result rather than a truncated
-// one. This test reproduces the old mechanism directly, then shows the cap does
-// not share it.
+// ENCLOSING json.Marshal failed, and toolJSON used to discard that error — so
+// an oversized record came back as an empty tool result rather than a
+// truncated one. This test reproduces the invalid old representation, verifies
+// the response path now reports it, then shows the cap does not share it.
 func TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot(t *testing.T) {
 	payload := []byte(`{"body":"` + strings.Repeat("x", 600) + `"}`)
 
@@ -1187,8 +1187,13 @@ func TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot(t *testin
 	if body, err := json.Marshal(oldStyle); err == nil {
 		t.Fatalf("the head_only mechanism marshaled cleanly (%d bytes) — this test's premise is stale", len(body))
 	}
-	if got := toolJSON(oldStyle); textOf(t, got) != "" {
-		t.Fatalf("head_only produced %q, not the empty result the bug produced", textOf(t, got))
+	got := textOf(t, toolJSON(oldStyle))
+	var failure map[string]any
+	if err := json.Unmarshal([]byte(got), &failure); err != nil {
+		t.Fatalf("marshal failure result is not JSON: %q: %v", got, err)
+	}
+	if failure["code"] != "internal_error" {
+		t.Fatalf("marshal failure code = %v, want internal_error (body=%s)", failure["code"], got)
 	}
 
 	// Positive control: untruncated, the same shape marshals fine, so the

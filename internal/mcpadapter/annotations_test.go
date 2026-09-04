@@ -64,4 +64,20 @@ func TestMemoryKnowledgeUnifiedToolsAnnotated(t *testing.T) {
 			t.Errorf("tool %q missing IdempotentHint annotation (v2 template requires it)", name)
 		}
 	}
+
+	// These look like reads at the protocol level, but both can reinforce
+	// activation/access_count. The annotation must describe that observable
+	// mutation so a client does not treat repeated calls as side-effect free.
+	for _, name := range []string{"tesseract_get", "tesseract_get_revision"} {
+		st := registered[name]
+		if st.Tool.Annotations.ReadOnlyHint == nil || st.Tool.Annotations.IdempotentHint == nil {
+			continue // the required-annotation assertions above already report this
+		}
+		if *st.Tool.Annotations.ReadOnlyHint {
+			t.Errorf("tool %q ReadOnlyHint = true, want false: the tool reinforces activation", name)
+		}
+		if *st.Tool.Annotations.IdempotentHint {
+			t.Errorf("tool %q IdempotentHint = true, want false: each call can reinforce again", name)
+		}
+	}
 }

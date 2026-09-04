@@ -9,20 +9,17 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/memorytime"
 )
 
 // memoryTimeFormat is the canonical timestamp format for memory tables.
-const memoryTimeFormat = time.RFC3339Nano
+const memoryTimeFormat = memorytime.Layout
 
 // parseMemoryTime parses a timestamp stored in memory tables. It tries
 // RFC3339Nano first, then falls back to time.DateTime for backward
 // compatibility with data written before the precision upgrade.
 func parseMemoryTime(s string) (time.Time, error) {
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err == nil {
-		return t, nil
-	}
-	return time.Parse(time.DateTime, s)
+	return memorytime.Parse(s)
 }
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
