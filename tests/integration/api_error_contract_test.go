@@ -54,7 +54,11 @@ func TestAPIErrorContractAgainstGolden(t *testing.T) {
 	}, nil)
 	assertErrorEnvelope(t, authStatus, auth, golden.RequiredKeys, golden.AuthRequired)
 
-	notFoundStatus, notFound := callJSONError(t, srv, http.MethodGet, "/v1/namespaces/get?namespace=user/missing", nil, nil)
+	// The static token configured above now guards reads as well, so this call
+	// must present it — without the header the response would be 401
+	// auth_required rather than the 404 this case is asserting.
+	notFoundStatus, notFound := callJSONError(t, srv, http.MethodGet, "/v1/namespaces/get?namespace=user/missing", nil,
+		map[string]string{"Authorization": "Bearer contract-secret"})
 	assertErrorEnvelope(t, notFoundStatus, notFound, golden.RequiredKeys, golden.NotFound)
 }
 

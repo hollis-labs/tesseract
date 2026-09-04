@@ -42,9 +42,15 @@ Rotation checklist:
 4. Revoke the old token.
 
 ## Service runner
-- Start API server (default `:8089`, see `parseServeArgs` in `cmd/tesseract/main.go`): `tesseract serve`
+- Start API server (default `127.0.0.1:8089`, loopback only — see `parseServeArgs` in `cmd/tesseract/main.go`): `tesseract serve`
 - Start with managed token auth: `tesseract serve --managed-auth --addr :8080`
 - Start with legacy static token: `tesseract serve --static-token <token> --addr :8080`
+- A non-loopback `--addr` (including the bare `:8080` form, which binds every
+  interface) requires a token mode. Without one, startup fails; pass
+  `--allow-unauthenticated-remote` only if you genuinely intend to publish an
+  unauthenticated daemon. With a token mode configured, every route requires a
+  valid token — reads included — except `GET /v1/health/readiness` and
+  `GET /v1/metrics`.
 - Enable local diagnostics endpoint: `tesseract serve --metrics --addr :8080`
 - Enable structured request logging: `tesseract serve --request-logs --addr :8080`
 - Request log redaction mode (default redacted): `tesseract serve --request-logs --request-log-mode redacted --addr :8080`

@@ -37,8 +37,16 @@ func TestParseServeArgsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse defaults: %v", err)
 	}
-	if cfg.Addr != ":8089" || cfg.ManagedAuth || cfg.StaticToken != "" || cfg.EnableMetrics || cfg.EnableRequestLogs {
+	if cfg.Addr != defaultServeAddr || cfg.ManagedAuth || cfg.StaticToken != "" || cfg.EnableMetrics || cfg.EnableRequestLogs {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+	if cfg.AllowUnauthenticatedRemote {
+		t.Fatalf("unauthenticated remote must be opt-in, got %+v", cfg)
+	}
+	// The default must bind loopback only — an unauthenticated daemon on all
+	// interfaces is the failure this default exists to prevent.
+	if !isLoopbackAddr(cfg.Addr) {
+		t.Fatalf("default addr %q is not loopback", cfg.Addr)
 	}
 	if cfg.RequestLogMode != "redacted" {
 		t.Fatalf("unexpected default request log mode: %q", cfg.RequestLogMode)

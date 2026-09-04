@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,19 @@ func TestServiceModeStaticAuthAndReadRouteAccess(t *testing.T) {
 	read := serviceJSON(t, srv, http.MethodGet, "/v1/health/readiness", nil, nil)
 	if read.Code != http.StatusOK {
 		t.Fatalf("readiness should be accessible without token, got %d body=%s", read.Code, read.Body.String())
+	}
+
+	// Reads are no longer open once a token mode is configured. Readiness is
+	// the exception (above); content routes are not.
+	unauthRead := serviceJSON(t, srv, http.MethodGet, "/v1/context/head?namespace=app/editor/session&key=summary", nil, nil)
+	if unauthRead.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on read without static token, got %d body=%s", unauthRead.Code, unauthRead.Body.String())
+	}
+
+	authedRead := serviceJSON(t, srv, http.MethodGet, "/v1/context/head?namespace=app/editor/session&key=summary", nil,
+		map[string]string{"Authorization": "Bearer static-secret"})
+	if authedRead.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (no such head) with static token, got %d body=%s", authedRead.Code, authedRead.Body.String())
 	}
 
 	unauth := serviceJSON(t, srv, http.MethodPost, "/v1/context/write", map[string]any{
@@ -62,9 +76,16 @@ func TestServiceModeManagedAuthAcceptRejectAndReadRouteAccess(t *testing.T) {
 		t.Fatalf("revoke token: %v", err)
 	}
 
+	// Managed auth guards reads too: without a token this is 401, and only a
+	// valid token gets as far as the 404 that says the head does not exist.
 	read := serviceJSON(t, srv, http.MethodGet, "/v1/context/head?namespace=app/editor/session&key=summary", nil, nil)
-	if read.Code != http.StatusNotFound {
-		t.Fatalf("expected read endpoint to be accessible without token (404 head), got %d body=%s", read.Code, read.Body.String())
+	if read.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on read without managed token, got %d body=%s", read.Code, read.Body.String())
+	}
+	authedRead := serviceJSON(t, srv, http.MethodGet, "/v1/context/head?namespace=app/editor/session&key=summary", nil,
+		map[string]string{"Authorization": "Bearer " + active})
+	if authedRead.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (no such head) with managed token, got %d body=%s", authedRead.Code, authedRead.Body.String())
 	}
 
 	missing := serviceJSON(t, srv, http.MethodPost, "/v1/context/write", map[string]any{
@@ -131,4 +152,55 @@ func serviceJSON(t *testing.T, h http.Handler, method, path string, body any, he
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, req)
 	return res
+}
+
+// TestServiceModeTokenInventoryRequiresAuth pins the most severe of the reads
+// that used to answer anonymously: /v1/auth/tokens/list returns every token's
+// id, client, scopes, namespace globs and expiry — the full map of who can do
+// what — and it did so to any caller that could reach the port.
+func TestServiceModeTokenInventoryRequiresAuth(t *testing.T) {
+	srv := newServiceAuthServer(t)
+	srv.ManagedAuth = true
+
+	admin, _, err := srv.Store.IssueAuthToken(context.Background(), "admin", time.Hour)
+	if err != nil {
+		t.Fatalf("issue admin token: %v", err)
+	}
+
+	anon := serviceJSON(t, srv, http.MethodGet, "/v1/auth/tokens/list", nil, nil)
+	if anon.Code != http.StatusUnauthorized {
+		t.Fatalf("token inventory answered %d without credentials: %s", anon.Code, anon.Body.String())
+	}
+	if strings.Contains(anon.Body.String(), "token_id") {
+		t.Fatalf("token inventory leaked into an unauthenticated response: %s", anon.Body.String())
+	}
+
+	authed := serviceJSON(t, srv, http.MethodGet, "/v1/auth/tokens/list", nil,
+		map[string]string{"Authorization": "Bearer " + admin})
+	if authed.Code != http.StatusOK {
+		t.Fatalf("token inventory rejected a valid token: %d %s", authed.Code, authed.Body.String())
+	}
+}
+
+// TestServiceModeAdminReadsRequireAuth covers the admin GETs that disclosed
+// filesystem layout, configuration, queue state and namespace history.
+func TestServiceModeAdminReadsRequireAuth(t *testing.T) {
+	srv := newServiceAuthServer(t)
+	srv.AuthToken = "admin-secret"
+
+	adminReads := []string{
+		"/v1/admin/setup",
+		"/v1/admin/settings",
+		"/v1/admin/storage",
+		"/v1/admin/queue",
+		"/v1/admin/queue/failures",
+		"/v1/admin/config/backups",
+		"/v1/admin/namespaces/history?namespace=app/editor/session",
+	}
+	for _, path := range adminReads {
+		res := serviceJSON(t, srv, http.MethodGet, path, nil, nil)
+		if res.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s answered %d without credentials (want 401): %s", path, res.Code, res.Body.String())
+		}
+	}
 }
