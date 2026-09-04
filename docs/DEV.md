@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.26.1
+- Go 1.26.6
 - Git
 - Node.js and npm only for frontend changes
 

@@ -19,7 +19,7 @@ strings before attaching logs or backups.
 
 ## Development setup
 
-Use Go 1.26.1. A normal backend build uses the committed embedded web UI and
+Use Go 1.26.6. A normal backend build uses the committed embedded web UI and
 does not require Node:
 
 ```bash

@@ -26,7 +26,7 @@ binaries, package-manager formulae, container images, or desktop installers.
 
 Requirements:
 
-- Go 1.26.1
+- Go 1.26.6
 - Git
 - Node.js/npm only when changing and rebuilding `frontend/`
 

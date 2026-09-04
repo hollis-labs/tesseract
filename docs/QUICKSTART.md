@@ -6,7 +6,7 @@ provider setup, and optional MCP client.
 ## 1. Build from source
 
 The current public preview has a source-only install path and requires Go
-1.26.1.
+1.26.6.
 
 ```bash
 git clone https://github.com/hollis-labs/tesseract.git
