@@ -13,7 +13,6 @@
 package contextapi
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -92,8 +91,7 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req synthesisAskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if strings.TrimSpace(req.Question) == "" {
