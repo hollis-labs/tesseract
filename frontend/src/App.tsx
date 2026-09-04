@@ -11,6 +11,7 @@ import { Activity, Boxes } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { getHealth } from "./api/client";
 import type { BrokerPlanResponse, HealthStatus } from "./api/types";
+import { AuthSessionControl } from "./components/auth/AuthSessionControl";
 import { AppFooter } from "./components/layout/AppFooter";
 import { NAV_ITEMS, type NavPage, PAGE_PARENT, PAGE_TITLES } from "./components/layout/nav";
 import { isDemoMode } from "./demo/data";
@@ -95,6 +96,7 @@ export default function App() {
   const initialRoute = readRouteFromHash();
   const [page, setPage] = useState<NavPage>(initialRoute.page);
   const [ctx, setCtx] = useState<NavContext>(initialRoute.ctx);
+  const [credentialVersion, setCredentialVersion] = useState(0);
 
   const { data: health } = usePoll<HealthStatus>(getHealth, 10_000);
 
@@ -214,6 +216,7 @@ export default function App() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PageHeader title={PAGE_TITLES[page]}>
             {isDemoMode() && <Pill tone="warning">Demo</Pill>}
+            {!isDemoMode() && <AuthSessionControl onCredentialChange={setCredentialVersion} />}
             <span className="flex items-center gap-1.5 text-xs text-text-subtle">
               <LiveDot tone={statusTone} pulsing={status === "degraded"} label={status} />
               <Activity aria-hidden="true" size={13} />
@@ -222,7 +225,7 @@ export default function App() {
             <ThemeSwitcher />
           </PageHeader>
 
-          <main className="min-h-0 flex-1 overflow-auto" id="main-content">
+          <main className="min-h-0 flex-1 overflow-auto" id="main-content" key={credentialVersion}>
             {/* ── Sprint 2: Read paths ─────────────────── */}
             {page === "explorer" && (
               <ExplorerPage

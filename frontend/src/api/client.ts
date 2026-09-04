@@ -1,4 +1,5 @@
-import { demo, isDemoMode } from "../demo/data";
+import { demo, isDemoMode } from "../demo/data.ts";
+import { getAuthRequestCredential, reportAuthFailure } from "./auth.ts";
 import type {
   AdminConfigBackupResponse,
   AdminConfigBackupsResponse,
@@ -70,14 +71,59 @@ export function getBaseURL(): string {
 
 // ── Generic fetch helper ────────────────────────────────────────────
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+interface APIErrorPayload {
+  code?: string;
+  message?: string;
+}
+
+export class APIError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(status: number, code: string | undefined, message: string) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+interface APIFetchOptions {
+  public?: boolean;
+}
+
+async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+  options?: APIFetchOptions,
+): Promise<T> {
+  const credential = getAuthRequestCredential();
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (!options?.public && credential.authorization) {
+    headers.set("Authorization", credential.authorization);
+  }
+
   const resp = await fetch(`${_base}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers,
   });
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ message: resp.statusText }));
-    throw new Error(err.message ?? err.code ?? `HTTP ${resp.status}`);
+    const payload = (await resp
+      .json()
+      .catch(() => ({ message: resp.statusText }))) as APIErrorPayload;
+    if (!options?.public) {
+      reportAuthFailure(resp.status, payload.code, credential.credentialVersion);
+    }
+    const message =
+      resp.status === 401
+        ? credential.authorization
+          ? "Authentication failed. Replace or clear the session bearer token and try again."
+          : "Authentication required. Add a session bearer token and try again."
+        : resp.status === 403 && payload.code === "insufficient_scope"
+          ? "This bearer token lacks the required scope. Admin changes require a managed token with the admin scope."
+          : (payload.message ?? payload.code ?? `HTTP ${resp.status}`);
+    throw new APIError(resp.status, payload.code, message);
   }
   return resp.json() as Promise<T>;
 }
@@ -86,7 +132,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getHealth(): Promise<HealthStatus> {
   if (isDemoMode()) return demo.getHealth();
-  return apiFetch<HealthStatus>("/v1/health/readiness");
+  return apiFetch<HealthStatus>("/v1/health/readiness", undefined, { public: true });
 }
 
 export async function getAdminSetup(): Promise<AdminSetupResponse> {
@@ -419,7 +465,7 @@ export async function getAuditEvents(params?: {
 
 export async function getMetrics(): Promise<MetricsResponse> {
   if (isDemoMode()) return demo.getMetrics();
-  return apiFetch<MetricsResponse>("/v1/metrics");
+  return apiFetch<MetricsResponse>("/v1/metrics", undefined, { public: true });
 }
 
 // ── Namespaces / Policy ─────────────────────────────────────────────
