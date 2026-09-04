@@ -8,6 +8,171 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+Public-preview hardening: the daemon stops being open by default, backup starts
+including the data this product exists to hold, restore stops being able to
+destroy a store on the way to replacing it, and everything Tesseract owns on
+disk becomes owner-only. The CLI also gains `--help` and `--version`, which it
+has never had.
+
+Nothing here is a data migration. Existing stores are tightened in place on the
+next open; backups taken by earlier versions remain restorable.
+
+### Breaking changes
+
+- **`tesseract serve` binds `127.0.0.1:8089` by default.** It previously
+  defaulted to `:8089`, which binds every interface. If you relied on that,
+  pass `--addr` explicitly — and note the bare `:8089` form is itself
+  non-loopback.
+- **Binding a non-loopback address with no token mode is refused.** Configure
+  `--managed-auth` or `--static-token`, or state the risk explicitly with the
+  new `--allow-unauthenticated-remote`. The error names all three ways out.
+- **With a token mode configured, every route requires a valid token — reads
+  included.** Only `GET /v1/health/readiness` and, when enabled, `GET
+  /v1/metrics` are public. Previously every GET was unauthenticated even under
+  `--managed-auth`, including `/v1/auth/tokens/list`, which returned every
+  token's id, client, scopes and namespace globs, and seven `/v1/admin/*` reads
+  exposing config, storage paths and queue internals.
+- **A static token can no longer reach `/v1/admin/settings/apply` or
+  `/v1/admin/config/restore`.** `requireScope` and `requireNamespaceAccess`
+  returned true when no claims were present, so the `admin` guards on those two
+  routes were no-ops under a static token. A validated static token now carries
+  explicit claims — the default scope set a managed token receives, plus `"*"`
+  globs — which deliberately excludes `admin`. Those routes now require a
+  managed token minted with an explicit `admin` scope.
+- **JSON request bodies are rejected when they carry unknown fields.** Eight
+  handlers — knowledge write, the six memory routes, lookup and synthesis —
+  decoded leniently and silently discarded fields they did not recognize. A
+  caller sending the flat MCP shape to `POST /v1/knowledge/write` got a
+  validation error about missing pointer facets, naming fields it had not used.
+  The rejection now names the offending field and, where one exists, its nested
+  equivalent. `filters.*` on recall is affected too: `memory.RecallFilters`
+  carries no struct tags, so its children are Go field names.
+- **Request bodies are capped at 10 MiB** and reported as a 400 naming the limit.
+- **`context_plan` takes `max_items` and `max_tokens_estimate`, not
+  `budget_items` and `budget_tokens`, and its token default rises 4000 → 8000.**
+  `context_pack` with `shape=list` takes `max_tokens_estimate` rather than
+  `max_tokens`. The same knob had three names and two defaults, so a planner
+  call with defaults silently received half the budget of a direct pack call.
+  The retired names are refused rather than ignored, and each message names its
+  replacement. Note `budget_tokens` survives on `tesseract_recall` and
+  `tesseract_history` as a genuinely different knob — the response
+  serialization ceiling — and is unchanged.
+- **HTTP promote events are renamed to the MCP spellings**:
+  `promote.request.created` → `promote.request`, `promote.request.approved` →
+  `promote.approve`. Apply stays `promote` on all surfaces. No data migration
+  ships: no row under either spelling has ever been persisted.
+- **Backups are directories, not a single JSON file** (format v2). Backups
+  written by earlier versions are still restorable; only v2 is written. Restore
+  is a replacement, not a merge — restoring a v1 snapshot drops the memory and
+  knowledge tables that format could not represent.
+- **A missing static asset returns 404 instead of `index.html` with 200.**
+  Extension-less paths still fall back to `index.html`, so client-side routes
+  are unaffected. A missing `.js` served as HTML surfaced to users as
+  `Unexpected token '<'` rather than as the missing file it was.
+
+### Added
+
+- **`tesseract --help` and `tesseract --version`.** Neither existed. Bare
+  `tesseract` previously initialized telemetry, materialized the whole XDG
+  layout, opened the database and ran migrations *before* looking at its
+  arguments, then failed with a usage line that named the wrong binary and
+  listed 15 of 26 subcommands. Help, version, `path`, `plugin`, an unknown
+  command and any `<command> --help` now answer without touching disk.
+  Subcommand help prints that subcommand's flags from the same flagset the
+  parser uses, and exits 0 — `serve --help` previously printed
+  `error: flag: help requested` and exited 1.
+- **`--allow-unauthenticated-remote`** on `tesseract serve`, for a deliberate
+  unauthenticated network bind.
+- **`tesseract context backup verify`** checks every file checksum, refuses a
+  backup directory carrying files its manifest does not list, runs an integrity
+  check, and confirms each record row resolves to a payload matching its stored
+  checksum. **`backup export` gains `--config`** to include `config.yaml`.
+- **Backups now contain the whole store.** The previous format captured three of
+  thirteen tables and seven of the fifteen `records` columns — the entire typed
+  record layer, `record_tags`, `namespace_policies`, `embeddings`, and both
+  memory and knowledge tables were absent. A backup of a memory engine did not
+  include its memory. The snapshot is now taken with SQLite `VACUUM INTO`, which
+  is consistent under concurrent writers and covers tables added in future
+  schema versions without anyone remembering to list them.
+- **`Store.DeferredEmbeddingStatus`** reports whether deferred embedding is live
+  or disabled, so an intentional no-op queue is distinguishable from a broken
+  one. They were previously identical at runtime.
+- **HTTP server timeouts**: `ReadHeaderTimeout` 10s, `ReadTimeout` 60s,
+  `IdleTimeout` 120s, and an explicit 1 MiB `MaxHeaderBytes`. None were set.
+  `WriteTimeout` is deliberately omitted — synthesis, recall and lookup make
+  synchronous provider calls on the request path.
+- **Worked request examples on both surfaces in `tesseract_skills`.** The skill
+  corpus contained no HTTP examples at all, while MCP and HTTP genuinely differ
+  in shape — so it documented only the flat MCP form and misled HTTP callers.
+  Ten mutating tools now open with a pointer to their own skill rather than
+  ending with a generic footer.
+
+### Changed
+
+- **Everything Tesseract owns on disk is owner-only** — `0700` directories,
+  `0600` files, covering the database, record payloads, config, and the config
+  backup tree. There was previously no `0600` or `0700` anywhere in production
+  code. Existing stores are tightened in place on next open. Paths you name —
+  a plugins directory, a backup `--out`, a restore source — are never touched.
+- **Restore is failure-atomic.** It validates the complete snapshot before
+  touching live state, stages beside the live paths, and swaps atomically. It
+  previously deleted the record tree before any database work, so a later
+  failure left index rows pointing at files that no longer existed; it also
+  cascade-deleted every embedding row through a foreign key without restoring
+  them, rebuilt heads in a separate transaction after commit, and left a hybrid
+  store when restoring over a non-empty one. An interrupted swap is now
+  resolved on the next start rather than left ambiguous.
+- **The MCP handshake reports the real build version.** It was a hardcoded
+  `"0.9.0"` that had already outlived the release it named. `make build` and
+  `make install` now stamp the version.
+- **`make build` and `make install` no longer require Node.** They compile the
+  committed UI bundle with Go alone; `make build-all` / `make install-all` keep
+  the chained frontend build.
+- The web UI kit resolves from npm rather than a private git ref, so
+  `npm install` works without organization access.
+- `internal/webui` serves the SPA through `github.com/hollis-labs/go-webui`
+  instead of a local copy, and an unbuilt bundle serves a placeholder rather
+  than panicking at startup.
+
+### Fixed
+
+- **A failed embedding enqueue is no longer silent.** `WriteRevision` committed
+  the revision and then discarded the enqueue error, so a revision could be
+  durably stored and never embedded with nothing recorded anywhere. It also
+  reused the caller's context after commit, so a client disconnect between
+  commit and enqueue dropped the job. Post-commit work now runs on a detached
+  context and failures are counted and logged with identity only, no payload
+  content. Recovery remains `POST /v1/admin/queue/backfill`.
+- **The CLI emits audit events for the promote request and approve stages.** It
+  emitted none, so two of three stages were absent from the audit trail for
+  every CLI-initiated promotion.
+- **A restore no longer writes outside the record tree.** Record paths from a
+  backup were used unsanitized. Manifest paths and record paths are now
+  validated at verify time and again while staging.
+- **Backup files are owner-only.** They embed `auth_tokens.token_hash` and were
+  written world-readable.
+- **Memory key rejections now teach the rule.** Keys remain strictly validated
+  rather than normalized — folding `-` to `_` would collide with knowledge rows,
+  which bypass key validation, and hyphens are already stripped before the
+  lexical index sees them. The error now states the charset and segment rules
+  and suggests the valid spelling of what was passed. Reads report the same
+  diagnosis: a structurally invalid key previously returned "not found" on read
+  and a validation error on write.
+- **The static token comparison is constant-time.**
+- `docs/SPECS/VIEWS.md` advertised `normalized_selector` and `returned_count` on
+  `evaluation_meta`; neither has ever existed. `docs/SPECS/API.md` and
+  `docs/SPECS/PROMOTION.md` were corrected against the code as well.
+- `internal/contextcli/plugin_cmd.go` discarded the error from creating the
+  plugins directory.
+
+### Known inconsistency
+
+The budget vocabulary was unified across the **MCP and HTTP** surfaces but not
+the **CLI**: `tesseract context broker` still takes `--budget-items` and
+`--budget-tokens` at a 4000-token default, while `context-pack` takes
+`--max-tokens` at 8000. Renaming user-facing CLI flags is a separate breaking
+change and is tracked rather than folded in here.
+
 ## [0.9.0] — 2026-09-04
 
 The memory, knowledge and context domains get one read surface instead of three.
