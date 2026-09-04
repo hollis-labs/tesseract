@@ -1,7 +1,6 @@
 package contextapi
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -23,6 +22,13 @@ func (s *Server) memoryStoreUnavailable(w http.ResponseWriter) bool {
 }
 
 // memoryWriteRequest mirrors memory.WriteInput with JSON-friendly fields.
+//
+// Nested, like every other body on this surface: `author`, `payload` and
+// `facets` are objects. The MCP memory_write tool takes the same facts flat
+// (author_agent_id, author_version, payload_summary, payload_body) because MCP
+// tool schemas favour flat scalar parameters. decodeRequestBody rejects a body
+// in the other surface's shape by name rather than decoding it into a
+// zero-valued struct — see the rationale on knowledgeWriteRequest.
 type memoryWriteRequest struct {
 	Domain         domains.Domain `json:"domain,omitempty"`
 	Namespace      string         `json:"namespace"`
@@ -47,8 +53,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req memoryWriteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	// This endpoint is memory-domain only. Knowledge writes must go through
@@ -139,6 +144,15 @@ type memoryRecallRequest struct {
 	// does not decode into that field at all — but the precedence is stated
 	// rather than left to be discovered.
 	//
+	// Note what that means for the nested object: memory.RecallFilters carries
+	// no struct tags, so its keys are its Go field names (Origins, Statuses,
+	// Tags, ConfidenceMin, ...), matched case-insensitively and NOT across
+	// underscores. `filters` is the one place on this surface that is not
+	// snake_case. Under decodeRequestBody a snake_case child now returns a 400
+	// naming it rather than being dropped in silence, which is the point — but
+	// the leaf name is all encoding/json reports, so the error cannot say which
+	// object it came from.
+	//
 	// A pointer for the reason memory.RecallFilters.SimilarityMin documents:
 	// 0.0 is a legal floor and `omitempty` on a bare float64 would drop it.
 	SimilarityMin *float64 `json:"similarity_min,omitempty"`
@@ -153,8 +167,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req memoryRecallRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	for _, ns := range req.Namespaces {
@@ -299,8 +312,7 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req memoryDeprecateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if req.RevisionID == "" {
@@ -337,16 +349,15 @@ type memoryTouchRequest struct {
 //
 // No namespace check: the request names revision IDs, not namespaces, exactly as
 // GET /v1/memory/revisions/{id} does — the other route that reinforces by
-// revision ID. It is gated by authorizeMutatingRequest in the router because it
-// is a POST that changes state; that gate authenticates rather than checking a
+// revision ID. It is gated by authorizeRequest in the router because it is a
+// POST that changes state; that gate authenticates rather than checking a
 // write scope, so a read-only caller can still close the loop.
 func (s *Server) handleMemoryTouch(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
 	}
 	var req memoryTouchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	res, err := s.MemoryStore.TouchRevisions(r.Context(), req.RevisionIDs)
@@ -374,8 +385,7 @@ func (s *Server) handleMemoryPromote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req memoryPromoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if !requireNamespaceAccess(w, r, req.SourceNamespace) {

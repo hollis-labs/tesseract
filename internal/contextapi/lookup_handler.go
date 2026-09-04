@@ -1,7 +1,6 @@
 package contextapi
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -96,8 +95,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req tesseractLookupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", "malformed JSON: "+err.Error(), nil)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	for _, ns := range req.Namespaces {

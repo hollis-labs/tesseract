@@ -195,17 +195,21 @@ func TestTouchParity_WrongArgumentNameIsInertOnBothDoors(t *testing.T) {
 		t.Errorf("MCP touched %d under a misspelled argument, want 0", res.Touched)
 	}
 
+	// HTTP refuses the misspelling outright now that the memory handlers decode
+	// strictly (CW-20260514-0023). This used to answer 200 with touched=0, which
+	// satisfied "inert" only in the narrow sense that nothing was reinforced —
+	// the caller still got a success for a body the server had silently ignored.
+	// A 400 is the stronger form of the same guarantee, and it closes the gap
+	// rather than widening it: the MCP door already refused this body, because
+	// revision_ids is declared required, so the two doors now agree on refusal
+	// instead of one of them quietly accepting.
 	code, body := touchViaHTTP(t, srv,
 		`{"revisions":["`+viaHTTP.RevisionID+`"]}`)
-	if code != http.StatusOK {
-		t.Fatalf("HTTP status = %d, body = %s", code, body)
+	if code != http.StatusBadRequest {
+		t.Fatalf("HTTP status = %d, want 400; body = %s", code, body)
 	}
-	var httpRes touchWire
-	if err := json.Unmarshal([]byte(body), &httpRes); err != nil {
-		t.Fatalf("decode: %v; raw=%s", err, body)
-	}
-	if httpRes.Touched != 0 {
-		t.Errorf("HTTP touched %d under a misspelled field, want 0", httpRes.Touched)
+	if !strings.Contains(body, `"revisions"`) {
+		t.Errorf("HTTP rejection does not name the offending field: %s", body)
 	}
 
 	for _, c := range []struct {
