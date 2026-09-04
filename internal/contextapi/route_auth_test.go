@@ -304,7 +304,7 @@ func TestStaticTokenComparisonRejectsPrefixAndSuffix(t *testing.T) {
 	srv.AuthToken = "static-secret"
 
 	// Note: the extracted bearer value is trimmed before comparison (existing
-	// behaviour), so surrounding whitespace is not a mismatch.
+	// behavior), so surrounding whitespace is not a mismatch.
 	for _, token := range []string{"", "static-secre", "static-secrets", "STATIC-SECRET", "static-secretx"} {
 		res := performJSONWithHeaders(t, srv, http.MethodGet, "/v1/namespaces/list", nil,
 			map[string]string{"Authorization": "Bearer " + token})

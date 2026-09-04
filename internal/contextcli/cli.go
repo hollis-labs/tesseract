@@ -1989,7 +1989,7 @@ func (c *CLI) runBroker(ctx context.Context, args []string) int {
 	}
 	switch args[0] {
 	case "plan":
-		return c.runBrokerPlan(ctx, args[1:])
+		return c.runBrokerPlan(args[1:])
 	case "fetch":
 		return c.runBrokerFetch(ctx, args[1:])
 	default:
@@ -2029,7 +2029,7 @@ func brokerExtractKeywords(text string, n int) []string {
 	return out
 }
 
-func brokerBuildPlan(intent, summary string, maxItems, maxTokens int) (namespaces []string, includePins bool, rationale string) {
+func brokerBuildPlan(intent, summary string) (namespaces []string, includePins bool, rationale string) {
 	switch intent {
 	case "resume_task":
 		keywords := brokerExtractKeywords(summary, 3)
@@ -2047,9 +2047,6 @@ func brokerBuildPlan(intent, summary string, maxItems, maxTokens int) (namespace
 	case "boot_project":
 		namespaces = []string{"user/memory/*", "user/pins/*"}
 		includePins = true
-		if maxItems < 100 {
-			maxItems = 100
-		}
 		rationale = "boot_project: user/memory/* + user/pins/* for full project boot"
 	case "review_session":
 		namespaces = []string{"user/cache/*", "user/pins/*"}
@@ -2062,7 +2059,14 @@ func brokerBuildPlan(intent, summary string, maxItems, maxTokens int) (namespace
 	return namespaces, includePins, rationale
 }
 
-func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
+func brokerPlanMaxItems(intent string, requested int) int {
+	if intent == "boot_project" && requested < 100 {
+		return 100
+	}
+	return requested
+}
+
+func (c *CLI) runBrokerPlan(args []string) int {
 	fs := flag.NewFlagSet("broker plan", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	intent := fs.String("intent", "custom", "intent: resume_task|boot_project|review_session|custom")
@@ -2088,7 +2092,8 @@ func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
 		return code
 	}
 
-	namespaces, includePins, rationale := brokerBuildPlan(*intent, *summary, *maxItems, *maxTokens)
+	*maxItems = brokerPlanMaxItems(*intent, *maxItems)
+	namespaces, includePins, rationale := brokerBuildPlan(*intent, *summary)
 
 	planNS := strings.Join(namespaces, ", ")
 	pinsStr := "no"
@@ -2162,7 +2167,8 @@ func (c *CLI) runBrokerFetch(ctx context.Context, args []string) int {
 		return code
 	}
 
-	namespaces, _, rationale := brokerBuildPlan(*intent, *summary, *maxItems, *maxTokens)
+	*maxItems = brokerPlanMaxItems(*intent, *maxItems)
+	namespaces, _, rationale := brokerBuildPlan(*intent, *summary)
 
 	_, _ = fmt.Fprintln(c.Stdout, "Fetching context via broker plan...")
 	_, _ = fmt.Fprintf(c.Stdout, "  Plan: %s → %d namespace pattern(s)\n", *intent, len(namespaces))

@@ -103,7 +103,7 @@ func requireScope(w http.ResponseWriter, r *http.Request, scope string) bool {
 		// returning true here is what previously reduced every scope guard to
 		// a no-op. With no token mode configured at all (loopback dev) there
 		// is nothing to check and the request passes, which is the documented
-		// local-first behaviour.
+		// local-first behavior.
 		if authModeConfigured(r) {
 			writeError(w, http.StatusForbidden, "insufficient_scope", "request carries no token claims", map[string]any{
 				"required": scope,
@@ -575,43 +575,12 @@ func (s *Server) authorizeRequest(w http.ResponseWriter, r *http.Request) *http.
 		writeError(w, http.StatusUnauthorized, "auth_required", "missing or invalid bearer token", nil)
 		return nil
 	}
-	// The static token carries no stored metadata, so synthesise its claims
+	// The static token carries no stored metadata, so synthesize its claims
 	// (see staticTokenClaims) instead of letting the request travel
 	// claim-less — that is what keeps the scope guards live in this mode.
 	ctx := context.WithValue(r.Context(), tokenClaimsKey, staticTokenClaims)
 	ctx = context.WithValue(ctx, authConfiguredKey, true)
 	return r.WithContext(ctx)
-}
-
-type issueTokenRequest struct {
-	Label string `json:"label"`
-	TTL   string `json:"ttl"`
-}
-
-func (s *Server) handleIssueToken(w http.ResponseWriter, r *http.Request) {
-	var req issueTokenRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-		return
-	}
-	var ttl time.Duration
-	if strings.TrimSpace(req.TTL) != "" {
-		parsed, err := time.ParseDuration(req.TTL)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "validation_error", "ttl must be a valid duration", nil)
-			return
-		}
-		ttl = parsed
-	}
-	token, meta, err := s.Store.IssueAuthToken(r.Context(), req.Label, ttl)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "auth_failed", err.Error(), nil)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token": token,
-		"meta":  meta,
-	})
 }
 
 // --- Token management endpoints ---
@@ -1011,71 +980,6 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 		"revision":      rec.Revision,
 		"head_revision": rec.Revision,
 		"timestamp":     rec.CreatedAt,
-	})
-}
-
-type promoteRequest struct {
-	ClientID       string `json:"client_id"`
-	Actor          string `json:"actor"`
-	FromNamespace  string `json:"from_namespace"`
-	FromKey        string `json:"from_key"`
-	ToNamespace    string `json:"to_namespace"`
-	ToKey          string `json:"to_key"`
-	SourceRevision *int64 `json:"source_revision,omitempty"`
-}
-
-func (s *Server) handlePromote(w http.ResponseWriter, r *http.Request) {
-	var req promoteRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-		return
-	}
-	if err := s.Policy.CanPromote(req.Actor, req.ToNamespace); err != nil {
-		writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
-		return
-	}
-
-	src, err := s.Store.Head(r.Context(), req.FromNamespace, req.FromKey)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "not_found", "source head not found", nil)
-			return
-		}
-		writeError(w, http.StatusBadRequest, "read_failed", err.Error(), nil)
-		return
-	}
-	if req.SourceRevision != nil && src.Revision != *req.SourceRevision {
-		writeError(w, http.StatusConflict, "revision_mismatch", "source revision does not match", nil)
-		return
-	}
-
-	if err := s.Policy.CanWrite(req.ClientID, req.Actor, req.ToNamespace); err != nil {
-		writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
-		return
-	}
-	if err := s.Policy.ValidateTierPolicy(req.ToNamespace, "write", len(src.Payload), src.Payload); err != nil {
-		writeError(w, http.StatusForbidden, "policy_violation", err.Error(), nil)
-		return
-	}
-	if err := s.Policy.ValidatePayload(req.ToNamespace, src.Payload); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-		return
-	}
-	out, err := s.Store.AppendRecord(r.Context(), contextstore.AppendInput{
-		Namespace: req.ToNamespace,
-		Key:       req.ToKey,
-		Actor:     req.Actor,
-		Payload:   src.Payload,
-	})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "promote_failed", err.Error(), nil)
-		return
-	}
-	_ = s.Store.EmitPromote(r.Context(), contextstore.EventPromote, req.Actor, req.ToNamespace, req.ToKey, out.Revision, out.RecordID,
-		json.RawMessage(`{"source":"http","from_namespace":`+quoteJSON(req.FromNamespace)+`,"from_key":`+quoteJSON(req.FromKey)+`}`))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"promoted_record_id": out.RecordID,
-		"target_revision":    out.Revision,
 	})
 }
 

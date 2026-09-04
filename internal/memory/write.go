@@ -227,7 +227,7 @@ INSERT INTO memory_revisions (
 	// Everything below this line is post-commit work: the revision is durable
 	// and the caller is going to be told so no matter what happens next. It
 	// therefore runs on a context detached from the caller's cancellation. An
-	// HTTP client that disconnects — or an MCP call that is cancelled —
+	// HTTP client that disconnects — or an MCP call that is canceled —
 	// between the commit above and the enqueue below would otherwise drop the
 	// embed job permanently, leaving a committed revision that no worker will
 	// ever see. WithoutCancel keeps trace state and request values and drops

@@ -3,6 +3,7 @@ package contextcli
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -66,6 +67,36 @@ func TestCLIBudgetCanonicalNamesDrivePlanAndGeneratedHint(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "--budget-items") || strings.Contains(out.String(), "--budget-tokens") {
 		t.Fatalf("generated command contains deprecated flags:\n%s", out.String())
+	}
+}
+
+func TestCLIBrokerBootProjectEnforcesItemFloor(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		requested int
+		want      int
+	}{
+		{name: "raises small request", requested: 7, want: 100},
+		{name: "preserves larger request", requested: 125, want: 125},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cli, out, errOut := newTestCLI(t)
+			if code := cli.Run(context.Background(), []string{
+				"context", "broker", "plan", "--intent", "boot_project",
+				"--max-items", strconv.Itoa(tc.requested), "--max-tokens-estimate", "1234", "--output", "json",
+			}); code != 0 {
+				t.Fatalf("broker plan failed: %s", errOut.String())
+			}
+
+			var body map[string]any
+			if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+				t.Fatalf("decode broker plan: %v", err)
+			}
+			budget := body["plan"].(map[string]any)["assembly"].(map[string]any)["budget"].(map[string]any)
+			if budget["max_items"] != float64(tc.want) || budget["max_tokens_estimate"] != float64(1234) {
+				t.Fatalf("budget = %v, want max_items=%d max_tokens_estimate=1234", budget, tc.want)
+			}
+		})
 	}
 }
 

@@ -23,7 +23,7 @@ import (
 // It delegates to decodeJSON, the package chokepoint that sets
 // DisallowUnknownFields and caps the body, and adds one thing on top: it turns
 // the decoder's terse unknown-field error into a message that names the field
-// and, where we recognise it, the shape this surface actually wants.
+// and, where we recognize it, the shape this surface actually wants.
 //
 // Strictness is the whole point. These routes used to decode leniently, so a
 // body shaped for a different surface decoded "successfully" into a
@@ -150,7 +150,7 @@ func jsonFieldNames(dst any) []string {
 //     `author`, `payload` and `facets` for the same reason. Flattening only
 //     knowledge would make the HTTP API inconsistent with itself in order to
 //     match another protocol's ergonomics.
-//   - MCP flattens because MCP tool schemas favour flat scalar parameters.
+//   - MCP flattens because MCP tool schemas favor flat scalar parameters.
 //     That is a property of that surface, not a contract this one adopts.
 //
 // The defect this endpoint actually had was never the nesting: it was that a

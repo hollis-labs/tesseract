@@ -4,7 +4,7 @@
 // Search & Research page (v2). It runs the same memory.Recall-style
 // curation the existing /v1/tesseract/lookup endpoint does, then fans
 // the curated results into a go-providers Complete() call with a
-// fixed-shape system prompt. The response carries the synthesised
+// fixed-shape system prompt. The response carries the synthesized
 // answer, the cited sources (so the frontend can resolve [n] markers),
 // and per-call token / cost telemetry resolved through go-modelsdev.
 //

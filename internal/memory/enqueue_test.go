@@ -130,7 +130,7 @@ func TestWriteRevisionEnqueueFailureIsObservableAndWriteSurvives(t *testing.T) {
 type ctxKey string
 
 // TestWriteRevisionEnqueueSurvivesCallerCancellation proves the enqueue runs
-// on a context detached from the caller's. A cancelled HTTP request or MCP
+// on a context detached from the caller's. A canceled HTTP request or MCP
 // call between commit and enqueue used to drop the job permanently; the
 // revision was durable and the embedding was gone.
 func TestWriteRevisionEnqueueSurvivesCallerCancellation(t *testing.T) {
@@ -156,7 +156,7 @@ func TestWriteRevisionEnqueueSurvivesCallerCancellation(t *testing.T) {
 		t.Errorf("enqueue context lost caller values: %v", got)
 	}
 
-	// Cancellation must not. Cancelling the caller's context after the write
+	// Cancellation must not. Canceling the caller's context after the write
 	// leaves the enqueue context alive; if the enqueue were still derived
 	// from the caller, this is where the job would have been lost.
 	cancel()

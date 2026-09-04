@@ -293,7 +293,7 @@ func loadBackup(inPath string) (*loadedBackup, error) {
 
 func loadBackupV2(dir string) (*loadedBackup, error) {
 	manifestPath := filepath.Join(dir, backupManifestName)
-	raw, err := os.ReadFile(manifestPath)
+	raw, err := os.ReadFile(manifestPath) //nolint:gosec // G304: the operator-selected backup directory is the intended input boundary.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%s is not a backup: no %s", dir, backupManifestName)
@@ -387,7 +387,7 @@ func loadBackupV2(dir string) (*loadedBackup, error) {
 // version, and every payload it indexes must be present with the checksum the
 // index claims. This is the check that would have caught a v1 backup restoring
 // into a store full of dangling records.
-func verifyBackupDB(dir string, manifest BackupManifest, files map[string]BackupFile) error {
+func verifyBackupDB(dir string, manifest BackupManifest, files map[string]BackupFile) (retErr error) {
 	dbPath := filepath.Join(dir, backupDBName)
 
 	// Reading a WAL-mode database — even read-only — makes SQLite materialize a
@@ -414,11 +414,11 @@ func verifyBackupDB(dir string, manifest BackupManifest, files map[string]Backup
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { retErr = errors.Join(retErr, db.Close()) }()
 
 	var integrity string
-	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); err != nil {
-		return fmt.Errorf("backup database integrity check: %w", err)
+	if integrityErr := db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); integrityErr != nil {
+		return fmt.Errorf("backup database integrity check: %w", integrityErr)
 	}
 	if integrity != "ok" {
 		return fmt.Errorf("backup database failed integrity check: %s", integrity)
@@ -437,11 +437,11 @@ func verifyBackupDB(dir string, manifest BackupManifest, files map[string]Backup
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { retErr = errors.Join(retErr, rows.Close()) }()
 	for rows.Next() {
 		var recordID, filePath, checksum string
-		if err := rows.Scan(&recordID, &filePath, &checksum); err != nil {
-			return err
+		if scanErr := rows.Scan(&recordID, &filePath, &checksum); scanErr != nil {
+			return scanErr
 		}
 		// A backup is untrusted input: its file paths become writes into the
 		// live payload tree at restore time, so they are checked here, before
@@ -484,22 +484,21 @@ func currentSchemaVersion(ctx context.Context, db *sql.DB) (int, error) {
 	return v, nil
 }
 
-func snapshotTableNames(ctx context.Context, dbPath string) ([]string, error) {
+func snapshotTableNames(ctx context.Context, dbPath string) (out []string, retErr error) {
 	db, err := openBackupDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { retErr = errors.Join(retErr, db.Close()) }()
 	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []string
+	defer func() { retErr = errors.Join(retErr, rows.Close()) }()
 	for rows.Next() {
 		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
+		if scanErr := rows.Scan(&name); scanErr != nil {
+			return nil, scanErr
 		}
 		out = append(out, name)
 	}
@@ -544,7 +543,7 @@ type backupSnapshot struct {
 }
 
 func loadBackupV1(path string) (*loadedBackup, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: a caller-supplied legacy backup path is the intended input boundary.
 	if err != nil {
 		return nil, err
 	}
@@ -734,16 +733,16 @@ func copyTreeHashed(srcRoot, dstRoot, relPrefix, kind string, dirMode, fileMode 
 	return out, nil
 }
 
-func copyFileHashed(src, dst string, mode os.FileMode) (int64, string, error) {
-	in, err := os.Open(src)
+func copyFileHashed(src, dst string, mode os.FileMode) (size int64, checksum string, retErr error) {
+	in, err := os.Open(src) //nolint:gosec // G304: callers provide paths derived from the resolved store or sanitized backup manifest.
 	if err != nil {
 		return 0, "", err
 	}
-	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), backupDirMode); err != nil {
-		return 0, "", err
+	defer func() { retErr = errors.Join(retErr, in.Close()) }()
+	if mkdirErr := os.MkdirAll(filepath.Dir(dst), backupDirMode); mkdirErr != nil {
+		return 0, "", mkdirErr
 	}
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // G304: dst is constrained to the resolved backup or staging tree by callers.
 	if err != nil {
 		return 0, "", err
 	}
@@ -768,12 +767,12 @@ func copyFileHashed(src, dst string, mode os.FileMode) (int64, string, error) {
 	return n, hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func hashFile(path string) (int64, string, error) {
-	f, err := os.Open(path)
+func hashFile(path string) (size int64, checksum string, retErr error) {
+	f, err := os.Open(path) //nolint:gosec // G304: callers pass files within a resolved backup or store tree.
 	if err != nil {
 		return 0, "", err
 	}
-	defer f.Close()
+	defer func() { retErr = errors.Join(retErr, f.Close()) }()
 	h := sha256.New()
 	n, err := io.Copy(h, f)
 	if err != nil {

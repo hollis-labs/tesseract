@@ -56,7 +56,7 @@ func TestHandler_ServesStaticAssets(t *testing.T) {
 	}
 }
 
-// TestHandler_MissingAssetIs404 pins the one routing behaviour that changed
+// TestHandler_MissingAssetIs404 pins the one routing behavior that changed
 // when this package moved onto go-webui (CW-20260515-0137). The hand-rolled
 // handler answered *every* unmatched path with index.html, so a stale or
 // mistyped bundle URL returned HTML under a .js name with a 200 — which the

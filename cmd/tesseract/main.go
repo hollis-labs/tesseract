@@ -441,7 +441,11 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 	if err != nil {
 		log.Printf("warning: OTel init failed: %v", err)
 	} else {
-		defer shutdown(ctx)
+		defer func() {
+			if shutdownErr := shutdown(ctx); shutdownErr != nil {
+				log.Printf("warning: OTel shutdown failed: %v", shutdownErr)
+			}
+		}()
 	}
 
 	layout, err := config.ResolveLayout()
@@ -676,7 +680,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 
 // httpServerTimeouts groups the request boundaries applied to the daemon's
 // listener. Grouped rather than inlined so tests can drive the same
-// constructor with short values and assert the behaviour, not just the field.
+// constructor with short values and assert the behavior, not just the field.
 type httpServerTimeouts struct {
 	ReadHeader     time.Duration
 	Read           time.Duration
@@ -713,7 +717,7 @@ func defaultHTTPServerTimeouts() httpServerTimeouts {
 // absolute deadline measured from the start of the request read, and several
 // routes make synchronous outbound calls or unbounded database work on the
 // request path, so any value large enough to be safe for them is too large to
-// be a useful defence:
+// be a useful defense:
 //
 //   - POST /v1/synthesis/ask — a full LLM completion, unbounded by us
 //   - POST /v1/memory/recall, GET /v1/recall, POST /v1/tesseract/lookup —

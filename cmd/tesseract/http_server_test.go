@@ -19,10 +19,10 @@ func TestDefaultHTTPServerTimeouts(t *testing.T) {
 	srv := newHTTPServer(":0", http.NotFoundHandler(), defaultHTTPServerTimeouts())
 
 	if srv.ReadHeaderTimeout <= 0 {
-		t.Error("ReadHeaderTimeout must be set — it is the Slowloris defence")
+		t.Error("ReadHeaderTimeout must be set — it is the Slowloris defense")
 	}
 	if srv.ReadHeaderTimeout > 30*time.Second {
-		t.Errorf("ReadHeaderTimeout=%s is too generous to be a defence", srv.ReadHeaderTimeout)
+		t.Errorf("ReadHeaderTimeout=%s is too generous to be a defense", srv.ReadHeaderTimeout)
 	}
 	if srv.ReadTimeout <= 0 {
 		t.Error("ReadTimeout must be set")
@@ -46,7 +46,7 @@ func TestDefaultHTTPServerTimeouts(t *testing.T) {
 	}
 }
 
-// TestHTTPServerClosesSlowHeaderWriter is the behavioural half: a client that
+// TestHTTPServerClosesSlowHeaderWriter is the behavioral half: a client that
 // opens a connection and never finishes its headers gets dropped rather than
 // holding a goroutine forever. Driven through the same constructor with a
 // short timeout so the test does not sit for the production ten seconds.
@@ -64,25 +64,25 @@ func TestHTTPServerClosesSlowHeaderWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// A request line and one header, then nothing — the header block is never
 	// terminated, which is exactly the Slowloris shape.
-	if _, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: localhost\r\nX-Dribble: a"); err != nil {
-		t.Fatalf("write partial request: %v", err)
+	if _, writeErr := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: localhost\r\nX-Dribble: a"); writeErr != nil {
+		t.Fatalf("write partial request: %v", writeErr)
 	}
 
 	// The server must close the connection on its own. Give it well over the
 	// configured timeout before declaring failure.
-	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		t.Fatalf("set read deadline: %v", err)
+	if deadlineErr := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); deadlineErr != nil {
+		t.Fatalf("set read deadline: %v", deadlineErr)
 	}
 	buf := make([]byte, 512)
 	n, err := conn.Read(buf)
 	if err == nil && n > 0 {
 		// A 408 Request Timeout followed by a close is also a pass — what
 		// matters is that the connection did not stay open indefinitely.
-		if _, err := conn.Read(buf); err == nil {
+		if _, secondReadErr := conn.Read(buf); secondReadErr == nil {
 			t.Fatalf("server kept the half-open connection alive; read %q", buf[:n])
 		}
 		return
@@ -91,7 +91,7 @@ func TestHTTPServerClosesSlowHeaderWriter(t *testing.T) {
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		t.Fatal("server did not close a connection that never finished its headers — ReadHeaderTimeout is not in effect")
 	}
-	// io.EOF or a reset: the server hung up, which is the behaviour under test.
+	// io.EOF or a reset: the server hung up, which is the behavior under test.
 }
 
 // TestHTTPServerServesNormalRequestsOverRealListener is the counterweight: the

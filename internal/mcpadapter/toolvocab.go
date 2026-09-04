@@ -93,9 +93,8 @@ var ToolVerbTable = []ToolOperation{
 // reports these separately from the names that actually conform.
 var ToolNameExemptions = map[string]string{
 	"context_rag_query": "`rag_query` is not an operation in the vocabulary, and it is the one name on the " +
-		"surface that does not fit. Left as-is under an explicit CW-20260825-0012 scope fence covering " +
-		"context_rag_query, context_search and context_embed; the other two turned out to fit " +
-		"(`search`, `embed`) and were admitted to the table on their merits.",
+		"surface that does not fit. It remains unchanged for compatibility; the related `search` and " +
+		"`embed` operation names are part of the public vocabulary.",
 	"tesseract_skills": "Named for what it serves rather than for a verb, and both its arms — the catalog " +
 		"and one skill body — are covered by the plural noun. Kept because it is the most-referenced " +
 		"identifier on the surface (every tool description ends in a `tesseract_skills <name>` pointer) " +

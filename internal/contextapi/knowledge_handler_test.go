@@ -367,8 +367,8 @@ func TestKnowledgeWrite_FlatAuthorFieldsHintTheNestedShape(t *testing.T) {
 func TestKnowledgeWrite_UnrecognizedFieldStillNamesAcceptedShape(t *testing.T) {
 	srv := newKnowledgeTestServer(t)
 
-	body := `{"namespace":"user/chrispian/knowledge/framework","sumary":"typo"}`
-	env := mustRejectUnknownField(t, srv, "/v1/knowledge/write", body, "sumary")
+	body := `{"namespace":"user/chrispian/knowledge/framework","unexpected":"value"}`
+	env := mustRejectUnknownField(t, srv, "/v1/knowledge/write", body, "unexpected")
 	if env.Details.ExpectedField != "" {
 		t.Errorf("details.expected_field = %q, want none for an unrecognized field", env.Details.ExpectedField)
 	}

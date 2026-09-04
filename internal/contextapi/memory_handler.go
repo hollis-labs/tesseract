@@ -26,7 +26,7 @@ func (s *Server) memoryStoreUnavailable(w http.ResponseWriter) bool {
 // Nested, like every other body on this surface: `author`, `payload` and
 // `facets` are objects. The MCP memory_write tool takes the same facts flat
 // (author_agent_id, author_version, payload_summary, payload_body) because MCP
-// tool schemas favour flat scalar parameters. decodeRequestBody rejects a body
+// tool schemas favor flat scalar parameters. decodeRequestBody rejects a body
 // in the other surface's shape by name rather than decoding it into a
 // zero-valued struct — see the rationale on knowledgeWriteRequest.
 type memoryWriteRequest struct {

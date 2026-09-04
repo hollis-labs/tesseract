@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -293,14 +292,4 @@ func hasWildcardGlob(globs []string) bool {
 		}
 	}
 	return false
-}
-
-// sortedKeys returns the keys of a map in sorted order (for deterministic output in tests).
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

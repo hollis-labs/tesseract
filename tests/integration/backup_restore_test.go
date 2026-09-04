@@ -61,7 +61,7 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 	}
 
 	// Every typed-record column at once: v1 captured none of them.
-	typed, err := s.AppendRecord(ctx, contextstore.AppendInput{
+	typed, appendErr := s.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace:      backupNS,
 		Key:            backupTypedKey,
 		Actor:          "app:editor",
@@ -74,8 +74,8 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 		Pointers:       []string{"repo://tesseract/internal", "sha:deadbeef"},
 		Provenance:     json.RawMessage([]byte(`{"agent":"seed","run":"1"}`)),
 	})
-	if err != nil {
-		t.Fatalf("append typed: %v", err)
+	if appendErr != nil {
+		t.Fatalf("append typed: %v", appendErr)
 	}
 
 	if err := s.UpsertNamespacePolicy(ctx, contextstore.NamespacePolicyEntry{
@@ -125,9 +125,9 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 		t.Fatalf("write knowledge revision: %v", err)
 	}
 
-	tok, _, err := s.IssueAuthToken(ctx, "admin", time.Hour)
-	if err != nil {
-		t.Fatalf("issue token: %v", err)
+	tok, _, tokenErr := s.IssueAuthToken(ctx, "admin", time.Hour)
+	if tokenErr != nil {
+		t.Fatalf("issue token: %v", tokenErr)
 	}
 	return typed.RecordID, tok
 }
@@ -141,9 +141,9 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 func TestBackupRestoreFullDomainParity(t *testing.T) {
 	ctx := context.Background()
 
-	src, err := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("open src: %v", err)
+	src, srcOpenErr := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
+	if srcOpenErr != nil {
+		t.Fatalf("open src: %v", srcOpenErr)
 	}
 	defer src.Close()
 	typedRecordID, srcToken := seedSourceStore(t, src)
@@ -153,9 +153,9 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 		t.Fatalf("export backup: %v", err)
 	}
 
-	info, err := contextstore.InspectBackup(backupPath)
-	if err != nil {
-		t.Fatalf("verify backup: %v", err)
+	info, inspectErr := contextstore.InspectBackup(backupPath)
+	if inspectErr != nil {
+		t.Fatalf("verify backup: %v", inspectErr)
 	}
 	if info.FormatVersion != contextstore.BackupFormatVersion {
 		t.Fatalf("format_version = %d, want %d", info.FormatVersion, contextstore.BackupFormatVersion)
@@ -168,9 +168,9 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	// The destination is deliberately not empty. Restoring into a populated
 	// store used to leave its memory, tags, policies and pointer rows behind,
 	// producing something that was half backup and half destination.
-	dst, err := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("open dst: %v", err)
+	dst, dstOpenErr := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
+	if dstOpenErr != nil {
+		t.Fatalf("open dst: %v", dstOpenErr)
 	}
 	defer dst.Close()
 	if _, err := dst.AppendRecord(ctx, contextstore.AppendInput{
@@ -182,9 +182,9 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed dst record: %v", err)
 	}
-	dstToken, _, err := dst.IssueAuthToken(ctx, "dst-admin", time.Hour)
-	if err != nil {
-		t.Fatalf("issue dst token: %v", err)
+	dstToken, _, tokenErr := dst.IssueAuthToken(ctx, "dst-admin", time.Hour)
+	if tokenErr != nil {
+		t.Fatalf("issue dst token: %v", tokenErr)
 	}
 	dstMem := memory.NewStore(dst.DB(), nil, "", 0, memory.NoopQueue{})
 	if _, err := dstMem.WriteRevision(ctx, memory.WriteInput{
@@ -205,25 +205,25 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	}
 
 	// ── context records, including every typed column ──────────────────────
-	srcHist, err := src.History(ctx, backupNS, backupKey, 0)
-	if err != nil {
-		t.Fatalf("src history: %v", err)
+	srcHist, srcHistoryErr := src.History(ctx, backupNS, backupKey, 0)
+	if srcHistoryErr != nil {
+		t.Fatalf("src history: %v", srcHistoryErr)
 	}
-	dstHist, err := dst.History(ctx, backupNS, backupKey, 0)
-	if err != nil {
-		t.Fatalf("dst history: %v", err)
+	dstHist, dstHistoryErr := dst.History(ctx, backupNS, backupKey, 0)
+	if dstHistoryErr != nil {
+		t.Fatalf("dst history: %v", dstHistoryErr)
 	}
 	if !reflect.DeepEqual(canonicalizeRecords(t, srcHist), canonicalizeRecords(t, dstHist)) {
 		t.Fatalf("history parity mismatch")
 	}
 
-	srcTyped, err := src.Head(ctx, backupNS, backupTypedKey)
-	if err != nil {
-		t.Fatalf("src typed head: %v", err)
+	srcTyped, srcHeadErr := src.Head(ctx, backupNS, backupTypedKey)
+	if srcHeadErr != nil {
+		t.Fatalf("src typed head: %v", srcHeadErr)
 	}
-	dstTyped, err := dst.Head(ctx, backupNS, backupTypedKey)
-	if err != nil {
-		t.Fatalf("dst typed head: %v", err)
+	dstTyped, dstHeadErr := dst.Head(ctx, backupNS, backupTypedKey)
+	if dstHeadErr != nil {
+		t.Fatalf("dst typed head: %v", dstHeadErr)
 	}
 	if !reflect.DeepEqual(canonicalizeRecords(t, []contextstore.Record{srcTyped}), canonicalizeRecords(t, []contextstore.Record{dstTyped})) {
 		t.Fatalf("typed record mismatch:\nsrc=%#v\ndst=%#v", srcTyped, dstTyped)
@@ -246,22 +246,22 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	}
 
 	// ── record_tags ────────────────────────────────────────────────────────
-	tagged, err := dst.Select(ctx, contextstore.Selector{Namespaces: []string{backupNS}, TagsAny: []string{"alpha"}, RevisionScope: "all"})
-	if err != nil {
-		t.Fatalf("dst tag select: %v", err)
+	tagged, selectErr := dst.Select(ctx, contextstore.Selector{Namespaces: []string{backupNS}, TagsAny: []string{"alpha"}, RevisionScope: "all"})
+	if selectErr != nil {
+		t.Fatalf("dst tag select: %v", selectErr)
 	}
 	if len(tagged) != 1 || tagged[0].RecordID != typedRecordID {
 		t.Fatalf("record_tags did not survive the restore: %#v", tagged)
 	}
 
 	// ── namespace_policies ─────────────────────────────────────────────────
-	srcPolicies, err := src.ListNamespacePolicies(ctx)
-	if err != nil {
-		t.Fatalf("src policies: %v", err)
+	srcPolicies, srcPolicyErr := src.ListNamespacePolicies(ctx)
+	if srcPolicyErr != nil {
+		t.Fatalf("src policies: %v", srcPolicyErr)
 	}
-	dstPolicies, err := dst.ListNamespacePolicies(ctx)
-	if err != nil {
-		t.Fatalf("dst policies: %v", err)
+	dstPolicies, dstPolicyErr := dst.ListNamespacePolicies(ctx)
+	if dstPolicyErr != nil {
+		t.Fatalf("dst policies: %v", dstPolicyErr)
 	}
 	if !reflect.DeepEqual(srcPolicies, dstPolicies) {
 		t.Fatalf("namespace policy mismatch:\nsrc=%#v\ndst=%#v", srcPolicies, dstPolicies)
@@ -270,13 +270,13 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	// ── embeddings ─────────────────────────────────────────────────────────
 	// The old restore deleted every record with foreign keys on, so ON DELETE
 	// CASCADE silently took the embeddings with them and nothing put them back.
-	srcEmb, _, err := src.ListEmbeddings(ctx, contextstore.EmbeddingFilter{Model: backupModel})
-	if err != nil {
-		t.Fatalf("src embeddings: %v", err)
+	srcEmb, _, srcEmbeddingErr := src.ListEmbeddings(ctx, contextstore.EmbeddingFilter{Model: backupModel})
+	if srcEmbeddingErr != nil {
+		t.Fatalf("src embeddings: %v", srcEmbeddingErr)
 	}
-	dstEmb, _, err := dst.ListEmbeddings(ctx, contextstore.EmbeddingFilter{Model: backupModel})
-	if err != nil {
-		t.Fatalf("dst embeddings: %v", err)
+	dstEmb, _, dstEmbeddingErr := dst.ListEmbeddings(ctx, contextstore.EmbeddingFilter{Model: backupModel})
+	if dstEmbeddingErr != nil {
+		t.Fatalf("dst embeddings: %v", dstEmbeddingErr)
 	}
 	if len(srcEmb) != 1 || len(dstEmb) != 1 {
 		t.Fatalf("embedding count: src=%d dst=%d, want 1 each", len(srcEmb), len(dstEmb))
@@ -291,25 +291,25 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	dstMem = memory.NewStore(dst.DB(), nil, "", 0, memory.NoopQueue{})
 	srcMem := memory.NewStore(src.DB(), nil, "", 0, memory.NoopQueue{})
 
-	srcRev, err := srcMem.GetCurrent(ctx, backupMemNS, backupMemKey)
-	if err != nil {
-		t.Fatalf("src memory read: %v", err)
+	srcRev, srcMemoryErr := srcMem.GetCurrent(ctx, backupMemNS, backupMemKey)
+	if srcMemoryErr != nil {
+		t.Fatalf("src memory read: %v", srcMemoryErr)
 	}
-	dstRev, err := dstMem.GetCurrent(ctx, backupMemNS, backupMemKey)
-	if err != nil {
-		t.Fatalf("memory revision did not survive the restore: %v", err)
+	dstRev, dstMemoryErr := dstMem.GetCurrent(ctx, backupMemNS, backupMemKey)
+	if dstMemoryErr != nil {
+		t.Fatalf("memory revision did not survive the restore: %v", dstMemoryErr)
 	}
 	if dstRev.RevisionID != srcRev.RevisionID || dstRev.Payload.Summary != srcRev.Payload.Summary {
 		t.Fatalf("memory revision mismatch:\nsrc=%#v\ndst=%#v", srcRev, dstRev)
 	}
 
-	srcKnow, err := srcMem.GetCurrentInDomain(ctx, domains.Knowledge, backupKnowNS, backupKnowKey)
-	if err != nil {
-		t.Fatalf("src knowledge read: %v", err)
+	srcKnow, srcKnowledgeErr := srcMem.GetCurrentInDomain(ctx, domains.Knowledge, backupKnowNS, backupKnowKey)
+	if srcKnowledgeErr != nil {
+		t.Fatalf("src knowledge read: %v", srcKnowledgeErr)
 	}
-	dstKnow, err := dstMem.GetCurrentInDomain(ctx, domains.Knowledge, backupKnowNS, backupKnowKey)
-	if err != nil {
-		t.Fatalf("knowledge revision did not survive the restore: %v", err)
+	dstKnow, dstKnowledgeErr := dstMem.GetCurrentInDomain(ctx, domains.Knowledge, backupKnowNS, backupKnowKey)
+	if dstKnowledgeErr != nil {
+		t.Fatalf("knowledge revision did not survive the restore: %v", dstKnowledgeErr)
 	}
 	if dstKnow.RevisionID != srcKnow.RevisionID {
 		t.Fatalf("knowledge revision mismatch: src=%s dst=%s", srcKnow.RevisionID, dstKnow.RevisionID)
@@ -317,28 +317,28 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 
 	// The FTS index travels with the snapshot rather than being rebuilt, so
 	// recall must work immediately after a restore.
-	hits, err := dstMem.Recall(ctx, memory.RecallInput{
+	hits, recallErr := dstMem.Recall(ctx, memory.RecallInput{
 		Namespaces:    []string{backupMemNS},
 		RevisionScope: memory.RevisionScopeCurrent,
 		Ranking:       memory.RankingRelevance,
 		Query:         "terse output",
 		Limit:         10,
 	})
-	if err != nil {
-		t.Fatalf("recall after restore: %v", err)
+	if recallErr != nil {
+		t.Fatalf("recall after restore: %v", recallErr)
 	}
 	if len(hits) == 0 {
 		t.Fatal("recall returned nothing after restore: the FTS index did not survive")
 	}
 
 	// ── audit + tokens ─────────────────────────────────────────────────────
-	srcAudit, err := src.ListAuditEvents(ctx, 100)
-	if err != nil {
-		t.Fatalf("src audit: %v", err)
+	srcAudit, srcAuditErr := src.ListAuditEvents(ctx, 100)
+	if srcAuditErr != nil {
+		t.Fatalf("src audit: %v", srcAuditErr)
 	}
-	dstAudit, err := dst.ListAuditEvents(ctx, 100)
-	if err != nil {
-		t.Fatalf("dst audit: %v", err)
+	dstAudit, dstAuditErr := dst.ListAuditEvents(ctx, 100)
+	if dstAuditErr != nil {
+		t.Fatalf("dst audit: %v", dstAuditErr)
 	}
 	if !reflect.DeepEqual(canonicalizeAudit(t, srcAudit), canonicalizeAudit(t, dstAudit)) {
 		t.Fatalf("audit parity mismatch:\nsrc=%#v\ndst=%#v", srcAudit, dstAudit)
@@ -357,18 +357,18 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	if _, err := dstMem.GetCurrent(ctx, "user/other/memory/notes", "stale.key"); !errors.Is(err, memory.ErrNotFound) {
 		t.Fatalf("destination's own memory survived the restore: %v", err)
 	}
-	staleTagged, err := dst.Select(ctx, contextstore.Selector{Namespaces: []string{"app/*"}, TagsAny: []string{"stale"}, RevisionScope: "all"})
-	if err != nil {
-		t.Fatalf("dst stale tag select: %v", err)
+	staleTagged, staleSelectErr := dst.Select(ctx, contextstore.Selector{Namespaces: []string{"app/*"}, TagsAny: []string{"stale"}, RevisionScope: "all"})
+	if staleSelectErr != nil {
+		t.Fatalf("dst stale tag select: %v", staleSelectErr)
 	}
 	if len(staleTagged) != 0 {
 		t.Fatalf("destination's own record_tags survived the restore: %#v", staleTagged)
 	}
 
 	// A restored store must be internally consistent without any repair step.
-	issues, err := dst.ScanConsistency(ctx)
-	if err != nil {
-		t.Fatalf("dst consistency scan: %v", err)
+	issues, scanErr := dst.ScanConsistency(ctx)
+	if scanErr != nil {
+		t.Fatalf("dst consistency scan: %v", scanErr)
 	}
 	if len(issues) != 0 {
 		t.Fatalf("restored store reports consistency issues: %#v", issues)
@@ -388,7 +388,7 @@ func assertBackupLayout(t *testing.T, dir string) {
 		t.Errorf("backup directory mode = %o, want 700", perm)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json")) //nolint:gosec // G304: dir is a test-owned temporary backup directory.
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}
@@ -447,9 +447,9 @@ func assertBackupLayout(t *testing.T, dir string) {
 // hand the exporter; the store cannot find it on its own.
 func TestBackupExportIncludesConfig(t *testing.T) {
 	ctx := context.Background()
-	s, err := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("open: %v", err)
+	s, openErr := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
+	if openErr != nil {
+		t.Fatalf("open: %v", openErr)
 	}
 	defer s.Close()
 
@@ -465,9 +465,9 @@ func TestBackupExportIncludesConfig(t *testing.T) {
 	if err := s.VerifyBackup(backupPath); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	got, err := os.ReadFile(filepath.Join(backupPath, "config.yaml"))
-	if err != nil {
-		t.Fatalf("read backed-up config: %v", err)
+	got, readErr := os.ReadFile(filepath.Join(backupPath, "config.yaml")) //nolint:gosec // G304: backupPath is a test-owned temporary backup directory.
+	if readErr != nil {
+		t.Fatalf("read backed-up config: %v", readErr)
 	}
 	if string(got) != "embedding:\n  model: test\n" {
 		t.Fatalf("config content = %q", got)
@@ -516,9 +516,9 @@ func TestBackupVerifyRejectsTampering(t *testing.T) {
 			name: "manifest entry removed",
 			mutate: func(t *testing.T, dir string) {
 				path := filepath.Join(dir, "manifest.json")
-				raw, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("read manifest: %v", err)
+				raw, readErr := os.ReadFile(path) //nolint:gosec // G304: path is manifest.json beneath a test-owned temporary backup directory.
+				if readErr != nil {
+					t.Fatalf("read manifest: %v", readErr)
 				}
 				var m map[string]any
 				if err := json.Unmarshal(raw, &m); err != nil {
@@ -526,9 +526,9 @@ func TestBackupVerifyRejectsTampering(t *testing.T) {
 				}
 				contents, _ := m["contents"].([]any)
 				m["contents"] = contents[:len(contents)-1]
-				out, err := json.Marshal(m)
-				if err != nil {
-					t.Fatalf("marshal manifest: %v", err)
+				out, marshalErr := json.Marshal(m)
+				if marshalErr != nil {
+					t.Fatalf("marshal manifest: %v", marshalErr)
 				}
 				if err := os.WriteFile(path, out, 0o600); err != nil {
 					t.Fatalf("write manifest: %v", err)
@@ -575,9 +575,9 @@ func TestRestoreLegacyV1Snapshot(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.json")
 	writeLegacyV1Snapshot(t, path)
 
-	dst, err := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("open dst: %v", err)
+	dst, openErr := contextstore.Open(ctx, contextstore.Config{RootDir: t.TempDir()})
+	if openErr != nil {
+		t.Fatalf("open dst: %v", openErr)
 	}
 	defer dst.Close()
 
@@ -591,30 +591,30 @@ func TestRestoreLegacyV1Snapshot(t *testing.T) {
 	// Heads are rebuilt inside the staged database, so a head read works with
 	// no repair step. The old restore rebuilt them after the commit, in a
 	// separate transaction that a failure could skip entirely.
-	head, err := dst.Head(ctx, "app/legacy/session", "summary")
-	if err != nil {
-		t.Fatalf("head after legacy restore: %v", err)
+	head, headErr := dst.Head(ctx, "app/legacy/session", "summary")
+	if headErr != nil {
+		t.Fatalf("head after legacy restore: %v", headErr)
 	}
 	if head.Revision != 2 {
 		t.Fatalf("head revision = %d, want 2", head.Revision)
 	}
-	hist, err := dst.History(ctx, "app/legacy/session", "summary", 0)
-	if err != nil {
-		t.Fatalf("history after legacy restore: %v", err)
+	hist, historyErr := dst.History(ctx, "app/legacy/session", "summary", 0)
+	if historyErr != nil {
+		t.Fatalf("history after legacy restore: %v", historyErr)
 	}
 	if len(hist) != 2 {
 		t.Fatalf("history length = %d, want 2", len(hist))
 	}
-	events, err := dst.ListAuditEvents(ctx, 10)
-	if err != nil {
-		t.Fatalf("audit after legacy restore: %v", err)
+	events, auditErr := dst.ListAuditEvents(ctx, 10)
+	if auditErr != nil {
+		t.Fatalf("audit after legacy restore: %v", auditErr)
 	}
 	if len(events) != 1 || events[0].EventType != "context.write" {
 		t.Fatalf("audit events = %#v", events)
 	}
-	issues, err := dst.ScanConsistency(ctx)
-	if err != nil {
-		t.Fatalf("consistency scan: %v", err)
+	issues, scanErr := dst.ScanConsistency(ctx)
+	if scanErr != nil {
+		t.Fatalf("consistency scan: %v", scanErr)
 	}
 	if len(issues) != 0 {
 		t.Fatalf("legacy restore left consistency issues: %#v", issues)
@@ -714,7 +714,7 @@ func writeLegacyV1SnapshotWithPath(t *testing.T, path, forceFilePath string) {
 		snap.Records[0].FilePath = forceFilePath
 	}
 
-	// v1's checksum is sha256 over the snapshot marshalled with an empty
+	// v1's checksum is sha256 over the snapshot marshaled with an empty
 	// Checksum field, which is reproduced here rather than exported.
 	raw, err := json.Marshal(snap)
 	if err != nil {
@@ -766,11 +766,11 @@ func copyDirForTest(t *testing.T, src, dst string) {
 		if info.IsDir() {
 			return os.MkdirAll(target, 0o700)
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: Walk supplies descendants of the test-owned source backup directory.
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0o600)
+		return os.WriteFile(target, data, 0o600) //nolint:gosec // G703: path comes from Walk beneath src, so rel cannot escape the temp destination.
 	})
 	if err != nil {
 		t.Fatalf("copy backup: %v", err)

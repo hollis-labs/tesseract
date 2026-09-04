@@ -113,7 +113,7 @@ func fingerprintStore(t *testing.T, s *Store) storeFingerprint {
 		if err != nil {
 			return err
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: Walk supplies descendants of the test store's records directory.
 		if err != nil {
 			return err
 		}
@@ -457,7 +457,7 @@ func assertNoRestoreScratch(t *testing.T, s *Store) {
 
 func readTestManifest(t *testing.T, dir string) BackupManifest {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(dir, backupManifestName))
+	raw, err := os.ReadFile(filepath.Join(dir, backupManifestName)) //nolint:gosec // G304: dir is a test-owned temporary backup directory.
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}
@@ -490,9 +490,9 @@ func rewriteBackupDB(t *testing.T, dir string, mutate func(*sql.DB)) {
 	if err := os.Chmod(dbPath, 0o600); err != nil {
 		t.Fatalf("chmod snapshot: %v", err)
 	}
-	db, err := openStoreDB(context.Background(), dbPath)
-	if err != nil {
-		t.Fatalf("open snapshot: %v", err)
+	db, openErr := openStoreDB(context.Background(), dbPath)
+	if openErr != nil {
+		t.Fatalf("open snapshot: %v", openErr)
 	}
 	mutate(db)
 	// Put the file back into the shape VACUUM INTO produces: a rollback-journal
@@ -512,9 +512,9 @@ func rewriteBackupDB(t *testing.T, dir string, mutate func(*sql.DB)) {
 	}
 
 	manifest := readTestManifest(t, dir)
-	size, sum, err := hashFile(dbPath)
-	if err != nil {
-		t.Fatalf("hash snapshot: %v", err)
+	size, sum, hashErr := hashFile(dbPath)
+	if hashErr != nil {
+		t.Fatalf("hash snapshot: %v", hashErr)
 	}
 	for i := range manifest.Contents {
 		if manifest.Contents[i].Path == backupDBName {

@@ -453,7 +453,7 @@ func finishInterruptedRestore(dbPath, recordsDir string) error {
 	}
 	var journal restoreJournal
 	if err := json.Unmarshal(raw, &journal); err != nil {
-		return fmt.Errorf("restore journal %s is unreadable (%v); resolve it by hand before opening the store", p.journal, err)
+		return fmt.Errorf("restore journal %s is unreadable; resolve it by hand before opening the store: %w", p.journal, err)
 	}
 	if journal.DBPath != dbPath || journal.RecordsDir != recordsDir {
 		return fmt.Errorf("restore journal %s describes a different layout (db %q, records %q); resolve it by hand", p.journal, journal.DBPath, journal.RecordsDir)
@@ -494,20 +494,20 @@ func adoptStaged(staged, live, old string, sidecars []string) error {
 		return fmt.Errorf("interrupted restore cannot be completed: neither %s nor %s exists", live, staged)
 	}
 
-	if _, err := os.Lstat(live); err == nil {
-		if err := removePathAndSidecars(old, sidecars); err != nil {
-			return err
+	if _, liveErr := os.Lstat(live); liveErr == nil {
+		if removeErr := removePathAndSidecars(old, sidecars); removeErr != nil {
+			return removeErr
 		}
-		if err := os.Rename(live, old); err != nil {
-			return err
+		if renameErr := os.Rename(live, old); renameErr != nil {
+			return renameErr
 		}
 		for _, suffix := range sidecars {
-			if err := os.Rename(live+suffix, old+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
+			if renameErr := os.Rename(live+suffix, old+suffix); renameErr != nil && !errors.Is(renameErr, os.ErrNotExist) {
+				return renameErr
 			}
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+	} else if !errors.Is(liveErr, os.ErrNotExist) {
+		return liveErr
 	} else {
 		// live is gone but its sidecars may not be; a fresh database must never
 		// inherit a stale WAL.
@@ -525,7 +525,7 @@ func writeRestoreJournal(path string, journal restoreJournal) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, storeFileMode)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, storeFileMode) //nolint:gosec // G304: path is the journal location derived from the resolved store layout.
 	if err != nil {
 		return err
 	}
