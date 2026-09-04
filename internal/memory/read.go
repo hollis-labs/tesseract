@@ -134,10 +134,59 @@ func (s *Store) GetRevisionByID(ctx context.Context, revisionID string) (Revisio
 	return rev, err
 }
 
+// explainMemoryKeyMiss attaches the memory-key policy diagnosis to a read that
+// found nothing, when the key it was asked for could not have been written as
+// a memory key in the first place.
+//
+// It closes the read/write asymmetry from CW-20260514-0022: a hyphenated key
+// used to be a validation error on write and a bare "not found" on read, so
+// the same mistake got two different diagnoses and only one of them said what
+// was wrong. Now both say it, and both suggest the valid spelling.
+//
+// Two deliberate choices:
+//
+//   - It runs on the MISS, not before the lookup. Validating up front would
+//     make any pre-existing row whose key predates (or bypassed) the rule
+//     permanently unreadable, which is a data-loss-shaped fix for a
+//     diagnostics problem. A read that found its row is answered; only a read
+//     that found nothing is explained, and for a structurally invalid memory
+//     key "nothing" is the only answer the lookup could have produced.
+//
+//   - The result wraps BOTH ErrNotFound and ErrInvalidKey. The caller asked a
+//     read question and transports map ErrNotFound to 404, so the diagnosis
+//     must not silently change a status code; but errors.Is(err, ErrInvalidKey)
+//     now holds for callers that want to tell "no such memory" apart from
+//     "that could never have been a memory key".
+func explainMemoryKeyMiss(memoryKey string, err error) error {
+	if err == nil || memoryKey == "" || !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	keyErr := ValidateKey(memoryKey)
+	if keyErr == nil {
+		return err
+	}
+	return fmt.Errorf("%w (%w)", err, keyErr)
+}
+
 // GetCurrent returns the current (latest) revision for a logical memory
 // identified by (namespace, memory_key). Returns ErrNotFound if no memory
 // exists or current_revision is empty.
+//
+// A miss on a key that could never have been written as a memory key carries
+// the key-policy diagnosis too — see explainMemoryKeyMiss.
 func (s *Store) GetCurrent(ctx context.Context, namespace, memoryKey string) (Revision, error) {
+	rev, err := s.getCurrent(ctx, namespace, memoryKey)
+	if err != nil {
+		return Revision{}, explainMemoryKeyMiss(memoryKey, err)
+	}
+	return rev, nil
+}
+
+// getCurrent is the domain-agnostic resolver behind GetCurrent and
+// GetCurrentInDomain. It applies no key policy of its own: knowledge keys
+// legitimately carry characters ValidateKey rejects, so only the callers that
+// know they are answering for the memory domain add the diagnosis.
+func (s *Store) getCurrent(ctx context.Context, namespace, memoryKey string) (Revision, error) {
 	var currentRevision string
 	row := s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(current_revision, '') FROM memory_state WHERE namespace = ? AND memory_key = ?`,
@@ -188,10 +237,11 @@ func (s *Store) GetRevisionByIDReinforced(ctx context.Context, revisionID string
 
 // GetCurrentInDomain is GetCurrent restricted to one domain.
 //
-// (namespace, memory_key) does not identify a domain — memory_state has no
-// domain column, and memory and knowledge revisions share memory_revisions —
-// so an unfiltered resolve returns whatever was written at that key regardless
-// of which domain wrote it. A caller that named a domain must not be handed
+// (namespace, memory_key) does not identify a domain. memory_state does carry
+// a domain column, but it is stamped once at creation and the head pointer it
+// holds addresses memory_revisions, which memory and knowledge share — so an
+// unfiltered resolve returns whatever was written at that key regardless of
+// which domain wrote it. A caller that named a domain must not be handed
 // another one's row: knowledge/store.go states that contract for its side
 // ("callers should not see cross-domain reads"), and this is the same contract
 // for every side, in one place, so the two cannot implement it differently.
@@ -200,13 +250,16 @@ func (s *Store) GetRevisionByIDReinforced(ctx context.Context, revisionID string
 // head pointer lives in memory_state and the domain lives on the revision; there
 // is one row to check and no index to gain.
 func (s *Store) GetCurrentInDomain(ctx context.Context, domain domains.Domain, namespace, memoryKey string) (Revision, error) {
-	rev, err := s.GetCurrent(ctx, namespace, memoryKey)
-	if err != nil {
-		return Revision{}, err
-	}
-	if rev.Domain != domain {
-		return Revision{}, fmt.Errorf("%w: revision at %s/%s is not a %s entry",
+	rev, err := s.getCurrent(ctx, namespace, memoryKey)
+	if err == nil && rev.Domain != domain {
+		err = fmt.Errorf("%w: revision at %s/%s is not a %s entry",
 			ErrNotFound, namespace, memoryKey, domain)
+	}
+	if err != nil {
+		if domain == domains.Memory {
+			err = explainMemoryKeyMiss(memoryKey, err)
+		}
+		return Revision{}, err
 	}
 	return rev, nil
 }
@@ -240,26 +293,40 @@ func (s *Store) GetCurrentInDomainReinforced(ctx context.Context, domain domains
 // door stamps "knowledge" — two doors paging identical rows with mutually
 // unusable cursors.
 func (s *Store) GetHistoryInDomain(ctx context.Context, domain domains.Domain, namespace, memoryKey string) ([]Revision, error) {
-	revs, err := s.GetHistory(ctx, namespace, memoryKey)
-	if err != nil {
-		return nil, err
-	}
+	revs, err := s.getHistory(ctx, namespace, memoryKey)
 	out := make([]Revision, 0, len(revs))
 	for _, rev := range revs {
 		if rev.Domain == domain {
 			out = append(out, rev)
 		}
 	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("%w: no %s revisions for %s/%s", ErrNotFound, domain, namespace, memoryKey)
+	if err == nil && len(out) == 0 {
+		err = fmt.Errorf("%w: no %s revisions for %s/%s", ErrNotFound, domain, namespace, memoryKey)
+	}
+	if err != nil {
+		if domain == domains.Memory {
+			err = explainMemoryKeyMiss(memoryKey, err)
+		}
+		return nil, err
 	}
 	return out, nil
 }
 
 // GetHistory returns all revisions for a logical memory identified by
 // (namespace, memory_key), ordered newest-first. Returns ErrNotFound if no
-// memory exists for the given key.
+// memory exists for the given key, with the key-policy diagnosis attached
+// when the key could never have been a memory key.
 func (s *Store) GetHistory(ctx context.Context, namespace, memoryKey string) ([]Revision, error) {
+	revs, err := s.getHistory(ctx, namespace, memoryKey)
+	if err != nil {
+		return nil, explainMemoryKeyMiss(memoryKey, err)
+	}
+	return revs, nil
+}
+
+// getHistory is the domain-agnostic resolver behind GetHistory and
+// GetHistoryInDomain. Like getCurrent, it applies no key policy.
+func (s *Store) getHistory(ctx context.Context, namespace, memoryKey string) ([]Revision, error) {
 	var memoryID string
 	row := s.db.QueryRowContext(ctx,
 		`SELECT memory_id FROM memory_state WHERE namespace = ? AND memory_key = ?`,
