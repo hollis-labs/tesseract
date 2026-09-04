@@ -1215,9 +1215,11 @@ func TestMigrationCreatesMemoryTables(t *testing.T) {
 	}
 }
 
-// TestMigrationCreatesFTS5Index verifies the case-12 migration created the
-// FTS5 virtual table and its sync triggers over memory_revisions content
-// columns.
+// TestMigrationCreatesFTS5Index verifies the FTS5 virtual table and its sync
+// triggers exist over memory_revisions content columns. Case 12 created them;
+// case 15 rebuilt the table to add memory_key and added the AFTER UPDATE
+// trigger, so what this asserts is the state after the whole ladder, not after
+// any one rung.
 func TestMigrationCreatesFTS5Index(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(context.Background(), Config{RootDir: dir})
@@ -1235,9 +1237,37 @@ func TestMigrationCreatesFTS5Index(t *testing.T) {
 		t.Fatalf("expected memory_revisions_fts virtual table: %v", err)
 	}
 
+	// memory_key must be in the column list, and FIRST: internal/memory's
+	// bm25() weight vector is positional and boosts column 0.
+	// TestBM25ColumnWeightsMatchIndexOrder is the other half of that binding;
+	// this end pins the schema so a rebuild here cannot quietly reorder it.
+	cols, err := db.Query(`SELECT name FROM pragma_table_info('memory_revisions_fts')`)
+	if err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	var got []string
+	for cols.Next() {
+		var c string
+		if err := cols.Scan(&c); err != nil {
+			t.Fatalf("scan column: %v", err)
+		}
+		got = append(got, c)
+	}
+	cols.Close()
+	want := []string{"memory_key", "payload_summary", "payload_body", "tags"}
+	if len(got) != len(want) {
+		t.Fatalf("memory_revisions_fts columns = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("memory_revisions_fts column %d = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+
 	for _, trg := range []string{
 		"memory_revisions_fts_ai",
 		"memory_revisions_fts_ad",
+		"memory_revisions_fts_au",
 	} {
 		var tname string
 		if err := db.QueryRow(
@@ -1252,9 +1282,9 @@ func TestMigrationCreatesFTS5Index(t *testing.T) {
 // TestFTS5TriggersMirrorRevisionWrites exercises the AFTER INSERT and
 // AFTER DELETE triggers by writing a memory_revisions row, running an
 // FTS5 MATCH search, and confirming the row is indexed and removed on
-// delete. Content (payload_summary, payload_body, tags) is indexed;
-// status is intentionally NOT indexed — status filtering lives at query
-// time via JOIN, keeping the BM25 arm deterministic.
+// delete. Content (memory_key, payload_summary, payload_body, tags) is
+// indexed; status is intentionally NOT indexed — status filtering lives at
+// query time via JOIN, keeping the BM25 arm deterministic.
 func TestFTS5TriggersMirrorRevisionWrites(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(context.Background(), Config{RootDir: dir})
@@ -1347,6 +1377,14 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DROP TRIGGER IF EXISTS memory_revisions_fts_ad`); err != nil {
 		t.Fatalf("drop ad trigger: %v", err)
 	}
+	// The AFTER UPDATE trigger from case 15. It has to go BEFORE the table,
+	// and leaving it out is not a subtle failure: SQLite re-parses the whole
+	// schema on the ALTER TABLE below, and a trigger naming a dropped table
+	// fails that parse — "error in trigger memory_revisions_fts_au: no such
+	// table" — from a statement about an unrelated table.
+	if _, err := db.ExecContext(ctx, `DROP TRIGGER IF EXISTS memory_revisions_fts_au`); err != nil {
+		t.Fatalf("drop au trigger: %v", err)
+	}
 	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS memory_revisions_fts`); err != nil {
 		t.Fatalf("drop fts table: %v", err)
 	}
@@ -1356,6 +1394,9 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 	// CREATE ... IF NOT EXISTS and survive a replay untouched; case 14 adds a
 	// column, and ALTER TABLE ADD COLUMN has no IF NOT EXISTS, so it must be
 	// dropped here or the re-migrate below fails with "duplicate column name".
+	// Case 15 drops before it creates, so it replays cleanly on its own — but
+	// it leaves behind a trigger this fixture must remove, which is why the
+	// DROP TRIGGER above exists.
 	//
 	// Any future migration that is not itself replay-safe needs its own line
 	// here. That is the standing cost of resuming the loop from MAX(version),

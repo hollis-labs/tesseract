@@ -242,6 +242,33 @@ process must be updated first.**
 
 ### Fixed
 
+- **`memory_key` is in the lexical index, and outranks a mention of it
+  (schema 15).** `memory_revisions_fts` indexed `payload.summary`,
+  `payload.body` and tags only, so an exact-key `search_mode=lexical` search
+  returned every entry that *cited* the key and never the entry that *was* it.
+  Since entries here cite each other by key in `[[wikilink]]` form, that
+  inverted every citation lookup; where nobody cited the key it returned
+  `results_total: 0`, which reads as "no such record". Four live canonical
+  entries were confirmed unreachable by their own keys. `memory_key` is now
+  indexed, and carries a `bm25()` column weight of 10 so the key's owner ranks
+  above prose hits — measured on the live corpus, that puts the owner first for
+  1,368 of 1,383 current keys, against 1,103 unweighted. The weight scales a
+  per-column term frequency, so recall for queries that touch no `memory_key`
+  is unchanged. Applies to the hybrid arm too, which shares the expression.
+  **No reindex step is needed**: schema 15 rebuilds the FTS table from
+  `memory_revisions` on first open, covering existing entries.
+  `namespace` is deliberately still not indexed — it is already an exact filter
+  via the required `namespaces` argument. The `search_mode` description and the
+  recall skill claimed `lexical` was the tool for "a namespace"; both now say
+  `memory_key` and state what is and is not indexed.
+- **The FTS index no longer goes stale when a key or namespace is renamed.**
+  Schema 12 shipped INSERT and DELETE triggers only, on the reasoning that
+  indexed columns never mutate. That held for the payload columns but not for
+  `memory_key` and tags, which `ApplyMigration` rewrites in place during a
+  namespace rename — so a renamed entry stayed searchable under its old tags,
+  and would have under its old key. A guarded `AFTER UPDATE` trigger
+  (`memory_revisions_fts_au`) now reindexes the row, and its `WHEN` clause skips
+  the status and embedding writes that touch no indexed column.
 - **Activation decay no longer compounds across passes.** The decay job measured
   elapsed time from a baseline it never advanced, so every pass re-decayed an
   already-decayed value over a longer interval. A never-read memory lost two

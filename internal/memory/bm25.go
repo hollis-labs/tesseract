@@ -14,6 +14,71 @@ import (
 // enough candidates to fuse against the cosine arm without over-fetching.
 const bm25CandidateDefault = 100
 
+// bm25IndexColumns is the column list of memory_revisions_fts, in declaration
+// order. It exists so the weight vector below can be checked against the real
+// index rather than against a comment (see TestBM25ColumnWeightsMatchIndexOrder).
+var bm25IndexColumns = []string{"memory_key", "payload_summary", "payload_body", "tags"}
+
+// bm25MemoryKeyWeight is the bm25() column weight on memory_key. Every other
+// column stays at 1.0, the default.
+//
+// The weight is here because a hit on memory_key is not the same KIND of
+// evidence as a hit in prose. A key is what a record IS; a body mention is a
+// citation of some other record. Since records in this corpus cite each other
+// by key in [[wikilink]] form, an unweighted index puts the citations above
+// the referent for exactly the query -- the exact key -- where the referent is
+// certainly what was wanted.
+//
+// 10.0 is measured, not chosen for roundness. Over all 1,383 distinct current
+// memory_keys on the live corpus (1,770 revisions), each used verbatim as a
+// search_mode=lexical query, the share where the key's OWN record ranks first:
+//
+//	weight   1.0    2.0    3.0    5.0   10.0   20.0   50.0
+//	owner#1  1103   1294   1343   1360   1368   1360   1355
+//
+// It is a genuine peak, and the decline past it is BM25 doing what BM25 does:
+// weight multiplies term frequency, term frequency saturates, and once every
+// key hit is pinned at the ceiling the ranking can no longer tell the record
+// whose key IS the query from one whose key merely CONTAINS it, so the order
+// falls back to length normalization. Cranking it higher is not "more exact".
+//
+// What it does NOT do is disturb ordinary prose recall, and that is measured
+// too rather than assumed. bm25() weights scale a per-column term frequency,
+// so a column contributing zero occurrences contributes zero however it is
+// weighted: across 3,904 prose queries (2-, 3- and 5-word prefixes of real
+// payload summaries), the 35 with no query term appearing in ANY memory_key
+// had their ordering changed by this weight in 0 cases. Where it does reorder,
+// a record whose key matches the query moved up, which is the entire point.
+//
+// It applies to the hybrid arm as well, not only search_mode=lexical: the
+// claim "a key hit is stronger evidence" is not specific to a mode, and RRF
+// consumes this arm's rank order, so a split would make hybrid rank the key's
+// owner below records citing it for no reason anyone could state.
+const bm25MemoryKeyWeight = 10.0
+
+// bm25RankExpr is the ORDER BY expression for the FTS5 arm: bm25() with the
+// column weights above, positionally aligned to bm25IndexColumns.
+//
+// Built by concatenation rather than bound as parameters because SQLite does
+// not accept bind parameters for bm25()'s weight arguments; the inputs are Go
+// constants and never caller data, so nothing here is reachable from a query
+// string.
+var bm25RankExpr = buildBM25RankExpr()
+
+func buildBM25RankExpr() string {
+	var b strings.Builder
+	b.WriteString("bm25(memory_revisions_fts")
+	for _, col := range bm25IndexColumns {
+		w := 1.0
+		if col == "memory_key" {
+			w = bm25MemoryKeyWeight
+		}
+		fmt.Fprintf(&b, ", %g", w)
+	}
+	b.WriteString(")")
+	return b.String()
+}
+
 // buildRecallFilters returns the WHERE fragments and bind args shared by
 // fetchCandidates (dense/metadata path) and fetchBM25Candidates (FTS5
 // path). Fragments reference memory_revisions aliased as r; callers
@@ -331,6 +396,11 @@ func bm25MatchExpr(in RecallInput) string {
 // empty slice if the query is empty after sanitization or if n <= 0
 // reduces to the default.
 //
+// The bm25() call carries the column weights in bm25RankExpr, which boost
+// memory_key over the prose columns. Both callers -- lexical and the hybrid
+// arm -- get the same expression, so the two modes cannot disagree about what
+// a key match is worth.
+//
 // The revision_id tiebreak makes this a total order, which matters at the
 // LIMIT boundary: without it, WHICH rows survive the arm cut is not
 // determined by construction when bm25 scores tie there, so the same query
@@ -364,14 +434,14 @@ FROM memory_revisions_fts fts
 INNER JOIN memory_revisions r ON r.rowid = fts.rowid
 INNER JOIN memory_state s ON s.current_revision = r.revision_id
 WHERE memory_revisions_fts MATCH ? AND ` + whereClause + `
-ORDER BY bm25(memory_revisions_fts), r.revision_id
+ORDER BY ` + bm25RankExpr + `, r.revision_id
 LIMIT ?`
 	case RevisionScopeTimeline:
 		sqlText = `SELECT ` + recallRevisionColumns + `
 FROM memory_revisions_fts fts
 INNER JOIN memory_revisions r ON r.rowid = fts.rowid
 WHERE memory_revisions_fts MATCH ? AND ` + whereClause + `
-ORDER BY bm25(memory_revisions_fts), r.revision_id
+ORDER BY ` + bm25RankExpr + `, r.revision_id
 LIMIT ?`
 	default:
 		return nil, fmt.Errorf("unknown revision scope %q", in.RevisionScope)

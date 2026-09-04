@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion = 14
+	schemaVersion = 15
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -731,6 +731,116 @@ CREATE TABLE IF NOT EXISTS pointer_verifications (
 			// after this point. That is the recovery path; there is no other.
 			if _, err = tx.ExecContext(ctx, `UPDATE memory_state SET last_decayed_at = ?`,
 				time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return err
+			}
+		case 15:
+			// memory_key joins the lexical index (CW-20260903-0062).
+			//
+			// Before this, memory_revisions_fts carried payload_summary,
+			// payload_body and tags only. The consequence was backwards and
+			// load-bearing: an exact-key lexical search returned every record
+			// that MENTIONED the key -- records cite each other by key in
+			// [[wikilink]] form all over this corpus -- and never the record
+			// that WAS it. `migrate_mcp_keys_to_1password` is canonical,
+			// current, and in the namespace searched, and searching it
+			// returned results_total: 0. An empty page reads as "no such
+			// record", so the failure was silent and confident.
+			//
+			// That is the one field a caller reaching for search_mode=lexical
+			// is most likely to be holding, because the tool's own guidance
+			// sends identifier lookups here.
+			//
+			// FTS5 has no ALTER TABLE ADD COLUMN, so widening the index means
+			// dropping and rebuilding it. The triggers go first: they name the
+			// old column list, and a trigger referencing a dropped table is
+			// only an error when it fires, which would be at the next write
+			// rather than here.
+			//
+			// The rebuild reindexes the whole corpus from memory_revisions, so
+			// existing records are covered by this migration and no separate
+			// reindex step or one-off script is needed. It runs once, inside
+			// the same transaction as the rest of the ladder, on the first
+			// open after this version ships.
+			for _, stmt := range []string{
+				`DROP TRIGGER IF EXISTS memory_revisions_fts_ai`,
+				`DROP TRIGGER IF EXISTS memory_revisions_fts_ad`,
+				`DROP TRIGGER IF EXISTS memory_revisions_fts_au`,
+				`DROP TABLE IF EXISTS memory_revisions_fts`,
+			} {
+				if _, err = tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			// memory_key leads the column list because bm25() weights are
+			// positional: internal/memory/bm25.go pins the weight vector to
+			// this order, and TestBM25ColumnWeightsMatchIndexOrder binds the
+			// two so a future column cannot silently shift what is boosted.
+			if _, err = tx.ExecContext(ctx, `
+CREATE VIRTUAL TABLE memory_revisions_fts USING fts5(
+    memory_key,
+    payload_summary,
+    payload_body,
+    tags,
+    content='memory_revisions',
+    content_rowid='rowid'
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+INSERT INTO memory_revisions_fts(rowid, memory_key, payload_summary, payload_body, tags)
+SELECT rowid, memory_key, payload_summary, payload_body, tags FROM memory_revisions`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER memory_revisions_fts_ai
+AFTER INSERT ON memory_revisions BEGIN
+    INSERT INTO memory_revisions_fts(rowid, memory_key, payload_summary, payload_body, tags)
+    VALUES (new.rowid, new.memory_key, new.payload_summary, new.payload_body, new.tags);
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER memory_revisions_fts_ad
+AFTER DELETE ON memory_revisions BEGIN
+    INSERT INTO memory_revisions_fts(memory_revisions_fts, rowid, memory_key, payload_summary, payload_body, tags)
+    VALUES ('delete', old.rowid, old.memory_key, old.payload_summary, old.payload_body, old.tags);
+END`); err != nil {
+				return err
+			}
+			// An AFTER UPDATE trigger, which migration 12 deliberately did not
+			// have. Its reasoning -- "content columns never mutate in
+			// production" -- was true of payload_summary and payload_body and
+			// is NOT true of memory_key: ApplyMigration (internal/memory/
+			// migrate.go) rewrites namespace, memory_key and tags in place
+			// when a namespace is renamed. Indexing memory_key without this
+			// would ship a field that goes stale the first time anyone renames
+			// a key, and a stale index entry is worse than a missing one --
+			// it answers.
+			//
+			// tags had the same exposure already and was silently desyncing on
+			// that path; the same trigger fixes it, which is why it is here
+			// rather than in a ticket of its own.
+			//
+			// The WHEN clause is what keeps this cheap. memory_revisions is
+			// UPDATEd on two hot paths that touch no indexed column --
+			// status transitions (write.go) and embedding writes (embed.go) --
+			// and without the guard each one would delete and re-tokenize the
+			// full body. `IS NOT` rather than `!=` because these columns are
+			// nullable and `NULL != NULL` is NULL, which would skip the
+			// reindex exactly when a column is set or cleared.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER memory_revisions_fts_au
+AFTER UPDATE ON memory_revisions
+WHEN old.memory_key IS NOT new.memory_key
+  OR old.payload_summary IS NOT new.payload_summary
+  OR old.payload_body IS NOT new.payload_body
+  OR old.tags IS NOT new.tags
+BEGIN
+    INSERT INTO memory_revisions_fts(memory_revisions_fts, rowid, memory_key, payload_summary, payload_body, tags)
+    VALUES ('delete', old.rowid, old.memory_key, old.payload_summary, old.payload_body, old.tags);
+    INSERT INTO memory_revisions_fts(rowid, memory_key, payload_summary, payload_body, tags)
+    VALUES (new.rowid, new.memory_key, new.payload_summary, new.payload_body, new.tags);
+END`); err != nil {
 				return err
 			}
 		}

@@ -23,12 +23,16 @@ related: [memory, revisions]
 | `search_mode` | What runs | Ordered by |
 |---|---|---|
 | `hybrid` | BM25 + cosine, fused by RRF, then weighted by status, origin, confidence, recency and activation | fused score |
-| `lexical` | BM25 alone | `bm25()` — raw match strength, no weighting |
+| `lexical` | BM25 alone | `bm25()` — match strength, with `memory_key` weighted above the prose columns; none of the status/origin/confidence/recency/activation weighting |
 | `semantic` | cosine alone | cosine similarity |
 
 The default is `hybrid`, which is what every caller got before the knob existed.
 
-**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a namespace. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
+**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a `memory_key`. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
+
+**`memory_key` is in the index, and outranks a mention of it.** The indexed columns are `memory_key`, `payload.summary`, `payload.body` and tags — and `memory_key` carries a heavier `bm25()` column weight than the prose, because a key is what a record *is* while a body hit is usually a citation of some *other* record. Entries here cite each other by key in `[[wikilink]]` form, so without that weight an exact-key search hands back the citations and buries the referent. Searching a key you hold is a reliable existence check.
+
+`namespace` is **not** indexed, and that is not the same gap. It is already an exact filter — the `namespaces` argument is required on every recall and matches exactly or by prefix — so a namespace belongs in that argument, not in `query`. Indexing it would only let a namespace-shaped query match every entry that lives there.
 
 **What `lexical` binds is a punctuation-joined run**, as an adjacent phrase: `CW-20260519-0032` finds the entry containing that identifier, not the entries that mention `CW`, `20260519` and `0032` in unrelated places.
 

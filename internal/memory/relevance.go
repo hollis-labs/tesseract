@@ -123,8 +123,13 @@ func (s *Store) relevanceOrdered(ctx context.Context, in RecallInput) ([]RecallR
 }
 
 // lexicalOrdered implements search_mode=lexical: the BM25 arm alone, in the
-// order SQL returned it (bm25(), then revision_id — already a total order, and
-// the tiebreak is what makes it one).
+// order SQL returned it (weighted bm25(), then revision_id — already a total
+// order, and the tiebreak is what makes it one).
+//
+// "Weighted" is inside the retrieval score, not layered on top of it: the
+// memory_key boost (bm25MemoryKeyWeight) is an argument to bm25(), so the
+// pass-through promise below still holds exactly. An exact-key match reaching
+// the top is BM25 saying so, not a re-ranking pass overruling it.
 //
 // The arm's ordering is passed through untouched. It is NOT re-scored by the
 // status/origin/confidence/recency/activation modifiers hybrid applies,

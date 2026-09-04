@@ -265,9 +265,13 @@ var searchModeArgDescription = "Which retrieval signal answers the query, under 
 	"`hybrid` fuses keyword and semantic matching — the right default when you are describing a topic in your own words. " +
 	"`lexical` runs keyword (BM25) matching alone, ordered by match strength, with every term required. " +
 	"Reach for it when you know the exact string you are looking for and fusion would only blur it: " +
-	"a ticket ID (CW-20260519-0032), a function or symbol name, a dotted or slashed path, a namespace. " +
+	"a ticket ID (CW-20260519-0032), a function or symbol name, a dotted or slashed path, a memory_key. " +
 	"Semantic similarity is the wrong tool for an identifier — it returns things that MEAN something like your query, " +
 	"and an identifier means nothing, it only matches. " +
+	"`memory_key` is indexed and weighted ABOVE the prose columns, so searching an exact key returns the record that " +
+	"OWNS that key ahead of the records that merely cite it. " +
+	"`namespace` is deliberately NOT in the index — it is already an exact filter via the required `namespaces` " +
+	"argument, so name it there rather than in the query. " +
 	"What `lexical` binds as an adjacent phrase is a PUNCTUATION-joined run: CW-20260519-0032 finds that ticket rather than " +
 	"documents mentioning CW, 20260519 and 0032 in unrelated places. " +
 	"What it does NOT do is multi-word phrase search — space-separated words are each required to appear, not to appear together, " +
