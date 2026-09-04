@@ -45,13 +45,17 @@ func (s *Store) EmitWrite(ctx context.Context, actor, namespace, key string, rev
 }
 
 // EmitPromote records a promote-stage audit event. eventType MUST be one of
-// EventPromoteRequest, EventPromoteApprove, EventPromote,
-// EventPromoteRequestCreated, EventPromoteRequestApproved. The duplication
-// preserves the MCP-vs-HTTP naming distinction in persisted audit data.
+// EventPromoteRequest, EventPromoteApprove, EventPromote — the same three
+// names on every surface, so a filter on a stage catches HTTP-, MCP- and
+// CLI-initiated promotions alike.
+//
+// This allowlist is the enforcement point for that guarantee. The retired
+// per-surface spellings "promote.request.created" and "promote.request.approved"
+// (CW-20260419-0058) fall through to the default and error out, so they cannot
+// return through a call site that hardcodes a string.
 func (s *Store) EmitPromote(ctx context.Context, eventType, actor, namespace, key string, revision int64, recordID string, metadata json.RawMessage) error {
 	switch eventType {
-	case EventPromoteRequest, EventPromoteApprove, EventPromote,
-		EventPromoteRequestCreated, EventPromoteRequestApproved:
+	case EventPromoteRequest, EventPromoteApprove, EventPromote:
 	default:
 		return fmt.Errorf("EmitPromote: unknown event type %q", eventType)
 	}

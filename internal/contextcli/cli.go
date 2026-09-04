@@ -712,14 +712,31 @@ func (c *CLI) runPromoteRequest(ctx context.Context, args []string) int {
 	}
 	payload, _ := json.Marshal(pr)
 	namespace := "app/" + *clientID + "/promotions"
-	if _, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
+	reqRec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: namespace,
 		Key:       requestID,
 		Actor:     *actor,
 		Payload:   payload,
-	}); err != nil {
+	})
+	if err != nil {
 		return c.fail(err.Error())
 	}
+
+	// Until CW-20260419-0058 the CLI emitted nothing here, so a CLI-driven
+	// promotion appeared in the audit log only at apply — the request and
+	// approval stages left no trace at all.
+	//
+	// The event_type matches HTTP and MCP exactly; that is the guarantee the
+	// ticket bought and tests/parity asserts it. Subject and metadata mirror
+	// the HTTP handler, whose flow this command duplicates: the event points at
+	// the stored request record. MCP points its request event at the *source*
+	// record instead — a real remaining inconsistency, but a separate one from
+	// the naming drift fixed here.
+	_ = c.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, *actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
+		json.RawMessage(fmt.Sprintf(
+			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
+			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
+		)))
 
 	_, _ = fmt.Fprintf(c.Stdout, "Promotion request created.\n")
 	_, _ = fmt.Fprintf(c.Stdout, "  Request ID:  %s\n", requestID)
@@ -824,14 +841,20 @@ func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 	pr.ApprovalID = approvalID
 	pr.ApprovedBy = *actor
 	updPayload, _ := json.Marshal(pr)
-	if _, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
+	updRec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
 		Actor:     *actor,
 		Payload:   updPayload,
-	}); err != nil {
+	})
+	if err != nil {
 		return c.fail(err.Error())
 	}
+
+	// See the note in runPromoteRequest: this stage was also silent before
+	// CW-20260419-0058.
+	_ = c.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, *actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)))
 
 	_, _ = fmt.Fprintf(c.Stdout, "Approved promotion request %s.\n", requestID)
 	_, _ = fmt.Fprintf(c.Stdout, "  Approval ID: %s\n", approvalID)

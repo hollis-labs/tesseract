@@ -156,10 +156,16 @@ context promote accept <request-id> [--notes N]   # approve + apply in sequence
 
 ## Audit Trail
 
-Every step emits an audit event:
-- `promote.request.created` — includes request_id, source, target, actor
-- `promote.request.approved` — includes request_id, approval_id, actor
-- `promote.request.applied` — includes request_id, approval_id, new record_id, actor
+Every step emits an audit event. The event_type is the same whichever door
+opened the promotion — HTTP, MCP and CLI all emit these three names:
+- `promote.request` — includes request_id, source, target, actor
+- `promote.approve` — includes request_id, approval_id, actor
+- `promote` — includes request_id, approval_id, new record_id, actor
+
+Do not confuse these with the identically-spelled capability scopes
+(`promote.request`, `promote.approve`, `promote.apply`) or with the `type`
+discriminator on the stored request and approval payloads. Three separate
+namespaces that happen to share strings; see `internal/contextstore/audittypes.go`.
 
 ---
 

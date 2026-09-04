@@ -108,7 +108,7 @@ func (s *Server) handlePromoteRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequestCreated, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
+	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
 		json.RawMessage(fmt.Sprintf(
 			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
 			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
@@ -199,7 +199,7 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequestApproved, actor, reqNamespace, req.RequestID, updRec.Revision, updRec.RecordID,
+	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, req.RequestID, updRec.Revision, updRec.RecordID,
 		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, req.RequestID, approvalID)))
 
 	writeJSON(w, http.StatusOK, map[string]any{

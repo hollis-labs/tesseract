@@ -70,7 +70,7 @@ Two fields exist only on the HTTP request route and have no MCP argument: `sourc
 
 Listing: `context_promotion_list` with `status=pending|approved|applied|all` (default `pending`). Read-only, no scope required. Over HTTP, reconstruct the same picture from `GET /v1/context/audit?event_type=promote.request`.
 
-Every stage emits an audit event (`promote.request`, `promote.approve`, `promote`) - reconstruct the chain with `context_audit_list`.
+Every stage emits an audit event (`promote.request`, `promote.approve`, `promote`) - reconstruct the chain with `context_audit_list`. These three names do not vary by door: a promotion opened over HTTP, over MCP or from the CLI lands under the same `event_type`, so one filter per stage catches all of them. (Before v0.9 the HTTP handlers wrote `promote.request.created` / `promote.request.approved` and the CLI wrote nothing at request and approve; both are fixed, and no audit row was ever persisted under the retired spellings.)
 
 ## memory_promote (the shortcut)
 

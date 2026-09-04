@@ -22,7 +22,7 @@ Helpers (one per semantic class):
 - `EmitWrite`, `EmitTypedWrite`, `EmitStatusPromote`, `EmitStatusDeprecate`
 - `EmitSessionSnapshot`, `EmitPacket`
 - `EmitBulkIngest`, `EmitChunkedIngest`
-- `EmitPromote(ctx, eventType, ...)` — accepts any of the promote-stage constants
+- `EmitPromote(ctx, eventType, ...)` — accepts `EventPromoteRequest`, `EventPromoteApprove` or `EventPromote`, and errors on anything else
 - `EmitMaintenance(ctx, eventType, ...)` — accepts `EventMaintenanceTrim` or `EventMaintenanceCompact`
 
 Helpers structured-log on error via `log/slog`; callers may continue to
@@ -75,6 +75,13 @@ Event types actually emitted by the MCP surface:
 - `memory.deprecate` — a memory revision was deprecated (also fires on the source side of a promote).
 - `memory.promote` — umbrella event for a session → user/project memory promotion. A promote also emits the nested `memory.write` (target) and `memory.deprecate` (source).
 - `knowledge.write` / `knowledge.supersede` — the knowledge-domain equivalents.
+
+The three promote-stage names are surface-independent: `POST /v1/context/promote/*`,
+`context_promote` and `tesseract context promote ...` all write the same
+`event_type` per stage, so `event_type: promote.approve` returns every approval
+regardless of which door made it. Do not filter for `promote.request.created` or
+`promote.request.approved` — those were HTTP-only spellings, retired in v0.9, and
+no audit row was ever written under either.
 
 Embedding (the async `EmbedRevision` queue) does not emit audit events —
 embedder progress is observability, not an audit concern. Use the
