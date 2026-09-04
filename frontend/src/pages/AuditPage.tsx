@@ -43,18 +43,13 @@ const EVENT_TYPE_GROUPS: { label: string; types: { value: string; label: string 
     ],
   },
   {
-    label: "Promote (MCP)",
+    // One group, not one per surface: HTTP, MCP and CLI emit the same
+    // event_type per stage, so a single filter covers every initiator.
+    label: "Promote",
     types: [
-      { value: "promote", label: "promote" },
       { value: "promote.request", label: "promote.request" },
       { value: "promote.approve", label: "promote.approve" },
-    ],
-  },
-  {
-    label: "Promote (HTTP)",
-    types: [
-      { value: "promote.request.created", label: "promote.request.created" },
-      { value: "promote.request.approved", label: "promote.request.approved" },
+      { value: "promote", label: "promote" },
     ],
   },
   {

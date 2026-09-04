@@ -49,11 +49,9 @@ func TestEmitPromote(t *testing.T) {
 		name   string
 		evType string
 	}{
-		{"mcp_request", EventPromoteRequest},
-		{"mcp_approve", EventPromoteApprove},
+		{"request", EventPromoteRequest},
+		{"approve", EventPromoteApprove},
 		{"apply", EventPromote},
-		{"http_request", EventPromoteRequestCreated},
-		{"http_approve", EventPromoteRequestApproved},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,6 +71,38 @@ func TestEmitPromoteRejectsUnknownEventType(t *testing.T) {
 	err := s.EmitPromote(context.Background(), "bogus", "user", "user/notes", "k", 1, "rec", nil)
 	if err == nil {
 		t.Fatal("expected error for unknown promote event type")
+	}
+}
+
+// TestEmitPromoteRejectsRetiredSpellings pins the allowlist against the
+// per-surface promote-stage names that CW-20260419-0058 retired. The HTTP
+// handlers used to emit these; nothing ever persisted under them. If someone
+// reintroduces one — by hardcoding the string at a call site, or by adding the
+// constant back — EmitPromote must refuse it rather than write a second name
+// for a stage that already has one.
+func TestEmitPromoteRejectsRetiredSpellings(t *testing.T) {
+	retired := []string{
+		"promote.request.created",
+		"promote.request.approved",
+		// Never emitted, but documented once in PROMOTION.md; fence it too.
+		"promote.request.applied",
+		"promote.apply",
+	}
+	for _, evType := range retired {
+		t.Run(evType, func(t *testing.T) {
+			s := newTestStore(t)
+			err := s.EmitPromote(context.Background(), evType, "user", "user/notes", "k", 1, "rec", nil)
+			if err == nil {
+				t.Fatalf("EmitPromote accepted retired spelling %q; the promote stages have one name each", evType)
+			}
+			evs, listErr := s.ListAuditEvents(context.Background(), 10)
+			if listErr != nil {
+				t.Fatalf("list audit: %v", listErr)
+			}
+			if len(evs) != 0 {
+				t.Fatalf("rejected emit still wrote %d audit event(s): %+v", len(evs), evs)
+			}
+		})
 	}
 }
 
