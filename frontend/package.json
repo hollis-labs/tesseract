@@ -2,6 +2,9 @@
   "name": "tesseract-frontend",
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -12,8 +15,8 @@
   },
   "dependencies": {
     "@hollis-labs/sysop-ui": "^0.9.0",
-    "@tiptap/react": "^3.20.0",
-    "@tiptap/starter-kit": "^3.20.0",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "lucide-react": "^0.546.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -24,11 +27,12 @@
     "@biomejs/biome": "^2.4.7",
     "@tailwindcss/vite": "^4.0.0",
     "@tsconfig/strictest": "^2.0.8",
+    "@types/node": "^20.19.43",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.8"
+    "vite": "^8.2.2"
   }
 }

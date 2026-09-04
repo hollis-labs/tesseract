@@ -218,7 +218,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   // Run the LLM synthesis for the active thread entry. Cached on the entry
   // so jumping back to a prior question doesn't re-spend tokens.
   const handleSynthesize = async () => {
-    if (!active || !active.response) return;
+    if (!active?.response) return;
     if (active.synthesis) return;
     const explicitNs = namespacesField
       .split(",")
