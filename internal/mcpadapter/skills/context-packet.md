@@ -23,8 +23,8 @@ The simplest path. Plans and fetches in a single call:
   "execute": true,
   "intent": "boot_project",
   "summary": "Tesseract backend — batch 1 parity work",
-  "budget_items": 50,
-  "budget_tokens": 4000
+  "max_items": 50,
+  "max_tokens_estimate": 8000
 }
 ```
 
@@ -46,10 +46,16 @@ Reach for two-phase when you want to override globs, tighten budgets, or inspect
 
 ## Budgets
 
-Two tool surfaces, two parameter names — same semantics:
+One knob pair, one spelling, one default, everywhere records are assembled:
 
-- `context_plan` → `budget_items` (default 50), `budget_tokens` (default 4000).
-- `context_pack` with `shape: "packet"` → `max_items` (default 50), `max_tokens_estimate` (default 8000).
+| Parameter | Default | Accepted by |
+|---|---|---|
+| `max_items` | 50 | `context_plan` (both arms), `context_pack` (both shapes), `POST /v1/context/packet`, `POST /v1/broker/plan` |
+| `max_tokens_estimate` | 8000 | the same four |
+
+`context_plan` used to spell these `budget_items` / `budget_tokens` and default tokens to 4000. Both old names are now a `validation_error` naming the replacement, rather than a silently ignored argument that would have assembled against 8000.
+
+Do not confuse `max_tokens_estimate` with `budget_tokens` on `tesseract_recall` / `tesseract_history`. That one is still called `budget_tokens` and is a different knob: a ceiling on how much of the response is serialized, not a budget for what gets assembled. See `tesseract_skills recall-and-ranking`.
 
 Records are included in selector order until either budget is hit. The manifest's `truncated` / `truncation_reason` fields identify the binding constraint (`budget.max_items` or `budget.max_tokens_estimate`), so you can tune the next call.
 
@@ -68,7 +74,7 @@ So an absent `payload` under a cap means **withheld**, never empty. Use a small 
 `payload_mode` is **not** a projection knob here. The `keys | summary | full` projection lives on the recall and lookup tools, where it means one thing.
 
 - `context_plan` and `context_pack` with `shape: "packet"` accept `payload_mode: "full"` as a no-op; any other value is a `validation_error`.
-- `context_pack` with `shape: "list"` returns whole payloads and has no cap at all, so it rejects `payload_mode` at **any** non-empty value — `"full"` included — along with `payload_max_bytes`, `include_pins` and `max_tokens_estimate`.
+- `context_pack` with `shape: "list"` returns whole payloads and has no cap at all, so it rejects `payload_mode` at **any** non-empty value — `"full"` included — along with `payload_max_bytes` and `include_pins`. It does accept `max_items` and `max_tokens_estimate`: those are shape-independent.
 
 ## Pins
 

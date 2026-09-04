@@ -40,6 +40,23 @@ convention for audit emits.
 
 The response envelope carries `next_cursor` when more results are available; omit it (or pass `0`) on the first call.
 
+```json
+{"namespace": "user/chrispian/memory/decisions", "event_type": "memory.write", "limit": 25}
+```
+
+The HTTP peer is `GET /v1/context/audit`, and it takes three filters this tool does not: `actor`, `since` and `until` (both RFC3339, both rejected outright if they are not). Its `limit` also defaults to 50 rather than 10, and it is not capped at 25. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
+
+```bash
+curl -sS -G "$TESSERACT_URL/v1/context/audit" \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  --data-urlencode "namespace=user/chrispian/memory/decisions" \
+  --data-urlencode "event_type=memory.write" \
+  --data-urlencode "since=2026-04-01T00:00:00Z" \
+  --data-urlencode "limit=50"
+```
+
+Page by feeding the previous response's `next_cursor` back as `cursor`; the server returns events with `id < cursor`, so paging walks backwards through time and terminates when `next_cursor` is absent.
+
 ## Event types
 
 Event types actually emitted by the MCP surface:

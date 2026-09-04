@@ -15,14 +15,16 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("knowledge_write",
 		mcp.WithDescription(
 			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
+				"• **Read this first:** call `tesseract_skills knowledge` before composing a body. It carries the canonical request shape as a copy-pasteable payload on both this surface and HTTP (which nests `pointer` and `author` where this one takes them flat), and states what belongs in `body` versus `pointer_locator` — the single decision that determines whether the entry still carries anything once the pointer rots.\n"+
 				"• **Kind of content:** pointer-first reference records with `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** you are cataloging something that lives outside Tesseract (a file, URL, library, doc).\n"+
 				"• **Don't use this for:** agent-authored content with no external source — use `memory_write`. Generic records — use `context_write`.\n"+
-				"• **Deeper:** `tesseract_skills knowledge` for patterns; `tesseract_skills facets-and-kinds` for facet vocabulary.",
+				"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
-		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision")),
+		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
+			"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.")),
 		// The allowed set is rendered from the enforced vocabulary rather than
 		// restated, so this description cannot advertise a set the write path
 		// does not accept.

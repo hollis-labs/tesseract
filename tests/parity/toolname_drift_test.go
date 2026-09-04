@@ -113,7 +113,7 @@ var nonToolVocabulary = map[string]string{
 	"current_revision":    "memory_state SQL column (TEXT): revision_id of the memory's current head; surfaces as the state.current_revision field on a full recall result",
 	"get_revision":        "a VERB, not a tool: the operation segment of tesseract_get_revision, listed on its own row in the generated tool-naming table of docs/MCP_TOOLS.md. Any multi-segment verb in that table lands here; single-word verbs carry no underscore and never reach this heuristic",
 	"head_revision":       "API response field: id of the current revision",
-	"max_tokens_estimate": "context_pack budget field under shape=packet",
+	"max_tokens_estimate": "the packet-assembly token budget: a request field on context_pack (both shapes) and context_plan, an echoed field in context_plan's plan.budget, and a truncation_reason value on every assembly path",
 	"memory_revisions":    "SQL table: every revision of every domain, keyed by revision_id and discriminated by a domain column; named in docs/MCP_TOOLS.md when explaining why `domain` has to be a filter rather than a hint",
 	"memory_state":        "SQL table: one row per logical memory, holding current_revision, activation and access_count. It carries NO domain column, which is why (namespace, key) alone cannot identify a domain",
 	"memory_id":           "memory_revisions and memory_state SQL column (TEXT): the stable id of the memory a revision belongs to; surfaces as revision.memory_id on every recall result",

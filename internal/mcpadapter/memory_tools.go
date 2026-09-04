@@ -15,14 +15,19 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("memory_write",
 		mcp.WithDescription(
 			"**Append an agent memory revision** under `(namespace, memory_key)`.\n"+
+				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which nests the same fields differently. Seven arguments are required, and `trigger`, `origin` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
 				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** the content is authored by you or another agent and belongs to the memory domain.\n"+
 				"• **Don't use this for:** pointer-to-external-content (`knowledge_write`) or generic revisioned records (`context_write`).\n"+
-				"• **Deeper:** `tesseract_skills memory` for patterns; `tesseract_skills namespaces` for namespace rules.",
+				"• **Deeper:** `tesseract_skills namespaces` for namespace rules.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
-		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style)")),
+		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style). "+
+			"Dot-separated segments, each matching ^[a-z0-9_]+$ — lowercase letters, digits and underscore only. "+
+			"At most 6 segments, 64 characters per segment, 256 characters total. "+
+			"Hyphens, uppercase and spaces are REJECTED with a validation_error, not normalized away: `user.prefs-style` and `User.Prefs.Style` both fail. "+
+			"This rule is memory-domain only; `knowledge_write` keys are free-form slugs.")),
 		mcp.WithString("supersedes", mcp.Description("Revision ID this revision supersedes (e.g. 01HX...)")),
 		mcp.WithString("status", mcp.Description("Status: draft|reviewed|canonical (default: draft)")),
 		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the author (e.g. claude, nanite)")),
@@ -47,11 +52,11 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("memory_promote",
 		mcp.WithDescription(
 			"**Promote a session-scoped memory** to user or project scope.\n"+
+				"• **Read this first:** call `tesseract_skills promotion` before promoting. It carries a worked call on both surfaces and the two invariants this tool enforces silently in the namespace strings — source must be session-scoped, and the `{type}` segment must be identical on both sides.\n"+
 				"• **Kind of content:** a copy of the source memory revision, re-scoped to the target namespace.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** a session memory has proven durable and you want it to survive session boundaries.\n"+
-				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote_*` three-stage workflow.\n"+
-				"• **Deeper:** `tesseract_skills promotion`.",
+				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote` three-stage workflow.",
 		),
 		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace user/{id}/session/{sid}/memory/{type} (e.g. user/chrispian/session/2026-04-19:backend/memory/decisions)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),

@@ -23,7 +23,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_view",
 		mcp.WithDescription("Evaluate a view over the context store and return matching records. "+
 			"`full_evaluation` selects between two evaluation arms — see its description; they differ in more than whether metadata is attached. "+
-			"See `tesseract_skills start-here` for the primitive model."),
+			"See `tesseract_skills views` for the selector model both arms share."),
 		mcp.WithString("selector", mcp.Description(viewSelectorArgDescription)),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace glob patterns, e.g. \"user/memory/*,app/test/session/*\". "+
 			"Shorthand for `selector` in its glob form; passing both is a validation_error.")),
@@ -36,7 +36,9 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleContextView)
 
 	a.addTool(s, mcp.NewTool("context_write",
-		mcp.WithDescription("Write a record to a namespace. Requires 'write' scope in the configured capability token. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for a worked `context_write` payload on this surface and on its HTTP peer POST /v1/context/write, "+
+			"and `tesseract_skills namespaces` for which namespaces a token may write and which need `context_promote` instead. "+
+			"Writes a record to a namespace. Requires 'write' scope in the configured capability token; the target must also match the token's namespace globs, or the call is a namespace_not_permitted error."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace, e.g. app/test/session/task-001")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload as a string, e.g. '{\"status\":\"in_progress\"}'")),
@@ -45,9 +47,9 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleWrite)
 
 	a.addTool(s, mcp.NewTool("context_promote",
-		mcp.WithDescription("Move a record from an app namespace to a user namespace, in three stages. "+
-			"`stage` selects which stage runs AND which capability scope is required — see its description. "+
-			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills promotion` for all three stages written out as calls, on this surface and on HTTP, plus which scope each stage needs. "+
+			"Moves a record from an app namespace to a user namespace, in three stages. "+
+			"`stage` selects which stage runs AND which capability scope is required — see its description."),
 		mcp.WithString("stage", mcp.Required(), mcp.Description(promoteStageArgDescription)),
 		// Per-stage requiredness is enforced in the handler, not in the schema:
 		// each stage needs a different subset, and a schema-level Required()
@@ -63,7 +65,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handlePromote)
 
 	a.addTool(s, mcp.NewTool("context_promotion_list",
-		mcp.WithDescription("List promotion requests. Read-only, no token required. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("List promotion requests. Read-only, no token required. See `tesseract_skills promotion` for what each status means and which tool moves a request out of it."),
 		mcp.WithString("status", mcp.Description("Filter by status: pending|approved|applied|all (default: pending)")),
 		mcp.WithNumber("limit", mcp.Description("Max requests to return (default 10, max 25)")),
 	), a.handlePromotionList)
@@ -75,19 +77,21 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_plan",
 		mcp.WithDescription("Plan a context fetch for a given intent, and optionally execute it. No auth required. "+
 			"`execute` selects between returning the plan and returning the records the plan selects. "+
-			"See `tesseract_skills start-here` for the primitive model."),
+			"See `tesseract_skills context-packet` for the boot workflow this tool opens and how its budget is spent."),
 		mcp.WithBoolean("execute", mcp.Description("false (default): return the plan only — namespace patterns, budget, and rationale, with no store read. "+
 			"true: run the plan and return the records it selects, plus a manifest and the same rationale. "+
 			"There is no HTTP peer for execute=true; POST /v1/context/plan (and its second path POST /v1/broker/plan) is the peer of the default arm.")),
 		mcp.WithString("intent", mcp.Description("Intent: resume_task|boot_project|review_session|custom (default: custom)")),
 		mcp.WithString("summary", mcp.Description("Task summary for keyword extraction (used with resume_task intent)")),
-		mcp.WithNumber("budget_items", mcp.Description("Max items budget (default 50)")),
-		mcp.WithNumber("budget_tokens", mcp.Description("Max tokens estimate budget (default 4000)")),
+		mcp.WithNumber("max_items", mcp.Description("Max items budget (default 50). Same name, same default as `context_pack` and POST /v1/context/packet.")),
+		mcp.WithNumber("max_tokens_estimate", mcp.Description("Max tokens estimate budget (default 8000). Same name, same default as `context_pack` and POST /v1/context/packet. "+
+			"Not to be confused with `budget_tokens` on the recall/lookup tools, which is a response serialization ceiling rather than an assembly budget.")),
 		mcp.WithNumber("payload_max_bytes", mcp.Description(payloadMaxBytesArgDescription)),
 	), a.handleContextPlan)
 
 	a.addTool(s, mcp.NewTool("context_namespace_register",
-		mcp.WithDescription("Register a namespace with ownership policy. Requires 'namespace.admin' scope. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills namespaces` for the canonical tier patterns and what each owner_type implies — registering a namespace under the wrong owner is not a per-call mistake, it changes who may write there afterwards. "+
+			"Registers a namespace with ownership policy. Requires 'namespace.admin' scope."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace path to register")),
 		mcp.WithString("owner_type", mcp.Required(), mcp.Description("Ownership type: user or app")),
 		mcp.WithString("owner_id", mcp.Required(), mcp.Description("Owner identity (e.g. my-agent)")),
@@ -108,7 +112,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 	), a.handleRegistryList)
 
 	a.addTool(s, mcp.NewTool("context_audit_list",
-		mcp.WithDescription("Query the audit event log. No auth required. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Query the audit event log. No auth required. See `tesseract_skills audit` for the event-type vocabulary and worked queries on both surfaces."),
 		mcp.WithString("namespace", mcp.Description("Filter by exact namespace")),
 		mcp.WithString("event_type", mcp.Description("Filter by event type (e.g. write, promote)")),
 		mcp.WithNumber("limit", mcp.Description("Max events to return (default 10, max 25)")),
@@ -249,6 +253,22 @@ func (a *Adapter) handlePromote(ctx context.Context, req mcp.CallToolRequest) (*
 // handleContextPlan serves the merged context_plan. `execute` selects
 // between planning and running the plan.
 func (a *Adapter) handleContextPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// The assembly budget is spelled `max_items` / `max_tokens_estimate` on
+	// every packet-assembly surface — this tool, context_pack, and the HTTP
+	// peers POST /v1/context/packet and POST /v1/broker/plan. This tool used to
+	// spell it `budget_items` / `budget_tokens` at a different token default
+	// (4000, against 8000 everywhere else), so an ignored old name would not
+	// merely drop a knob: it would silently double the token budget the caller
+	// asked for. Refuse it and name the replacement.
+	if errResult := rejectRetiredArg(req, "budget_items",
+		"the item budget is now named `max_items`, matching context_pack and POST /v1/context/packet."); errResult != nil {
+		return errResult, nil
+	}
+	if errResult := rejectRetiredArg(req, "budget_tokens",
+		"the token budget is now named `max_tokens_estimate` and defaults to 8000 (was 4000), matching context_pack and POST /v1/context/packet. "+
+			"`budget_tokens` still exists on tesseract_recall / tesseract_history / tesseract_get, where it is a different knob — the response serialization ceiling, not an assembly budget."); errResult != nil {
+		return errResult, nil
+	}
 	if req.GetBool("execute", false) {
 		return a.handlePlanAndFetch(ctx, req)
 	}
@@ -961,11 +981,13 @@ func newMCPRequestID() (string, error) {
 func (a *Adapter) handlePlanOnly(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	intent := req.GetString("intent", "custom")
 	summary := req.GetString("summary", "")
-	maxItems := req.GetInt("budget_items", 50)
-	maxTokens := req.GetInt("budget_tokens", 4000)
+	maxItems := req.GetInt("max_items", 50)
+	maxTokens := req.GetInt("max_tokens_estimate", 8000)
 
 	namespaces, includePins, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
 
+	// The response echoes the budget under the SAME names the request takes,
+	// so a caller can feed `plan.budget` straight back into the next call.
 	return toolJSON(map[string]any{
 		"plan": map[string]any{
 			"namespaces":   namespaces,
@@ -985,8 +1007,8 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req mcp.CallToolRequest)
 	ctx := context.Background()
 	intent := req.GetString("intent", "custom")
 	summary := req.GetString("summary", "")
-	maxItems := req.GetInt("budget_items", 50)
-	maxTokens := req.GetInt("budget_tokens", 4000)
+	maxItems := req.GetInt("max_items", 50)
+	maxTokens := req.GetInt("max_tokens_estimate", 8000)
 	payloadMaxBytes, errResult := resolvePayloadMaxBytes(req)
 	if errResult != nil {
 		return errResult, nil

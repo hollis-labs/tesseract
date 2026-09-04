@@ -25,9 +25,10 @@ const ingestModeArgDescription = "What is being ingested, which decides how it i
 
 func (a *Adapter) registerBulkTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_ingest",
-		mcp.WithDescription("Write records into the context store in batch. "+
+		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for the per-record payload shape — each entry of `items` is the same object `context_typed_write` takes, and one malformed entry in a batch of fifty is reported per-item rather than failing the call. "+
+			"Writes records into the context store in batch. "+
 			"`mode` selects whether the input is a list of records or one document to be chunked — see its description. "+
-			"Requires 'write' scope. See `tesseract_skills start-here` for the primitive model."),
+			"Requires 'write' scope."),
 		mcp.WithString("mode", mcp.Description(ingestModeArgDescription)),
 		// Per-mode requiredness is enforced in the handlers, not in the schema:
 		// the two modes require disjoint argument sets, so a schema-level
