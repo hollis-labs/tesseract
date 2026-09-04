@@ -46,8 +46,8 @@ func TestParseNamespace(t *testing.T) {
 		{"3-seg shape rejected", "user/chrispian/memory", memory.ScopeUnknown, "", "", "", "", true},
 
 		// ── type validation ──────────────────────────────────────────────────
-		{"unknown type rejected", "user/chrispian/memory/decision", memory.ScopeUnknown, "", "", "", "", true},   // singular form
-		{"unknown type rejected 2", "user/chrispian/memory/random", memory.ScopeUnknown, "", "", "", "", true},   // not in allowlist
+		{"unknown type rejected", "user/chrispian/memory/decision", memory.ScopeUnknown, "", "", "", "", true},    // singular form
+		{"unknown type rejected 2", "user/chrispian/memory/random", memory.ScopeUnknown, "", "", "", "", true},    // not in allowlist
 		{"uppercase type rejected", "user/chrispian/memory/Decisions", memory.ScopeUnknown, "", "", "", "", true}, // case
 		{"empty type rejected", "user/chrispian/memory/", memory.ScopeUnknown, "", "", "", "", true},
 	}
@@ -90,8 +90,8 @@ func TestParseNamespace(t *testing.T) {
 
 func TestNamespacePrefix(t *testing.T) {
 	cases := []struct {
-		input  string
-		want   string
+		input string
+		want  string
 	}{
 		{"user/chrispian/memory/decisions", "user/chrispian/memory"},
 		{"user/chrispian/project/tesseract/memory/notes", "user/chrispian/project/tesseract/memory"},
