@@ -1,491 +1,333 @@
-# HTTP API Spec
+# HTTP API
 
-Status: pivot-aligned draft (Task 5)
+Status: implemented public-preview contract.
 
-## Conventions
-- Base path: `/v1`
-- JSON request/response
-- Deterministic ordering for all collection responses
-- Error shape:
-  - `code` (string)
-  - `message` (string)
-- `details` (object, optional)
+The HTTP server exposes JSON routes under `/v1/` and the embedded web UI at
+`/`. The authoritative route registry is `apiRoutes` in
+`internal/contextapi/server.go`; this document describes all 63 routes in that
+registry.
 
-Common error codes:
-- `validation_error` (`400`)
-- `policy_denied` (`403`)
-- `auth_required` (`401`)
-- `not_found` (`404`)
+## Starting the server
 
-## Local auth posture (MVP)
-- Mechanism: bearer token in `Authorization` header.
-- Scope: mutating endpoints (`POST /v1/namespaces/register`, `POST /v1/context/write`, `POST /v1/context/promote`).
-- Behavior:
-  - Legacy mode: when static server auth token is configured, mutating requests without a matching bearer token return `401`.
-  - Managed mode: token lifecycle is store-backed (issue/rotate/revoke/expiry). Revoked/expired tokens are rejected with `401`.
-  - Read endpoints (`head`, `history`, `views/evaluate`) remain side-effect free and do not require auth in MVP.
-- Error envelope for auth failures:
-  - `code: "auth_required"`
-  - `message: "missing or invalid bearer token"`
-
-### Post-MVP read/view auth roadmap
-
-Mode options under evaluation:
-1. `mvp-open-read`:
-   - `head`, `history`, `views/evaluate` remain unauthenticated.
-   - Backward compatible with current local-first defaults.
-2. `optional-gated-read`:
-   - server flag enables bearer-token checks for read/view endpoints.
-   - intended for shared workstations or team-local environments.
-3. `strict-auth-all`:
-   - all endpoints require auth tokens.
-   - requires explicit migration guidance for existing local scripts.
-
-Migration notes:
-- Default behavior remains `mvp-open-read` until a mode switch is explicitly configured.
-- Future `optional-gated-read`/`strict-auth-all` modes must preserve response ordering and payload schema contracts.
-- CLI/MCP adapters should surface mode expectations clearly and fail with deterministic `auth_required` envelopes when gated.
-
-Auth-mode endpoint matrix:
-
-| Endpoint class | `mvp-open-read` | `optional-gated-read` | `strict-auth-all` |
-|---|---|---|---|
-| Read/view (`GET /v1/context/head`, `GET /v1/context/history`, `POST /v1/views/evaluate`) | No token required | Token required | Token required |
-| Mutating (`POST /v1/namespaces/register`, `POST /v1/context/write`, `POST /v1/context/promote`, `POST /v1/context/consistency/repair`) | Token required | Token required | Token required |
-| Operational read (`GET /v1/context/audit`, `GET /v1/context/consistency/scan`, `GET /v1/health/readiness`) | No token required | Token required | Token required |
-
-Optional-gated read/view mode examples:
-- Gated read request (`head`) with bearer token:
-```http
-GET /v1/context/head?namespace=user/profile&key=summary
-Authorization: Bearer <token>
+```bash
+tesseract serve
 ```
-- Gated view request with bearer token:
-```http
-POST /v1/views/evaluate
-Authorization: Bearer <token>
-Content-Type: application/json
 
-{"selector":{"namespaces":["user/*"],"order":["namespace","key","revision"]},"limit":50}
+The default listener is `127.0.0.1:8089`. A non-loopback bind is rejected
+unless `--managed-auth`, `--static-token`, or the explicit (and discouraged)
+`--allow-unauthenticated-remote` override is supplied. The server speaks HTTP,
+not TLS; see the repository security guidance before making it reachable from
+another machine.
+
+Useful server flags:
+
+```text
+--addr 127.0.0.1:8089
+--managed-auth
+--static-token <token>
+--metrics
+--request-logs
+--request-log-mode redacted|full
 ```
-- Auth failure envelope when token missing/invalid in gated mode:
+
+`--managed-auth` and `--static-token` are mutually exclusive.
+
+## Wire conventions
+
+- Requests and responses use JSON. Successful response shapes vary by route.
+- Every response has `Content-Type: application/json` and `X-Request-Id`.
+  Supply `X-Request-Id` to retain a caller-generated correlation ID; otherwise
+  the server generates one.
+- Every request body is capped at 10 MiB (10,485,760 bytes). An oversized JSON
+  body returns `400 validation_error` and names the limit.
+- JSON decoding is strict: an unknown field is rejected with
+  `400 validation_error`; it is never silently discarded. This matters because
+  MCP write tools use flat scalar arguments while HTTP memory and knowledge
+  writes use nested `author`, `payload`, and `pointer` objects.
+- An unknown route or an unsupported method returns `404 not_found`.
+- Collection operations use deterministic ordering. Selector truncation occurs
+  after sorting.
+
+Errors use this envelope:
+
 ```json
 {
-  "code": "auth_required",
-  "message": "missing or invalid bearer token",
+  "code": "validation_error",
+  "message": "description of the failure",
   "details": null
 }
 ```
 
-Auth failure decision tree (`auth_required`):
-1. Identify endpoint class:
-   - If mutating endpoint: token is always required.
-   - If read/view endpoint: check whether mode is `mvp-open-read` vs gated modes.
-2. Confirm active auth mode:
-   - `mvp-open-read`: read/view should not require token.
-   - `optional-gated-read` or `strict-auth-all`: token required for read/view.
-3. Validate token propagation:
-   - Ensure `Authorization: Bearer <token>` header is present at call boundary.
-   - Confirm token is active (not revoked/expired in managed mode).
-4. Re-check caller/tool path:
-   - Verify CLI/MCP bridge is not dropping auth headers/tokens.
-   - Confirm endpoint target matches expected environment mode.
+`details` may be an object. Common authorization failures are
+`401 auth_required`, `403 insufficient_scope`,
+`403 namespace_not_permitted`, and `403 policy_denied`.
 
-### Read/view gated-mode preflight checklist
-Run this preflight before `GET /v1/context/head`, `GET /v1/context/history`, or `POST /v1/views/evaluate` when using `optional-gated-read` or `strict-auth-all`:
-1. Mode confirmation:
-   - Confirm active mode is gated (`optional-gated-read` or `strict-auth-all`) in the target environment.
-   - Re-check endpoint class in the auth-mode endpoint matrix to avoid using mutate assumptions for read/view calls.
-2. Token propagation:
-   - Ensure `Authorization: Bearer <token>` is present from caller through CLI/MCP/API boundary.
-   - Validate token lifecycle status (active, non-revoked, non-expired in managed mode).
-3. Endpoint targeting:
-   - Verify request is sent to the intended environment/base URL with matching mode configuration.
-   - Confirm no intermediary route strips auth headers for read/view paths.
-4. Failure expectation:
-   - If any step fails in gated modes, expect `401 auth_required` and resolve mode/token propagation before retry.
+## Authentication and authorization
 
-### Auth mode troubleshooting matrix
+There are three actual runtime postures, not separate read and write modes:
 
-Use this when observed auth behavior differs from expectation:
+| Server posture | Protected routes |
+|---|---|
+| No token mode (the loopback default) | All routes are admitted without credentials; downstream scope and namespace checks are disabled because no claims exist. |
+| `--static-token <token>` | Every route except readiness and metrics requires the exact bearer token. The static token receives the default scopes and namespace glob `*`. |
+| `--managed-auth` | Every route except readiness and metrics requires a non-expired, non-revoked store-backed bearer token. The server refuses to start until at least one active token exists. |
 
-| Endpoint class | Expected token behavior by mode | Common mismatch symptom | First troubleshooting action |
-|---|---|---|---|
-| Read/view (`head`, `history`, `views/evaluate`) | `mvp-open-read`: token optional; `optional-gated-read`/`strict-auth-all`: token required | Read/view returns `401` in environments assumed to be open-read | Confirm active mode, then verify read/view request path includes bearer token when mode is gated. |
-| Mutating (`namespaces/register`, `context/write`, `context/promote`, `consistency/repair`) | Token required in all modes | Mutating call succeeds in one tool path and fails with `401` in another | Compare token propagation across CLI/MCP/API boundaries and validate token lifecycle status. |
-| Operational read (`context/audit`, `consistency/scan`, `health/readiness`) | `mvp-open-read`: token optional; `optional-gated-read`/`strict-auth-all`: token required | Operational reads unexpectedly reject unauthenticated calls after rollout | Re-check environment mode and endpoint targeting, then align operator scripts with current mode policy. |
+Use the header on protected routes whenever either token mode is enabled:
 
-Matrix usage notes:
-- Classify the request first using the auth-mode endpoint matrix, then follow the `auth_required` decision tree.
-- If endpoint class assumptions are wrong, fix routing/targeting before rotating tokens or changing policy settings.
+```http
+Authorization: Bearer <token>
+```
 
-### Auth troubleshooting quick decision path
+Only `GET /v1/health/readiness` and `GET /v1/metrics` are public while a token
+mode is active. Metrics still returns 404 unless the server was started with
+`--metrics`. Reads of records, namespaces, audit events, admin state, and the
+token inventory are protected just like writes.
 
-Use this first-response path for `auth_required` incidents:
-1. Classify endpoint:
-   - Determine whether the request is read/view, mutating, or operational read.
-2. Confirm mode expectation:
-   - Verify active environment mode (`mvp-open-read`, `optional-gated-read`, `strict-auth-all`) and expected token requirement for that endpoint class.
-3. Check token propagation:
-   - Confirm `Authorization: Bearer <token>` reaches the API boundary from caller/tool path.
-   - Validate token lifecycle status if managed auth mode is active.
-4. Verify environment targeting:
-   - Confirm base URL/cluster/host matches the mode assumption.
-   - Check that no proxy/adapter is stripping auth headers.
-5. Choose next action:
-   - If mode mismatch: update caller assumptions/scripts to current mode.
-   - If token path failure: fix propagation before retry.
-   - If token invalid: rotate/re-issue token and re-run request.
+Authentication admits a request to its handler. Some handlers then require a
+specific scope or check the token's `namespace_globs`; those checks are shown
+in the route catalog below. A dash means there is no additional scope check,
+not that the route is anonymous.
 
-### Auth incident handoff checklist
+The static token carries:
 
-Use this when handing unresolved `auth_required` incidents to another operator:
-1. Endpoint class + request target:
-   - Record endpoint class (read/view, mutating, operational read), endpoint path, and target environment/base URL.
-2. Mode assumption snapshot:
-   - Record assumed active mode and why (`mvp-open-read`, `optional-gated-read`, `strict-auth-all`).
-3. Token-flow findings:
-   - Record whether bearer token was present at caller boundary and API boundary.
-   - Record token lifecycle status checks (active/revoked/expired) when applicable.
-4. Actions completed:
-   - List troubleshooting steps already run (matrix checks, decision-path branches, preflight checks).
-5. Pending actions + owner:
-   - Record next required action, owner, and expected verification signal before retry.
+```text
+write, promote.request, promote.approve, promote.apply,
+packet, repair, namespace.register
+```
 
-### Auth incident closure checklist
+It deliberately does not carry `admin`. Consequently the four admin settings
+and configuration mutations marked `admin` require a managed token created
+with that explicit scope. Default managed tokens use the same non-admin scope
+set as the static token. Create scoped managed tokens directly against the
+store with `tesseract context token create`; the raw token is shown only once.
 
-Use this when an `auth_required` incident is resolved:
-1. Confirmed root cause:
-   - Record the validated root cause (mode mismatch, token propagation gap, token lifecycle issue, or targeting error).
-2. Fix verification:
-   - Record verification request(s) showing expected behavior after fix.
-   - Confirm outcome is consistent with endpoint class + active mode expectations.
-3. Residual risk + follow-up:
-   - Record any remaining risk (for example, fragile proxy/header path) and assigned follow-up action.
-4. Documentation/automation updates:
-   - Record updates made to scripts/runbooks/tool configs to prevent recurrence.
-5. Closure owner + timestamp:
-   - Record incident closer and closure time for auditability.
+HTTP and MCP use different scope names for namespace registration:
+`namespace.register` on HTTP and `namespace.admin` on MCP.
 
-### Auth post-incident review note
+## Route catalog
 
-After closure, run a short review to reduce recurrence:
-1. Recurrence pattern:
-   - Identify whether the incident pattern was mode assumption drift, token-path fragility, lifecycle handling gap, or environment targeting confusion.
-2. Mitigation update:
-   - Record one concrete mitigation update (runbook/script/config/automation guard) applied after closure.
-3. Ownership:
-   - Assign an owner for validating the mitigation in the next release/maintenance window.
+### Health and metrics
 
-### Auth incident evidence capture note
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `GET /v1/health/readiness` | public | Store readiness, paths, schema version, and consistency state. |
+| `GET /v1/metrics` | public | Per-route counters and latency aggregates; 404 unless `--metrics` is enabled. |
 
-Capture these artifacts during incident handling:
-1. Request context evidence:
-   - Endpoint path/class, request timestamp window, and target environment/base URL.
-2. Mode snapshot evidence:
-   - Active mode at incident time (`mvp-open-read`, `optional-gated-read`, `strict-auth-all`) and source of confirmation.
-3. Token-path evidence:
-   - Presence/absence of bearer token at caller boundary and API boundary.
-   - Token lifecycle status evidence when managed mode applies.
-4. Verification artifacts:
-   - Before/after request outcomes used to validate diagnosis and fix.
+### Namespaces
 
-### Auth incident timeline capture note
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/namespaces/register` | `namespace.register` | Register or update ownership policy. Body: `namespace`, `owner_type`, `owner_id`, optional `policy`. |
+| `GET /v1/namespaces/list` | — | List policies; accepts `prefix` and `limit`. |
+| `GET /v1/namespaces/get` | — | Read one policy; requires `namespace`. |
 
-Record a minimal timeline for each auth incident:
-1. Detection timestamp:
-   - First observed failure time and detection source.
-2. Mitigation timeline:
-   - Ordered list of mitigation steps with timestamps (mode check, token-path fixes, config updates).
-3. Closure verification timestamp:
-   - Time of successful post-fix verification request(s) and verifier identity.
+### Context records, views, and packets
 
-### Auth incident severity tagging note
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/context/write` | `write` + namespace | Append a generic record revision. |
+| `POST /v1/context/promote` | — | Retired direct-promotion route; after any configured authentication gate, returns `410 deprecated`. |
+| `POST /v1/context/promote/request` | `promote.request` + source namespace | Create a promotion request. |
+| `POST /v1/context/promote/approve` | `promote.approve` | Approve a pending request. |
+| `POST /v1/context/promote/apply` | `promote.apply` | Apply an approved request to its target. |
+| `GET /v1/context/head` | — | Current record for `namespace` + `key`. |
+| `GET /v1/context/history` | — | Revision history for `namespace` + `key`; optional non-negative `limit`. |
+| `GET /v1/context/audit` | — | Newest-first audit page; filters: `limit`, `cursor`, `namespace`, `event_type`, `actor`, `since`, `until`. |
+| `GET /v1/context/consistency/scan` | — | Scan indexed records, payloads, and heads for issues such as `missing_payload`, `head_mismatch`, and `missing_head`. |
+| `POST /v1/context/consistency/repair` | `repair` | Rebuild heads, then report remaining issues. |
+| `POST /v1/context/typed-write` | `write` + namespace | Append a schema-checked typed record. |
+| `POST /v1/context/bulk-ingest` | `write` + each namespace | Ingest up to 100 typed records with per-item results. |
+| `POST /v1/context/status/promote` | `write` | Advance or select a typed record status. |
+| `POST /v1/context/status/deprecate` | `write` | Mark a typed record deprecated. |
+| `POST /v1/context/typed-view` | — | Evaluate a named type-registry view. |
+| `GET /v1/context/types` | — | List registered record types. |
+| `GET /v1/context/views` | — | List registered typed views. |
+| `POST /v1/context/pack` | — | Rank a named view under item/token budgets. |
+| `POST /v1/context/plan` | — | Build a context plan for an intent. |
+| `POST /v1/broker/plan` | — | Compatibility path for the same handler as `/v1/context/plan`. |
+| `POST /v1/context/packet` | — | Assemble selector results and optional pins into an `{items, manifest}` packet. |
+| `POST /v1/context/estimate` | — | Estimate record count, bytes, and tokens without returning payloads. |
+| `POST /v1/views/evaluate` | — | Evaluate a full selector and return `{items, evaluation_meta}`. |
 
-Tag each auth incident with a severity label to drive follow-up:
-1. Severity intent:
-   - `sev-1`: service-wide auth breakage or blocking operator workflows.
-   - `sev-2`: scoped auth failure with workaround.
-   - `sev-3`: isolated/non-blocking auth issue.
-2. Ownership impact:
-   - Record escalation owner for `sev-1`/`sev-2` and follow-up owner for `sev-3`.
-3. Follow-up expectation:
-   - Higher severity requires tighter follow-up timing and explicit mitigation tracking in post-incident review notes.
+`POST /v1/context/pack` and `POST /v1/context/packet` are different contracts.
+The former starts from a registered `view_id`; the latter starts from a
+selector plus an assembly policy. Likewise, the MCP `context_pack` tool has
+two shapes; see [the MCP tool catalog](../MCP_TOOLS.md).
 
-### Auth incident escalation acknowledgement note
+### Maintenance
 
-Record escalation acknowledgement details once incident severity is tagged:
-1. Acknowledgement actor:
-   - Record who accepted escalation (name/role) for `sev-1` and `sev-2` incidents.
-2. Acknowledgement timestamp + channel:
-   - Record when escalation was acknowledged and where (for example: on-call channel, incident room, paging system).
-3. Flow alignment:
-   - Link acknowledgement details to the timeline, handoff checklist, and closure checklist records.
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/maintenance/trim` | `repair` | Trim records older than a retention cutoff, optionally as a dry run. |
+| `POST /v1/maintenance/compact` | `repair` | Compact excess revisions in a namespace pattern, optionally as a dry run. |
+| `POST /v1/maintenance/ttl-cleanup` | — | Delete records whose TTL has expired. |
 
-### Auth incident escalation timeout note
+### Administration
 
-If escalation acknowledgement does not lead to progress in the expected window:
-1. Timeout window:
-   - Record the escalation timeout window for the incident severity class and current phase.
-2. Reassignment owner + status update:
-   - Reassign active escalation ownership and post status update in the incident communication channel when timeout is reached.
-3. Continuity linkage:
-   - Link timeout handling notes to timeline entries and closure checklist updates.
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `GET /v1/admin/setup` | — | Setup state and configuration paths. |
+| `GET /v1/admin/settings` | — | Current editable runtime settings. |
+| `POST /v1/admin/settings/preview` | `admin` | Validate a settings patch and report its effect without installing it. |
+| `POST /v1/admin/settings/apply` | `admin` | Validate and atomically install a settings patch. |
+| `GET /v1/admin/config/backups` | — | List configuration backups. |
+| `POST /v1/admin/config/backup` | `admin` | Create a configuration backup. |
+| `POST /v1/admin/config/restore` | `admin` | Restore a configuration backup. |
+| `GET /v1/admin/queue` | — | Queue state and counts. |
+| `GET /v1/admin/queue/failures` | — | Failed queue entries. |
+| `POST /v1/admin/queue/retry-failed` | `repair` | Requeue failed entries. |
+| `POST /v1/admin/queue/backfill` | `repair` | Queue embedding backfill work. |
+| `GET /v1/admin/storage` | — | Database, payload, and queue storage information. |
+| `POST /v1/admin/namespaces/preview` | `namespace.register` | Preview a namespace policy update. |
+| `POST /v1/admin/namespaces/update` | `namespace.register` | Install a namespace policy update. |
+| `GET /v1/admin/namespaces/history` | — | Namespace-policy history. |
 
-### Auth incident closure evidence retention note
+### Managed tokens
 
-After incident closure, keep closure evidence available with:
-1. Retention window:
-   - Record minimum retention period for closure artifacts in the active release/support window.
-2. Artifact scope:
-   - Retain closure checklist entries, verification request outcomes, and post-incident mitigation references together.
-3. Owner responsibility:
-   - Assign an owner for retention integrity and archival/cleanup decisions after the retention window ends.
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/auth/tokens/create` | — | Create a managed token from `name`, `client_id`, `scopes`, `namespace_globs`, and either `ttl` or `expires_at`; returns the raw token once. |
+| `GET /v1/auth/tokens/list` | — | List token metadata, never raw token values. |
+| `POST /v1/auth/tokens/revoke` | — | Revoke by token `id`. |
 
-### Auth incident evidence archival note
+These routes are protected whenever a token mode is enabled, but they do not
+add a second handler-level scope check. Prefer the local CLI for initial token
+creation and recovery.
 
-After retention windows complete, archive incident evidence with:
-1. Archive trigger:
-   - Archive when retention period ends and no active follow-up/escalation remains.
-2. Archival scope:
-   - Archive closure checklist records, timeline evidence, escalation acknowledgements/timeouts, and mitigation references together.
-3. Archive accountability:
-   - Record archival owner and archival timestamp in the incident evidence trail.
+### Memory and knowledge
 
-### Auth incident evidence retrieval note
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/memory/write` | namespace | Append a memory-domain revision. |
+| `POST /v1/memory/recall` | each namespace | Ranked memory/knowledge recall with cursor and response budgets. |
+| `GET /v1/memory/revisions/{id}` | — | Read one revision by ID. |
+| `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `memory_key`. |
+| `GET /v1/memory/history` | namespace | Memory history for `namespace` + `memory_key`. |
+| `POST /v1/memory/touch` | — | Reinforce deliberately used revision IDs. |
+| `POST /v1/memory/deprecate` | — | Deprecate one revision by ID. |
+| `POST /v1/memory/promote` | source + target namespaces | Promote session-scoped memory to user/project scope. |
+| `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. |
+| `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `memory_key`. |
+| `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `memory_key`. |
 
-When archived incident evidence is needed for audit/follow-up:
-1. Retrieval pointer:
-   - Record archive location/identifier used to retrieve incident evidence.
-2. Retrieval scope:
-   - Retrieve timeline, closure, escalation, retention, and archival records as one evidence package.
-3. Retriever accountability:
-   - Record retriever identity and retrieval timestamp in follow-up notes.
+Here, `namespace` means a `namespace_globs` authorization check when managed or
+static authentication is active. HTTP memory and knowledge routes currently do
+not require the MCP-only `memory:read` or `memory:write` scopes.
 
-### Auth incident evidence reconciliation note
+### Retrieval and synthesis
 
-If evidence records conflict across lifecycle stages:
-1. Mismatch record:
-   - Record conflicting fields between retained, archived, and retrieved evidence artifacts.
-2. Reconciliation action:
-   - Resolve mismatch by validating canonical incident evidence trail and correcting stale/incorrect references.
-3. Reconciler accountability:
-   - Record reconciler owner and reconciliation timestamp in incident follow-up records.
+| Method and path | Additional authorization | Contract |
+|---|---|---|
+| `POST /v1/tesseract/lookup` | each namespace | Cross-domain ranked lookup with filters, facets, cursors, and payload budgets. |
+| `GET /v1/recall` | namespace | Script-oriented recall. Requires `namespace`; accepts comma-separated `tags`, `limit`, and `format=brief|full`. |
+| `POST /v1/synthesis/ask` | — | Recall sources and ask the configured LLM; returns answer, numbered sources, and usage/cost metadata. |
 
-### Auth evidence discrepancy escalation note
+Synthesis returns `503 synthesis_unavailable` unless a provider and its API key
+are configured. Provider data egress is described in the repository security
+guidance.
 
-If reconciliation cannot resolve evidence mismatches:
-1. Escalation trigger:
-   - Escalate unresolved evidence mismatches after reconciliation attempts in the current review cycle.
-2. Escalation record:
-   - Record discrepancy summary, impacted evidence artifacts, and assigned escalation owner.
-3. Outcome linkage:
-   - Link escalation outcome to corrected evidence references before final closure confirmation.
+## Core request examples
 
-### Auth evidence prevention note
+### Generic write and read
 
-Reduce future evidence discrepancies with proactive checks:
-1. Prevention checks:
-   - Run periodic checks for missing lifecycle fields across retention, archival, retrieval, and reconciliation records.
-2. Drift watch:
-   - Flag incidents with repeated evidence corrections for targeted process updates.
-3. Precedence guard:
-   - Keep canonical-source precedence and incident closure references explicit in all preventive updates.
+```bash
+curl -sS http://127.0.0.1:8089/v1/context/write \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  --data '{
+    "client_id": "editor",
+    "actor": "app:editor",
+    "namespace": "app/editor/session",
+    "key": "goal",
+    "payload": {"text": "ship the preview"},
+    "reason": "session update"
+  }'
 
-### Auth evidence continuous-improvement note
+curl -sS \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  'http://127.0.0.1:8089/v1/context/head?namespace=app%2Feditor%2Fsession&key=goal'
+```
 
-Track recurring evidence issues with a lightweight improvement loop:
-1. Recurring issue log:
-   - Record repeated evidence mismatch patterns by incident area.
-2. Linked improvements:
-   - Attach one concrete process/runbook/doc improvement action per recurring pattern.
-3. Follow-up verification:
-   - Re-check affected evidence paths in the next maintenance pass and record outcome.
+The write response contains `record_id`, `revision`, `head_revision`, and
+`timestamp`; the read response contains `record`.
 
-### Auth evidence trend note
+### Three-stage context promotion
 
-Track evidence quality patterns across release windows:
-1. Trend tracking:
-   - Record recurring evidence mismatch/correction patterns by incident stream and release window.
-2. Trend interpretation:
-   - Classify trend direction as improving, stable, or worsening.
-3. Action linkage:
-   - Link trend signals to targeted preventive or process-improvement actions.
+Direct `POST /v1/context/promote` is gone. Use the three explicit stages:
 
-## Identity and namespace context
-Each mutating request carries:
-- `client_id` (string)
-- `actor` (string: `user`, `app:<client-id>`, `system`)
-
-Server enforces namespace ownership rules independent of caller-provided namespace values.
-When namespace policy includes schema contract metadata (`required_keys`), write/promote payloads are validated and schema mismatches return `400` (`validation_error`).
-
-### Actor-namespace contract matrix
-
-| Actor | Read/view (`head/history/views`) | Write to `app/<client-id>/*` | Write to `user/*` | Promote to `user/*` |
-|---|---|---|---|---|
-| `user` | Allowed | Allowed only when policy grants match target app namespace | Direct write not default path; use promote policy model | Allowed (required actor for promote) |
-| `app:<client-id>` | Allowed | Allowed for owned app namespace | Denied by default | Denied (must be user actor) |
-| `system` | Allowed | Allowed only for explicit system-owned/maintenance policy scopes | Denied by default | Denied by default |
-
-Policy notes:
-- Namespace ownership policy is authoritative for write decisions.
-- `user/*` remains protected and is updated through explicit user promotion semantics.
-- Policy schema evolution options reference: `docs/SPECS/STORAGE.md#policy-schema-evolution-options`.
-
-### Mutate error quick-reference
-
-| Error code | Typical endpoint context | Common trigger | Operator action |
-|---|---|---|---|
-| `auth_required` (`401`) | Any mutating endpoint (`namespaces/register`, `context/write`, `context/promote`, `consistency/repair`) | Missing/invalid bearer token, revoked/expired managed token | Verify auth mode and token propagation, then re-issue/rotate token if needed. |
-| `policy_denied` (`403`) | `context/write`, `context/promote` | Actor/namespace ownership mismatch or protected `user/*` transition without required actor semantics | Re-check actor identity, namespace ownership policy, and promote constraints in actor/namespace matrix. |
-| `validation_error` (`400`) | `namespaces/register`, `context/write`, `context/promote` | Invalid payload schema (e.g., `required_keys`) or malformed request fields | Fix request shape/schema mismatch; align payload with namespace policy contract before retry. |
-
-### Mutating call preflight checklist
-Run this quick preflight before `POST /v1/namespaces/register`, `POST /v1/context/write`, `POST /v1/context/promote`, or `POST /v1/context/consistency/repair`:
-1. Auth/token readiness:
-   - Confirm active mode and endpoint expectations from the auth-mode matrix.
-   - Ensure `Authorization: Bearer <token>` is present and token is not revoked/expired.
-   - If this fails, expect `401 auth_required`.
-2. Actor/namespace policy readiness:
-   - Confirm `actor` and `client_id` match intended ownership scope.
-   - Validate target namespace transitions against the actor-namespace contract matrix.
-   - If this fails, expect `403 policy_denied`.
-3. Payload/schema readiness:
-   - Validate required request fields and payload shape before send.
-   - For contract-bound namespaces, confirm payload satisfies `required_keys`.
-   - If this fails, expect `400 validation_error`.
-
-## Endpoints
-
-### POST `/v1/namespaces/register`
-Register a namespace owner policy.
-
-Request:
-- `namespace`
-- `owner_type` (`user` | `app`)
-- `owner_id`
-- `policy` (object)
-
-Response:
-- `namespace`
-- `owner_type`
-- `owner_id`
-- `policy`
-
-### GET `/v1/namespaces/get`
-Retrieve namespace owner + policy metadata.
-
-Query:
-- `namespace`
-
-Response:
-- `namespace`
-- `owner_type`
-- `owner_id`
-- `policy`
-
-### POST `/v1/context/write`
-Append revision for `(namespace,key)`.
-
-Request:
-- `client_id`
-- `actor`
-- `namespace`
-- `key`
-- `payload`
-- `reason` (optional)
-
-Response:
-- `record_id`
-- `revision`
-- `head_revision`
-- `timestamp`
-
-Policy-denied example (`403`):
 ```json
 {
-  "code": "policy_denied",
-  "message": "actor app:editor-ui is not allowed to write namespace user/profile",
-  "details": {
-    "actor": "app:editor-ui",
-    "namespace": "user/profile"
-  }
+  "actor": "app:editor",
+  "client_id": "editor",
+  "source_namespace": "app/editor/session",
+  "source_key": "summary",
+  "target_namespace": "user/alex/memory/notes",
+  "target_key": "summary",
+  "reason": "approved session result"
 }
 ```
 
-### POST `/v1/context/promote`
-Promote a record into protected `user/*` with explicit approval semantics.
+Send that body to `/v1/context/promote/request`, then pass the returned
+`request_id` to `/v1/context/promote/approve`:
 
-Request:
-- `client_id`
-- `actor` (`user` required)
-- `from_namespace`
-- `from_key`
-- `to_namespace` (`user/*`)
-- `to_key`
-- `source_revision` (optional; defaults to current head)
+```json
+{"actor":"user","request_id":"req-...","notes":"reviewed"}
+```
 
-Response:
-- `promoted_record_id`
-- `target_revision`
+Finally send this to `/v1/context/promote/apply`:
 
-Policy-denied example (`403`):
+```json
+{"actor":"user","request_id":"req-..."}
+```
+
+The target write requires `actor=user` when its namespace starts with
+`user/`. Promotion audit events use `promote.request`, `promote.approve`, and
+`promote`.
+
+### Memory write shape
+
+HTTP uses nested objects:
+
 ```json
 {
-  "code": "policy_denied",
-  "message": "promote requires actor user for protected namespace transitions",
-  "details": {
-    "actor": "app:editor-ui",
-    "to_namespace": "user/profile"
-  }
+  "namespace": "user/alex/memory/feedback",
+  "memory_key": "editor.preferences",
+  "author": {"agent_id": "assistant", "agent_version": "1"},
+  "trigger": "explicit",
+  "session_id": "session-2026-09-04",
+  "origin": "user",
+  "confidence": 0.9,
+  "tags": ["preference"],
+  "payload": {"summary": "Prefer concise diffs.", "body": "Keep reviews focused."}
 }
 ```
 
-### GET `/v1/context/head`
-Query:
-- `namespace`
-- `key`
+Memory keys are validated as written, not normalized: at most six dot-separated
+segments, each using lowercase letters, digits, and underscore, with 64
+characters per segment and 256 total. Hyphens, uppercase letters, and spaces
+are rejected.
 
-Response:
-- `record`
+### Knowledge write shape
 
-### GET `/v1/context/history`
-Query:
-- `namespace`
-- `key`
-- `limit` (optional)
-- `cursor` (optional)
+```json
+{
+  "namespace": "user/alex/knowledge/libraries",
+  "key": "example-library",
+  "kind": "package",
+  "source": "filesystem",
+  "pointer": {"scheme": "file", "locator": "/workspace/example-library"},
+  "summary": "Example library reference.",
+  "body": "Public API and integration notes.",
+  "author": {"agent_id": "indexer", "agent_version": "1"},
+  "session_id": "index-2026-09-04",
+  "confidence": 0.9
+}
+```
 
-Response:
-- `items` (stable oldest->newest window unless cursor semantics specify bounded page)
-- `next_cursor`
+Knowledge keys are free-form and are not subject to the memory key grammar.
 
-### POST `/v1/views/evaluate`
-Evaluate deterministic selector for context-aware retrieval.
+### Selector evaluation
 
-Request:
-- `selector` (object)
-- `include_payload` (bool, default true)
-- `limit` (optional)
-
-Response:
-- `items` (deterministically ordered)
-- `evaluation_meta` (`sort_keys`, `matched_count`, `truncated`, `normalized_scope`)
-
-Selector limits:
-- `namespaces`: max 32 patterns
-- `keys`: max 128 entries
-- `limit`: defaults to 200 when omitted/zero, max 500
-- invalid selector complexity/shape returns `400` (`code: "validation_error"`)
-- selector extension/versioning policy reference: `docs/SPECS/VIEWS.md#selector-extension-and-versioning-policy`
-- selector capability discovery reference: `docs/SPECS/VIEWS.md#selector-capability-discovery-model`
-
-Deterministic ordering behavior:
-- If `selector.order` is omitted, server applies fallback sort `(namespace,key,revision)`.
-- `limit` truncation is applied after deterministic sort and reflected via `evaluation_meta.truncated`.
-
-Valid request example:
 ```json
 {
   "selector": {
@@ -499,133 +341,22 @@ Valid request example:
 }
 ```
 
-Additional selector examples (`revision_scope=all`) are documented in `docs/SPECS/VIEWS.md`.
+`POST /v1/views/evaluate` responds with `items` and the closed
+`evaluation_meta` set: `sort_keys`, `matched_count`, `truncated`, and
+`normalized_scope`. There is no separate `returned_count`; use `len(items)`.
+See [the views contract](VIEWS.md) for selector fields, bounds, and ordering.
 
-Valid response example:
-```json
-{
-  "items": [
-    {
-      "namespace": "app/editor/session",
-      "key": "goal",
-      "revision": 3
-    },
-    {
-      "namespace": "user/profile",
-      "key": "summary",
-      "revision": 8
-    }
-  ],
-  "evaluation_meta": {
-    "sort_keys": ["namespace", "key", "revision"],
-    "matched_count": 2,
-    "truncated": false,
-    "normalized_scope": "head"
-  }
-}
-```
+## Determinism and compatibility
 
-Invalid selector examples (`400 validation_error`):
-- Unknown selector field:
-```json
-{
-  "selector": {
-    "namespaces": ["user/*"],
-    "order": ["namespace", "key", "revision"],
-    "unknown_field": true
-  }
-}
-```
-- Limit above allowed maximum:
-```json
-{
-  "selector": {
-    "namespaces": ["user/*"],
-    "order": ["namespace", "key", "revision"]
-  },
-  "limit": 1000
-}
-```
-
-Selector validation error map (`POST /v1/views/evaluate`):
-
-| Failure category | Example cue | Expected error class | First remediation step |
-|---|---|---|---|
-| Unknown selector field | Request includes undocumented selector key | `400 validation_error` | Remove/rename field to documented schema and verify capability support. |
-| Limit bounds violation | Negative `limit` or `limit` above max bound | `400 validation_error` | Set `limit` within accepted range (default/`<=500`). |
-| Structural/shape mismatch | Wrong value type or malformed selector payload | `400 validation_error` | Normalize request to expected JSON object shape for selector fields. |
-
-### GET `/v1/context/audit`
-Query:
-- `limit` (optional; default `50`, max `200`)
-- `cursor` (optional; positive integer from prior `next_cursor`)
-- `namespace` (optional exact filter)
-- `event_type` (optional exact filter)
-
-Response:
-- `items` (newest-first deterministic ordering by `id DESC`)
-- `count`
-- `next_cursor` (nullable integer)
-
-Example pagination:
-1. `GET /v1/context/audit?limit=2`
-2. Read `next_cursor` from response.
-3. `GET /v1/context/audit?limit=2&cursor=<next_cursor>`
-
-### GET `/v1/context/consistency/scan`
-Run a deterministic consistency scan across index rows and payload files.
-
-Response:
-- `count` (integer)
-- `issues` (array of typed findings such as `missing_payload`, `head_mismatch`, `missing_head`)
-
-### POST `/v1/context/consistency/repair`
-Rebuild `heads` from latest indexed revisions for each `(namespace,key)` pair.
-
-Auth:
-- Treated as mutating; requires bearer token when auth token is configured.
-
-Response:
-- `rebuilt_heads` (integer)
-- `remaining_issues` (integer)
-- `issues` (post-repair scan findings)
-
-### GET `/v1/health/readiness`
-Return deterministic operational readiness status.
-
-Response:
-- `healthy` (boolean)
-- `status` (`healthy` | `degraded` | `failing`)
-- `db_path` (string)
-- `records_dir` (string)
-- `records_dir_exists` (boolean)
-- `schema_version` (integer)
-- `consistency_issues` (integer)
-- `generated_at` (RFC3339 UTC)
-
-### GET `/v1/metrics` (optional)
-Expose lightweight runtime request counters and latency aggregates.
-
-Behavior:
-- Endpoint is enabled only when service starts with metrics flag (`tesseract serve --metrics`).
-- When disabled, endpoint returns `404`.
-
-Response:
-- `enabled` (boolean)
-- `routes` (array of route metrics sorted by `(method,path)`)
-  - `method`
-  - `path`
-  - `requests`
-  - `errors`
-  - `latency_ns_total`
-  - `latency_ns_avg`
-  - `status_counts` (object keyed by HTTP status code)
-  - `recent_request_ids` (array of most recent request IDs for route correlation)
-- `totals`
-  - `requests`
-  - `errors`
-
-## Determinism requirements
-- Identical store state + identical request must produce identical item ordering.
-- Selector evaluation must use explicit sort keys; fallback sort is `(namespace,key,revision)`.
-- APIs never mutate state during read/view calls.
+- The default selector order is `(namespace, key, revision)`.
+- Audit results are newest first by audit ID and use `next_cursor` for paging.
+- Context history is ordered by ascending revision and currently returns
+  `next_cursor: null`.
+- `/v1/broker/plan` is a compatibility alias for `/v1/context/plan`.
+- `/v1/context/promote` is retained only as a 410 response after authentication
+  so old clients fail with an actionable migration message; it must not be used
+  in new examples.
+  Its former `source_revision` request field and `target_revision` response
+  field are not part of the three-stage contract.
+- HTTP and MCP share store/domain logic but do not always share request shapes.
+  Use [MCP_TOOLS.md](../MCP_TOOLS.md) for MCP arguments.

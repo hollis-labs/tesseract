@@ -1,12 +1,13 @@
 # Tesseract — MCP Tools (agent reference)
 
-This is the agent-facing catalog for Tesseract's MCP surface. Every tool
-here is registered by `tesseract mcp` and has an HTTP peer under
-`/v1/*` unless the row is marked **MCP-only**.
+This is the agent-facing catalog for Tesseract's 28-tool MCP surface. Every
+tool here is registered by `tesseract mcp` and has an HTTP peer under `/v1/*`
+unless the row is marked **MCP-only**.
 
-> Single source of truth for what's reachable on both surfaces lives in
-> `tests/parity/parity_test.go::surfaceCatalog`. Adding a tool or route
-> there without an entry fails CI.
+> MCP registration and its peer mapping are checked against
+> `tests/parity/parity_test.go::surfaceCatalog`. The complete HTTP route
+> registry is `apiRoutes` in `internal/contextapi/server.go` and is documented
+> in [`docs/SPECS/API.md`](SPECS/API.md).
 
 ## Quick facts
 
@@ -16,19 +17,22 @@ here is registered by `tesseract mcp` and has an HTTP peer under
     "mcpServers": {
       "tesseract": {
         "type": "stdio",
-        "command": "/Users/<you>/go/bin/tesseract",
+        "command": "tesseract",
         "args": ["mcp", "--token", "<hex-capability-token>"]
       }
     }
   }
   ```
 - **Tool ID prefix:** `mcp__tesseract__` (Claude side). Example: `mcp__tesseract__memory_write`.
-- **Data root:** the XDG layout by default — `~/.local/share/tesseract` for data,
-  `~/.local/state/tesseract` for state — shared with the HTTP server. Run
-  `tesseract path` to print the resolved layout rather than trusting this line;
-  it creates nothing.
-- **Capability token:** required for any tool that requires a `write`/`read`/`promote` scope. Token claims are checked per-tool.
-- **No duplicated logic:** every tool and its HTTP peer call the same store/domain function. Responses match 1:1.
+- **Data root:** resolved through the platform/XDG layout and shared with the
+  CLI and HTTP server. Run `tesseract path` in the MCP host's environment to
+  print the exact data, config, cache, and state paths before configuring it;
+  that command creates nothing.
+- **Capability token:** a store-backed token supplied with `mcp --token` is
+  required only for tools whose catalog row names a scope. Scope and namespace
+  claims are checked per tool. HTTP's `--static-token` value is not an MCP
+  capability token.
+- **Shared semantics:** tools and HTTP peers use the same store/domain services; deliberate argument or envelope differences are called out below.
 
 ## Agent-facing skills (tesseract_skills)
 
@@ -128,7 +132,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `context_promote` | `promote.request` / `promote.approve` / `promote.apply` | `POST /v1/context/promote/request`, `/approve`, `/apply` | `stage` selects the stage AND the scope checked for it; an absent or unrecognized stage is a validation_error and authorizes nothing |
 | `context_promotion_list` | — | — (MCP-only; HTTP equivalents iterate audit) | List promotion requests |
 | `context_plan` | — | `POST /v1/context/plan`, `POST /v1/broker/plan` | `execute` selects the arm: `false` (default) returns the plan; `true` runs it and returns the records (MCP-only). Both routes are the same handler; both are peers of the default arm. |
-| `context_namespace_register` | `namespace.admin` | `POST /v1/namespaces/register` | Register a namespace ownership policy |
+| `context_namespace_register` | `namespace.admin` | `POST /v1/namespaces/register` | Register a namespace ownership policy; the HTTP peer checks the distinct `namespace.register` scope |
 | `context_embed` | — | — (MCP-only) | Embedding-only op; uses the configured shared provider/model and returns `embedding_unavailable` when disabled |
 | `context_search` | — | — (MCP-only) | Low-level embedding search; provider failures return `embedding_error` rather than an empty success |
 | `context_rag_query` | — | — (MCP-only) | Convenience RAG query; requires the configured embedding provider |
@@ -187,8 +191,8 @@ the intended result.
 
 ```json
 mcp__tesseract__memory_write {
-  "namespace": "user/chrispian/memory/feedback",
-  "memory_key": "boot-prompt-preference",
+  "namespace": "user/alex/memory/feedback",
+  "memory_key": "boot_prompt_preference",
   "author_agent_id": "claude-code",
   "trigger": "explicit",
   "session_id": "2026-04-15:backend",
@@ -208,14 +212,14 @@ Returns the created `memory.Revision`. Semantic dedup: same-key matches auto-sup
 
 ```json
 mcp__tesseract__knowledge_write {
-  "namespace": "user/chrispian/knowledge/framework",
+  "namespace": "user/alex/knowledge/framework",
   "key": "framework.go-providers",
   "kind": "package",
   "source": "filesystem",
   "pointer_scheme": "file",
-  "pointer_locator": "/Users/chrispian/Projects-apps/framework/libs/go-providers",
-  "summary": "go-providers: multi-provider AI adapter (Anthropic, OpenAI, Ollama, …) used by Tesseract + others.",
-  "body": "Exports provider.Embedder and provider.Completer.",
+  "pointer_locator": "/workspace/example-library",
+  "summary": "Example library: a multi-provider adapter used by this project.",
+  "body": "Exports embedding and completion interfaces.",
   "author_agent_id": "indexer",
   "session_id": "indexer:2026-04-15"
 }
@@ -227,7 +231,7 @@ Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are req
 
 ```json
 mcp__tesseract__tesseract_recall {
-  "namespaces": ["user/chrispian/memory", "user/chrispian/knowledge"],
+  "namespaces": ["user/alex/memory", "user/alex/knowledge"],
   "query": "hybrid relevance recall ranking",
   "limit": 20
 }
@@ -274,14 +278,19 @@ Under-reporting is fine; over-reporting is worse than silence, because it teache
 
 Capability tokens carry scope claims; tools check `checkScope(ctx, "<scope>")` before side-effecting operations. Known scopes:
 
-- `read` / `write` — generic context ops.
+- `write` — generic context mutations. `read` remains token metadata but no current MCP tool checks it. The planned `context_consistency_repair` tool is not registered; consistency repair remains HTTP/CLI-only.
 - `memory:read` / `memory:write` — memory + knowledge domain.
-- `promote`, `promote.request`, `promote.approve`, `promote.apply` — promotion workflow stages.
+- `promote.request`, `promote.approve`, `promote.apply` — context promotion workflow stages.
 - `namespace.admin` — register / mutate namespace policies.
-- `repair` — consistency repair (HTTP-only today; `context_consistency_repair` MCP tool is batch 2).
+- `repair` — HTTP consistency, queue, trim, and compact mutations; no MCP tool currently checks it.
+
+The default store-backed token scopes are `write`, `promote.request`,
+`promote.approve`, `promote.apply`, `packet`, `repair`, and
+`namespace.register`. MCP-only `memory:read`, `memory:write`, and
+`namespace.admin` must be requested explicitly.
 
 ## Related
 
 - `README.md` — project top-level (links here).
 - `docs/SPECS/MCP.md` / `docs/SPECS/API.md` — protocol specs.
-- `tests/parity/parity_test.go` — drift guardrail; every MCP tool + HTTP route must appear in its catalog.
+- `tests/parity/parity_test.go` — drift guardrail for the MCP registry and its documented HTTP peers.
