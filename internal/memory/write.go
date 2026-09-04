@@ -224,11 +224,39 @@ INSERT INTO memory_revisions (
 		return Revision{}, fmt.Errorf("commit: %w", err)
 	}
 
-	// Fire-and-forget embed job enqueue; errors are non-fatal.
-	_ = s.queue.Enqueue(ctx, Job{
-		Kind:    "embed",
+	// Everything below this line is post-commit work: the revision is durable
+	// and the caller is going to be told so no matter what happens next. It
+	// therefore runs on a context detached from the caller's cancellation. An
+	// HTTP client that disconnects — or an MCP call that is cancelled —
+	// between the commit above and the enqueue below would otherwise drop the
+	// embed job permanently, leaving a committed revision that no worker will
+	// ever see. WithoutCancel keeps trace state and request values and drops
+	// only the cancellation. CW-20260826-0018.
+	postCommitCtx := context.WithoutCancel(ctx)
+
+	// The enqueue stays best-effort — a queue outage must not roll back a
+	// durable write — but it is no longer silent. A failure increments the
+	// store's enqueue-failure counter (read back via DeferredEmbeddingStatus)
+	// and logs the identity needed to recover, mirroring the shape
+	// contextstore uses for audit emit. Recovery is POST
+	// /v1/admin/queue/backfill, which only helps if someone knows to run it.
+	if err := s.queue.Enqueue(postCommitCtx, Job{
+		Kind:    EmbedJobKind,
 		Payload: []byte(fmt.Sprintf(`{"revision_id":%q}`, revisionID)),
-	})
+	}); err != nil {
+		s.enqueueFailures.Add(1)
+		// Identity only. This line may name the memory that failed to embed;
+		// it must never carry the memory's contents.
+		s.log().WarnContext(postCommitCtx, "embed enqueue failed",
+			"job_kind", EmbedJobKind,
+			"revision_id", revisionID,
+			"memory_id", memoryID,
+			"namespace", in.Namespace,
+			"domain", string(in.Domain),
+			"queue", fmt.Sprintf("%T", s.queue),
+			"err", err,
+		)
+	}
 
 	if s.auditSink != nil {
 		actor := in.Author.AgentID
@@ -236,15 +264,19 @@ INSERT INTO memory_revisions (
 		if key == "" {
 			key = memoryID // logical memory identity for keyless writes
 		}
+		// Same post-commit reasoning as the enqueue above: the audit record of
+		// a committed write must not be lost because the caller hung up. The
+		// errors stay discarded here because contextstore's emit path
+		// structured-logs every failure itself.
 		switch {
 		case in.Domain == domains.Knowledge && in.Supersedes != "":
-			_ = s.auditSink.EmitKnowledgeSupersede(ctx, actor, in.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitKnowledgeSupersede(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
 		case in.Domain == domains.Knowledge:
-			_ = s.auditSink.EmitKnowledgeWrite(ctx, actor, in.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitKnowledgeWrite(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
 		case in.Supersedes != "":
-			_ = s.auditSink.EmitMemorySupersede(ctx, actor, in.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitMemorySupersede(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
 		default:
-			_ = s.auditSink.EmitMemoryWrite(ctx, actor, in.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitMemoryWrite(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
 		}
 	}
 
