@@ -1,44 +1,50 @@
-import { Check, Copy, Key, Plus, Trash2 } from "lucide-react";
+import {
+  Button,
+  Callout,
+  Checkbox,
+  ConfirmDialog,
+  EmptyState,
+  Input,
+  Label,
+  PageHeader,
+  Pill,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hollis-labs/sysop-ui";
+import { ListPageLayout, TabStrip, type TabStripItem } from "@hollis-labs/sysop-ui/layout";
+import { Check, Copy, Key, List, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { createToken, listTokens, revokeToken } from "../api/client";
 import type { AuthToken, TokenCreateResponse } from "../api/types";
-import { ConfirmModal } from "../components/ui/ConfirmModal";
-import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { usePoll } from "../hooks/usePoll";
 
 type Tab = "list" | "create";
 
+const TABS: readonly TabStripItem<Tab>[] = [
+  { key: "list", label: "Token list", icon: <List className="size-3.5" aria-hidden="true" /> },
+  {
+    key: "create",
+    label: "Create token",
+    icon: <Plus className="size-3.5" aria-hidden="true" />,
+  },
+];
+
 export function AuthTokensPage() {
   const [tab, setTab] = useState<Tab>("list");
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Auth & Tokens</h2>
-      </div>
-
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button
-          className={tab === "list" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("list")}
-        >
-          Token List
-        </button>
-        <button
-          className={tab === "create" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("create")}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <Plus size={13} /> Create Token
-          </span>
-        </button>
-      </div>
-
-      {tab === "list" && <TokenList />}
-      {tab === "create" && <TokenCreateForm onCreated={() => setTab("list")} />}
-    </div>
+    <ListPageLayout
+      header={<PageHeader title="Auth & Tokens" />}
+      tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}
+    >
+      {tab === "list" ? <TokenList /> : <TokenCreateForm onCreated={() => setTab("list")} />}
+    </ListPageLayout>
   );
 }
 
@@ -47,7 +53,6 @@ function TokenList() {
   const { data, loading, error, refresh } = usePoll(fetcher, 15_000);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<AuthToken | null>(null);
-
   const tokens = data?.tokens ?? [];
 
   const handleRevoke = async (token: AuthToken) => {
@@ -56,8 +61,8 @@ function TokenList() {
       await revokeToken(token.id);
       toast.success(`Token "${token.name}" revoked`);
       refresh();
-    } catch (err) {
-      toast.error(`Revoke failed: ${err instanceof Error ? err.message : err}`);
+    } catch (reason) {
+      toast.error(`Revoke failed: ${reason instanceof Error ? reason.message : reason}`);
     } finally {
       setRevoking(null);
       setConfirmRevoke(null);
@@ -65,129 +70,151 @@ function TokenList() {
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: "0.5rem", display: "flex", justifyContent: "flex-end" }}>
-        <button className="hud-button-ghost" onClick={refresh} disabled={loading}>
-          {loading ? <Spinner size={12} /> : "Refresh"}
-        </button>
-      </div>
-
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
-        >
-          Error: {error.message}
+    <>
+      <div className="flex items-center justify-between border-b border-border-strong bg-panel px-4 py-3 lg:px-6">
+        <div>
+          <h2 className="text-sm font-semibold text-text">Managed tokens</h2>
+          <p className="mt-1 text-xs text-text-subtle">
+            Review client access, namespace reach, and expiration state.
+          </p>
         </div>
-      )}
-
-      <div className="hud-panel">
-        {loading && !data && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <Spinner size={20} />
-          </div>
-        )}
-
-        {!loading && tokens.length === 0 && (
-          <EmptyState message="No tokens" sub="Create a token to get started" />
-        )}
-
-        {tokens.length > 0 && (
-          <table className="hud-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Client ID</th>
-                <th>Scopes</th>
-                <th>Namespaces</th>
-                <th>Created</th>
-                <th>Expires</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ fontSize: "0.85rem" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                      <Key size={12} style={{ color: "rgb(var(--primary))" }} /> {t.name}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}>
-                    {t.client_id}
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: "0.2rem", flexWrap: "wrap" }}>
-                      {t.scopes.map((s) => (
-                        <span key={s} className="hud-badge-info" style={{ fontSize: "0.6rem" }}>
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td
-                    style={{
-                      fontSize: "0.75rem",
-                      fontFamily: "var(--font-mono)",
-                      maxWidth: 150,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {t.namespace_globs.join(", ")}
-                  </td>
-                  <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
-                    {new Date(t.created_at).toLocaleDateString()}
-                  </td>
-                  <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
-                    {new Date(t.expires_at).toLocaleDateString()}
-                  </td>
-                  <td>
-                    {t.revoked ? (
-                      <span className="hud-badge-danger" style={{ fontSize: "0.65rem" }}>
-                        revoked
-                      </span>
-                    ) : new Date(t.expires_at) < new Date() ? (
-                      <span className="hud-badge-warn" style={{ fontSize: "0.65rem" }}>
-                        expired
-                      </span>
-                    ) : (
-                      <span className="hud-badge-ok" style={{ fontSize: "0.65rem" }}>
-                        active
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {!t.revoked && (
-                      <button
-                        className="hud-button-ghost"
-                        onClick={() => setConfirmRevoke(t)}
-                        disabled={revoking === t.id}
-                        style={{ padding: "0.15rem 0.4rem", fontSize: "0.65rem" }}
-                      >
-                        {revoking === t.id ? <Spinner size={10} /> : <Trash2 size={11} />} Revoke
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />}
+          Refresh
+        </Button>
       </div>
 
-      {confirmRevoke && (
-        <ConfirmModal
-          title="Revoke Token"
-          message={`Are you sure you want to revoke token "${confirmRevoke.name}"? This cannot be undone.`}
-          confirmLabel="Revoke"
-          danger
-          onConfirm={() => handleRevoke(confirmRevoke)}
-          onCancel={() => setConfirmRevoke(null)}
+      {error ? (
+        <div className="border-b border-border-strong px-4 py-4 lg:px-6">
+          <Callout tone="danger" title="Tokens unavailable">
+            {error.message}
+          </Callout>
+        </div>
+      ) : null}
+
+      {loading && !data ? (
+        <div
+          className="flex min-h-48 items-center justify-center"
+          role="status"
+          aria-label="Loading tokens"
+        >
+          <Spinner size={20} />
+        </div>
+      ) : null}
+
+      {!loading && tokens.length === 0 ? (
+        <EmptyState
+          variant="empty"
+          title="No tokens"
+          description="Create a managed token to grant scoped client access."
         />
-      )}
-    </div>
+      ) : null}
+
+      {tokens.length > 0 ? (
+        <div className="min-w-[70rem]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Client ID</TableHead>
+                <TableHead>Scopes</TableHead>
+                <TableHead>Namespaces</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tokens.map((token) => {
+                const expired = new Date(token.expires_at) < new Date();
+                return (
+                  <TableRow key={token.id} className="hover:bg-panel-hover-soft">
+                    <TableCell>
+                      <span className="flex items-center gap-2 text-sm text-text">
+                        <Key className="size-3.5 text-text-muted" aria-hidden="true" />
+                        {token.name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-text-soft">
+                      {token.client_id}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex max-w-72 flex-wrap gap-1">
+                        {token.scopes.map((scope) => (
+                          <Pill key={scope} tone="info">
+                            {scope}
+                          </Pill>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-48 truncate font-mono text-xs text-text-soft">
+                      {token.namespace_globs.join(", ")}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-text-subtle">
+                      {new Date(token.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-text-subtle">
+                      {new Date(token.expires_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {token.revoked ? (
+                        <Pill tone="danger" dot>
+                          Revoked
+                        </Pill>
+                      ) : expired ? (
+                        <Pill tone="warning" dot>
+                          Expired
+                        </Pill>
+                      ) : (
+                        <Pill tone="success" dot>
+                          Active
+                        </Pill>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {!token.revoked ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setConfirmRevoke(token)}
+                          disabled={revoking === token.id}
+                          aria-label={`Revoke token ${token.name}`}
+                        >
+                          {revoking === token.id ? (
+                            <Spinner size={11} />
+                          ) : (
+                            <Trash2 aria-hidden="true" />
+                          )}
+                          Revoke
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmRevoke !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRevoke(null);
+        }}
+        title="Revoke token"
+        description={
+          confirmRevoke
+            ? `Revoke "${confirmRevoke.name}"? This token will immediately stop authorizing requests.`
+            : undefined
+        }
+        confirmLabel="Revoke"
+        busy={confirmRevoke ? revoking === confirmRevoke.id : false}
+        onConfirm={() => (confirmRevoke ? handleRevoke(confirmRevoke) : undefined)}
+      />
+    </>
   );
 }
 
@@ -215,11 +242,13 @@ function TokenCreateForm({ onCreated }: TokenCreateFormProps) {
   const [result, setResult] = useState<TokenCreateResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const canSubmit = name.trim() && clientId.trim() && scopes.length > 0 && !submitting && !result;
+  const canSubmit = Boolean(
+    name.trim() && clientId.trim() && scopes.length > 0 && !submitting && !result,
+  );
 
   const toggleScope = (scope: string) => {
-    setScopes((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    setScopes((previous) =>
+      previous.includes(scope) ? previous.filter((item) => item !== scope) : [...previous, scope],
     );
   };
 
@@ -228,25 +257,25 @@ function TokenCreateForm({ onCreated }: TokenCreateFormProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const req: Parameters<typeof createToken>[0] = {
+      const request: Parameters<typeof createToken>[0] = {
         name: name.trim(),
         client_id: clientId.trim(),
         scopes,
         namespace_globs: nsGlobs.trim()
           ? nsGlobs
               .split(",")
-              .map((s) => s.trim())
+              .map((value) => value.trim())
               .filter(Boolean)
           : ["*"],
       };
-      if (ttl.trim()) req.ttl = ttl.trim();
-      const res = await createToken(req);
-      setResult(res);
+      if (ttl.trim()) request.ttl = ttl.trim();
+      const response = await createToken(request);
+      setResult(response);
       toast.success("Token created — copy the value now!");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Create failed: ${msg}`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Create failed: ${message}`);
     } finally {
       setSubmitting(false);
     }
@@ -257,166 +286,143 @@ function TokenCreateForm({ onCreated }: TokenCreateFormProps) {
     await navigator.clipboard.writeText(result.token);
     setCopied(true);
     toast.success("Token copied");
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 2_000);
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 700 }}>
-      {error && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            marginBottom: "0.75rem",
-            background: "rgba(var(--danger) / 0.1)",
-            borderRadius: "var(--radius-sm)",
-            color: "rgb(var(--danger))",
-            fontSize: "0.85rem",
-          }}
-        >
-          {error}
+    <section className="bg-panel px-4 py-5 lg:px-6" aria-labelledby="create-token-heading">
+      <div className="max-w-3xl">
+        <div className="mb-5">
+          <h2 id="create-token-heading" className="text-sm font-semibold text-text">
+            Create a managed token
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-text-subtle">
+            Grant only the scopes and namespaces this client needs. The token value is shown once.
+          </p>
         </div>
-      )}
 
-      {result && (
-        <div style={{ marginBottom: "1rem" }}>
-          <div
-            style={{
-              padding: "0.75rem",
-              background: "rgba(var(--ok) / 0.1)",
-              border: "1px solid rgba(var(--ok) / 0.3)",
-              borderRadius: "var(--radius-sm)",
-              marginBottom: "0.5rem",
+        {error ? (
+          <Callout className="mb-5" tone="danger" title="Token creation failed">
+            {error}
+          </Callout>
+        ) : null}
+
+        {result ? (
+          <div className="space-y-4">
+            <Callout tone="success" title="Token created">
+              Copy this value now. It will not be shown again.
+            </Callout>
+            <div className="flex items-start gap-2 border border-border bg-bg p-3">
+              <code className="min-w-0 flex-1 break-all font-mono text-xs leading-5 text-text">
+                {result.token}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={handleCopy}
+                aria-label={copied ? "Token copied" : "Copy token"}
+              >
+                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              </Button>
+            </div>
+            <Button type="button" onClick={onCreated}>
+              Done — go to token list
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubmit();
             }}
           >
-            <div className="hud-label" style={{ color: "rgb(var(--ok))", marginBottom: "0.3rem" }}>
-              Token Created — Copy this value now (it won't be shown again)
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="token-name">
+                  Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="token-name"
+                  placeholder="my-agent-token"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="token-client-id">
+                  Client ID <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="token-client-id"
+                  className="font-mono"
+                  placeholder="app:my-agent"
+                  value={clientId}
+                  onChange={(event) => setClientId(event.target.value)}
+                  required
+                />
+              </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                background: "rgb(var(--bg))",
-                padding: "0.5rem",
-                borderRadius: "var(--radius-sm)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.8rem",
-                wordBreak: "break-all",
-              }}
-            >
-              <span style={{ flex: 1 }}>{result.token}</span>
-              <button
-                className="hud-button-ghost"
-                onClick={handleCopy}
-                style={{ flexShrink: 0, padding: "0.2rem 0.4rem" }}
-              >
-                {copied ? (
-                  <Check size={13} style={{ color: "rgb(var(--ok))" }} />
-                ) : (
-                  <Copy size={13} />
-                )}
-              </button>
-            </div>
-          </div>
-          <button className="hud-button-primary" onClick={onCreated}>
-            Done — Go to Token List
-          </button>
-        </div>
-      )}
 
-      {!result && (
-        <>
-          <div className="form-grid">
-            <div className="form-field">
-              <label className="hud-label">Name *</label>
-              <input
-                className="hud-input"
-                placeholder="my-agent-token"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label">Client ID *</label>
-              <input
-                className="hud-input"
-                placeholder="app:my-agent"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-          </div>
+            <fieldset>
+              <legend className="text-xs font-medium text-text-muted">
+                Scopes <span className="text-destructive">*</span>
+              </legend>
+              <div className="mt-2 grid overflow-hidden border border-border sm:grid-cols-2 lg:grid-cols-3">
+                {AVAILABLE_SCOPES.map((scope) => (
+                  <Label
+                    key={scope}
+                    htmlFor={`token-scope-${scope}`}
+                    className="flex cursor-pointer items-center gap-2 border-b border-border px-3 py-2.5 text-xs text-text-soft last:border-b-0 sm:border-r sm:[&:nth-last-child(-n+2)]:border-b-0 lg:[&:nth-child(3n)]:border-r-0 lg:[&:nth-last-child(-n+3)]:border-b-0"
+                  >
+                    <Checkbox
+                      id={`token-scope-${scope}`}
+                      checked={scopes.includes(scope)}
+                      onCheckedChange={() => toggleScope(scope)}
+                    />
+                    <span className="font-mono">{scope}</span>
+                  </Label>
+                ))}
+              </div>
+            </fieldset>
 
-          <div className="form-field" style={{ marginTop: "0.5rem" }}>
-            <label className="hud-label">Scopes *</label>
-            <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
-              {AVAILABLE_SCOPES.map((scope) => (
-                <label
-                  key={scope}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                    padding: "0.25rem 0.5rem",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid rgb(var(--border))",
-                    cursor: "pointer",
-                    fontSize: "0.8rem",
-                    background: scopes.includes(scope)
-                      ? "rgba(var(--primary) / 0.1)"
-                      : "transparent",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope)}
-                    style={{ accentColor: "rgb(var(--primary))" }}
-                  />
-                  {scope}
-                </label>
-              ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="token-namespace-globs">
+                  Namespace globs{" "}
+                  <span className="font-normal text-text-subtle">(comma-separated)</span>
+                </Label>
+                <Input
+                  id="token-namespace-globs"
+                  className="font-mono"
+                  placeholder="* (all namespaces)"
+                  value={nsGlobs}
+                  onChange={(event) => setNsGlobs(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="token-ttl">TTL</Label>
+                <Input
+                  id="token-ttl"
+                  className="font-mono"
+                  placeholder="720h"
+                  value={ttl}
+                  onChange={(event) => setTtl(event.target.value)}
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="form-grid" style={{ marginTop: "0.5rem" }}>
-            <div className="form-field">
-              <label className="hud-label">
-                Namespace Globs{" "}
-                <span style={{ color: "rgb(var(--muted))" }}>(comma-separated)</span>
-              </label>
-              <input
-                className="hud-input"
-                placeholder="* (all namespaces)"
-                value={nsGlobs}
-                onChange={(e) => setNsGlobs(e.target.value)}
-                style={{ width: "100%" }}
-              />
+            <div className="border-t border-border pt-4">
+              <Button type="submit" disabled={!canSubmit}>
+                {submitting ? <Spinner size={13} /> : <Key aria-hidden="true" />}
+                Create token
+              </Button>
             </div>
-            <div className="form-field">
-              <label className="hud-label">TTL</label>
-              <input
-                className="hud-input"
-                placeholder="720h"
-                value={ttl}
-                onChange={(e) => setTtl(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-          </div>
-
-          <div className="form-actions">
-            <button className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-              <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                {submitting ? <Spinner size={13} /> : <Key size={13} />}
-                Create Token
-              </span>
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }

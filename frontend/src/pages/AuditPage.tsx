@@ -1,12 +1,34 @@
+import {
+  Button,
+  Callout,
+  Checkbox,
+  EmptyState,
+  Input,
+  JsonViewer,
+  Label,
+  PageHeader,
+  Pill,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hollis-labs/sysop-ui";
+import { ListPageLayout } from "@hollis-labs/sysop-ui/layout";
 import { ChevronDown, ChevronRight, FileText, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getAuditEvents } from "../api/client";
 import type { AuditEvent } from "../api/types";
-import { EmptyState } from "../components/ui/EmptyState";
-import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
-import { StatusBadge } from "../components/ui/StatusBadge";
 
 // Canonical event-type identifiers grouped for the filter dropdown. Mirrors
 // internal/contextstore/audittypes.go; keep in sync. The HTTP and MCP
@@ -61,16 +83,13 @@ const EVENT_TYPE_GROUPS: { label: string; types: { value: string; label: string 
   },
 ];
 
-// Pick a badge variant based on event-type semantics. Keeps the row scannable.
-function badgeVariant(eventType: string): "ok" | "warn" | "danger" | "muted" | "primary" {
+function pillTone(eventType: string): "success" | "warning" | "danger" | "info" {
   if (eventType.includes("error") || eventType.includes("deprecate")) return "danger";
-  if (eventType.startsWith("promote") || eventType.includes("supersede")) return "warn";
-  if (eventType.startsWith("memory.") || eventType.startsWith("knowledge.")) return "primary";
-  return "ok";
+  if (eventType.startsWith("promote") || eventType.includes("supersede")) return "warning";
+  if (eventType.startsWith("memory.") || eventType.startsWith("knowledge.")) return "info";
+  return "success";
 }
 
-// Heuristic: route the click to the right detail page. Memory/knowledge events
-// have a domain encoded in the event_type prefix; everything else is context.
 function routeForEvent(eventType: string): "memory" | "knowledge" | "context" {
   if (eventType.startsWith("memory.")) return "memory";
   if (eventType.startsWith("knowledge.")) return "knowledge";
@@ -78,15 +97,12 @@ function routeForEvent(eventType: string): "memory" | "knowledge" | "context" {
 }
 
 function dayBucket(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "(invalid date)";
-  return d.toISOString().slice(0, 10);
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "(invalid date)";
+  return date.toISOString().slice(0, 10);
 }
 
 interface Props {
-  // Click-through to the affected record. Memory/knowledge events route to the
-  // memory/knowledge detail page; context events route to the context-domain
-  // record detail page. Optional — without this, rows expand inline only.
   onOpenItem?: (domain: "memory" | "knowledge" | "context", namespace: string, key: string) => void;
 }
 
@@ -94,30 +110,18 @@ export function AuditPage({ onOpenItem }: Props) {
   const [eventType, setEventType] = useState("");
   const [nsFilter, setNsFilter] = useState("");
   const [actorFilter, setActorFilter] = useState("");
-  // since/until are RFC3339; the form takes datetime-local (no timezone)
-  // and we append "Z" before sending so the backend parses cleanly. Empty
-  // means unbounded.
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
   const [limit, setLimit] = useState("50");
   const [groupByDay, setGroupByDay] = useState(true);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-
-  // First-page events come from the auto-refresh poll. "Load more" appends
-  // older events (cursor-based) into a separate buffer so the next poll
-  // doesn't blow them away.
   const [olderEvents, setOlderEvents] = useState<AuditEvent[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
 
-  // Convert form datetime-local strings (no tz) into RFC3339 by appending Z.
-  // Empty means unbounded.
   const sinceISO = since ? `${since}:00Z` : "";
   const untilISO = until ? `${until}:59Z` : "";
 
-  // When filters change, drop the older-events buffer — the cursor is no
-  // longer meaningful against the new filter set. Actor + time bounds are
-  // server-side now, so they belong in this key too.
   const lastFilterKey = useRef("");
   useEffect(() => {
     const key = `${eventType}|${nsFilter}|${actorFilter}|${sinceISO}|${untilISO}|${limit}`;
@@ -133,18 +137,17 @@ export function AuditPage({ onOpenItem }: Props) {
       limit: parseInt(limit, 10) || 50,
     };
     if (eventType) params.event_type = eventType;
-    const ns = nsFilter.trim();
-    if (ns) params.namespace = ns;
-    const a = actorFilter.trim();
-    if (a) params.actor = a;
+    const namespace = nsFilter.trim();
+    if (namespace) params.namespace = namespace;
+    const actor = actorFilter.trim();
+    if (actor) params.actor = actor;
     if (sinceISO) params.since = sinceISO;
     if (untilISO) params.until = untilISO;
-    const res = await getAuditEvents(params);
-    setNextCursor(res.next_cursor);
-    return res;
+    const response = await getAuditEvents(params);
+    setNextCursor(response.next_cursor);
+    return response;
   }, [eventType, nsFilter, actorFilter, sinceISO, untilISO, limit]);
 
-  // Lightweight fetcher with manual refresh + 10s auto-refresh.
   const [firstPage, setFirstPage] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -153,19 +156,19 @@ export function AuditPage({ onOpenItem }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await loadFirstPage();
-      setFirstPage(res.items);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const response = await loadFirstPage();
+      setFirstPage(response.items);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason : new Error(String(reason)));
     } finally {
       setLoading(false);
     }
   }, [loadFirstPage]);
 
   useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 10_000);
-    return () => clearInterval(t);
+    void refresh();
+    const timer = setInterval(refresh, 10_000);
+    return () => clearInterval(timer);
   }, [refresh]);
 
   const loadMore = async () => {
@@ -177,363 +180,320 @@ export function AuditPage({ onOpenItem }: Props) {
         cursor: nextCursor,
       };
       if (eventType) params.event_type = eventType;
-      const ns = nsFilter.trim();
-      if (ns) params.namespace = ns;
-      const a = actorFilter.trim();
-      if (a) params.actor = a;
+      const namespace = nsFilter.trim();
+      if (namespace) params.namespace = namespace;
+      const actor = actorFilter.trim();
+      if (actor) params.actor = actor;
       if (sinceISO) params.since = sinceISO;
       if (untilISO) params.until = untilISO;
-      const res = await getAuditEvents(params);
-      setOlderEvents((prev) => [...prev, ...res.items]);
-      setNextCursor(res.next_cursor);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Load more failed: ${msg}`);
+      const response = await getAuditEvents(params);
+      setOlderEvents((previous) => [...previous, ...response.items]);
+      setNextCursor(response.next_cursor);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      toast.error(`Load more failed: ${message}`);
     } finally {
       setLoadingMore(false);
     }
   };
 
-  // First page + older buffer combined. Actor / since / until are now
-  // server-side filters on /v1/context/audit, so no client-side trimming.
   const events = useMemo(() => [...firstPage, ...olderEvents], [firstPage, olderEvents]);
-
-  // Group by day for the timeline view. When grouping is off, render flat.
   const grouped = useMemo(() => {
     if (!groupByDay) return [{ day: "", items: events }];
-    const map = new Map<string, AuditEvent[]>();
-    for (const e of events) {
-      const d = dayBucket(e.created_at);
-      const arr = map.get(d) ?? [];
-      arr.push(e);
-      map.set(d, arr);
+    const groups = new Map<string, AuditEvent[]>();
+    for (const event of events) {
+      const day = dayBucket(event.created_at);
+      groups.set(day, [...(groups.get(day) ?? []), event]);
     }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => b.localeCompare(a))
+    return Array.from(groups.entries())
+      .sort(([left], [right]) => right.localeCompare(left))
       .map(([day, items]) => ({ day, items }));
   }, [events, groupByDay]);
 
-  const handleRowClick = (evt: AuditEvent) => {
-    const route = routeForEvent(evt.event_type);
-    if (onOpenItem && evt.namespace && evt.key) {
-      onOpenItem(route, evt.namespace, evt.key);
-    } else {
-      // No drill-through available — fall back to expanding metadata in place.
-      setExpandedRow(expandedRow === evt.id ? null : evt.id);
+  const handleRowAction = (event: AuditEvent) => {
+    const route = routeForEvent(event.event_type);
+    if (onOpenItem && event.namespace && event.key) {
+      onOpenItem(route, event.namespace, event.key);
+      return;
+    }
+    if (event.metadata != null) {
+      setExpandedRow(expandedRow === event.id ? null : event.id);
     }
   };
 
-  const totalShown = events.length;
+  const filters = (
+    <section
+      className="border-b border-border-strong bg-panel px-4 py-4 lg:px-6"
+      aria-label="Audit filters"
+    >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1.2fr_1.5fr_1fr_.65fr]">
+        <div className="space-y-1.5">
+          <Label id="audit-event-type-label">Event type</Label>
+          <Select
+            value={eventType || "all"}
+            onValueChange={(value) => setEventType(value === "all" ? "" : (value ?? ""))}
+          >
+            <SelectTrigger className="w-full font-mono" aria-labelledby="audit-event-type-label">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All events</SelectItem>
+              {EVENT_TYPE_GROUPS.map((group) => (
+                <SelectGroup key={group.label}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.types.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-namespace">Namespace</Label>
+          <Input
+            id="audit-namespace"
+            className="font-mono"
+            placeholder="user/chrispian/memory"
+            value={nsFilter}
+            onChange={(event) => setNsFilter(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-actor">
+            Actor <span className="font-normal text-text-subtle">(substring)</span>
+          </Label>
+          <Input
+            id="audit-actor"
+            className="font-mono"
+            placeholder="agent_id substring..."
+            value={actorFilter}
+            onChange={(event) => setActorFilter(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-limit">Page limit</Label>
+          <Input
+            id="audit-limit"
+            className="font-mono tabular-nums"
+            type="number"
+            min={1}
+            max={500}
+            value={limit}
+            onChange={(event) => setLimit(event.target.value)}
+          />
+        </div>
+      </div>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-since">
+            Since <span className="font-normal text-text-subtle">(local time)</span>
+          </Label>
+          <Input
+            id="audit-since"
+            type="datetime-local"
+            value={since}
+            onChange={(event) => setSince(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-until">
+            Until <span className="font-normal text-text-subtle">(local time)</span>
+          </Label>
+          <Input
+            id="audit-until"
+            type="datetime-local"
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Label
+          htmlFor="audit-group-by-day"
+          className="flex cursor-pointer items-center gap-2 text-xs font-normal text-text-soft"
+        >
+          <Checkbox
+            id="audit-group-by-day"
+            checked={groupByDay}
+            onCheckedChange={(checked) => setGroupByDay(checked === true)}
+          />
+          Group by day
+        </Label>
+        <span className="text-xs tabular-nums text-text-subtle" aria-live="polite">
+          {events.length} shown{nextCursor ? " · more available" : ""}
+        </span>
+      </div>
+    </section>
+  );
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Audit & Ops</h2>
-        <div className="page-actions">
-          <button type="button" className="hud-button-ghost" onClick={refresh} disabled={loading}>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              {loading ? <Spinner size={11} /> : <RefreshCw size={11} />} Refresh
-            </span>
-          </button>
+    <ListPageLayout
+      header={
+        <PageHeader title="Audit & Ops">
+          <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
+            {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />}
+            Refresh
+          </Button>
+        </PageHeader>
+      }
+      filters={filters}
+    >
+      {error ? (
+        <div className="border-b border-border-strong px-4 py-4 lg:px-6">
+          <Callout tone="danger" title="Audit events unavailable">
+            {error.message}
+          </Callout>
         </div>
-      </div>
+      ) : null}
 
-      {/* Filters */}
-      <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
-        <div className="form-grid" style={{ gridTemplateColumns: "1.2fr 1.5fr 1fr 0.6fr" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-event-type">
-              Event Type
-            </label>
-            <select
-              id="audit-event-type"
-              className="hud-input"
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              style={{ width: "100%" }}
-            >
-              <option value="">All Events</option>
-              {EVENT_TYPE_GROUPS.map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.types.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-namespace">
-              Namespace
-            </label>
-            <input
-              id="audit-namespace"
-              className="hud-input"
-              placeholder="user/chrispian/memory"
-              value={nsFilter}
-              onChange={(e) => setNsFilter(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-actor">
-              Actor <span style={{ color: "rgb(var(--muted))" }}>(substring)</span>
-            </label>
-            <input
-              id="audit-actor"
-              className="hud-input"
-              placeholder="agent_id substring..."
-              value={actorFilter}
-              onChange={(e) => setActorFilter(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-limit">
-              Page Limit
-            </label>
-            <input
-              id="audit-limit"
-              className="hud-input"
-              type="number"
-              min="1"
-              max="500"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
-        <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", marginTop: "0.5rem" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-since">
-              Since <span style={{ color: "rgb(var(--muted))" }}>(local time)</span>
-            </label>
-            <input
-              id="audit-since"
-              className="hud-input"
-              type="datetime-local"
-              value={since}
-              onChange={(e) => setSince(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="audit-until">
-              Until <span style={{ color: "rgb(var(--muted))" }}>(local time)</span>
-            </label>
-            <input
-              id="audit-until"
-              className="hud-input"
-              type="datetime-local"
-              value={until}
-              onChange={(e) => setUntil(e.target.value)}
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
-        <div style={{ marginTop: "0.5rem", display: "flex", gap: "1rem", alignItems: "center" }}>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.3rem",
-              fontSize: "0.75rem",
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={groupByDay}
-              onChange={(e) => setGroupByDay(e.target.checked)}
-              style={{ accentColor: "rgb(var(--primary))" }}
-            />
-            Group by day
-          </label>
-          <span style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-            {totalShown} shown
-            {nextCursor && ` · more available`}
-          </span>
-        </div>
-      </div>
-
-      {error && (
+      {loading && events.length === 0 ? (
         <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
+          className="flex min-h-48 items-center justify-center"
+          role="status"
+          aria-label="Loading audit events"
         >
-          Error: {error.message}
+          <Spinner size={20} />
         </div>
-      )}
+      ) : null}
 
-      {/* Timeline */}
-      <div className="hud-panel">
-        {loading && events.length === 0 && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <Spinner size={20} />
-          </div>
-        )}
+      {!loading && events.length === 0 ? (
+        <EmptyState
+          variant={eventType || nsFilter || actorFilter ? "no-results" : "empty"}
+          title="No audit events"
+          description={
+            eventType || nsFilter || actorFilter
+              ? "Try a different filter combination."
+              : "Events will appear as operations occur."
+          }
+        />
+      ) : null}
 
-        {!loading && events.length === 0 && (
-          <EmptyState
-            message="No audit events"
-            sub={
-              eventType || nsFilter || actorFilter
-                ? "Try a different filter combination"
-                : "Events will appear as operations occur"
-            }
-          />
-        )}
-
-        {events.length > 0 && (
-          <table className="hud-table">
-            <thead>
-              <tr>
-                <th style={{ width: 30 }} aria-label="expand" />
-                <th>Type</th>
-                <th>Namespace</th>
-                <th>Key</th>
-                <th>Rev</th>
-                <th>Actor</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
+      {events.length > 0 ? (
+        <div className="min-w-[62rem]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <span className="sr-only">Open</span>
+                </TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Namespace</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead>Rev</TableHead>
+                <TableHead>Actor</TableHead>
+                <TableHead>Time</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {grouped.map((group) => (
                 <Fragment key={group.day || "flat"}>
-                  {group.day && (
-                    <tr key={`day-${group.day}`}>
-                      <td
+                  {group.day ? (
+                    <TableRow>
+                      <TableCell
                         colSpan={7}
-                        style={{
-                          padding: "0.4rem 0.75rem",
-                          background: "rgba(var(--panel2) / 0.5)",
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "0.7rem",
-                          color: "rgb(var(--muted))",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
+                        className="bg-panel-2 px-4 py-2 font-mono text-[11px] font-medium tracking-wide text-text-subtle"
                       >
                         {group.day} · {group.items.length} event
                         {group.items.length === 1 ? "" : "s"}
-                      </td>
-                    </tr>
-                  )}
-                  {group.items.map((evt) => {
-                    const isExpanded = expandedRow === evt.id;
-                    const route = routeForEvent(evt.event_type);
-                    const canDrillThrough = !!onOpenItem && !!evt.namespace && !!evt.key;
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {group.items.map((event) => {
+                    const isExpanded = expandedRow === event.id;
+                    const route = routeForEvent(event.event_type);
+                    const canDrillThrough = Boolean(onOpenItem && event.namespace && event.key);
+                    const canOpen = canDrillThrough || event.metadata != null;
+                    const actionLabel = canDrillThrough
+                      ? `Open ${route} detail for ${event.namespace}/${event.key}`
+                      : isExpanded
+                        ? "Collapse event metadata"
+                        : "Expand event metadata";
                     return (
-                      <Fragment key={evt.id}>
-                        <tr
-                          onClick={() => handleRowClick(evt)}
-                          style={{
-                            cursor: canDrillThrough || evt.metadata != null ? "pointer" : "default",
-                          }}
-                          title={
-                            canDrillThrough
-                              ? `Open ${route} detail for ${evt.namespace}/${evt.key}`
-                              : evt.metadata != null
-                                ? "Toggle metadata"
-                                : ""
+                      <Fragment key={event.id}>
+                        <TableRow
+                          className={
+                            canOpen ? "cursor-pointer hover:bg-panel-hover-soft" : undefined
                           }
+                          title={canOpen ? actionLabel : undefined}
+                          onClick={canOpen ? () => handleRowAction(event) : undefined}
                         >
-                          <td>
-                            {evt.metadata != null ? (
-                              isExpanded ? (
-                                <ChevronDown size={12} />
-                              ) : (
-                                <ChevronRight size={12} />
-                              )
+                          <TableCell>
+                            {canOpen ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={actionLabel}
+                                title={actionLabel}
+                                onClick={(clickEvent) => {
+                                  clickEvent.stopPropagation();
+                                  handleRowAction(event);
+                                }}
+                              >
+                                {event.metadata != null && !canDrillThrough ? (
+                                  isExpanded ? (
+                                    <ChevronDown aria-hidden="true" />
+                                  ) : (
+                                    <ChevronRight aria-hidden="true" />
+                                  )
+                                ) : (
+                                  <FileText aria-hidden="true" />
+                                )}
+                              </Button>
                             ) : (
-                              <FileText size={12} style={{ color: "rgb(var(--muted))" }} />
+                              <FileText className="size-3.5 text-text-subtle" aria-hidden="true" />
                             )}
-                          </td>
-                          <td>
-                            <StatusBadge
-                              status={evt.event_type}
-                              variant={badgeVariant(evt.event_type)}
-                            />
-                          </td>
-                          <td style={{ fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}>
-                            {evt.namespace}
-                          </td>
-                          <td style={{ fontSize: "0.8rem", fontFamily: "var(--font-mono)" }}>
-                            {evt.key}
-                          </td>
-                          <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
-                            r{evt.revision}
-                          </td>
-                          <td
-                            style={{
-                              color: "rgb(var(--muted))",
-                              fontFamily: "var(--font-mono)",
-                              fontSize: "0.75rem",
-                            }}
-                          >
-                            {evt.actor}
-                          </td>
-                          <td style={{ color: "rgb(var(--muted))", fontSize: "0.75rem" }}>
-                            {new Date(evt.created_at).toLocaleString()}
-                          </td>
-                        </tr>
-                        {isExpanded && evt.metadata != null && (
-                          <tr key={`${evt.id}-detail`}>
-                            <td
-                              colSpan={7}
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                background: "rgba(var(--panel2) / 0.4)",
-                              }}
-                            >
-                              <div className="hud-label" style={{ marginBottom: "0.3rem" }}>
+                          </TableCell>
+                          <TableCell>
+                            <Pill tone={pillTone(event.event_type)}>{event.event_type}</Pill>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-text-soft">
+                            {event.namespace}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-text-soft">
+                            {event.key}
+                          </TableCell>
+                          <TableCell className="text-xs tabular-nums text-text-subtle">
+                            r{event.revision}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-text-subtle">
+                            {event.actor}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-text-subtle">
+                            {new Date(event.created_at).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && event.metadata != null ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="bg-panel-2 px-4 py-4">
+                              <h3 className="mb-2 text-xs font-semibold text-text-muted">
                                 Metadata
-                              </div>
-                              <JsonViewer data={evt.metadata} maxHeight="200px" />
-                            </td>
-                          </tr>
-                        )}
+                              </h3>
+                              <JsonViewer value={event.metadata} className="max-h-52" />
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
                       </Fragment>
                     );
                   })}
                 </Fragment>
               ))}
-            </tbody>
-          </table>
-        )}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
 
-        {nextCursor && (
-          <div
-            style={{
-              padding: "0.75rem",
-              textAlign: "center",
-              borderTop: "1px solid rgb(var(--border))",
-            }}
-          >
-            <button
-              type="button"
-              className="hud-button-ghost"
-              onClick={loadMore}
-              disabled={loadingMore}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.3rem",
-                  justifyContent: "center",
-                }}
-              >
-                {loadingMore ? <Spinner size={11} /> : null}
-                Load older events
-              </span>
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      {nextCursor ? (
+        <div className="flex justify-center border-t border-border-strong px-4 py-4">
+          <Button type="button" variant="outline" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? <Spinner size={13} /> : null}
+            Load older events
+          </Button>
+        </div>
+      ) : null}
+    </ListPageLayout>
   );
 }

@@ -1,11 +1,27 @@
-import { useState } from 'react';
-import { Search, Wrench, AlertTriangle, CheckCircle } from 'lucide-react';
-import { toast } from 'sonner';
-import { scanConsistency, repairConsistency } from '../api/client';
-import { Spinner } from '../components/ui/Spinner';
-import { EmptyState } from '../components/ui/EmptyState';
-import { ConfirmModal } from '../components/ui/ConfirmModal';
-import type { ConsistencyScanResponse, ConsistencyRepairResponse } from '../api/types';
+import {
+  Button,
+  Callout,
+  ConfirmDialog,
+  EmptyState,
+  PageHeader,
+  Pill,
+  SummaryCards,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hollis-labs/sysop-ui";
+import { ListPageLayout } from "@hollis-labs/sysop-ui/layout";
+import { AlertTriangle, CheckCircle, Search, Wrench } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { repairConsistency, scanConsistency } from "../api/client";
+import type { ConsistencyRepairResponse, ConsistencyScanResponse } from "../api/types";
+import { Spinner } from "../components/ui/Spinner";
+
+type Issue = { type: string; namespace: string; key: string; details: string };
 
 export function ConsistencyPage() {
   const [scanning, setScanning] = useState(false);
@@ -20,17 +36,17 @@ export function ConsistencyPage() {
     setError(null);
     setRepairResult(null);
     try {
-      const res = await scanConsistency();
-      setScanResult(res);
-      if (res.count === 0) {
-        toast.success('No consistency issues found');
+      const response = await scanConsistency();
+      setScanResult(response);
+      if (response.count === 0) {
+        toast.success("No consistency issues found");
       } else {
-        toast.warning(`Found ${res.count} issue${res.count === 1 ? '' : 's'}`);
+        toast.warning(`Found ${response.count} issue${response.count === 1 ? "" : "s"}`);
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Scan failed: ${msg}`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Scan failed: ${message}`);
     } finally {
       setScanning(false);
     }
@@ -41,147 +57,162 @@ export function ConsistencyPage() {
     setError(null);
     setShowRepairConfirm(false);
     try {
-      const res = await repairConsistency();
-      setRepairResult(res);
+      const response = await repairConsistency();
+      setRepairResult(response);
       setScanResult(null);
-      toast.success(`Repair complete: ${res.rebuilt_heads} heads rebuilt`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Repair failed: ${msg}`);
+      toast.success(`Repair complete: ${response.rebuilt_heads} heads rebuilt`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Repair failed: ${message}`);
     } finally {
       setRepairing(false);
     }
   };
 
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button type="button" size="sm" onClick={handleScan} disabled={scanning || repairing}>
+        {scanning ? <Spinner size={13} /> : <Search aria-hidden="true" />}
+        Scan
+      </Button>
+      {scanResult && scanResult.count > 0 ? (
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          onClick={() => setShowRepairConfirm(true)}
+          disabled={repairing}
+        >
+          {repairing ? <Spinner size={13} /> : <Wrench aria-hidden="true" />}
+          Repair
+        </Button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Consistency</h2>
-      </div>
+    <ListPageLayout header={<PageHeader title="Consistency">{actions}</PageHeader>}>
+      <section className="border-b border-border-strong bg-panel px-4 py-4 lg:px-6">
+        <h2 className="text-sm font-semibold text-text">Database integrity</h2>
+        <p className="mt-1 max-w-3xl text-xs leading-5 text-text-subtle">
+          Scan head pointers against stored revisions. Repair rebuilds inconsistent pointers and
+          modifies the database.
+        </p>
+      </section>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button className="hud-button-primary" onClick={handleScan} disabled={scanning || repairing}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            {scanning ? <Spinner size={13} /> : <Search size={13} />} Scan
-          </span>
-        </button>
-        {scanResult && scanResult.count > 0 && (
-          <button className="hud-button-danger" onClick={() => setShowRepairConfirm(true)} disabled={repairing}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              {repairing ? <Spinner size={13} /> : <Wrench size={13} />} Repair
-            </span>
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div className="hud-panel" style={{ padding: '0.75rem', color: 'rgb(var(--danger))', marginBottom: '0.75rem' }}>
-          {error}
+      {error ? (
+        <div className="border-b border-border-strong px-4 py-4 lg:px-6">
+          <Callout tone="danger" title="Consistency operation failed">
+            {error}
+          </Callout>
         </div>
-      )}
+      ) : null}
 
-      {/* Repair results */}
-      {repairResult && (
-        <div className="hud-panel" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <CheckCircle size={16} style={{ color: 'rgb(var(--ok))' }} />
-            <span style={{ fontSize: '0.9rem' }}>Repair Complete</span>
+      {repairResult ? (
+        <section aria-labelledby="repair-result-heading">
+          <div className="flex items-center gap-3 border-b border-border-strong px-4 py-3 lg:px-6">
+            <CheckCircle className="size-4 text-status-done" aria-hidden="true" />
+            <h2 id="repair-result-heading" className="text-sm font-semibold text-text">
+              Repair complete
+            </h2>
+            <Pill tone={repairResult.remaining_issues > 0 ? "warning" : "success"} dot>
+              {repairResult.remaining_issues > 0 ? "Needs review" : "Consistent"}
+            </Pill>
           </div>
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Heads Rebuilt</div>
-              <div className="stat-value">{repairResult.rebuilt_heads}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Remaining Issues</div>
-              <div className="stat-value" style={{ color: repairResult.remaining_issues > 0 ? 'rgb(var(--warn))' : 'rgb(var(--ok))' }}>
-                {repairResult.remaining_issues}
+          <SummaryCards
+            cards={[
+              { label: "Heads rebuilt", value: repairResult.rebuilt_heads },
+              { label: "Remaining issues", value: repairResult.remaining_issues },
+            ]}
+          />
+          {repairResult.issues.length > 0 ? (
+            <div>
+              <div className="border-b border-border px-4 py-3 lg:px-6">
+                <h3 className="text-xs font-semibold text-warning">Remaining issues</h3>
               </div>
-            </div>
-          </div>
-          {repairResult.issues.length > 0 && (
-            <div style={{ marginTop: '0.75rem' }}>
-              <div className="hud-label" style={{ marginBottom: '0.3rem', color: 'rgb(var(--warn))' }}>Remaining Issues</div>
               <IssueTable issues={repairResult.issues} />
             </div>
-          )}
-        </div>
-      )}
+          ) : null}
+        </section>
+      ) : null}
 
-      {/* Scan results */}
-      {scanResult && (
-        <div className="hud-panel" style={{ padding: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+      {scanResult ? (
+        <section aria-labelledby="scan-result-heading">
+          <div className="flex items-center gap-3 border-b border-border-strong px-4 py-3 lg:px-6">
             {scanResult.count === 0 ? (
-              <>
-                <CheckCircle size={16} style={{ color: 'rgb(var(--ok))' }} />
-                <span style={{ fontSize: '0.9rem', color: 'rgb(var(--ok))' }}>All checks passed</span>
-              </>
+              <CheckCircle className="size-4 text-status-done" aria-hidden="true" />
             ) : (
-              <>
-                <AlertTriangle size={16} style={{ color: 'rgb(var(--warn))' }} />
-                <span style={{ fontSize: '0.9rem', color: 'rgb(var(--warn))' }}>
-                  {scanResult.count} issue{scanResult.count === 1 ? '' : 's'} found
-                </span>
-              </>
+              <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
             )}
+            <h2 id="scan-result-heading" className="text-sm font-semibold text-text">
+              {scanResult.count === 0
+                ? "All checks passed"
+                : `${scanResult.count} issue${scanResult.count === 1 ? "" : "s"} found`}
+            </h2>
+            <Pill tone={scanResult.count === 0 ? "success" : "warning"} dot>
+              {scanResult.count === 0 ? "Consistent" : "Repair available"}
+            </Pill>
           </div>
-
-          {scanResult.count === 0 && (
-            <EmptyState message="No issues" sub="Database is consistent" />
-          )}
-
-          {scanResult.issues.length > 0 && (
+          {scanResult.count === 0 ? (
+            <EmptyState
+              variant="empty"
+              title="No issues"
+              description="The database is consistent."
+            />
+          ) : (
             <IssueTable issues={scanResult.issues} />
           )}
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {!scanResult && !repairResult && !error && (
-        <div className="hud-panel">
-          <EmptyState message="Run a scan" sub="Check database consistency and repair issues" />
-        </div>
-      )}
-
-      {showRepairConfirm && (
-        <ConfirmModal
-          title="Repair Consistency Issues"
-          message={`This will attempt to repair ${scanResult?.count ?? 0} consistency issue(s) by rebuilding head pointers. This modifies the database.`}
-          confirmLabel="Repair"
-          danger
-          onConfirm={handleRepair}
-          onCancel={() => setShowRepairConfirm(false)}
+      {!scanResult && !repairResult && !error ? (
+        <EmptyState
+          variant="empty"
+          title="Run a consistency scan"
+          description="Check the database for head-pointer issues before attempting a repair."
+          action={{ label: "Scan database", onClick: handleScan }}
         />
-      )}
-    </div>
+      ) : null}
+
+      <ConfirmDialog
+        open={showRepairConfirm}
+        onOpenChange={setShowRepairConfirm}
+        title="Repair consistency issues"
+        description={`Rebuild head pointers for ${scanResult?.count ?? 0} consistency issue(s)? This modifies the database.`}
+        confirmLabel="Repair"
+        busy={repairing}
+        onConfirm={handleRepair}
+      />
+    </ListPageLayout>
   );
 }
 
-function IssueTable({ issues }: { issues: { type: string; namespace: string; key: string; details: string }[] }) {
+function IssueTable({ issues }: { issues: Issue[] }) {
   return (
-    <table className="hud-table">
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Namespace</th>
-          <th>Key</th>
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody>
-        {issues.map((issue, i) => (
-          <tr key={i}>
-            <td>
-              <span className="hud-badge-warn" style={{ fontSize: '0.65rem' }}>{issue.type}</span>
-            </td>
-            <td style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>{issue.namespace}</td>
-            <td style={{ fontSize: '0.8rem' }}>{issue.key}</td>
-            <td style={{ fontSize: '0.8rem', color: 'rgb(var(--muted))' }}>{issue.details}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="min-w-[48rem]">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Type</TableHead>
+            <TableHead>Namespace</TableHead>
+            <TableHead>Key</TableHead>
+            <TableHead>Details</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {issues.map((issue) => (
+            <TableRow key={`${issue.type}:${issue.namespace}:${issue.key}:${issue.details}`}>
+              <TableCell>
+                <Pill tone="warning">{issue.type}</Pill>
+              </TableCell>
+              <TableCell className="font-mono text-xs text-text-soft">{issue.namespace}</TableCell>
+              <TableCell className="font-mono text-xs text-text-soft">{issue.key}</TableCell>
+              <TableCell className="text-xs leading-5 text-text-subtle">{issue.details}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
