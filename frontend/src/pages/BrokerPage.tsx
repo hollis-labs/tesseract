@@ -1,23 +1,23 @@
+import { Button, Callout, Input, JsonViewer, Label, Pill, Textarea } from "@hollis-labs/sysop-ui";
 import { AlertTriangle, Brain, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { brokerPlan } from "../api/client";
 import type { BrokerPlanResponse } from "../api/types";
-import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
 
 const INTENTS = [
   {
     value: "resume_task",
-    label: "Resume Task",
+    label: "Resume task",
     description: "Gather context for resuming a specific task",
   },
   {
     value: "boot_project",
-    label: "Boot Project",
+    label: "Boot project",
     description: "Load full project context for a new session",
   },
-  { value: "review_session", label: "Review Session", description: "Summarize a previous session" },
+  { value: "review_session", label: "Review session", description: "Summarize a previous session" },
   { value: "custom", label: "Custom", description: "Define a custom intent" },
 ];
 
@@ -40,276 +40,221 @@ export function BrokerPage({ onExecutePlan }: Props) {
     setError(null);
     setPlan(null);
     try {
-      const req: Parameters<typeof brokerPlan>[0] = { intent };
-      const ts = taskSummary.trim();
-      if (ts) req.task_summary = ts;
-      const nc = nsConstraints.trim();
-      if (nc)
-        req.namespace_constraints = nc
+      const request: Parameters<typeof brokerPlan>[0] = { intent };
+      const summary = taskSummary.trim();
+      if (summary) request.task_summary = summary;
+      const constraints = nsConstraints.trim();
+      if (constraints) {
+        request.namespace_constraints = constraints
           .split(",")
-          .map((s) => s.trim())
+          .map((value) => value.trim())
           .filter(Boolean);
+      }
       const budget: NonNullable<Parameters<typeof brokerPlan>[0]["budget"]> = {};
-      const mi = parseInt(maxItems);
-      if (Number.isFinite(mi) && mi > 0) budget.max_items = mi;
-      const mt = parseInt(maxTokens);
-      if (Number.isFinite(mt) && mt > 0) budget.max_tokens_estimate = mt;
-      if (Object.keys(budget).length > 0) req.budget = budget;
-      const res = await brokerPlan(req);
-      setPlan(res);
+      const itemBudget = parseInt(maxItems, 10);
+      if (Number.isFinite(itemBudget) && itemBudget > 0) budget.max_items = itemBudget;
+      const tokenBudget = parseInt(maxTokens, 10);
+      if (Number.isFinite(tokenBudget) && tokenBudget > 0) {
+        budget.max_tokens_estimate = tokenBudget;
+      }
+      if (Object.keys(budget).length > 0) request.budget = budget;
+      const response = await brokerPlan(request);
+      setPlan(response);
       toast.success("Plan generated");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Plan failed: ${msg}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      toast.error(`Plan failed: ${message}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Broker</h2>
-      </div>
+    <div className="flex h-full min-h-0 flex-col bg-bg text-text">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <section className="border-b border-border-strong px-4 py-4 lg:px-6">
+          <h2 className="text-base font-semibold">Get a recommended retrieval plan</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-text-soft">
+            Describe the job and Broker will propose a selector and assembly setup for you to
+            inspect before opening Packet Builder.
+          </p>
+        </section>
 
-      <div
-        className="hud-panel"
-        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
-      >
-        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Get a recommended retrieval plan.</div>
-        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
-          Broker is a planner. You describe the job, and it suggests a selector and assembly setup
-          that you can inspect before sending into Packet Builder.
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: plan ? "1fr 1fr" : "1fr", gap: "1rem" }}>
-        {/* Form */}
-        <div className="hud-panel" style={{ padding: "1rem" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "0.75rem",
-              marginBottom: "0.9rem",
-              padding: "0.75rem",
-              background: "rgba(var(--panel2) / 0.7)",
-              border: "1px solid rgba(var(--border) / 0.8)",
-              borderRadius: "var(--radius-sm)",
-            }}
+        <div className={plan ? "grid lg:grid-cols-2" : "grid"}>
+          <section
+            className={plan ? "min-w-0 border-b border-border-strong lg:border-r" : "min-w-0"}
           >
-            <div>
-              <div className="hud-label" style={{ marginBottom: "0.2rem" }}>When To Use It</div>
-              <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
-                When you know the intent, but want the system to propose the retrieval shape for you.
+            <div className="grid border-b border-border md:grid-cols-2">
+              <div className="px-4 py-3 md:border-r md:border-border lg:px-6">
+                <p className="text-xs font-medium text-text-muted">When to use it</p>
+                <p className="mt-1 text-xs leading-5 text-text-soft">
+                  You know the intent, but want the system to propose the retrieval shape.
+                </p>
+              </div>
+              <div className="border-t border-border px-4 py-3 md:border-t-0 lg:px-6">
+                <p className="text-xs font-medium text-text-muted">Output</p>
+                <p className="mt-1 text-xs leading-5 text-text-soft">
+                  A selector and assembly config. Broker does not fetch the final packet.
+                </p>
               </div>
             </div>
-            <div>
-              <div className="hud-label" style={{ marginBottom: "0.2rem" }}>Output</div>
-              <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
-                A suggested selector plus assembly config. It does not fetch the final packet itself.
-              </div>
-            </div>
-          </div>
 
-          <div
-            className="hud-label"
-            style={{ color: "rgb(var(--primary))", marginBottom: "0.5rem" }}
-          >
-            Intent
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.3rem",
-              marginBottom: "0.75rem",
-            }}
-          >
-            {INTENTS.map((i) => (
-              <label
-                key={i.value}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "0.4rem 0.5rem",
-                  cursor: "pointer",
-                  borderRadius: "var(--radius-sm)",
-                  background: intent === i.value ? "rgba(var(--primary) / 0.08)" : "transparent",
-                  transition: "background 0.1s",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="intent"
-                  value={i.value}
-                  checked={intent === i.value}
-                  onChange={(e) => setIntent(e.target.value)}
-                  style={{ accentColor: "rgb(var(--primary))" }}
+            <form
+              className="space-y-5 bg-panel px-4 py-5 lg:px-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handlePlan();
+              }}
+            >
+              <fieldset>
+                <legend className="text-xs font-semibold text-text-muted">Intent</legend>
+                <div className="mt-3 divide-y divide-border rounded-md border border-border">
+                  {INTENTS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer items-start gap-3 bg-panel px-3 py-2.5 transition-colors first:rounded-t-md last:rounded-b-md hover:bg-panel-hover-soft has-checked:bg-panel-2"
+                    >
+                      <input
+                        className="mt-1 size-3.5 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        type="radio"
+                        name="intent"
+                        value={option.value}
+                        checked={intent === option.value}
+                        onChange={(event) => setIntent(event.target.value)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm text-text">{option.label}</span>
+                        <span className="mt-0.5 block text-xs leading-5 text-text-subtle">
+                          {option.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="broker-task-summary">
+                  Task summary <span className="font-normal text-text-subtle">(optional)</span>
+                </Label>
+                <Textarea
+                  id="broker-task-summary"
+                  className="min-h-20"
+                  placeholder="Describe the task or context you need..."
+                  value={taskSummary}
+                  onChange={(event) => setTaskSummary(event.target.value)}
                 />
-                <div>
-                  <div style={{ fontSize: "0.85rem" }}>{i.label}</div>
-                  <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-                    {i.description}
-                  </div>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          <div className="form-field">
-            <label className="hud-label">
-              Task Summary <span style={{ color: "rgb(var(--muted))" }}>(optional)</span>
-            </label>
-            <textarea
-              className="hud-textarea"
-              placeholder="Describe the task or context you need..."
-              value={taskSummary}
-              onChange={(e) => setTaskSummary(e.target.value)}
-              style={{ width: "100%", minHeight: 60 }}
-            />
-          </div>
-
-          <div className="form-grid" style={{ marginTop: "0.5rem" }}>
-            <div className="form-field">
-              <label className="hud-label">Namespace Constraints</label>
-              <input
-                className="hud-input"
-                placeholder="user/memory/*, app/*"
-                value={nsConstraints}
-                onChange={(e) => setNsConstraints(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label">Max Items</label>
-              <input
-                className="hud-input"
-                type="number"
-                value={maxItems}
-                onChange={(e) => setMaxItems(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div className="form-field">
-              <label className="hud-label">Max Tokens</label>
-              <input
-                className="hud-input"
-                type="number"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(e.target.value)}
-                style={{ width: "100%" }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-            <button className="hud-button-primary" onClick={handlePlan} disabled={loading}>
-              <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                {loading ? <Spinner size={13} /> : <Brain size={13} />} Generate Plan
-              </span>
-            </button>
-          </div>
-
-          <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
-            The result is advisory. Review the rationale, inspect the selector, and then pass it to
-            Packet Builder if you want the actual assembled output.
-          </div>
-        </div>
-
-        {/* Plan results */}
-        {plan && (
-          <div>
-            {/* Rationale */}
-            <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <div className="hud-label" style={{ marginBottom: "0.3rem" }}>
-                Rationale
               </div>
-              <div style={{ fontSize: "0.85rem", lineHeight: 1.5 }}>{plan.rationale}</div>
-            </div>
 
-            {/* Warnings */}
-            {plan.warnings && plan.warnings.length > 0 && (
-              <div
-                className="hud-panel"
-                style={{
-                  padding: "0.75rem",
-                  marginBottom: "0.75rem",
-                  borderColor: "rgba(var(--warn) / 0.4)",
-                }}
-              >
-                <div
-                  className="hud-label"
-                  style={{
-                    color: "rgb(var(--warn))",
-                    marginBottom: "0.3rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  <AlertTriangle size={12} /> Warnings
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="broker-namespaces">Namespace constraints</Label>
+                  <Input
+                    id="broker-namespaces"
+                    className="font-mono"
+                    placeholder="user/memory/*, app/*"
+                    value={nsConstraints}
+                    onChange={(event) => setNsConstraints(event.target.value)}
+                  />
                 </div>
-                {plan.warnings.map((w, i) => (
-                  <div
-                    key={i}
-                    style={{ fontSize: "0.8rem", color: "rgb(var(--warn))", padding: "0.15rem 0" }}
+                <div className="space-y-1.5">
+                  <Label htmlFor="broker-max-items">Max items</Label>
+                  <Input
+                    id="broker-max-items"
+                    className="font-mono"
+                    type="number"
+                    min={1}
+                    value={maxItems}
+                    onChange={(event) => setMaxItems(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="broker-max-tokens">Max tokens</Label>
+                  <Input
+                    id="broker-max-tokens"
+                    className="font-mono"
+                    type="number"
+                    min={1}
+                    value={maxTokens}
+                    onChange={(event) => setMaxTokens(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <Button type="submit" disabled={loading}>
+                  {loading ? <Spinner size={14} /> : <Brain aria-hidden="true" />}
+                  Generate plan
+                </Button>
+                <p className="mt-3 max-w-3xl text-xs leading-5 text-text-subtle">
+                  The result is advisory. Review the rationale and selector before assembling the
+                  packet.
+                </p>
+              </div>
+            </form>
+          </section>
+
+          {plan ? (
+            <section className="min-w-0 bg-panel" aria-labelledby="broker-plan-heading">
+              <div className="flex h-10 items-center justify-between border-b border-border px-4 lg:px-6">
+                <h2 id="broker-plan-heading" className="text-xs font-semibold text-text-muted">
+                  Recommended plan
+                </h2>
+                <Pill tone="success">Ready</Pill>
+              </div>
+
+              <div className="border-b border-border px-4 py-4 lg:px-6">
+                <h3 className="text-xs font-semibold text-text-muted">Rationale</h3>
+                <p className="mt-2 text-sm leading-6 text-text-soft">{plan.rationale}</p>
+              </div>
+
+              {plan.warnings && plan.warnings.length > 0 ? (
+                <div className="border-b border-border px-4 py-4 lg:px-6">
+                  <Callout
+                    tone="warning"
+                    title={`${plan.warnings.length} warning${plan.warnings.length === 1 ? "" : "s"}`}
+                    icon={<AlertTriangle />}
                   >
-                    {w}
-                  </div>
-                ))}
+                    <ul className="space-y-1">
+                      {plan.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </Callout>
+                </div>
+              ) : null}
+
+              <div className="border-b border-border px-4 py-4 lg:px-6">
+                <h3 className="mb-2 text-xs font-semibold text-text-muted">Generated selector</h3>
+                <JsonViewer value={plan.selector} className="max-h-52" />
               </div>
-            )}
 
-            {/* Generated selector */}
-            <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <div className="hud-label" style={{ marginBottom: "0.3rem" }}>
-                Generated Selector
+              <div className="border-b border-border px-4 py-4 lg:px-6">
+                <h3 className="mb-2 text-xs font-semibold text-text-muted">Assembly config</h3>
+                <JsonViewer value={plan.assembly} className="max-h-52" />
               </div>
-              <JsonViewer data={plan.selector} maxHeight="200px" />
-            </div>
 
-            {/* Assembly config */}
-            <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <div className="hud-label" style={{ marginBottom: "0.3rem" }}>
-                Assembly Config
-              </div>
-              <JsonViewer data={plan.assembly} maxHeight="200px" />
-            </div>
-
-            {/* Execute button */}
-            {onExecutePlan && (
-              <button
-                className="hud-button-primary"
-                onClick={() => onExecutePlan(plan)}
-                style={{ width: "100%" }}
-              >
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  <Play size={13} /> Execute Plan in Packet Builder
-                </span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginTop: "0.75rem" }}
-        >
-          {error}
+              {onExecutePlan ? (
+                <div className="px-4 py-4 lg:px-6">
+                  <Button className="w-full" onClick={() => onExecutePlan(plan)}>
+                    <Play aria-hidden="true" />
+                    Execute plan in Packet Builder
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
         </div>
-      )}
+
+        {error ? (
+          <div className="border-t border-border-strong px-4 py-3 lg:px-6">
+            <Callout tone="danger" title="Plan generation failed">
+              {error}
+            </Callout>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

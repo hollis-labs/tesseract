@@ -1,9 +1,28 @@
+import {
+  Button,
+  Callout,
+  EmptyState,
+  Input,
+  Label,
+  Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SummaryCards,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hollis-labs/sysop-ui";
 import { Calculator, FileText, Play, Save, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { estimate, evaluateView } from "../api/client";
 import type { EstimateResponse, EvaluationMeta, Record, Selector } from "../api/types";
-import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 
 interface Props {
@@ -30,64 +49,63 @@ function savePresets(presets: Preset[]) {
 }
 
 export function ViewBuilderPage({ onOpenRecord }: Props) {
-  // Selector form state
   const [namespaces, setNamespaces] = useState("");
   const [keys, setKeys] = useState("");
   const [revisionScope, setRevisionScope] = useState<"head" | "all">("head");
   const [order, setOrder] = useState("namespace,key,revision");
   const [limit, setLimit] = useState("50");
   const [tagsAny, setTagsAny] = useState("");
-
-  // Results
   const [results, setResults] = useState<Record[] | null>(null);
   const [evalMeta, setEvalMeta] = useState<EvaluationMeta | null>(null);
   const [estimateResult, setEstimateResult] = useState<EstimateResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [estimating, setEstimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Presets
   const [presets, setPresetsState] = useState<Preset[]>(loadPresets);
   const [presetName, setPresetName] = useState("");
 
   const buildSelector = (): Selector => {
-    const sel: Selector = {
+    const selector: Selector = {
       revision_scope: revisionScope,
-      limit: parseInt(limit) || 50,
+      limit: parseInt(limit, 10) || 50,
     };
-    const ns = namespaces.trim();
-    if (ns)
-      sel.namespaces = ns
+    const namespaceList = namespaces.trim();
+    if (namespaceList) {
+      selector.namespaces = namespaceList
         .split(",")
-        .map((s) => s.trim())
+        .map((value) => value.trim())
         .filter(Boolean);
-    const k = keys.trim();
-    if (k)
-      sel.keys = k
+    }
+    const keyList = keys.trim();
+    if (keyList) {
+      selector.keys = keyList
         .split(",")
-        .map((s) => s.trim())
+        .map((value) => value.trim())
         .filter(Boolean);
-    const o = order.trim();
-    if (o)
-      sel.order = o
+    }
+    const orderList = order.trim();
+    if (orderList) {
+      selector.order = orderList
         .split(",")
-        .map((s) => s.trim())
+        .map((value) => value.trim())
         .filter(Boolean);
-    const t = tagsAny.trim();
-    if (t)
-      sel.tags_any = t
+    }
+    const tagList = tagsAny.trim();
+    if (tagList) {
+      selector.tags_any = tagList
         .split(",")
-        .map((s) => s.trim())
+        .map((value) => value.trim())
         .filter(Boolean);
-    return sel;
+    }
+    return selector;
   };
 
   const handleEstimate = async () => {
     setEstimating(true);
     setError(null);
     try {
-      const res = await estimate(buildSelector());
-      setEstimateResult(res);
+      const response = await estimate(buildSelector());
+      setEstimateResult(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -100,9 +118,9 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
     setError(null);
     setEstimateResult(null);
     try {
-      const res = await evaluateView(buildSelector(), true);
-      setResults(res.items);
-      setEvalMeta(res.evaluation_meta);
+      const response = await evaluateView(buildSelector(), true);
+      setResults(response.items);
+      setEvalMeta(response.evaluation_meta);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -114,7 +132,7 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
     const name = presetName.trim();
     if (!name) return;
     const updated = [
-      ...presets.filter((p) => p.name !== name),
+      ...presets.filter((preset) => preset.name !== name),
       { name, selector: buildSelector() },
     ];
     setPresetsState(updated);
@@ -124,339 +142,331 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
   };
 
   const handleLoadPreset = (preset: Preset) => {
-    const s = preset.selector;
-    setNamespaces(s.namespaces?.join(", ") ?? "");
-    setKeys(s.keys?.join(", ") ?? "");
-    setRevisionScope(s.revision_scope ?? "head");
-    setOrder(s.order?.join(", ") ?? "namespace,key,revision");
-    setLimit(String(s.limit ?? 50));
-    setTagsAny(s.tags_any?.join(", ") ?? "");
+    const selector = preset.selector;
+    setNamespaces(selector.namespaces?.join(", ") ?? "");
+    setKeys(selector.keys?.join(", ") ?? "");
+    setRevisionScope(selector.revision_scope ?? "head");
+    setOrder(selector.order?.join(", ") ?? "namespace,key,revision");
+    setLimit(String(selector.limit ?? 50));
+    setTagsAny(selector.tags_any?.join(", ") ?? "");
     toast.success(`Loaded preset "${preset.name}"`);
   };
 
   const handleDeletePreset = (name: string) => {
-    const updated = presets.filter((p) => p.name !== name);
+    const updated = presets.filter((preset) => preset.name !== name);
     setPresetsState(updated);
     savePresets(updated);
   };
 
+  const openRecord = (record: Record) => {
+    onOpenRecord?.(record.namespace, record.key);
+  };
+
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">View Builder</h2>
-      </div>
+    <div className="flex h-full min-h-0 flex-col bg-bg text-text">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <section className="border-b border-border-strong px-4 py-4 lg:px-6">
+          <h2 className="text-base font-semibold">Build a reusable record list</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-text-soft">
+            Define and test selectors to see which records match, then save useful selectors as
+            browser-local presets.
+          </p>
+        </section>
 
-      <div
-        className="hud-panel"
-        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
-      >
-        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Build a reusable record list.</div>
-        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
-          Use this page to define and test selectors. It answers “what records match these rules?”
-          and lets you save those rules as browser-local presets.
-        </div>
-      </div>
+        <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <main className="min-w-0">
+            <section className="border-b border-border-strong bg-panel">
+              <div className="grid border-b border-border md:grid-cols-2">
+                <div className="px-4 py-3 md:border-r md:border-border lg:px-6">
+                  <p className="text-xs font-medium text-text-muted">When to use it</p>
+                  <p className="mt-1 text-xs leading-5 text-text-soft">
+                    Browse and validate selectors before you package or automate anything.
+                  </p>
+                </div>
+                <div className="border-t border-border px-4 py-3 md:border-t-0 lg:px-6">
+                  <p className="text-xs font-medium text-text-muted">Estimate or evaluate</p>
+                  <p className="mt-1 text-xs leading-5 text-text-soft">
+                    Estimate gives size. Evaluate shows the matching records.
+                  </p>
+                </div>
+              </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: "1rem" }}>
-        {/* Main form */}
-        <div>
-          <div className="hud-panel" style={{ padding: "1rem", marginBottom: "0.75rem" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "0.75rem",
-                marginBottom: "0.9rem",
-                padding: "0.75rem",
-                background: "rgba(var(--panel2) / 0.7)",
-                border: "1px solid rgba(var(--border) / 0.8)",
-                borderRadius: "var(--radius-sm)",
+              <form
+                className="space-y-4 px-4 py-5 lg:px-6"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleEvaluate();
+                }}
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="view-namespaces">Namespaces (comma-separated globs)</Label>
+                    <Input
+                      id="view-namespaces"
+                      className="font-mono"
+                      placeholder="user/memory/*, app/test/*"
+                      value={namespaces}
+                      onChange={(event) => setNamespaces(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="view-keys">Keys (comma-separated)</Label>
+                    <Input
+                      id="view-keys"
+                      className="font-mono"
+                      placeholder="status, config, preferences"
+                      value={keys}
+                      onChange={(event) => setKeys(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label id="view-scope-label">Revision scope</Label>
+                    <Select
+                      value={revisionScope}
+                      onValueChange={(value) => setRevisionScope(value as "head" | "all")}
+                    >
+                      <SelectTrigger className="w-full" aria-labelledby="view-scope-label">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="head">head (latest only)</SelectItem>
+                        <SelectItem value="all">all revisions</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="view-limit">Limit</Label>
+                    <Input
+                      id="view-limit"
+                      className="font-mono"
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={limit}
+                      onChange={(event) => setLimit(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="view-order">Order</Label>
+                    <Input
+                      id="view-order"
+                      className="font-mono"
+                      placeholder="namespace,key,revision"
+                      value={order}
+                      onChange={(event) => setOrder(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="view-tags">Tags (any)</Label>
+                    <Input
+                      id="view-tags"
+                      className="font-mono"
+                      placeholder="tag1, tag2"
+                      value={tagsAny}
+                      onChange={(event) => setTagsAny(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <p className="max-w-3xl text-xs leading-5 text-text-subtle">
+                  This defines the candidate set. Use Packet Builder when you need a bounded payload
+                  for an agent or prompt.
+                </p>
+
+                <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleEstimate()}
+                    disabled={estimating}
+                  >
+                    {estimating ? <Spinner size={14} /> : <Calculator aria-hidden="true" />}
+                    Estimate
+                  </Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? <Spinner size={14} /> : <Play aria-hidden="true" />}
+                    Evaluate
+                  </Button>
+                </div>
+              </form>
+            </section>
+
+            {estimateResult ? (
+              <SummaryCards
+                cards={[
+                  { label: "Records", value: estimateResult.record_count },
+                  { label: "Bytes", value: formatBytes(estimateResult.total_bytes) },
+                  { label: "Tokens (est)", value: estimateResult.token_estimate.toLocaleString() },
+                ]}
+              />
+            ) : null}
+
+            {error ? (
+              <div className="border-b border-border-strong px-4 py-3 lg:px-6">
+                <Callout tone="danger" title="View request failed">
+                  {error}
+                </Callout>
+              </div>
+            ) : null}
+
+            {results ? (
+              <section aria-labelledby="view-results-heading">
+                <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-border px-4 py-2 lg:px-6">
+                  <h2
+                    id="view-results-heading"
+                    className="mr-auto text-xs font-semibold text-text-muted"
+                  >
+                    Matching records
+                  </h2>
+                  {evalMeta ? (
+                    <>
+                      <Pill tone="info">{evalMeta.matched_count} matched</Pill>
+                      <Pill tone="neutral">{evalMeta.normalized_scope}</Pill>
+                      {evalMeta.truncated ? <Pill tone="warning">Truncated</Pill> : null}
+                    </>
+                  ) : null}
+                </div>
+
+                {results.length === 0 ? (
+                  <EmptyState
+                    variant="no-results"
+                    title="No records matched"
+                    description="Adjust your selector and try again."
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Namespace</TableHead>
+                        <TableHead>Key</TableHead>
+                        <TableHead>Rev</TableHead>
+                        <TableHead>Actor</TableHead>
+                        <TableHead>Created</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {results.map((record) => (
+                        <TableRow
+                          key={`${record.namespace}-${record.key}-${record.revision}`}
+                          className={
+                            onOpenRecord
+                              ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                              : undefined
+                          }
+                          tabIndex={onOpenRecord ? 0 : undefined}
+                          role={onOpenRecord ? "button" : undefined}
+                          aria-label={
+                            onOpenRecord
+                              ? `Open ${record.namespace}/${record.key}, revision ${record.revision}`
+                              : undefined
+                          }
+                          onClick={onOpenRecord ? () => openRecord(record) : undefined}
+                          onKeyDown={
+                            onOpenRecord
+                              ? (event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    openRecord(record);
+                                  }
+                                }
+                              : undefined
+                          }
+                        >
+                          <TableCell className="font-mono text-xs text-text-soft">
+                            {record.namespace}
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-2">
+                              <FileText
+                                className="size-3.5 shrink-0 text-status-doing"
+                                aria-hidden="true"
+                              />
+                              {record.key}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-text-subtle">
+                            r{record.revision}
+                          </TableCell>
+                          <TableCell className="text-text-soft">{record.actor}</TableCell>
+                          <TableCell className="text-xs text-text-soft">
+                            {new Date(record.created_at).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </section>
+            ) : null}
+          </main>
+
+          <aside className="min-w-0 border-t border-border-strong bg-panel lg:border-t-0 lg:border-l">
+            <form
+              className="border-b border-border-strong px-4 py-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSavePreset();
               }}
             >
-              <div>
-                <div className="hud-label" style={{ marginBottom: "0.2rem" }}>When To Use It</div>
-                <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
-                  For browsing and validating selectors before you package or automate anything.
-                </div>
-              </div>
-              <div>
-                <div className="hud-label" style={{ marginBottom: "0.2rem" }}>Estimate vs Evaluate</div>
-                <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
-                  `Estimate` gives size. `Evaluate` shows the actual matching records.
-                </div>
-              </div>
-            </div>
-
-            <div className="form-grid">
-              <div className="form-field form-field-full">
-                <label className="hud-label">Namespaces (comma-separated globs)</label>
-                <input
-                  className="hud-input"
-                  placeholder="user/memory/*, app/test/*"
-                  value={namespaces}
-                  onChange={(e) => setNamespaces(e.target.value)}
-                  style={{ width: "100%" }}
+              <Label htmlFor="view-preset-name">Save preset</Label>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  id="view-preset-name"
+                  placeholder="Preset name"
+                  value={presetName}
+                  onChange={(event) => setPresetName(event.target.value)}
                 />
-              </div>
-
-              <div className="form-field form-field-full">
-                <label className="hud-label">Keys (comma-separated)</label>
-                <input
-                  className="hud-input"
-                  placeholder="status, config, preferences"
-                  value={keys}
-                  onChange={(e) => setKeys(e.target.value)}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="hud-label">Revision Scope</label>
-                <select
-                  className="hud-input"
-                  value={revisionScope}
-                  onChange={(e) => setRevisionScope(e.target.value as "head" | "all")}
-                  style={{ width: "100%" }}
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="icon"
+                  disabled={!presetName.trim()}
+                  aria-label="Save preset"
                 >
-                  <option value="head">head (latest only)</option>
-                  <option value="all">all revisions</option>
-                </select>
+                  <Save aria-hidden="true" />
+                </Button>
               </div>
+            </form>
 
-              <div className="form-field">
-                <label className="hud-label">Limit</label>
-                <input
-                  className="hud-input"
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={limit}
-                  onChange={(e) => setLimit(e.target.value)}
-                  style={{ width: "100%" }}
-                />
+            <section aria-labelledby="saved-presets-heading">
+              <div className="flex h-10 items-center border-b border-border px-4">
+                <h2 id="saved-presets-heading" className="text-xs font-semibold text-text-muted">
+                  Saved presets
+                </h2>
+                <Pill className="ml-auto">{presets.length}</Pill>
               </div>
-
-              <div className="form-field">
-                <label className="hud-label">Order</label>
-                <input
-                  className="hud-input"
-                  placeholder="namespace,key,revision"
-                  value={order}
-                  onChange={(e) => setOrder(e.target.value)}
-                  style={{ width: "100%" }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="hud-label">Tags (any)</label>
-                <input
-                  className="hud-input"
-                  placeholder="tag1, tag2"
-                  value={tagsAny}
-                  onChange={(e) => setTagsAny(e.target.value)}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            </div>
-
-            <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
-              This page defines the candidate set. If you need a bounded payload for an agent or
-              prompt, move from here into Packet Builder.
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-              <button className="hud-button" onClick={handleEstimate} disabled={estimating}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {estimating ? <Spinner size={12} /> : <Calculator size={13} />}
-                  Estimate
-                </span>
-              </button>
-              <button className="hud-button-primary" onClick={handleEvaluate} disabled={loading}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  {loading ? <Spinner size={12} /> : <Play size={13} />}
-                  Evaluate
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Estimate result */}
-          {estimateResult && (
-            <div className="stats-grid" style={{ marginBottom: "0.75rem" }}>
-              <div className="stat-card">
-                <div className="stat-label">Records</div>
-                <div className="stat-value">{estimateResult.record_count}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Bytes</div>
-                <div className="stat-value">{formatBytes(estimateResult.total_bytes)}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Tokens (est)</div>
-                <div className="stat-value">{estimateResult.token_estimate.toLocaleString()}</div>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div
-              className="hud-panel"
-              style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
-            >
-              {error}
-            </div>
-          )}
-
-          {/* Results table */}
-          {results && (
-            <div className="hud-panel">
-              {evalMeta && (
-                <div
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    borderBottom: "1px solid rgb(var(--border))",
-                    fontSize: "0.75rem",
-                    color: "rgb(var(--muted))",
-                    display: "flex",
-                    gap: "1rem",
-                  }}
-                >
-                  <span>Matched: {evalMeta.matched_count}</span>
-                  <span>Scope: {evalMeta.normalized_scope}</span>
-                  {evalMeta.truncated && (
-                    <span style={{ color: "rgb(var(--warn))" }}>Truncated</span>
-                  )}
-                </div>
-              )}
-
-              {results.length === 0 && (
-                <EmptyState message="No records matched" sub="Adjust your selector and try again" />
-              )}
-
-              {results.length > 0 && (
-                <table className="hud-table">
-                  <thead>
-                    <tr>
-                      <th>Namespace</th>
-                      <th>Key</th>
-                      <th>Rev</th>
-                      <th>Actor</th>
-                      <th>Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r, i) => (
-                      <tr
-                        key={`${r.namespace}-${r.key}-${r.revision}-${i}`}
-                        onClick={() => onOpenRecord?.(r.namespace, r.key)}
-                        style={{ cursor: onOpenRecord ? "pointer" : "default" }}
+              {presets.length === 0 ? (
+                <p className="px-4 py-5 text-xs leading-5 text-text-subtle">
+                  Saved selectors appear here and stay in this browser.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {presets.map((preset) => (
+                    <li key={preset.name} className="flex items-center gap-1 px-2 py-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-w-0 flex-1 justify-start"
+                        onClick={() => handleLoadPreset(preset)}
                       >
-                        <td style={{ fontSize: "0.8rem" }}>{r.namespace}</td>
-                        <td>
-                          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                            <FileText
-                              size={12}
-                              style={{ color: "rgb(var(--primary))", flexShrink: 0 }}
-                            />
-                            {r.key}
-                          </span>
-                        </td>
-                        <td style={{ color: "rgb(var(--muted))" }}>r{r.revision}</td>
-                        <td style={{ color: "rgb(var(--muted))" }}>{r.actor}</td>
-                        <td style={{ color: "rgb(var(--muted))", fontSize: "0.8rem" }}>
-                          {new Date(r.created_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <Upload className="size-3.5 text-text-subtle" aria-hidden="true" />
+                        <span className="truncate font-mono text-xs">{preset.name}</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => handleDeletePreset(preset.name)}
+                        aria-label={`Delete preset ${preset.name}`}
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-          )}
-        </div>
-
-        {/* Presets sidebar */}
-        <div>
-          <div className="hud-panel" style={{ padding: "0.75rem" }}>
-            <div className="hud-label" style={{ marginBottom: "0.5rem" }}>
-              Save Preset
-            </div>
-            <div style={{ display: "flex", gap: "0.3rem" }}>
-              <input
-                className="hud-input"
-                placeholder="Preset name"
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                style={{ flex: 1, fontSize: "0.8rem" }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSavePreset();
-                }}
-              />
-              <button
-                className="hud-button-ghost"
-                onClick={handleSavePreset}
-                disabled={!presetName.trim()}
-                title="Save"
-              >
-                <Save size={13} />
-              </button>
-            </div>
-          </div>
-
-          {presets.length > 0 && (
-            <div className="hud-panel" style={{ padding: "0.75rem", marginTop: "0.5rem" }}>
-              <div className="hud-label" style={{ marginBottom: "0.5rem" }}>
-                Saved Presets
-              </div>
-              {presets.map((p) => (
-                <div
-                  key={p.name}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                    padding: "0.3rem 0",
-                    borderBottom: "1px solid rgba(var(--border) / 0.5)",
-                  }}
-                >
-                  <button
-                    style={{
-                      flex: 1,
-                      background: "none",
-                      border: "none",
-                      color: "rgb(var(--text))",
-                      cursor: "pointer",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "0.8rem",
-                      textAlign: "left",
-                      padding: "0.2rem 0",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                    }}
-                    onClick={() => handleLoadPreset(p)}
-                  >
-                    <Upload size={11} style={{ color: "rgb(var(--muted))" }} />
-                    {p.name}
-                  </button>
-                  <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "rgb(var(--muted))",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                    onClick={() => handleDeletePreset(p.name)}
-                    title="Delete preset"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+            </section>
+          </aside>
         </div>
       </div>
     </div>

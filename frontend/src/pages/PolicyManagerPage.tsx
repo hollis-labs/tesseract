@@ -1,56 +1,52 @@
-import { ChevronDown, ChevronRight, Plus, Shield } from "lucide-react";
+import {
+  Button,
+  Callout,
+  EmptyState,
+  Input,
+  JsonViewer,
+  Label,
+  Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SettingsField,
+  SettingsGrid,
+  SummaryCards,
+} from "@hollis-labs/sysop-ui";
+import { ListPageLayout, TabStrip, type TabStripItem } from "@hollis-labs/sysop-ui/layout";
+import { ChevronDown, ChevronRight, Plus, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { evaluateView, getNamespacePolicy, registerNamespace } from "../api/client";
 import type { NamespacePolicy } from "../api/types";
-import { EmptyState } from "../components/ui/EmptyState";
-import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
 import { usePoll } from "../hooks/usePoll";
 
 type Tab = "list" | "register";
 const TIER_OPTIONS = ["memory", "cache", "pins", "draft", "session"] as const;
 
+const TABS: TabStripItem<Tab>[] = [
+  { key: "list", label: "Namespace policies", icon: <Shield className="size-3.5" /> },
+  { key: "register", label: "Create or update", icon: <Plus className="size-3.5" /> },
+];
+
 export function PolicyManagerPage() {
   const [tab, setTab] = useState<Tab>("list");
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Policy Manager</h2>
-      </div>
+    <ListPageLayout header={null} tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}>
+      <section className="border-b border-border-strong px-4 py-4 lg:px-6">
+        <h2 className="text-base font-semibold">Register namespace ownership and guardrails</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-text-soft">
+          Namespaces can exist without a stored policy. Create or update the explicit owner and
+          validation rules here.
+        </p>
+      </section>
 
-      <div
-        className="hud-panel"
-        style={{ padding: "0.9rem 1rem", marginBottom: "0.75rem", borderColor: "rgba(var(--primary) / 0.35)" }}
-      >
-        <div style={{ fontSize: "0.9rem", marginBottom: "0.3rem" }}>Register namespace ownership and guardrails.</div>
-        <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
-          Namespaces can exist in data without a stored policy. This page is where you create or
-          update the explicit owner and policy entry for a namespace.
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button
-          className={tab === "list" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("list")}
-        >
-          Namespace Policies
-        </button>
-        <button
-          className={tab === "register" ? "hud-button-primary" : "hud-button-ghost"}
-          onClick={() => setTab("register")}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <Plus size={13} /> Create / Update Policy
-          </span>
-        </button>
-      </div>
-
-      {tab === "list" && <PolicyList />}
-      {tab === "register" && <RegisterForm onRegistered={() => setTab("list")} />}
-    </div>
+      {tab === "list" ? <PolicyList /> : <RegisterForm onRegistered={() => setTab("list")} />}
+    </ListPageLayout>
   );
 }
 
@@ -58,11 +54,9 @@ function PolicyList() {
   const fetcher = useCallback(() => evaluateView({ revision_scope: "head", limit: 500 }), []);
   const { data, loading, error, refresh } = usePoll(fetcher, 15_000);
 
-  // Extract unique namespaces and fetch policies for each
   const namespaces = useMemo(() => {
     if (!data?.items) return [];
-    const set = new Set(data.items.map((r) => r.namespace));
-    return Array.from(set).sort();
+    return Array.from(new Set(data.items.map((record) => record.namespace))).sort();
   }, [data]);
 
   const [policies, setPolicies] = useState<Map<string, NamespacePolicy>>(new Map());
@@ -70,223 +64,193 @@ function PolicyList() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const loadPolicies = useCallback(async () => {
-    if (namespaces.length === 0) return;
+    if (namespaces.length === 0) {
+      setPolicies(new Map());
+      return;
+    }
     setLoadingPolicies(true);
-    const map = new Map<string, NamespacePolicy>();
+    const nextPolicies = new Map<string, NamespacePolicy>();
     await Promise.allSettled(
-      namespaces.map(async (ns) => {
+      namespaces.map(async (namespace) => {
         try {
-          const p = await getNamespacePolicy(ns);
-          map.set(ns, p);
+          const policy = await getNamespacePolicy(namespace);
+          nextPolicies.set(namespace, policy);
         } catch {
-          // Namespace may not have a registered policy
+          // A namespace may exist in records without a registered policy.
         }
       }),
     );
-    setPolicies(map);
+    setPolicies(nextPolicies);
     setLoadingPolicies(false);
   }, [namespaces]);
 
-  // Fetch policies when namespaces change
   useEffect(() => {
-    loadPolicies();
+    void loadPolicies();
   }, [loadPolicies]);
 
+  const unregisteredCount = namespaces.length - policies.size;
+
   return (
-    <div>
-      <div
-        className="hud-panel"
-        style={{ padding: "0.75rem", marginBottom: "0.75rem", background: "rgba(var(--panel2) / 0.7)" }}
-      >
-        <div style={{ fontSize: "0.8rem", color: "rgb(var(--text))", marginBottom: "0.25rem" }}>
-          What this list means
-        </div>
-        <div style={{ fontSize: "0.76rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
-          The page starts from namespaces already seen in records. `No policy` means the namespace
-          exists, but nobody has explicitly registered owner and policy metadata for it yet.
-        </div>
+    <>
+      <div className="border-b border-border-strong px-4 py-3 lg:px-6">
+        <p className="max-w-3xl text-xs leading-5 text-text-soft">
+          This list starts from namespaces already seen in records. No policy means the namespace
+          exists, but owner and policy metadata have not been registered.
+        </p>
       </div>
 
-      <div
-        style={{
-          marginBottom: "0.5rem",
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: "0.5rem",
-        }}
-      >
-        <button
-          className="hud-button-ghost"
+      <SummaryCards
+        cards={[
+          { label: "Namespaces", value: namespaces.length },
+          { label: "Registered", value: policies.size },
+          {
+            label: "Without policy",
+            value: unregisteredCount,
+            accentColor:
+              unregisteredCount > 0 ? "var(--color-status-paused)" : "var(--color-status-done)",
+          },
+        ]}
+      />
+
+      <div className="flex min-h-11 items-center justify-end border-b border-border px-4 py-2 lg:px-6">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={() => {
             refresh();
-            loadPolicies();
+            void loadPolicies();
           }}
           disabled={loading || loadingPolicies}
         >
-          {loading || loadingPolicies ? <Spinner size={12} /> : "Refresh"}
-        </button>
+          {loading || loadingPolicies ? <Spinner size={14} /> : <RefreshCw aria-hidden="true" />}
+          Refresh
+        </Button>
       </div>
 
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginBottom: "0.75rem" }}
-        >
-          Error: {error.message}
+      {error ? (
+        <div className="border-b border-border-strong px-4 py-3 lg:px-6">
+          <Callout tone="danger" title="Namespace load failed">
+            {error.message}
+          </Callout>
         </div>
-      )}
+      ) : null}
 
-      <div className="hud-panel">
-        {loading && !data && (
-          <div style={{ padding: "2rem", textAlign: "center" }}>
-            <Spinner size={20} />
-          </div>
-        )}
+      {loading && !data ? (
+        <div className="flex justify-center py-12 text-text-subtle">
+          <Spinner size={20} />
+        </div>
+      ) : null}
 
-        {!loading && namespaces.length === 0 && (
-          <EmptyState message="No namespaces found" sub="Write a record to create a namespace" />
-        )}
+      {!loading && namespaces.length === 0 ? (
+        <EmptyState
+          variant="empty"
+          title="No namespaces found"
+          description="Write a record to create a namespace."
+        />
+      ) : null}
 
-        {namespaces.length > 0 &&
-          namespaces.map((ns) => {
-            const policy = policies.get(ns);
-            // Server may return a NamespacePolicy with the nested .policy field
-            // null/missing; the TS type marks it required but the runtime value
-            // doesn't always honor that. Treat absent as empty so the UI degrades
-            // to "—" rows instead of black-screening the whole route.
-            const p = policy?.policy ?? {};
-            const extraKeys = Object.keys(p).filter(
-              (k) =>
+      {namespaces.length > 0 ? (
+        <section className="divide-y divide-border" aria-label="Namespace policies">
+          {namespaces.map((namespace) => {
+            const policy = policies.get(namespace);
+            // Runtime responses may omit the nested policy despite the static API type.
+            const values = policy?.policy ?? {};
+            const extraKeys = Object.keys(values).filter(
+              (key) =>
                 ![
                   "tier",
                   "retention",
                   "max_revisions",
                   "max_bytes_per_key",
                   "allowed_ops",
-                ].includes(k),
+                ].includes(key),
             );
-            const isExpanded = expanded === ns;
+            const isExpanded = expanded === namespace;
+            const detailsID = `policy-${toID(namespace)}`;
+
             return (
-              <div key={ns} style={{ borderBottom: "1px solid rgba(var(--border) / 0.5)" }}>
-                <div
-                  onClick={() => setExpanded(isExpanded ? null : ns)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem 0.75rem",
-                    cursor: "pointer",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "rgba(var(--panel2) / 0.6)")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              <article key={namespace}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left outline-none transition-colors hover:bg-panel-hover-soft focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:px-6"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsID}
+                  onClick={() => setExpanded(isExpanded ? null : namespace)}
                 >
-                  {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                  <Shield size={13} style={{ color: "rgb(var(--primary))", flexShrink: 0 }} />
-                  <span style={{ fontSize: "0.85rem", fontFamily: "var(--font-mono)" }}>{ns}</span>
-                  {policy && (
-                    <span style={{ marginLeft: "auto", display: "flex", gap: "0.4rem" }}>
-                      {p.tier && (
-                        <span className="hud-badge-info" style={{ fontSize: "0.65rem" }}>
-                          {p.tier}
-                        </span>
-                      )}
-                      {p.retention && (
-                        <span style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-                          {p.retention}
-                        </span>
-                      )}
-                    </span>
+                  {isExpanded ? (
+                    <ChevronDown className="size-4 shrink-0 text-text-subtle" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="size-4 shrink-0 text-text-subtle" aria-hidden="true" />
                   )}
-                  {!policy && (
-                    <span
-                      style={{ marginLeft: "auto", fontSize: "0.7rem", color: "rgb(var(--muted))" }}
-                    >
-                      no policy
-                    </span>
-                  )}
-                </div>
-                {isExpanded && (
-                  <div style={{ padding: "0 0.75rem 0.75rem" }}>
+                  <Shield className="size-4 shrink-0 text-status-doing" aria-hidden="true" />
+                  <span className="min-w-0 truncate font-mono text-sm text-text">{namespace}</span>
+                  <span className="ml-auto flex shrink-0 items-center gap-2">
                     {policy ? (
-                      <div
-                        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}
-                      >
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Owner
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>
-                            {policy.owner_type}:{policy.owner_id}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Tier
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>{p.tier ?? "—"}</div>
-                        </div>
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Retention
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>{p.retention ?? "—"}</div>
-                        </div>
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Max Revisions
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>{p.max_revisions ?? "—"}</div>
-                        </div>
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Max Bytes/Key
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>
-                            {p.max_bytes_per_key ? formatBytes(p.max_bytes_per_key) : "—"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Allowed Ops
-                          </div>
-                          <div style={{ fontSize: "0.8rem" }}>
-                            {p.allowed_ops?.join(", ") ?? "all"}
-                          </div>
-                        </div>
-                        <div style={{ gridColumn: "1 / -1" }}>
-                          <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                            Enforcement Notes
-                          </div>
-                          <div style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.45 }}>
-                            Allowed ops, max bytes, and required schema keys affect live validation.
-                            Retention and max revisions are maintenance rules used by cleanup and compaction.
-                          </div>
-                        </div>
-                        {extraKeys.length > 0 && (
-                          <div className="form-field-full" style={{ gridColumn: "1 / -1" }}>
-                            <div className="hud-label" style={{ marginBottom: "0.25rem" }}>
-                              Full Policy
-                            </div>
-                            <JsonViewer data={p} maxHeight="150px" />
-                          </div>
-                        )}
-                      </div>
+                      <>
+                        {values.tier ? <Pill tone="info">{values.tier}</Pill> : null}
+                        {values.retention ? (
+                          <span className="hidden text-xs text-text-subtle sm:inline">
+                            {values.retention}
+                          </span>
+                        ) : null}
+                      </>
                     ) : (
-                      <div style={{ fontSize: "0.8rem", color: "rgb(var(--muted))" }}>
-                        No policy registered for this namespace. Use "Register Namespace" to create
-                        one.
-                      </div>
+                      <Pill tone="warning">No policy</Pill>
+                    )}
+                  </span>
+                </button>
+
+                {isExpanded ? (
+                  <div id={detailsID} className="border-t border-border bg-panel-2">
+                    {policy ? (
+                      <>
+                        <SettingsGrid className="sm:grid-cols-[10rem_minmax(0,1fr)_10rem_minmax(0,1fr)]">
+                          <SettingsField label="Owner">
+                            <span className="font-mono">
+                              {policy.owner_type}:{policy.owner_id}
+                            </span>
+                          </SettingsField>
+                          <SettingsField label="Tier">{values.tier ?? "—"}</SettingsField>
+                          <SettingsField label="Retention">{values.retention ?? "—"}</SettingsField>
+                          <SettingsField label="Max revisions">
+                            {values.max_revisions ?? "—"}
+                          </SettingsField>
+                          <SettingsField label="Max bytes/key">
+                            {values.max_bytes_per_key ? formatBytes(values.max_bytes_per_key) : "—"}
+                          </SettingsField>
+                          <SettingsField label="Allowed ops">
+                            {values.allowed_ops?.join(", ") ?? "all"}
+                          </SettingsField>
+                        </SettingsGrid>
+                        <div className="border-t border-border px-4 py-3 lg:px-6">
+                          <p className="text-xs leading-5 text-text-subtle">
+                            Allowed ops, max bytes, and required schema keys affect live validation.
+                            Retention and max revisions guide cleanup and compaction.
+                          </p>
+                        </div>
+                        {extraKeys.length > 0 ? (
+                          <div className="border-t border-border px-4 py-3 lg:px-6">
+                            <h3 className="mb-2 text-xs font-semibold text-text-muted">
+                              Full policy
+                            </h3>
+                            <JsonViewer value={values} className="max-h-40" />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="px-4 py-4 text-sm text-text-soft lg:px-6">
+                        No policy is registered for this namespace. Use Create or update to add one.
+                      </p>
                     )}
                   </div>
-                )}
-              </div>
+                ) : null}
+              </article>
             );
           })}
-      </div>
-    </div>
+        </section>
+      ) : null}
+    </>
   );
 }
 
@@ -307,227 +271,218 @@ function RegisterForm({ onRegistered }: RegisterFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = namespace.trim() && ownerId.trim() && !submitting;
+  const canSubmit = Boolean(namespace.trim() && ownerId.trim() && !submitting);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      const policy: Parameters<typeof registerNamespace>[3] = {};
+      const policy: Parameters<typeof registerNamespace>[3] & {
+        required_schema_keys?: string[];
+      } = {};
       if (tier) policy.tier = tier;
       if (retention.trim()) policy.retention = retention.trim();
       if (maxRevisions.trim()) {
-        const n = parseInt(maxRevisions);
-        if (Number.isFinite(n) && n > 0) policy.max_revisions = n;
+        const count = parseInt(maxRevisions, 10);
+        if (Number.isFinite(count) && count > 0) policy.max_revisions = count;
       }
       if (maxBytesPerKey.trim()) {
-        const n = parseInt(maxBytesPerKey);
-        if (Number.isFinite(n) && n > 0) policy.max_bytes_per_key = n;
+        const count = parseInt(maxBytesPerKey, 10);
+        if (Number.isFinite(count) && count > 0) policy.max_bytes_per_key = count;
       }
       if (allowedOps.trim()) {
         policy.allowed_ops = allowedOps
           .split(",")
-          .map((s) => s.trim())
+          .map((value) => value.trim())
           .filter(Boolean);
       }
       if (requiredSchemaKeys.trim()) {
-        policy["required_schema_keys"] = requiredSchemaKeys
+        policy.required_schema_keys = requiredSchemaKeys
           .split(",")
-          .map((s) => s.trim())
+          .map((value) => value.trim())
           .filter(Boolean);
       }
       await registerNamespace(namespace.trim(), ownerType, ownerId.trim(), policy);
       toast.success(`Namespace "${namespace.trim()}" registered`);
       onRegistered();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Registration failed: ${msg}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      toast.error(`Registration failed: ${message}`);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="hud-panel" style={{ padding: "1rem", maxWidth: 700 }}>
-      <div
-        style={{
-          marginBottom: "0.9rem",
-          padding: "0.75rem",
-          background: "rgba(var(--panel2) / 0.7)",
-          border: "1px solid rgba(var(--border) / 0.8)",
-          borderRadius: "var(--radius-sm)",
-        }}
-      >
-        <div style={{ fontSize: "0.8rem", color: "rgb(var(--text))", marginBottom: "0.25rem" }}>
-          Registering creates or updates the policy entry
-        </div>
-        <div style={{ fontSize: "0.76rem", color: "rgb(var(--muted))", lineHeight: 1.5 }}>
-          Submit a namespace here to persist its owner and guardrails. Reusing the same namespace
-          updates the stored policy.
-        </div>
+    <form
+      className="bg-panel"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit();
+      }}
+    >
+      <div className="border-b border-border-strong px-4 py-3 lg:px-6">
+        <p className="max-w-3xl text-xs leading-5 text-text-soft">
+          Submitting persists the namespace owner and guardrails. Reusing a namespace updates its
+          stored policy.
+        </p>
       </div>
 
-      {error && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            marginBottom: "0.75rem",
-            background: "rgba(var(--danger) / 0.1)",
-            borderRadius: "var(--radius-sm)",
-            color: "rgb(var(--danger))",
-            fontSize: "0.85rem",
-          }}
-        >
-          {error}
+      {error ? (
+        <div className="border-b border-border-strong px-4 py-3 lg:px-6">
+          <Callout tone="danger" title="Policy registration failed">
+            {error}
+          </Callout>
         </div>
-      )}
+      ) : null}
 
-      <div className="hud-label" style={{ marginBottom: "0.5rem", color: "rgb(var(--primary))" }}>
-        Namespace
-      </div>
-      <div className="form-grid">
-        <div className="form-field form-field-full">
-          <label className="hud-label">Namespace Pattern *</label>
-          <input
-            className="hud-input"
+      <fieldset className="border-b border-border-strong px-4 py-5 lg:px-6">
+        <legend className="text-xs font-semibold text-text-muted">Namespace</legend>
+        <div className="mt-3 max-w-3xl space-y-1.5">
+          <Label htmlFor="policy-namespace">Namespace pattern *</Label>
+          <Input
+            id="policy-namespace"
+            className="font-mono"
             placeholder="app/my-project/*"
             value={namespace}
-            onChange={(e) => setNamespace(e.target.value)}
-            style={{ width: "100%" }}
+            onChange={(event) => setNamespace(event.target.value)}
+            required
           />
         </div>
-      </div>
+      </fieldset>
 
-      <div
-        className="hud-label"
-        style={{ marginBottom: "0.5rem", marginTop: "0.75rem", color: "rgb(var(--primary))" }}
-      >
-        Owner
-      </div>
-      <div className="form-grid">
-        <div className="form-field">
-          <label className="hud-label">Owner Type *</label>
-          <select
-            className="hud-input"
-            value={ownerType}
-            onChange={(e) => setOwnerType(e.target.value)}
-            style={{ width: "100%" }}
-          >
-            <option value="user">user</option>
-            <option value="app">app</option>
-          </select>
+      <fieldset className="border-b border-border-strong px-4 py-5 lg:px-6">
+        <legend className="text-xs font-semibold text-text-muted">Owner</legend>
+        <div className="mt-3 grid max-w-3xl gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label id="policy-owner-type-label">Owner type *</Label>
+            <Select value={ownerType} onValueChange={(value) => setOwnerType(value ?? "user")}>
+              <SelectTrigger className="w-full" aria-labelledby="policy-owner-type-label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">user</SelectItem>
+                <SelectItem value="app">app</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy-owner-id">Owner ID *</Label>
+            <Input
+              id="policy-owner-id"
+              className="font-mono"
+              placeholder="jane"
+              value={ownerId}
+              onChange={(event) => setOwnerId(event.target.value)}
+              required
+            />
+          </div>
         </div>
-        <div className="form-field">
-          <label className="hud-label">Owner ID *</label>
-          <input
-            className="hud-input"
-            placeholder="jane"
-            value={ownerId}
-            onChange={(e) => setOwnerId(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-      </div>
+      </fieldset>
 
-      <div
-        className="hud-label"
-        style={{ marginBottom: "0.5rem", marginTop: "0.75rem", color: "rgb(var(--primary))" }}
-      >
-        Policy
-      </div>
-      <div className="form-grid">
-        <div className="form-field">
-          <label className="hud-label">Namespace Tier</label>
-          <select
-            className="hud-input"
-            value={tier}
-            onChange={(e) => setTier(e.target.value as (typeof TIER_OPTIONS)[number] | "")}
-            style={{ width: "100%" }}
-          >
-            <option value="">infer / leave unset</option>
-            {TIER_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+      <fieldset className="border-b border-border-strong px-4 py-5 lg:px-6">
+        <legend className="text-xs font-semibold text-text-muted">Policy</legend>
+        <div className="mt-3 grid max-w-3xl gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label id="policy-tier-label">Namespace tier</Label>
+            <Select
+              value={tier || "unset"}
+              onValueChange={(value) =>
+                setTier(value === "unset" ? "" : (value as (typeof TIER_OPTIONS)[number]))
+              }
+            >
+              <SelectTrigger className="w-full" aria-labelledby="policy-tier-label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unset">infer / leave unset</SelectItem>
+                {TIER_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy-retention">Retention</Label>
+            <Input
+              id="policy-retention"
+              className="font-mono"
+              placeholder="720h (30 days)"
+              value={retention}
+              onChange={(event) => setRetention(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy-max-revisions">Max revisions</Label>
+            <Input
+              id="policy-max-revisions"
+              className="font-mono"
+              type="number"
+              min={1}
+              placeholder="100"
+              value={maxRevisions}
+              onChange={(event) => setMaxRevisions(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy-max-bytes">Max bytes/key</Label>
+            <Input
+              id="policy-max-bytes"
+              className="font-mono"
+              type="number"
+              min={1}
+              placeholder="1048576"
+              value={maxBytesPerKey}
+              onChange={(event) => setMaxBytesPerKey(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="policy-allowed-ops">
+              Allowed ops <span className="font-normal text-text-subtle">(comma-separated)</span>
+            </Label>
+            <Input
+              id="policy-allowed-ops"
+              className="font-mono"
+              placeholder="read, write, promote"
+              value={allowedOps}
+              onChange={(event) => setAllowedOps(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="policy-schema-keys">
+              Required schema keys <span className="font-normal text-text-subtle">(optional)</span>
+            </Label>
+            <Input
+              id="policy-schema-keys"
+              className="font-mono"
+              placeholder="title, summary, source"
+              value={requiredSchemaKeys}
+              onChange={(event) => setRequiredSchemaKeys(event.target.value)}
+            />
+          </div>
         </div>
-        <div className="form-field">
-          <label className="hud-label">Retention</label>
-          <input
-            className="hud-input"
-            placeholder="720h (30 days)"
-            value={retention}
-            onChange={(e) => setRetention(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="form-field">
-          <label className="hud-label">Max Revisions</label>
-          <input
-            className="hud-input"
-            type="number"
-            placeholder="100"
-            value={maxRevisions}
-            onChange={(e) => setMaxRevisions(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="form-field">
-          <label className="hud-label">Max Bytes/Key</label>
-          <input
-            className="hud-input"
-            type="number"
-            placeholder="1048576"
-            value={maxBytesPerKey}
-            onChange={(e) => setMaxBytesPerKey(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="form-field form-field-full">
-          <label className="hud-label">
-            Allowed Ops <span style={{ color: "rgb(var(--muted))" }}>(comma-separated)</span>
-          </label>
-          <input
-            className="hud-input"
-            placeholder="read, write, promote"
-            value={allowedOps}
-            onChange={(e) => setAllowedOps(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="form-field form-field-full">
-          <label className="hud-label">
-            Required Schema Keys <span style={{ color: "rgb(var(--muted))" }}>(optional)</span>
-          </label>
-          <input
-            className="hud-input"
-            placeholder="title, summary, source"
-            value={requiredSchemaKeys}
-            onChange={(e) => setRequiredSchemaKeys(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-      </div>
+        <p className="mt-4 max-w-3xl text-xs leading-5 text-text-subtle">
+          Use the canonical tiers: memory, cache, pins, draft, or session. Allowed ops and required
+          schema keys are active guardrails; retention and max revisions shape maintenance.
+        </p>
+      </fieldset>
 
-      <div style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", marginTop: "0.65rem", lineHeight: 1.5 }}>
-        Use the canonical tier names: `memory`, `cache`, `pins`, `draft`, or `session`. Allowed
-        ops and required schema keys are active guardrails. Retention and max revisions shape later
-        maintenance behavior.
+      <div className="px-4 py-4 lg:px-6">
+        <Button type="submit" disabled={!canSubmit}>
+          {submitting ? <Spinner size={14} /> : <Shield aria-hidden="true" />}
+          Save namespace policy
+        </Button>
       </div>
-
-      <div className="form-actions">
-        <button className="hud-button-primary" onClick={handleSubmit} disabled={!canSubmit}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            {submitting ? <Spinner size={13} /> : <Shield size={13} />}
-            Save Namespace Policy
-          </span>
-        </button>
-      </div>
-    </div>
+    </form>
   );
+}
+
+function toID(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function formatBytes(bytes: number): string {
