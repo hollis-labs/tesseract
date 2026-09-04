@@ -11,12 +11,6 @@ export function AppFooter({ authMode }: Props) {
     >
       <span className="flex items-center gap-1.5">
         <kbd className="rounded border border-border-strong bg-panel-2 px-1 font-mono text-[10px]">
-          R
-        </kbd>{" "}
-        refresh
-      </span>
-      <span className="flex items-center gap-1.5">
-        <kbd className="rounded border border-border-strong bg-panel-2 px-1 font-mono text-[10px]">
           ?
         </kbd>{" "}
         help

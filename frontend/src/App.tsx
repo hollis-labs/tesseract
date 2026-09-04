@@ -40,17 +40,7 @@ import { RecordDetailPage } from "./pages/RecordDetailPage";
 import { SearchResearchPage } from "./pages/SearchResearchPage";
 import { ViewBuilderPage } from "./pages/ViewBuilderPage";
 import { WriteRecordPage } from "./pages/WriteRecordPage";
-
-// Navigation context for detail pages
-interface NavContext {
-  namespace?: string;
-  key?: string;
-  revisionA?: number;
-  revisionB?: number;
-  // For memory/knowledge detail navigation: which domain handler to use.
-  domain?: "memory" | "knowledge";
-  reviewPreset?: "lowConfidence" | "reviewed" | "pendingReview";
-}
+import { buildRouteUrl, type NavContext } from "./routing";
 
 function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
   if (typeof window === "undefined") return { page: "dashboard", ctx: {} };
@@ -94,26 +84,10 @@ function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
 
 function writeRouteToHash(page: NavPage, ctx: NavContext): void {
   if (typeof window === "undefined") return;
-  if (page === "admin" && Object.keys(ctx).length === 0) {
-    if (window.location.pathname !== "/admin" || window.location.hash) {
-      window.history.pushState(null, "", "/admin");
-    }
-    return;
-  }
-  const params = new URLSearchParams();
-  if (ctx.namespace) params.set("namespace", ctx.namespace);
-  if (ctx.key) params.set("key", ctx.key);
-  if (ctx.domain) params.set("domain", ctx.domain);
-  if (ctx.revisionA != null) params.set("revisionA", String(ctx.revisionA));
-  if (ctx.revisionB != null) params.set("revisionB", String(ctx.revisionB));
-  if (ctx.reviewPreset) params.set("reviewPreset", ctx.reviewPreset);
-  const qs = params.toString();
-  const nextHash = qs ? `#${page}?${qs}` : `#${page}`;
-  if (window.location.pathname === "/admin") {
-    window.history.pushState(null, "", "/");
-  }
-  if (window.location.hash !== nextHash) {
-    window.location.hash = nextHash;
+  const nextUrl = buildRouteUrl(page, ctx, window.location.search);
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl !== nextUrl) {
+    window.history.pushState(null, "", nextUrl);
   }
 }
 
@@ -168,10 +142,6 @@ export default function App() {
           handleNav("memoryKnowledgeBrowser");
           e.preventDefault();
         }
-      }
-
-      if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
-        window.dispatchEvent(new CustomEvent("tesseract:refresh"));
       }
 
       if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
@@ -237,7 +207,9 @@ export default function App() {
       </a>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <NavRail items={navItems} logo={<Boxes className="h-4 w-4" />} logoLabel="Tesseract" />
+        <div className="h-full min-h-0 w-14 shrink-0 overflow-y-auto [&>nav]:min-h-full">
+          <NavRail items={navItems} logo={<Boxes className="h-4 w-4" />} logoLabel="Tesseract" />
+        </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PageHeader title={PAGE_TITLES[page]}>

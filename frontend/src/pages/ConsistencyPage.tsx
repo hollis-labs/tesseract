@@ -3,7 +3,6 @@ import {
   Callout,
   ConfirmDialog,
   EmptyState,
-  PageHeader,
   Pill,
   SummaryCards,
   Table,
@@ -92,13 +91,16 @@ export function ConsistencyPage() {
   );
 
   return (
-    <ListPageLayout header={<PageHeader title="Consistency">{actions}</PageHeader>}>
-      <section className="border-b border-border-strong bg-panel px-4 py-4 lg:px-6">
-        <h2 className="text-sm font-semibold text-text">Database integrity</h2>
-        <p className="mt-1 max-w-3xl text-xs leading-5 text-text-subtle">
-          Scan head pointers against stored revisions. Repair rebuilds inconsistent pointers and
-          modifies the database.
-        </p>
+    <ListPageLayout header={null}>
+      <section className="flex flex-wrap items-start justify-between gap-3 border-b border-border-strong bg-panel px-4 py-4 lg:px-6">
+        <div>
+          <h2 className="text-sm font-semibold text-text">Database integrity</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-text-subtle">
+            Scan head pointers against stored revisions. Repair rebuilds inconsistent pointers and
+            modifies the database.
+          </p>
+        </div>
+        {actions}
       </section>
 
       {error ? (

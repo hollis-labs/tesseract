@@ -1,4 +1,14 @@
-import { Button, Callout, Card, CardContent, Pill } from "@hollis-labs/sysop-ui";
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  Pill,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@hollis-labs/sysop-ui";
 import { ArrowLeft, History, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -123,111 +133,111 @@ export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props
           </CardContent>
         </Card>
 
-        <div
-          className="flex gap-1 border-b border-border-strong"
-          role="tablist"
-          aria-label="Revision views"
-        >
-          {(["summary", "payload", "history", "raw"] as const).map((item) => (
-            <Button
-              key={item}
-              type="button"
-              variant={tab === item ? "default" : "ghost"}
-              size="sm"
-              className="rounded-b-none"
-              onClick={() => handleTab(item)}
-              role="tab"
-              aria-selected={tab === item}
-            >
-              {item === "history" ? <History aria-hidden="true" /> : null}
-              {item}
-            </Button>
-          ))}
-        </div>
+        <Tabs value={tab} onValueChange={(value) => handleTab(value as Tab)} className="gap-3">
+          <TabsList variant="line" aria-label="Revision views">
+            {(["summary", "payload", "history", "raw"] as const).map((item) => (
+              <TabsTrigger key={item} value={item}>
+                {item === "history" ? <History aria-hidden="true" /> : null}
+                {item[0]?.toUpperCase()}
+                {item.slice(1)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        {loading ? (
-          <div className="flex justify-center py-8 text-text-subtle">
-            <Spinner size={20} />
-          </div>
-        ) : null}
-        {error && !loading ? (
-          <Callout tone="danger" title="Revision unavailable">
-            {error}
-          </Callout>
-        ) : null}
+          {loading ? (
+            <div className="flex justify-center py-8 text-text-subtle">
+              <Spinner size={20} />
+            </div>
+          ) : null}
+          {error && !loading ? (
+            <Callout tone="danger" title="Revision unavailable">
+              {error}
+            </Callout>
+          ) : null}
 
-        {!loading && !error && current && tab === "summary" ? (
-          <Card size="sm">
-            <CardContent>
-              <p className="text-sm leading-6">{current.payload.summary}</p>
-              {current.payload.body ? (
-                <div className="mt-4 border-t border-border-strong pt-3">
-                  <h3 className="text-sm font-medium">Body</h3>
-                  <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-5">
-                    {current.payload.body}
-                  </pre>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {!loading && !error && current && tab === "payload" ? (
-          <Card size="sm">
-            <CardContent>
-              <JsonViewer data={current.payload} maxHeight="500px" />
-            </CardContent>
-          </Card>
-        ) : null}
-        {!loading && !error && current && tab === "raw" ? (
-          <Card size="sm">
-            <CardContent>
-              <JsonViewer data={current} maxHeight="600px" />
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {!loading && !error && tab === "history" ? (
-          <section aria-label="Revision history">
-            {historyLoading ? (
-              <div className="flex justify-center py-8 text-text-subtle">
-                <Spinner size={20} />
-              </div>
+          <TabsContent value="summary">
+            {!loading && !error && current ? (
+              <Card size="sm">
+                <CardContent>
+                  <p className="text-sm leading-6">{current.payload.summary}</p>
+                  {current.payload.body ? (
+                    <div className="mt-4 border-t border-border-strong pt-3">
+                      <h3 className="text-sm font-medium">Body</h3>
+                      <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-5">
+                        {current.payload.body}
+                      </pre>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
             ) : null}
-            {!historyLoading && history?.length === 0 ? (
-              <EmptyState message="No revision history." />
+          </TabsContent>
+
+          <TabsContent value="payload">
+            {!loading && !error && current ? (
+              <Card size="sm">
+                <CardContent>
+                  <JsonViewer data={current.payload} maxHeight="500px" />
+                </CardContent>
+              </Card>
             ) : null}
-            {!historyLoading && history && history.length > 0 ? (
-              <div className="space-y-2">
-                {history.map((revision) => (
-                  <Card
-                    key={revision.revision_id}
-                    size="sm"
-                    className={
-                      revision.revision_id === current?.revision_id
-                        ? "border-status-doing"
-                        : undefined
-                    }
-                  >
-                    <CardContent className="space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="break-all font-mono text-xs text-text-subtle">
-                          {revision.revision_id}
-                        </span>
-                        <span className="flex flex-wrap items-center gap-2 text-xs text-text-subtle">
-                          <StatusBadge status={revision.status} />
-                          <span className="font-mono">conf {revision.confidence.toFixed(2)}</span>
-                          <span className="font-mono">{revision.created_at}</span>
-                        </span>
-                      </div>
-                      <p className="text-sm">{revision.payload.summary}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+          </TabsContent>
+          <TabsContent value="raw">
+            {!loading && !error && current ? (
+              <Card size="sm">
+                <CardContent>
+                  <JsonViewer data={current} maxHeight="600px" />
+                </CardContent>
+              </Card>
             ) : null}
-          </section>
-        ) : null}
+          </TabsContent>
+
+          <TabsContent value="history">
+            {!loading && !error ? (
+              <section aria-label="Revision history">
+                {historyLoading ? (
+                  <div className="flex justify-center py-8 text-text-subtle">
+                    <Spinner size={20} />
+                  </div>
+                ) : null}
+                {!historyLoading && history?.length === 0 ? (
+                  <EmptyState message="No revision history." />
+                ) : null}
+                {!historyLoading && history && history.length > 0 ? (
+                  <div className="space-y-2">
+                    {history.map((revision) => (
+                      <Card
+                        key={revision.revision_id}
+                        size="sm"
+                        className={
+                          revision.revision_id === current?.revision_id
+                            ? "border-status-doing"
+                            : undefined
+                        }
+                      >
+                        <CardContent className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="break-all font-mono text-xs text-text-subtle">
+                              {revision.revision_id}
+                            </span>
+                            <span className="flex flex-wrap items-center gap-2 text-xs text-text-subtle">
+                              <StatusBadge status={revision.status} />
+                              <span className="font-mono">
+                                conf {revision.confidence.toFixed(2)}
+                              </span>
+                              <span className="font-mono">{revision.created_at}</span>
+                            </span>
+                          </div>
+                          <p className="text-sm">{revision.payload.summary}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

@@ -1,5 +1,17 @@
-import { Button, Callout, Card, CardContent, Input, Label, Textarea } from "@hollis-labs/sysop-ui";
-import { Lightbulb, MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+} from "@hollis-labs/sysop-ui";
+import { MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { listNamespaces, synthesisAsk, tesseractLookup } from "../api/client";
@@ -573,7 +585,6 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                 <EmptyState
                   message="Ask a question to begin."
                   sub="Each ask becomes a thread entry that you can revisit."
-                  icon={<Lightbulb size={32} strokeWidth={1.5} />}
                 />
               </div>
             </Card>
@@ -598,26 +609,16 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                 </div>
               ) : null}
               {active.response ? (
-                <>
-                  <div
-                    className="flex flex-wrap items-center gap-1 border-b border-border-strong"
-                    role="tablist"
-                    aria-label="Research views"
-                  >
-                    {(["answer", "synthesis", "sources"] as const).map((item) => (
-                      <Button
-                        key={item}
-                        type="button"
-                        variant={tab === item ? "default" : "ghost"}
-                        size="sm"
-                        className="rounded-b-none"
-                        onClick={() => setTab(item)}
-                        role="tab"
-                        aria-selected={tab === item}
-                      >
-                        {item}
-                      </Button>
-                    ))}
+                <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="gap-3">
+                  <div className="flex flex-wrap items-center gap-1 border-b border-border-strong">
+                    <TabsList variant="line" aria-label="Research views">
+                      {(["answer", "synthesis", "sources"] as const).map((item) => (
+                        <TabsTrigger key={item} value={item}>
+                          {item[0]?.toUpperCase()}
+                          {item.slice(1)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
                     <span className="ml-auto px-2 font-mono text-xs text-text-subtle">
                       {active.response.results.length} result
                       {active.response.results.length === 1 ? "" : "s"}
@@ -629,7 +630,7 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                     </span>
                   </div>
 
-                  {tab === "answer" ? (
+                  <TabsContent value="answer">
                     <div className="space-y-4">
                       <Callout tone="info" title="Curated answer">
                         The store returned {active.response.results.length} relevance-ranked
@@ -722,9 +723,9 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                         </section>
                       ))}
                     </div>
-                  ) : null}
+                  </TabsContent>
 
-                  {tab === "synthesis" ? (
+                  <TabsContent value="synthesis">
                     <div className="space-y-3">
                       {!active.synthesis && !active.synthesisError ? (
                         <Card size="sm" className="border-status-doing">
@@ -835,9 +836,9 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                         </>
                       ) : null}
                     </div>
-                  ) : null}
+                  </TabsContent>
 
-                  {tab === "sources" ? (
+                  <TabsContent value="sources">
                     <Card size="sm">
                       <CardContent>
                         <h3 className="mb-3 text-sm font-medium">
@@ -846,8 +847,8 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                         <JsonViewer data={active.response.results} maxHeight="600px" />
                       </CardContent>
                     </Card>
-                  ) : null}
-                </>
+                  </TabsContent>
+                </Tabs>
               ) : null}
             </div>
           )}

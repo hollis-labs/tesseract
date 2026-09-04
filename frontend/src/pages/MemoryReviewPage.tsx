@@ -21,7 +21,6 @@ import {
   Edit3,
   Eye,
   Filter,
-  Inbox,
   RefreshCw,
   ShieldAlert,
   Square,
@@ -805,7 +804,6 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
           </Card>
         ) : visibleItems.length === 0 ? (
           <EmptyState
-            icon={<Inbox size={18} />}
             message="No items match the current filters."
             sub="Try widening the queue or restoring dismissed items."
           />
@@ -1098,7 +1096,6 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                   </div>
                 ) : (
                   <EmptyState
-                    icon={<Inbox size={18} />}
                     message="Choose a memory from the queue to inspect."
                     sub="Pick an item from the left to review it."
                   />

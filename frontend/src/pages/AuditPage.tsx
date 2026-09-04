@@ -6,7 +6,6 @@ import {
   Input,
   JsonViewer,
   Label,
-  PageHeader,
   Pill,
   Select,
   SelectContent,
@@ -325,22 +324,23 @@ export function AuditPage({ onOpenItem }: Props) {
         <span className="text-xs tabular-nums text-text-subtle" aria-live="polite">
           {events.length} shown{nextCursor ? " · more available" : ""}
         </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={refresh}
+          disabled={loading}
+        >
+          {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />}
+          Refresh
+        </Button>
       </div>
     </section>
   );
 
   return (
-    <ListPageLayout
-      header={
-        <PageHeader title="Audit & Ops">
-          <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={loading}>
-            {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />}
-            Refresh
-          </Button>
-        </PageHeader>
-      }
-      filters={filters}
-    >
+    <ListPageLayout header={null} filters={filters}>
       {error ? (
         <div className="border-b border-border-strong px-4 py-4 lg:px-6">
           <Callout tone="danger" title="Audit events unavailable">

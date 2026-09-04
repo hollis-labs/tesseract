@@ -10,6 +10,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
 } from "@hollis-labs/sysop-ui";
 import { ArrowRight, PenSquare, Send, Trash2 } from "lucide-react";
@@ -57,31 +61,26 @@ export function MemoryWritePage({ onOpenItem, onOpenReview }: Props) {
         </div>
       </section>
 
-      <div className="max-w-6xl p-4">
-        <div
-          className="mb-3 flex gap-1 border-b border-border-strong"
-          role="tablist"
-          aria-label="Memory operations"
-        >
-          {(["write", "promote", "deprecate"] as const).map((item) => (
-            <Button
-              key={item}
-              type="button"
-              variant={tab === item ? "default" : "ghost"}
-              size="sm"
-              className="rounded-b-none"
-              onClick={() => setTab(item)}
-              role="tab"
-              aria-selected={tab === item}
-            >
-              {item}
-            </Button>
-          ))}
-        </div>
-        {tab === "write" ? <WriteForm onOpenItem={onOpenItem} /> : null}
-        {tab === "promote" ? <PromoteForm onOpenItem={onOpenItem} /> : null}
-        {tab === "deprecate" ? <DeprecateForm /> : null}
-      </div>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as Tab)}
+        className="max-w-6xl gap-3 p-4"
+      >
+        <TabsList variant="line" aria-label="Memory operations">
+          <TabsTrigger value="write">Write</TabsTrigger>
+          <TabsTrigger value="promote">Promote</TabsTrigger>
+          <TabsTrigger value="deprecate">Deprecate</TabsTrigger>
+        </TabsList>
+        <TabsContent value="write">
+          <WriteForm onOpenItem={onOpenItem} />
+        </TabsContent>
+        <TabsContent value="promote">
+          <PromoteForm onOpenItem={onOpenItem} />
+        </TabsContent>
+        <TabsContent value="deprecate">
+          <DeprecateForm />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

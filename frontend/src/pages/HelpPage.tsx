@@ -1,5 +1,4 @@
 import {
-  PageHeader,
   Table,
   TableBody,
   TableCell,
@@ -12,7 +11,6 @@ import { Keyboard, Monitor, Navigation, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 
 const SHORTCUTS: { key: string; description: string }[] = [
-  { key: "R", description: "Refresh current view data" },
   { key: "?", description: "Open this help page" },
   { key: "Escape", description: "Navigate back (detail → list)" },
 ];
@@ -118,7 +116,7 @@ const TIPS = [
 
 export function HelpPage() {
   return (
-    <ListPageLayout header={<PageHeader title="Help" />}>
+    <ListPageLayout header={null}>
       <div className="grid border-b border-border-strong lg:grid-cols-2">
         <section
           className="min-w-0 border-b border-border-strong px-4 py-5 lg:border-r lg:border-b-0 lg:px-6"

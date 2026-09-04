@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hollis-labs/sysop-ui";
-import { Calculator, FileText, Play, Save, Trash2, Upload } from "lucide-react";
+import { ArrowRight, Calculator, FileText, Play, Save, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { estimate, evaluateView } from "../api/client";
@@ -342,36 +342,16 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                         <TableHead>Rev</TableHead>
                         <TableHead>Actor</TableHead>
                         <TableHead>Created</TableHead>
+                        {onOpenRecord ? (
+                          <TableHead className="w-10">
+                            <span className="sr-only">Open</span>
+                          </TableHead>
+                        ) : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {results.map((record) => (
-                        <TableRow
-                          key={`${record.namespace}-${record.key}-${record.revision}`}
-                          className={
-                            onOpenRecord
-                              ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                              : undefined
-                          }
-                          tabIndex={onOpenRecord ? 0 : undefined}
-                          role={onOpenRecord ? "button" : undefined}
-                          aria-label={
-                            onOpenRecord
-                              ? `Open ${record.namespace}/${record.key}, revision ${record.revision}`
-                              : undefined
-                          }
-                          onClick={onOpenRecord ? () => openRecord(record) : undefined}
-                          onKeyDown={
-                            onOpenRecord
-                              ? (event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    openRecord(record);
-                                  }
-                                }
-                              : undefined
-                          }
-                        >
+                        <TableRow key={`${record.namespace}-${record.key}-${record.revision}`}>
                           <TableCell className="font-mono text-xs text-text-soft">
                             {record.namespace}
                           </TableCell>
@@ -391,6 +371,19 @@ export function ViewBuilderPage({ onOpenRecord }: Props) {
                           <TableCell className="text-xs text-text-soft">
                             {new Date(record.created_at).toLocaleString()}
                           </TableCell>
+                          {onOpenRecord ? (
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={`Open ${record.namespace}/${record.key}, revision ${record.revision}`}
+                                onClick={() => openRecord(record)}
+                              >
+                                <ArrowRight aria-hidden="true" />
+                              </Button>
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       ))}
                     </TableBody>

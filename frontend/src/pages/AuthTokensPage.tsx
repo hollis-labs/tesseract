@@ -6,7 +6,6 @@ import {
   EmptyState,
   Input,
   Label,
-  PageHeader,
   Pill,
   Table,
   TableBody,
@@ -39,10 +38,7 @@ export function AuthTokensPage() {
   const [tab, setTab] = useState<Tab>("list");
 
   return (
-    <ListPageLayout
-      header={<PageHeader title="Auth & Tokens" />}
-      tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}
-    >
+    <ListPageLayout header={null} tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}>
       {tab === "list" ? <TokenList /> : <TokenCreateForm onCreated={() => setTab("list")} />}
     </ListPageLayout>
   );

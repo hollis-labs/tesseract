@@ -5,7 +5,6 @@ import {
   ConfirmDialog,
   Input,
   Label,
-  PageHeader,
   SummaryCards,
 } from "@hollis-labs/sysop-ui";
 import { ListPageLayout, TabStrip, type TabStripItem } from "@hollis-labs/sysop-ui/layout";
@@ -27,10 +26,7 @@ export function MaintenancePage() {
   const [tab, setTab] = useState<Tab>("trim");
 
   return (
-    <ListPageLayout
-      header={<PageHeader title="Maintenance" />}
-      tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}
-    >
+    <ListPageLayout header={null} tabs={<TabStrip tabs={TABS} value={tab} onChange={setTab} />}>
       {tab === "trim" ? <TrimForm /> : <CompactForm />}
     </ListPageLayout>
   );
