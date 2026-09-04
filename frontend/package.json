@@ -15,24 +15,24 @@
   },
   "dependencies": {
     "@hollis-labs/sysop-ui": "^0.9.0",
+    "@tiptap/markdown": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
-    "lucide-react": "^0.546.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sonner": "^2.0.7",
-    "tiptap-markdown": "^0.9.0"
+    "lucide-react": "^1.41.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.7",
-    "@tailwindcss/vite": "^4.0.0",
+    "@biomejs/biome": "^2.5.12",
+    "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^20.19.43",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.2.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "^5.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
     "vite": "^8.2.2"
   }
 }

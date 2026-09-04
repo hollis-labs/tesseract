@@ -1,7 +1,7 @@
+import { Markdown } from "@tiptap/markdown";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect } from "react";
-import { Markdown } from "tiptap-markdown";
 
 interface Props {
   content: string;
@@ -12,6 +12,7 @@ export function MarkdownViewer({ content, maxHeight }: Props) {
   const editor = useEditor({
     extensions: [StarterKit, Markdown],
     content,
+    contentType: "markdown",
     editable: false,
     editorProps: {
       attributes: {
@@ -22,7 +23,7 @@ export function MarkdownViewer({ content, maxHeight }: Props) {
 
   useEffect(() => {
     if (editor && content) {
-      editor.commands.setContent(content);
+      editor.commands.setContent(content, { contentType: "markdown" });
     }
   }, [editor, content]);
 

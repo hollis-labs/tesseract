@@ -24,7 +24,7 @@ import (
 	"github.com/hollis-labs/go-apppaths/paths"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	feotel "github.com/hollis-labs/go-otel"
+	hollisotel "github.com/hollis-labs/go-otel"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -32,7 +32,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type contextKey int
@@ -947,7 +947,7 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, span := feotel.MemoryWriteSpan(r.Context(), req.Namespace, req.Key)
+	ctx, span := hollisotel.MemoryWriteSpan(r.Context(), req.Namespace, req.Key)
 	defer span.End()
 
 	if err := s.Policy.CanWrite(req.ClientID, req.Actor, req.Namespace); err != nil {
@@ -991,7 +991,7 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, span := feotel.MemoryReadSpan(r.Context(), namespace, key)
+	ctx, span := hollisotel.MemoryReadSpan(r.Context(), namespace, key)
 	defer span.End()
 
 	rec, err := s.Store.Head(ctx, namespace, key)
@@ -1023,7 +1023,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 
-	ctx, span := feotel.MemoryReadSpan(r.Context(), namespace, key)
+	ctx, span := hollisotel.MemoryReadSpan(r.Context(), namespace, key)
 	defer span.End()
 
 	items, err := s.Store.History(ctx, namespace, key, limit)

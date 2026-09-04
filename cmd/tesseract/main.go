@@ -21,7 +21,7 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	"github.com/hollis-labs/go-modelsdev/modelsdev"
-	feotel "github.com/hollis-labs/go-otel"
+	hollisotel "github.com/hollis-labs/go-otel"
 	"github.com/hollis-labs/go-otel/propagation"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextapi"
@@ -440,7 +440,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 
 	// ---- Phase 2: the cold boot. ----
 
-	shutdown, err := feotel.Init(ctx, feotel.WithServiceName("tesseract"))
+	shutdown, err := hollisotel.Init(ctx, hollisotel.WithServiceName("tesseract"))
 	if err != nil {
 		log.Printf("warning: OTel init failed: %v", err)
 	} else {

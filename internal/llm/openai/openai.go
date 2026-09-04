@@ -17,8 +17,8 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
 	llmtypes "github.com/hollis-labs/go-llm-types"
-	sdk "github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
+	sdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 )
 
 // Client wraps openai-go to expose both embedding and chat-completion paths

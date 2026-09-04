@@ -69,6 +69,11 @@ next open; backups taken by earlier versions remain restorable.
   Extension-less paths still fall back to `index.html`, so client-side routes
   are unaffected. A missing `.js` served as HTML surfaced to users as
   `Unexpected token '<'` rather than as the missing file it was.
+- **OpenTelemetry configuration and signal names use the Hollis taxonomy.**
+  `FE_OTEL_REDACT_PROMPTS` becomes `HOLLIS_OTEL_REDACT_PROMPTS`, and `fe.*`
+  span names, attributes, and the `fe.http` tracer become their `hollis.*`
+  equivalents. Update external deployment configuration and telemetry queries;
+  the old redaction variable is no longer read by the upstream library.
 
 ### Added
 
@@ -139,14 +144,17 @@ next open; backups taken by earlier versions remain restorable.
   the chained frontend build.
 - The web UI kit resolves from npm rather than a private git ref, so
   `npm install` works without organization access.
-- **The public build floor is Go 1.26.6.** Runtime dependencies move to patched
-  gRPC, OpenTelemetry, `x/net`, and `x/text` releases; `govulncheck` reports no
-  reachable vulnerabilities in the resulting module graph.
+- **The public build floor is Go 1.26.6.** Runtime dependencies move to the
+  current published Anthropic, MCP, SQLite, gRPC, OpenTelemetry, `x/net`, and
+  `x/text` releases; `govulncheck` reports no reachable vulnerabilities in the
+  resulting module graph. OpenAI moves to its current `/v3` module, and YAML
+  moves from the abandoned `gopkg.in` path to the maintained YAML-org module.
 - **Frontend contributors need Node.js 20.19–20.x or 22.12+.** Vite moves to 8.2.2,
-  the React plugin to 5.2.0, and Tiptap to 3.31.3. Both the complete and
-  production-only npm audits report zero vulnerabilities, and build-only
-  tooling published through the Sysop dependency does not enter the browser
-  bundle.
+  the React plugin to 6.1.1, TypeScript to 7.0.2, and Tiptap to 3.31.3. The
+  abandoned `tiptap-markdown` bridge is replaced by Tiptap's official Markdown
+  extension. Both the complete and production-only npm audits report zero
+  vulnerabilities, and build-only tooling published through the Sysop
+  dependency does not enter the browser bundle.
 - `internal/webui` serves the SPA through `github.com/hollis-labs/go-webui`
   instead of a local copy, and an unbuilt bundle serves a placeholder rather
   than panicking at startup.
