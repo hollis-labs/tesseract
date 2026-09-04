@@ -1127,23 +1127,38 @@ func (c *CLI) runBackup(ctx context.Context, args []string) int {
 func (c *CLI) runBackupExport(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("backup export", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	outPath := fs.String("out", "", "backup output file path")
+	// Backups are directories as of format v2 (manifest + whole-database
+	// snapshot + payload tree), not the single JSON file v1 wrote.
+	outPath := fs.String("out", "", "backup output directory (must be new or empty)")
+	configPath := fs.String("config", "", "optional config.yaml to include in the backup")
 	if err := fs.Parse(args); err != nil {
 		return c.fail(err.Error())
 	}
 	if strings.TrimSpace(*outPath) == "" {
 		return c.fail("--out is required")
 	}
-	if err := c.Store.ExportBackup(ctx, *outPath); err != nil {
+	opts := contextstore.ExportBackupOptions{ConfigPath: *configPath}
+	if err := c.Store.ExportBackupWithOptions(ctx, *outPath, opts); err != nil {
 		return c.fail(err.Error())
 	}
-	return c.writeJSON(map[string]any{"exported": true, "path": *outPath})
+	info, err := contextstore.InspectBackup(*outPath)
+	if err != nil {
+		return c.fail(err.Error())
+	}
+	return c.writeJSON(map[string]any{
+		"exported":       true,
+		"path":           *outPath,
+		"format_version": info.FormatVersion,
+		"schema_version": info.SchemaVersion,
+		"files":          info.Files,
+		"record_count":   info.RecordCount,
+	})
 }
 
 func (c *CLI) runBackupRestore(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("backup restore", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	inPath := fs.String("in", "", "backup input file path")
+	inPath := fs.String("in", "", "backup directory (v2) or snapshot file (legacy v1)")
 	if err := fs.Parse(args); err != nil {
 		return c.fail(err.Error())
 	}
@@ -1159,17 +1174,26 @@ func (c *CLI) runBackupRestore(ctx context.Context, args []string) int {
 func (c *CLI) runBackupVerify(args []string) int {
 	fs := flag.NewFlagSet("backup verify", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	inPath := fs.String("in", "", "backup input file path")
+	inPath := fs.String("in", "", "backup directory (v2) or snapshot file (legacy v1)")
 	if err := fs.Parse(args); err != nil {
 		return c.fail(err.Error())
 	}
 	if strings.TrimSpace(*inPath) == "" {
 		return c.fail("--in is required")
 	}
-	if err := c.Store.VerifyBackup(*inPath); err != nil {
+	info, err := contextstore.InspectBackup(*inPath)
+	if err != nil {
 		return c.fail(err.Error())
 	}
-	return c.writeJSON(map[string]any{"verified": true, "path": *inPath})
+	return c.writeJSON(map[string]any{
+		"verified":       true,
+		"path":           *inPath,
+		"format_version": info.FormatVersion,
+		"schema_version": info.SchemaVersion,
+		"created_at":     info.CreatedAt,
+		"files":          info.Files,
+		"record_count":   info.RecordCount,
+	})
 }
 
 func (c *CLI) runHealth(ctx context.Context, args []string) int {

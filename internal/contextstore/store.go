@@ -162,38 +162,6 @@ type TokenCreateInput struct {
 	TTL            time.Duration
 }
 
-type backupRecord struct {
-	RecordID  string          `json:"record_id"`
-	Namespace string          `json:"namespace"`
-	Key       string          `json:"key"`
-	Revision  int64           `json:"revision"`
-	Actor     string          `json:"actor"`
-	CreatedAt string          `json:"created_at"`
-	FilePath  string          `json:"file_path"`
-	Payload   json.RawMessage `json:"payload"`
-}
-
-type backupAuthToken struct {
-	TokenID        string `json:"token_id"`
-	TokenHash      string `json:"token_hash"`
-	Label          string `json:"label"`
-	ClientID       string `json:"client_id,omitempty"`
-	Scopes         string `json:"scopes,omitempty"`
-	NamespaceGlobs string `json:"namespace_globs,omitempty"`
-	CreatedAt      string `json:"created_at"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	RevokedAt      string `json:"revoked_at,omitempty"`
-}
-
-type backupSnapshot struct {
-	Version     int               `json:"version"`
-	ExportedAt  string            `json:"exported_at"`
-	Records     []backupRecord    `json:"records"`
-	AuditEvents []AuditEvent      `json:"audit_events"`
-	AuthTokens  []backupAuthToken `json:"auth_tokens"`
-	Checksum    string            `json:"checksum"`
-}
-
 // NamespacePolicyEntry stores persistent namespace owner/policy metadata.
 type NamespacePolicyEntry struct {
 	Namespace string         `json:"namespace"`
@@ -227,6 +195,13 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		cfg.DBPath = filepath.Join(cfg.RootDir, "data", "index", "context.db")
 	}
 
+	// A restore that died between its renames leaves a journal behind. Resolve
+	// it before anything else looks at — or creates — the paths it describes,
+	// so a store is never opened in a half-swapped state. See restore.go.
+	if err := finishInterruptedRestore(cfg.DBPath, cfg.RecordsDir); err != nil {
+		return nil, err
+	}
+
 	if err := os.MkdirAll(cfg.RecordsDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -234,15 +209,9 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", sqlitedsn.DSN(cfg.DBPath))
+	db, err := openStoreDB(ctx, cfg.DBPath)
 	if err != nil {
 		return nil, err
-	}
-
-	// Enable WAL mode for better concurrent read/write performance.
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("enable WAL mode: %w", err)
 	}
 
 	s := &Store{db: db, recordsDir: cfg.RecordsDir, dbPath: cfg.DBPath}
@@ -252,6 +221,22 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 	}
 
 	return s, nil
+}
+
+// openStoreDB opens the live database with the store's standard connection
+// settings. Restore reopens through the same function after swapping the file,
+// so a restored store is configured identically to a freshly opened one.
+func openStoreDB(ctx context.Context, dbPath string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", sqlitedsn.DSN(dbPath))
+	if err != nil {
+		return nil, err
+	}
+	// Enable WAL mode for better concurrent read/write performance.
+	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable WAL mode: %w", err)
+	}
+	return db, nil
 }
 
 // Close closes the DB handle.
@@ -1869,221 +1854,6 @@ WHERE revoked_at IS NULL
 	return n > 0, nil
 }
 
-// ExportBackup writes a deterministic JSON snapshot containing records, audit events, and auth token metadata.
-func (s *Store) ExportBackup(ctx context.Context, outPath string) error {
-	if strings.TrimSpace(outPath) == "" {
-		return errors.New("backup output path required")
-	}
-	snap := backupSnapshot{
-		Version:    1,
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-SELECT record_id, namespace, key_name, revision, actor, created_at, file_path
-FROM records
-ORDER BY namespace, key_name, revision ASC`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var rec backupRecord
-		if err := rows.Scan(&rec.RecordID, &rec.Namespace, &rec.Key, &rec.Revision, &rec.Actor, &rec.CreatedAt, &rec.FilePath); err != nil {
-			return err
-		}
-		payload, err := os.ReadFile(filepath.Join(s.recordsDir, rec.FilePath))
-		if err != nil {
-			return err
-		}
-		rec.Payload = payload
-		snap.Records = append(snap.Records, rec)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	auditRows, err := s.db.QueryContext(ctx, `
-SELECT id, event_type, actor, namespace, key_name, revision, record_id, created_at, metadata_json
-FROM audit_events
-ORDER BY id ASC`)
-	if err != nil {
-		return err
-	}
-	defer auditRows.Close()
-	for auditRows.Next() {
-		var ev AuditEvent
-		var metadata string
-		if err := auditRows.Scan(&ev.ID, &ev.EventType, &ev.Actor, &ev.Namespace, &ev.Key, &ev.Revision, &ev.RecordID, &ev.CreatedAt, &metadata); err != nil {
-			return err
-		}
-		if strings.TrimSpace(metadata) != "" {
-			ev.Metadata = json.RawMessage(metadata)
-		}
-		snap.AuditEvents = append(snap.AuditEvents, ev)
-	}
-	if err := auditRows.Err(); err != nil {
-		return err
-	}
-
-	tokenRows, err := s.db.QueryContext(ctx, `
-SELECT token_id, token_hash, label, COALESCE(client_id,''), COALESCE(scopes,''), COALESCE(namespace_globs,''),
-       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, '')
-FROM auth_tokens
-ORDER BY created_at ASC, token_id ASC`)
-	if err != nil {
-		return err
-	}
-	defer tokenRows.Close()
-	for tokenRows.Next() {
-		var tk backupAuthToken
-		if err := tokenRows.Scan(&tk.TokenID, &tk.TokenHash, &tk.Label, &tk.ClientID, &tk.Scopes, &tk.NamespaceGlobs,
-			&tk.CreatedAt, &tk.ExpiresAt, &tk.RevokedAt); err != nil {
-			return err
-		}
-		snap.AuthTokens = append(snap.AuthTokens, tk)
-	}
-	if err := tokenRows.Err(); err != nil {
-		return err
-	}
-
-	sum, err := backupChecksum(snap)
-	if err != nil {
-		return err
-	}
-	snap.Checksum = sum
-
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(outPath, data, 0o644)
-}
-
-// RestoreBackup loads snapshot JSON and reconstructs records/heads/audit/auth tables.
-func (s *Store) RestoreBackup(ctx context.Context, inPath string) error {
-	if strings.TrimSpace(inPath) == "" {
-		return errors.New("backup input path required")
-	}
-	data, err := os.ReadFile(inPath)
-	if err != nil {
-		return err
-	}
-	var snap backupSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return err
-	}
-	if err := verifyBackupChecksum(snap); err != nil {
-		return err
-	}
-	if snap.Version != 1 {
-		return fmt.Errorf("unsupported backup version %d", snap.Version)
-	}
-
-	if err := os.RemoveAll(s.recordsDir); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(s.recordsDir, 0o755); err != nil {
-		return err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	for _, stmt := range []string{
-		`DELETE FROM heads`,
-		`DELETE FROM records`,
-		`DELETE FROM audit_events`,
-		`DELETE FROM auth_tokens`,
-	} {
-		if _, err = tx.ExecContext(ctx, stmt); err != nil {
-			return err
-		}
-	}
-
-	for _, rec := range snap.Records {
-		abs := filepath.Join(s.recordsDir, rec.FilePath)
-		if err = os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-			return err
-		}
-		var cb bytes.Buffer
-		if err = json.Compact(&cb, rec.Payload); err != nil {
-			return fmt.Errorf("compact restored payload: %w", err)
-		}
-		compactPayload := cb.Bytes()
-		if err = os.WriteFile(abs, compactPayload, 0o644); err != nil {
-			return err
-		}
-		restoreHash := sha256.Sum256(compactPayload)
-		restoreChecksum := hex.EncodeToString(restoreHash[:])
-		if _, err = tx.ExecContext(ctx, `
-INSERT INTO records (record_id, namespace, key_name, revision, actor, created_at, checksum, file_path)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			rec.RecordID, rec.Namespace, rec.Key, rec.Revision, rec.Actor, rec.CreatedAt, restoreChecksum, rec.FilePath); err != nil {
-			return err
-		}
-	}
-
-	for _, ev := range snap.AuditEvents {
-		if _, err = tx.ExecContext(ctx, `
-INSERT INTO audit_events (id, event_type, actor, namespace, key_name, revision, record_id, created_at, metadata_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			ev.ID, ev.EventType, ev.Actor, ev.Namespace, ev.Key, ev.Revision, ev.RecordID, ev.CreatedAt, string(ev.Metadata)); err != nil {
-			return err
-		}
-	}
-
-	for _, tk := range snap.AuthTokens {
-		scopes := tk.Scopes
-		if scopes == "" {
-			scopes = defaultTokenScopes
-		}
-		globs := tk.NamespaceGlobs
-		if globs == "" {
-			globs = defaultTokenNamespaceGlobs
-		}
-		if _, err = tx.ExecContext(ctx, `
-INSERT INTO auth_tokens (token_id, token_hash, label, client_id, scopes, namespace_globs, created_at, expires_at, revoked_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			tk.TokenID, tk.TokenHash, tk.Label, tk.ClientID, scopes, globs,
-			tk.CreatedAt, tk.ExpiresAt, tk.RevokedAt); err != nil {
-			return err
-		}
-	}
-
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	_, err = s.RebuildHeads(ctx)
-	return err
-}
-
-// VerifyBackup validates backup integrity metadata without mutating state.
-func (s *Store) VerifyBackup(inPath string) error {
-	if strings.TrimSpace(inPath) == "" {
-		return errors.New("backup input path required")
-	}
-	data, err := os.ReadFile(inPath)
-	if err != nil {
-		return err
-	}
-	var snap backupSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return err
-	}
-	return verifyBackupChecksum(snap)
-}
-
 // Readiness returns deterministic operational readiness status.
 func (s *Store) Readiness(ctx context.Context) (ReadinessReport, error) {
 	report := ReadinessReport{
@@ -2587,31 +2357,6 @@ func hashToken(token string) string {
 	}
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
-}
-
-func verifyBackupChecksum(snap backupSnapshot) error {
-	if strings.TrimSpace(snap.Checksum) == "" {
-		return errors.New("backup checksum missing")
-	}
-	got, err := backupChecksum(snap)
-	if err != nil {
-		return err
-	}
-	if got != snap.Checksum {
-		return errors.New("backup checksum mismatch")
-	}
-	return nil
-}
-
-func backupChecksum(snap backupSnapshot) (string, error) {
-	tmp := snap
-	tmp.Checksum = ""
-	b, err := json.Marshal(tmp)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
 }
 
 func sanitizePathPart(in string) (string, error) {
