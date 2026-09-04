@@ -726,12 +726,10 @@ func (c *CLI) runPromoteRequest(ctx context.Context, args []string) int {
 	// promotion appeared in the audit log only at apply — the request and
 	// approval stages left no trace at all.
 	//
-	// The event_type matches HTTP and MCP exactly; that is the guarantee the
-	// ticket bought and tests/parity asserts it. Subject and metadata mirror
-	// the HTTP handler, whose flow this command duplicates: the event points at
-	// the stored request record. MCP points its request event at the *source*
-	// record instead — a real remaining inconsistency, but a separate one from
-	// the naming drift fixed here.
+	// The event_type, subject, and metadata match HTTP and MCP exactly. The
+	// event points at the stored request record; source and target identifiers
+	// remain available in metadata without making the source record the audit
+	// subject for only one surface.
 	_ = c.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, *actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
 		json.RawMessage(fmt.Sprintf(
 			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
@@ -911,7 +909,11 @@ func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 		Payload:   appliedPayload,
 	})
 
-	_ = c.Store.EmitPromote(ctx, contextstore.EventPromote, *actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID, nil)
+	_ = c.Store.EmitPromote(ctx, contextstore.EventPromote, *actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
+		json.RawMessage(fmt.Sprintf(
+			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
+			requestID, pa.ApprovalID, newRec.RecordID,
+		)))
 
 	_, _ = fmt.Fprintf(c.Stdout, "Promotion applied.\n")
 	_, _ = fmt.Fprintf(c.Stdout, "  Record ID:   %s\n", newRec.RecordID)

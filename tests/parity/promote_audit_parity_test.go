@@ -21,13 +21,18 @@
 // These tests drive the real emit path on each surface — the HTTP router, the
 // registered MCP tool over an in-process JSON-RPC client, and the CLI command
 // dispatcher — rather than calling EmitPromote directly, so a divergence
-// reintroduced at any one call site fails here.
+// reintroduced at any one call site fails here. Metadata contains the IDs and
+// source/target coordinates needed to reconstruct the lifecycle. It
+// deliberately has no surface-only marker: the actor and stored request record
+// already provide attribution, while a key emitted by only one door breaks the
+// shared row schema.
 package parity
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,19 +52,28 @@ import (
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-// promoteStageEvents records the promote-family audit event types a surface
-// emitted during each of the three promotion stages. A slice rather than a
-// single string so that "emitted nothing" and "emitted two names" are both
-// visible failures rather than silently collapsing to the same thing.
+// promoteStageEvents records the full promote-family audit rows a surface
+// emitted during each promotion stage, together with the lifecycle IDs needed
+// to prove that subjects and metadata point at the records they claim to.
+// Slices keep "emitted nothing" and "emitted twice" visible failures.
 type promoteStageEvents struct {
-	Request []string
-	Approve []string
-	Apply   []string
+	Request []contextstore.AuditEvent
+	Approve []contextstore.AuditEvent
+	Apply   []contextstore.AuditEvent
+
+	store            *contextstore.Store
+	RequestID        string
+	ApprovalID       string
+	RequestNamespace string
+	SourceNamespace  string
+	SourceKey        string
+	TargetNamespace  string
+	TargetKey        string
 }
 
 // stage returns the events for a named stage, so assertions can loop over the
 // three stages instead of repeating themselves three times.
-func (p promoteStageEvents) stage(name string) []string {
+func (p promoteStageEvents) stage(name string) []contextstore.AuditEvent {
 	switch name {
 	case "request":
 		return p.Request
@@ -77,10 +91,10 @@ var promoteStageNames = []string{"request", "approve", "apply"}
 // bare "promote" it has always had on all three doors; renaming the one name
 // that was already consistent would churn the most-used value for symmetry
 // alone.
-var canonicalPromoteStageEvents = promoteStageEvents{
-	Request: []string{contextstore.EventPromoteRequest},
-	Approve: []string{contextstore.EventPromoteApprove},
-	Apply:   []string{contextstore.EventPromote},
+var canonicalPromoteStageEvents = map[string][]string{
+	"request": {contextstore.EventPromoteRequest},
+	"approve": {contextstore.EventPromoteApprove},
+	"apply":   {contextstore.EventPromote},
 }
 
 // auditProbe reports the promote-family audit events added to a store since
@@ -100,18 +114,18 @@ func newAuditProbe(t *testing.T, s *contextstore.Store) *auditProbe {
 	return p
 }
 
-// since returns promote-family event types recorded since the previous call.
+// since returns promote-family audit rows recorded since the previous call.
 // The "promote" prefix deliberately catches the retired spellings too
 // ("promote.request.created", "promote.request.approved"), so a regression
 // shows up as a wrong name rather than as an empty stage. It does not match
 // status_promote or memory.promote, which are unrelated events.
-func (p *auditProbe) since(t *testing.T) []string {
+func (p *auditProbe) since(t *testing.T) []contextstore.AuditEvent {
 	t.Helper()
 	evs, _, err := p.store.QueryAuditEvents(context.Background(), contextstore.AuditQuery{Limit: 200})
 	if err != nil {
 		t.Fatalf("query audit events: %v", err)
 	}
-	var out []string
+	var out []contextstore.AuditEvent
 	maxID := p.lastID
 	// QueryAuditEvents returns newest-first; walk backwards for chronological order.
 	for i := len(evs) - 1; i >= 0; i-- {
@@ -123,7 +137,7 @@ func (p *auditProbe) since(t *testing.T) []string {
 			maxID = ev.ID
 		}
 		if strings.HasPrefix(ev.EventType, "promote") {
-			out = append(out, ev.EventType)
+			out = append(out, ev)
 		}
 	}
 	p.lastID = maxID
@@ -182,7 +196,14 @@ func drivePromoteOverHTTP(t *testing.T) promoteStageEvents {
 		return out
 	}
 
-	var got promoteStageEvents
+	got := promoteStageEvents{
+		store:            cs,
+		RequestNamespace: "app/httpdoor/promotions",
+		SourceNamespace:  sourceNS,
+		SourceKey:        sourceKey,
+		TargetNamespace:  "user/notes",
+		TargetKey:        "http-summary",
+	}
 	reqBody := post("/v1/context/promote/request", map[string]any{
 		"actor":            "app:httpdoor",
 		"client_id":        "httpdoor",
@@ -198,11 +219,16 @@ func drivePromoteOverHTTP(t *testing.T) promoteStageEvents {
 	if requestID == "" {
 		t.Fatalf("HTTP promote/request returned no request_id: %v", reqBody)
 	}
+	got.RequestID = requestID
 
-	post("/v1/context/promote/approve", map[string]any{
+	approveBody := post("/v1/context/promote/approve", map[string]any{
 		"actor": "user", "request_id": requestID, "notes": "ok",
 	})
 	got.Approve = probe.since(t)
+	got.ApprovalID, _ = approveBody["approval_id"].(string)
+	if got.ApprovalID == "" {
+		t.Fatalf("HTTP promote/approve returned no approval_id: %v", approveBody)
+	}
 
 	post("/v1/context/promote/apply", map[string]any{
 		"actor": "user", "request_id": requestID,
@@ -278,7 +304,14 @@ func drivePromoteOverMCP(t *testing.T) promoteStageEvents {
 		return out
 	}
 
-	var got promoteStageEvents
+	got := promoteStageEvents{
+		store:            cs,
+		RequestNamespace: "app/mcp-agent/promotions",
+		SourceNamespace:  sourceNS,
+		SourceKey:        sourceKey,
+		TargetNamespace:  "user/notes",
+		TargetKey:        "mcp-summary",
+	}
 	reqBody := call(map[string]any{
 		"stage":            "request",
 		"source_namespace": sourceNS,
@@ -292,9 +325,14 @@ func drivePromoteOverMCP(t *testing.T) promoteStageEvents {
 	if requestID == "" {
 		t.Fatalf("MCP promote request returned no request_id: %v", reqBody)
 	}
+	got.RequestID = requestID
 
-	call(map[string]any{"stage": "approve", "request_id": requestID})
+	approveBody := call(map[string]any{"stage": "approve", "request_id": requestID})
 	got.Approve = probe.since(t)
+	got.ApprovalID, _ = approveBody["approval_id"].(string)
+	if got.ApprovalID == "" {
+		t.Fatalf("MCP promote approve returned no approval_id: %v", approveBody)
+	}
 
 	call(map[string]any{"stage": "apply", "request_id": requestID})
 	got.Apply = probe.since(t)
@@ -321,7 +359,14 @@ func drivePromoteOverCLI(t *testing.T) promoteStageEvents {
 		return stdout.String()
 	}
 
-	var got promoteStageEvents
+	got := promoteStageEvents{
+		store:            cs,
+		RequestNamespace: "app/clidoor/promotions",
+		SourceNamespace:  sourceNS,
+		SourceKey:        sourceKey,
+		TargetNamespace:  "user/notes",
+		TargetKey:        "cli-summary",
+	}
 	out := run("context", "promote", "request",
 		"--actor", "app:clidoor", "--client-id", "clidoor",
 		"--source-namespace", sourceNS, "--source-key", sourceKey,
@@ -330,9 +375,11 @@ func drivePromoteOverCLI(t *testing.T) promoteStageEvents {
 	got.Request = probe.since(t)
 
 	requestID := parseCLIRequestID(t, out)
+	got.RequestID = requestID
 
-	run("context", "promote", "approve", requestID, "--actor", "user", "--notes", "ok")
+	out = run("context", "promote", "approve", requestID, "--actor", "user", "--notes", "ok")
 	got.Approve = probe.since(t)
+	got.ApprovalID = parseCLIField(t, out, "Approval ID:")
 
 	run("context", "promote", "apply", requestID, "--actor", "user")
 	got.Apply = probe.since(t)
@@ -344,25 +391,28 @@ func drivePromoteOverCLI(t *testing.T) promoteStageEvents {
 // for this command.
 func parseCLIRequestID(t *testing.T, output string) string {
 	t.Helper()
+	return parseCLIField(t, output, "Request ID:")
+}
+
+func parseCLIField(t *testing.T, output, label string) string {
+	t.Helper()
 	for _, line := range strings.Split(output, "\n") {
-		if _, rest, ok := strings.Cut(line, "Request ID:"); ok {
+		if _, rest, ok := strings.Cut(line, label); ok {
 			if id := strings.TrimSpace(rest); id != "" {
 				return id
 			}
 		}
 	}
-	t.Fatalf("no request id in CLI output: %s", output)
+	t.Fatalf("no %s value in CLI output: %s", label, output)
 	return ""
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
 
-// TestPromoteAuditEventTypesAgreeAcrossSurfaces is the acceptance criterion
-// for CW-20260419-0058: one logical promotion stage, one event_type, no matter
-// which door opened it. It asserts twice over — each surface against the
-// canonical constants, and the surfaces against each other — so that neither
-// "someone edited a constant" nor "someone hardcoded a private spelling at one
-// call site" can slip through.
+// TestPromoteAuditEventTypesAgreeAcrossSurfaces started as the acceptance
+// criterion for CW-20260419-0058's event-name unification. CW-20260904-0115
+// extends the same invariant to the rest of each row: every stage uses the
+// same kind of subject and the same metadata schema on every surface.
 func TestPromoteAuditEventTypesAgreeAcrossSurfaces(t *testing.T) {
 	surfaces := []struct {
 		name  string
@@ -381,21 +431,22 @@ func TestPromoteAuditEventTypesAgreeAcrossSurfaces(t *testing.T) {
 	// Each surface emits exactly the canonical name, exactly once, per stage.
 	for _, s := range surfaces {
 		for _, stage := range promoteStageNames {
-			got := observed[s.name].stage(stage)
-			want := canonicalPromoteStageEvents.stage(stage)
+			got := eventTypes(observed[s.name].stage(stage))
+			want := canonicalPromoteStageEvents[stage]
 			if !equalStrings(got, want) {
 				t.Errorf("%s surface, %s stage: emitted %v, want %v", s.name, stage, got, want)
 			}
 		}
+		assertPromoteAuditDetails(t, s.name, observed[s.name])
 	}
 
 	// And the surfaces agree with each other. Redundant while the block above
 	// passes, load-bearing the moment someone changes a constant and updates
 	// only the door they were working on.
 	for _, stage := range promoteStageNames {
-		base := observed["HTTP"].stage(stage)
+		base := eventTypes(observed["HTTP"].stage(stage))
 		for _, s := range surfaces[1:] {
-			if got := observed[s.name].stage(stage); !equalStrings(got, base) {
+			if got := eventTypes(observed[s.name].stage(stage)); !equalStrings(got, base) {
 				t.Errorf("%s stage diverged: HTTP emitted %v but %s emitted %v — "+
 					"the same action must carry the same event_type on every surface", stage, base, s.name, got)
 			}
@@ -418,10 +469,97 @@ func TestCLIPromoteEmitsAtEveryStage(t *testing.T) {
 				"must be reconstructable from context_audit, not just its apply step", stage)
 			continue
 		}
-		if want := canonicalPromoteStageEvents.stage(stage); !equalStrings(evs, want) {
-			t.Errorf("CLI %s stage: emitted %v, want %v", stage, evs, want)
+		if gotTypes := eventTypes(evs); !equalStrings(gotTypes, canonicalPromoteStageEvents[stage]) {
+			t.Errorf("CLI %s stage: emitted %v, want %v", stage, gotTypes, canonicalPromoteStageEvents[stage])
 		}
 	}
+}
+
+func assertPromoteAuditDetails(t *testing.T, surface string, got promoteStageEvents) {
+	t.Helper()
+
+	checks := []struct {
+		stage     string
+		namespace string
+		key       string
+		revision  int64
+		metadata  func(contextstore.AuditEvent) map[string]string
+	}{
+		{
+			stage: "request", namespace: got.RequestNamespace, key: got.RequestID, revision: 1,
+			metadata: func(contextstore.AuditEvent) map[string]string {
+				return map[string]string{
+					"request_id":       got.RequestID,
+					"source_namespace": got.SourceNamespace,
+					"source_key":       got.SourceKey,
+					"target_namespace": got.TargetNamespace,
+					"target_key":       got.TargetKey,
+				}
+			},
+		},
+		{
+			stage: "approve", namespace: got.RequestNamespace, key: got.RequestID, revision: 2,
+			metadata: func(contextstore.AuditEvent) map[string]string {
+				return map[string]string{
+					"request_id":  got.RequestID,
+					"approval_id": got.ApprovalID,
+				}
+			},
+		},
+		{
+			stage: "apply", namespace: got.TargetNamespace, key: got.TargetKey, revision: 1,
+			metadata: func(ev contextstore.AuditEvent) map[string]string {
+				return map[string]string{
+					"request_id":  got.RequestID,
+					"approval_id": got.ApprovalID,
+					"record_id":   ev.RecordID,
+				}
+			},
+		},
+	}
+
+	for _, check := range checks {
+		events := got.stage(check.stage)
+		if len(events) != 1 {
+			// The event-type assertion reports the names; avoid indexing an empty
+			// or ambiguous stage and obscuring that first failure with a panic.
+			continue
+		}
+		ev := events[0]
+		if ev.Namespace != check.namespace || ev.Key != check.key || ev.Revision != check.revision {
+			t.Errorf("%s surface, %s stage: subject = %s/%s rev %d, want %s/%s rev %d",
+				surface, check.stage, ev.Namespace, ev.Key, ev.Revision,
+				check.namespace, check.key, check.revision)
+		}
+		if ev.RecordID == "" {
+			t.Errorf("%s surface, %s stage: audit subject has no record_id", surface, check.stage)
+		} else if rec, err := got.store.GetByRecordID(context.Background(), ev.RecordID); err != nil {
+			t.Errorf("%s surface, %s stage: audited record_id %q is not stored: %v", surface, check.stage, ev.RecordID, err)
+		} else if rec.Namespace != ev.Namespace || rec.Key != ev.Key || rec.Revision != ev.Revision {
+			t.Errorf("%s surface, %s stage: audit subject %s/%s rev %d does not match record_id %s (%s/%s rev %d)",
+				surface, check.stage, ev.Namespace, ev.Key, ev.Revision,
+				ev.RecordID, rec.Namespace, rec.Key, rec.Revision)
+		}
+
+		var metadata map[string]string
+		if err := json.Unmarshal(ev.Metadata, &metadata); err != nil {
+			t.Errorf("%s surface, %s stage: decode metadata %q: %v", surface, check.stage, ev.Metadata, err)
+			continue
+		}
+		wantMetadata := check.metadata(ev)
+		if !maps.Equal(metadata, wantMetadata) {
+			t.Errorf("%s surface, %s stage: metadata = %v, want exact schema %v",
+				surface, check.stage, metadata, wantMetadata)
+		}
+	}
+}
+
+func eventTypes(events []contextstore.AuditEvent) []string {
+	out := make([]string, 0, len(events))
+	for _, ev := range events {
+		out = append(out, ev.EventType)
+	}
+	return out
 }
 
 func equalStrings(a, b []string) bool {

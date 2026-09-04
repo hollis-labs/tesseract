@@ -740,7 +740,7 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	namespace := "app/mcp-agent/promotions"
-	_, err = a.Store.AppendRecord(ctx, contextstore.AppendInput{
+	reqRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: namespace,
 		Key:       requestID,
 		Actor:     actor,
@@ -750,8 +750,11 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req mcp.CallToolRequ
 		return toolError(codePromoteFailed, err.Error()), nil
 	}
 
-	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, srcNS, srcKey, srcHead.Revision, srcHead.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"target_namespace":%q,"source":"mcp"}`, requestID, tgtNS)))
+	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
+		json.RawMessage(fmt.Sprintf(
+			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
+			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
+		)))
 
 	return toolJSON(map[string]any{
 		"request_id": requestID,
@@ -873,7 +876,7 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"approval_id":%q,"source":"mcp"}`, approvalID)))
+		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)))
 
 	return toolJSON(map[string]any{
 		"approval_id": approvalID,
@@ -934,7 +937,10 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 	}
 
 	_ = a.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"source":"mcp"}`, requestID)))
+		json.RawMessage(fmt.Sprintf(
+			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
+			requestID, pr.ApprovalID, newRec.RecordID,
+		)))
 
 	return toolJSON(map[string]any{
 		"record_id":        newRec.RecordID,
