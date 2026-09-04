@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("typed-put", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	ns := fs.String("namespace", "", "namespace")
 	key := fs.String("key", "", "key")
 	actor := fs.String("actor", "user", "actor")
@@ -22,8 +24,8 @@ func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 	ttl := fs.String("ttl", "", "TTL as RFC3339 timestamp or duration (e.g. 24h)")
 	pointers := fs.String("pointers", "", "comma-separated pointer references")
 	payload := fs.String("payload", "", "JSON payload")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *ns == "" || *key == "" || *payload == "" {
 		return c.fail("namespace, key, and payload are required")
@@ -99,12 +101,13 @@ func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 
 func (c *CLI) runStatusPromote(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("status-promote", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	ns := fs.String("namespace", "", "namespace")
 	key := fs.String("key", "", "key")
 	actor := fs.String("actor", "user", "actor")
 	toStatus := fs.String("to", "", "target status (default: next in chain)")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *ns == "" || *key == "" {
 		return c.fail("namespace and key are required")
@@ -152,11 +155,12 @@ func (c *CLI) runStatusPromote(ctx context.Context, args []string) int {
 
 func (c *CLI) runStatusDeprecate(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("status-deprecate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	ns := fs.String("namespace", "", "namespace")
 	key := fs.String("key", "", "key")
 	actor := fs.String("actor", "user", "actor")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *ns == "" || *key == "" {
 		return c.fail("namespace and key are required")
@@ -194,12 +198,13 @@ func (c *CLI) runStatusDeprecate(ctx context.Context, args []string) int {
 
 func (c *CLI) runTypedView(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("typed-view", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	viewID := fs.String("view", "", "view ID (e.g. task_exec, strategy)")
 	nsPattern := fs.String("namespace", "", "namespace glob pattern (default: all)")
 	maxItems := fs.Int("limit", 0, "max items")
 	output := fs.String("output", "json", "output format: json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *viewID == "" {
 		return c.fail("view ID is required (--view task_exec|strategy)")
@@ -297,12 +302,13 @@ func (c *CLI) runTTLCleanup(ctx context.Context, _ []string) int {
 
 func (c *CLI) runContextPack(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("context-pack", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	viewID := fs.String("view", "", "view ID")
 	nsPattern := fs.String("namespace", "", "namespace glob")
 	maxItems := fs.Int("limit", 50, "max items")
 	maxTokens := fs.Int("max-tokens", 8000, "max tokens estimate")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *viewID == "" {
 		return c.fail("view ID is required")

@@ -27,7 +27,7 @@ type CLI struct {
 	ExecCommand func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
-// Run executes `context ...` commands.
+// Run executes `tesseract context ...` commands.
 func (c *CLI) Run(ctx context.Context, args []string) int {
 	if c.Stdout == nil {
 		c.Stdout = os.Stdout
@@ -44,69 +44,291 @@ func (c *CLI) Run(ctx context.Context, args []string) int {
 	if err := c.reloadPolicies(ctx); err != nil {
 		return c.fail(err.Error())
 	}
+	// Help requests never reach here — Help answers them before the caller
+	// opens a store. What is left is either a real command or an incomplete
+	// one, and an incomplete one gets the usage block on stderr with a
+	// non-zero exit rather than a one-line string that named the wrong binary
+	// and listed 15 of the 26 subcommands.
 	if len(args) == 0 || args[0] != "context" {
-		return c.fail("usage: context <namespace|put|get|history|view|promote|maintenance|packet|broker|typed-put|status-promote|status-deprecate|typed-view|types|views|ttl-cleanup|context-pack> ...")
+		Usage(c.Stderr)
+		return 1
 	}
 	if len(args) < 2 {
-		return c.fail("missing context subcommand")
+		Usage(c.Stderr)
+		return 1
+	}
+	return c.dispatch(ctx, args[1], args[2:])
+}
+
+// dispatch routes one context subcommand to its handler.
+//
+// Split out of Run so the store-free help path can reach a subcommand's own
+// flagset (see Help), and so there is exactly one switch for
+// TestCommandsMatchDispatch to walk against Commands().
+func (c *CLI) dispatch(ctx context.Context, verb string, args []string) int {
+	switch verb {
+	case "namespace":
+		return c.runNamespace(args)
+	case "put":
+		return c.runPut(ctx, args)
+	case "get":
+		return c.runGet(ctx, args)
+	case "history":
+		return c.runHistory(ctx, args)
+	case "view":
+		return c.runView(ctx, args)
+	case "promote":
+		return c.runPromote(ctx, args)
+	case "doctor":
+		return c.runDoctor(ctx, args)
+	case "repair-heads":
+		return c.runRepairHeads(ctx, args)
+	case "audit":
+		return c.runAudit(ctx, args)
+	case "token":
+		return c.runToken(ctx, args)
+	case "backup":
+		return c.runBackup(ctx, args)
+	case "health":
+		return c.runHealth(ctx, args)
+	case "bootstrap":
+		return c.runBootstrap(ctx, args)
+	case "compact":
+		return c.runCompact(ctx, args)
+	case "contract":
+		return c.runContract(ctx, args)
+	case "maintenance":
+		return c.runMaintenance(ctx, args)
+	case "packet":
+		return c.runPacket(ctx, args)
+	case "broker":
+		return c.runBroker(ctx, args)
+	case "typed-put":
+		return c.runTypedPut(ctx, args)
+	case "status-promote":
+		return c.runStatusPromote(ctx, args)
+	case "status-deprecate":
+		return c.runStatusDeprecate(ctx, args)
+	case "typed-view":
+		return c.runTypedView(ctx, args)
+	case "types":
+		return c.runTypesList(ctx, args)
+	case "views":
+		return c.runViewsList(ctx, args)
+	case "ttl-cleanup":
+		return c.runTTLCleanup(ctx, args)
+	case "context-pack":
+		return c.runContextPack(ctx, args)
+	default:
+		return c.fail("unknown subcommand: " + verb + " (run `tesseract context --help`)")
+	}
+}
+
+// Command describes one `tesseract context` subcommand for help output.
+//
+// This table is the only place the subcommand list is written down. Before it
+// existed the usage string was hand-maintained, and it had drifted badly: it
+// named the wrong binary ("context" rather than "tesseract") and listed 15 of
+// the 26 subcommands dispatch actually routes, so `doctor`, `audit`, `token`,
+// `backup`, `health`, `bootstrap`, `compact` and `contract` were unreachable
+// unless you already knew they were there. TestCommandsMatchDispatch walks the
+// table and the switch together so they cannot separate again.
+type Command struct {
+	// Name is the verb as typed: `tesseract context <Name>`.
+	Name string
+	// Summary is one line, lowercase, no trailing period — it is printed in a
+	// column beside the name.
+	Summary string
+	// Subcommands are the verbs a grouping command dispatches on, e.g.
+	// `tesseract context namespace register`. Empty for a leaf command.
+	Subcommands []string
+	// NoFlags marks a leaf command that parses no flags at all. Those have no
+	// flagset to print — and, because they reach for the store immediately,
+	// they must not be dispatched by the store-free help path.
+	NoFlags bool
+}
+
+// Commands returns the context subcommands, in dispatch order.
+func Commands() []Command {
+	return []Command{
+		{Name: "namespace", Summary: "register a namespace or show its policy", Subcommands: []string{"register", "show"}},
+		{Name: "put", Summary: "write a new revision of a namespace/key"},
+		{Name: "get", Summary: "read the head (or a specific revision) of a namespace/key"},
+		{Name: "history", Summary: "list the revision history of a namespace/key"},
+		{Name: "view", Summary: "select records across namespaces with a selector"},
+		{Name: "promote", Summary: "cross-namespace promotion workflow", Subcommands: []string{"request", "list", "approve", "apply", "accept"}},
+		{Name: "doctor", Summary: "scan the store for consistency issues"},
+		{Name: "repair-heads", Summary: "rebuild head pointers that no longer match the revisions"},
+		{Name: "audit", Summary: "query the audit log"},
+		{Name: "token", Summary: "manage capability tokens for managed auth", Subcommands: []string{"create", "issue", "rotate", "revoke", "list", "show"}},
+		{Name: "backup", Summary: "export, restore or verify a store snapshot", Subcommands: []string{"export", "restore", "verify"}},
+		{Name: "health", Summary: "report store health and readiness"},
+		{Name: "bootstrap", Summary: "seed the default namespaces and report readiness"},
+		{Name: "compact", Summary: "prune old revisions and audit events"},
+		{Name: "contract", Summary: "list or run the contract test suites", Subcommands: []string{"list", "run"}},
+		{Name: "maintenance", Summary: "retention trim and store compaction", Subcommands: []string{"trim", "compact"}},
+		{Name: "packet", Summary: "build a budgeted context packet"},
+		{Name: "broker", Summary: "plan and fetch a brokered context set", Subcommands: []string{"plan", "fetch"}},
+		{Name: "typed-put", Summary: "write a typed record with status and pointers"},
+		{Name: "status-promote", Summary: "advance a typed record's status"},
+		{Name: "status-deprecate", Summary: "mark a typed record deprecated"},
+		{Name: "typed-view", Summary: "render a registered view over typed records"},
+		{Name: "types", Summary: "list the registered context types", NoFlags: true},
+		{Name: "views", Summary: "list the registered views", NoFlags: true},
+		{Name: "ttl-cleanup", Summary: "delete records whose TTL has expired", NoFlags: true},
+		{Name: "context-pack", Summary: "build a context pack for a view under a token budget"},
+	}
+}
+
+// lookupCommand finds a subcommand by name.
+func lookupCommand(name string) (Command, bool) {
+	for _, cmd := range Commands() {
+		if cmd.Name == name {
+			return cmd, true
+		}
+	}
+	return Command{}, false
+}
+
+// WriteCommands prints the subcommand table indented and without a header, so
+// the top-level `tesseract --help` can embed it as a section.
+func WriteCommands(w io.Writer) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, cmd := range Commands() {
+		_, _ = fmt.Fprintf(tw, "  %s\t%s\n", cmd.Name, cmd.Summary)
+	}
+	_ = tw.Flush()
+}
+
+// Usage prints the `tesseract context` usage block.
+func Usage(w io.Writer) {
+	_, _ = fmt.Fprint(w, "usage: tesseract context <subcommand> [flags]\n\ncontext subcommands:\n")
+	WriteCommands(w)
+	_, _ = fmt.Fprint(w, "\nrun `tesseract context <subcommand> --help` for a subcommand's flags.\n")
+}
+
+// isHelpToken reports whether an argument turns a command line into a
+// question. "help" counts only in the first position, so that a positional
+// argument that happens to be the word "help" is still a value.
+func isHelpToken(arg string) bool {
+	switch arg {
+	case "-h", "-help", "--help":
+		return true
+	}
+	return false
+}
+
+// containsHelpToken reports whether any argument asks for help.
+func containsHelpToken(args []string) bool {
+	for i, a := range args {
+		if a == "--" {
+			// Everything after the terminator is a value, not a flag.
+			return false
+		}
+		if isHelpToken(a) || (i == 0 && a == "help") {
+			return true
+		}
+	}
+	return false
+}
+
+// Help answers a `tesseract context ...` help request without a store.
+//
+// verbs is everything after `context`. The second return value reports whether
+// this was a help request at all; when it is false the caller carries on to
+// the ordinary, store-backed path.
+//
+// Answering here rather than inside Run is the whole point. Run needs an open
+// store, and opening the store materializes the XDG layout, creates the SQLite
+// database and runs migrations. Asking what a subcommand's flags are is not
+// consent to create a data directory.
+//
+// A leaf subcommand's flags are printed by that subcommand's own flagset, by
+// dispatching the handler against a CLI with no store. Every handler builds
+// its flagset and parses before it touches c.Store, and ContinueOnError
+// unwinds on `--help`, so the handler returns through parseFlags without ever
+// dereferencing the nil store. The three flagless subcommands go the other way
+// — they read the store immediately — which is what NoFlags marks.
+// TestHelpNeedsNoStore walks every subcommand and sub-verb to keep that true.
+func Help(ctx context.Context, stdout, stderr io.Writer, verbs []string) (int, bool) {
+	if len(verbs) == 0 {
+		// Bare `tesseract context` is an incomplete command, not a question:
+		// usage on stderr, non-zero exit.
+		Usage(stderr)
+		return 1, true
+	}
+	if isHelpToken(verbs[0]) || verbs[0] == "help" {
+		Usage(stdout)
+		return 0, true
+	}
+	if !containsHelpToken(verbs[1:]) {
+		return 0, false
 	}
 
-	switch args[1] {
-	case "namespace":
-		return c.runNamespace(args[2:])
-	case "put":
-		return c.runPut(ctx, args[2:])
-	case "get":
-		return c.runGet(ctx, args[2:])
-	case "history":
-		return c.runHistory(ctx, args[2:])
-	case "view":
-		return c.runView(ctx, args[2:])
-	case "promote":
-		return c.runPromote(ctx, args[2:])
-	case "doctor":
-		return c.runDoctor(ctx, args[2:])
-	case "repair-heads":
-		return c.runRepairHeads(ctx, args[2:])
-	case "audit":
-		return c.runAudit(ctx, args[2:])
-	case "token":
-		return c.runToken(ctx, args[2:])
-	case "backup":
-		return c.runBackup(ctx, args[2:])
-	case "health":
-		return c.runHealth(ctx, args[2:])
-	case "bootstrap":
-		return c.runBootstrap(ctx, args[2:])
-	case "compact":
-		return c.runCompact(ctx, args[2:])
-	case "contract":
-		return c.runContract(ctx, args[2:])
-	case "maintenance":
-		return c.runMaintenance(ctx, args[2:])
-	case "packet":
-		return c.runPacket(ctx, args[2:])
-	case "broker":
-		return c.runBroker(ctx, args[2:])
-	case "typed-put":
-		return c.runTypedPut(ctx, args[2:])
-	case "status-promote":
-		return c.runStatusPromote(ctx, args[2:])
-	case "status-deprecate":
-		return c.runStatusDeprecate(ctx, args[2:])
-	case "typed-view":
-		return c.runTypedView(ctx, args[2:])
-	case "types":
-		return c.runTypesList(ctx, args[2:])
-	case "views":
-		return c.runViewsList(ctx, args[2:])
-	case "ttl-cleanup":
-		return c.runTTLCleanup(ctx, args[2:])
-	case "context-pack":
-		return c.runContextPack(ctx, args[2:])
-	default:
-		return c.fail("unknown subcommand: " + args[1])
+	cmd, ok := lookupCommand(verbs[0])
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "error: unknown subcommand:", verbs[0])
+		Usage(stderr)
+		return 1, true
 	}
+
+	// A grouping command asked about on its own lists its sub-verbs; the flags
+	// live one level down.
+	if len(cmd.Subcommands) > 0 && (isHelpToken(verbs[1]) || verbs[1] == "help") {
+		_, _ = fmt.Fprintf(stdout, "usage: tesseract context %s <%s> [flags]\n\n  %s\n\nrun `tesseract context %s <subcommand> --help` for its flags.\n",
+			cmd.Name, strings.Join(cmd.Subcommands, "|"), cmd.Summary, cmd.Name)
+		return 0, true
+	}
+
+	if cmd.NoFlags {
+		_, _ = fmt.Fprintf(stdout, "usage: tesseract context %s\n\n  %s\n\n  (takes no flags)\n", cmd.Name, cmd.Summary)
+		return 0, true
+	}
+
+	c := &CLI{Stdout: stdout, Stderr: stderr, Policy: contextpolicy.New()}
+	return c.dispatch(ctx, verbs[0], verbs[1:]), true
+}
+
+// parseFlags parses a subcommand's flagset and separates the one outcome a
+// caller must not report as a failure.
+//
+// Every flagset here is ContinueOnError with its output discarded, so `--help`
+// arrives as flag.ErrHelp having printed nothing. Treated as an ordinary parse
+// error — which is what happened before — it surfaced as
+// "error: flag: help requested" with exit 1: the user asked a question and got
+// a failure and no answer. Help is not an error, so the flags go to stdout and
+// the exit code is 0.
+//
+// The boolean is "handled": true means the caller should return the int
+// immediately, false means parsing succeeded and the command should run.
+func (c *CLI) parseFlags(fs *flag.FlagSet, args []string) (int, bool) {
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			c.printFlags(fs)
+			return 0, true
+		}
+		return c.fail(err.Error()), true
+	}
+	return 0, false
+}
+
+// printFlags writes a flagset's own flag list to stdout under a usage line
+// built from the flagset's name, which is the command path — "promote request"
+// prints as `tesseract context promote request`.
+func (c *CLI) printFlags(fs *flag.FlagSet) {
+	out := c.Stdout
+	if out == nil {
+		out = os.Stdout
+	}
+	_, _ = fmt.Fprintf(out, "usage: tesseract context %s [flags]\n", fs.Name())
+	// The flagset name of a sub-verb is "<group> <verb>"; the summary is
+	// carried by the group.
+	if cmd, ok := lookupCommand(strings.Fields(fs.Name())[0]); ok {
+		_, _ = fmt.Fprintf(out, "\n  %s\n", cmd.Summary)
+	}
+	_, _ = fmt.Fprint(out, "\nflags:\n")
+	fs.SetOutput(out)
+	fs.PrintDefaults()
 }
 
 type contractSuite struct {
@@ -159,7 +381,7 @@ func contractSuites() []contractSuite {
 
 func (c *CLI) runContract(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context contract <list|run> ...")
+		return c.fail("usage: tesseract context contract <list|run> ...")
 	}
 	switch args[0] {
 	case "list":
@@ -167,7 +389,7 @@ func (c *CLI) runContract(ctx context.Context, args []string) int {
 	case "run":
 		return c.runContractRun(ctx, args[1:])
 	default:
-		return c.fail("usage: context contract <list|run> ...")
+		return c.fail("usage: tesseract context contract <list|run> ...")
 	}
 }
 
@@ -175,8 +397,8 @@ func (c *CLI) runContractList(args []string) int {
 	fs := flag.NewFlagSet("contract list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	suites := contractSuites()
 	switch strings.TrimSpace(*output) {
@@ -201,8 +423,8 @@ func (c *CLI) runContractRun(ctx context.Context, args []string) int {
 	suiteName := fs.String("suite", "all", "suite name or all")
 	execute := fs.Bool("execute", false, "execute the suite command(s)")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	allSuites := contractSuites()
 	selected := make([]contractSuite, 0, len(allSuites))
@@ -279,7 +501,7 @@ func (c *CLI) execCommand(ctx context.Context, cmdline string) ([]byte, error) {
 
 func (c *CLI) runNamespace(args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context namespace <register|show> ...")
+		return c.fail("usage: tesseract context namespace <register|show> ...")
 	}
 	switch args[0] {
 	case "register":
@@ -287,7 +509,7 @@ func (c *CLI) runNamespace(args []string) int {
 	case "show":
 		return c.runNamespaceShow(args[1:])
 	default:
-		return c.fail("usage: context namespace <register|show> ...")
+		return c.fail("usage: tesseract context namespace <register|show> ...")
 	}
 }
 
@@ -297,8 +519,8 @@ func (c *CLI) runNamespaceRegister(args []string) int {
 	namespace := fs.String("namespace", "", "namespace")
 	ownerType := fs.String("owner-type", "", "owner-type")
 	ownerID := fs.String("owner-id", "", "owner-id")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	entry := contextstore.NamespacePolicyEntry{
 		Namespace: *namespace,
@@ -318,8 +540,8 @@ func (c *CLI) runNamespaceShow(args []string) int {
 	fs := flag.NewFlagSet("namespace show", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	namespace := fs.String("namespace", "", "namespace")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	entry, err := c.Store.GetNamespacePolicy(context.Background(), *namespace)
 	if err != nil {
@@ -343,8 +565,8 @@ func (c *CLI) runPut(ctx context.Context, args []string) int {
 	key := fs.String("key", "", "key")
 	jsonArg := fs.String("json", "", "json payload")
 	fileArg := fs.String("file", "", "payload file")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	payload, err := readPayload(*jsonArg, *fileArg)
 	if err != nil {
@@ -370,8 +592,8 @@ func (c *CLI) runGet(ctx context.Context, args []string) int {
 	namespace := fs.String("namespace", "", "namespace")
 	key := fs.String("key", "", "key")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	rec, err := c.Store.Head(ctx, *namespace, *key)
 	if err != nil {
@@ -387,8 +609,8 @@ func (c *CLI) runHistory(ctx context.Context, args []string) int {
 	key := fs.String("key", "", "key")
 	limit := fs.Int("limit", 0, "limit")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	recs, err := c.Store.History(ctx, *namespace, *key, *limit)
 	if err != nil {
@@ -405,8 +627,8 @@ func (c *CLI) runView(ctx context.Context, args []string) int {
 	includePayload := fs.Bool("include-payload", false, "include payload")
 	limit := fs.Int("limit", 0, "limit")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	sel, err := readSelector(*selector, *selectorFile)
@@ -430,7 +652,7 @@ func (c *CLI) runView(ctx context.Context, args []string) int {
 
 func (c *CLI) runPromote(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context promote <request|list|approve|apply|accept> ...")
+		return c.fail("usage: tesseract context promote <request|list|approve|apply|accept> ...")
 	}
 	switch args[0] {
 	case "request":
@@ -444,7 +666,7 @@ func (c *CLI) runPromote(ctx context.Context, args []string) int {
 	case "accept":
 		return c.runPromoteAccept(ctx, args[1:])
 	default:
-		return c.fail("usage: context promote <request|list|approve|apply|accept> ...")
+		return c.fail("usage: tesseract context promote <request|list|approve|apply|accept> ...")
 	}
 }
 
@@ -459,8 +681,8 @@ func (c *CLI) runPromoteRequest(ctx context.Context, args []string) int {
 	tgtKey := fs.String("target-key", "", "target key (required)")
 	reason := fs.String("reason", "", "reason for the promotion")
 	summary := fs.String("summary", "", "proposed summary of the record")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *srcNS == "" || *srcKey == "" || *tgtNS == "" || *tgtKey == "" {
 		return c.fail("--source-namespace, --source-key, --target-namespace, --target-key required")
@@ -515,8 +737,8 @@ func (c *CLI) runPromoteList(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("promote list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	status := fs.String("status", "pending", "filter by status: pending|approved|applied|all")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	recs, err := c.Store.Select(ctx, contextstore.Selector{
@@ -561,11 +783,11 @@ func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	actor := fs.String("actor", "user", "actor approving the request")
 	notes := fs.String("notes", "", "optional approval notes")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if fs.NArg() == 0 {
-		return c.fail("usage: context promote approve <request-id> [--notes N]")
+		return c.fail("usage: tesseract context promote approve <request-id> [--notes N]")
 	}
 	requestID := fs.Arg(0)
 
@@ -621,11 +843,11 @@ func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("promote apply", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	actor := fs.String("actor", "user", "actor applying the promotion")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if fs.NArg() == 0 {
-		return c.fail("usage: context promote apply <request-id>")
+		return c.fail("usage: tesseract context promote apply <request-id>")
 	}
 	requestID := fs.Arg(0)
 
@@ -681,11 +903,11 @@ func (c *CLI) runPromoteAccept(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	actor := fs.String("actor", "user", "actor")
 	notes := fs.String("notes", "", "approval notes")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if fs.NArg() == 0 {
-		return c.fail("usage: context promote accept <request-id> [--notes N]")
+		return c.fail("usage: tesseract context promote accept <request-id> [--notes N]")
 	}
 	requestID := fs.Arg(0)
 
@@ -703,8 +925,8 @@ func (c *CLI) runDoctor(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	issues, err := c.Store.ScanConsistency(ctx)
 	if err != nil {
@@ -731,8 +953,8 @@ func (c *CLI) runRepairHeads(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("repair-heads", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	rebuilt, err := c.Store.RebuildHeads(ctx)
 	if err != nil {
@@ -767,8 +989,8 @@ func (c *CLI) runAudit(ctx context.Context, args []string) int {
 	namespace := fs.String("namespace", "", "namespace filter")
 	eventType := fs.String("event-type", "", "event type filter")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *cursor < 0 {
 		return c.fail("cursor must be a non-negative integer")
@@ -803,7 +1025,7 @@ func (c *CLI) runAudit(ctx context.Context, args []string) int {
 
 func (c *CLI) runToken(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context token <create|list|show|revoke|issue|rotate> ...")
+		return c.fail("usage: tesseract context token <create|list|show|revoke|issue|rotate> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -833,8 +1055,8 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 	expires := fs.String("expires", "", "expiry as RFC3339 or YYYY-MM-DD")
 	ttl := fs.String("ttl", "", "expiry as Go duration (e.g. 8760h)")
 	output := fs.String("output", "table", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if strings.TrimSpace(*name) == "" {
 		return c.fail("--name is required")
@@ -918,11 +1140,11 @@ func (c *CLI) runTokenShow(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("token show", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	output := fs.String("output", "table", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if len(fs.Args()) == 0 {
-		return c.fail("usage: context token show <token-id>")
+		return c.fail("usage: tesseract context token show <token-id>")
 	}
 	tokenID := fs.Args()[0]
 	meta, err := c.Store.GetAuthToken(ctx, tokenID)
@@ -963,8 +1185,8 @@ func (c *CLI) runTokenIssue(ctx context.Context, args []string) int {
 	label := fs.String("label", "default", "label")
 	ttl := fs.String("ttl", "", "token ttl (e.g. 1h)")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	var dur time.Duration
 	if strings.TrimSpace(*ttl) != "" {
@@ -999,8 +1221,8 @@ func (c *CLI) runTokenRotate(ctx context.Context, args []string) int {
 	label := fs.String("label", "", "new token label")
 	ttl := fs.String("ttl", "", "new token ttl (e.g. 1h)")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	var dur time.Duration
 	if strings.TrimSpace(*ttl) != "" {
@@ -1033,8 +1255,8 @@ func (c *CLI) runTokenRevoke(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	token := fs.String("token", "", "raw token value (legacy)")
 	id := fs.String("id", "", "token-id to revoke by ID")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	// Allow positional arg as token-id
@@ -1050,7 +1272,7 @@ func (c *CLI) runTokenRevoke(ctx context.Context, args []string) int {
 		return 0
 	}
 	if *token == "" {
-		return c.fail("usage: context token revoke <token-id>  or  --token <raw-value>")
+		return c.fail("usage: tesseract context token revoke <token-id>  or  --token <raw-value>")
 	}
 	if err := c.Store.RevokeAuthToken(ctx, *token); err != nil {
 		return c.fail(err.Error())
@@ -1064,8 +1286,8 @@ func (c *CLI) runTokenList(ctx context.Context, args []string) int {
 	limit := fs.Int("limit", 50, "limit")
 	showRevoked := fs.Bool("show-revoked", false, "include revoked tokens")
 	output := fs.String("output", "table", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	tokens, err := c.Store.ListAuthTokens(ctx, *limit)
 	if err != nil {
@@ -1110,7 +1332,7 @@ func (c *CLI) runTokenList(ctx context.Context, args []string) int {
 
 func (c *CLI) runBackup(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context backup <export|restore> ...")
+		return c.fail("usage: tesseract context backup <export|restore> ...")
 	}
 	switch args[0] {
 	case "export":
@@ -1120,7 +1342,7 @@ func (c *CLI) runBackup(ctx context.Context, args []string) int {
 	case "verify":
 		return c.runBackupVerify(args[1:])
 	default:
-		return c.fail("usage: context backup <export|restore|verify> ...")
+		return c.fail("usage: tesseract context backup <export|restore|verify> ...")
 	}
 }
 
@@ -1131,8 +1353,8 @@ func (c *CLI) runBackupExport(ctx context.Context, args []string) int {
 	// snapshot + payload tree), not the single JSON file v1 wrote.
 	outPath := fs.String("out", "", "backup output directory (must be new or empty)")
 	configPath := fs.String("config", "", "optional config.yaml to include in the backup")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if strings.TrimSpace(*outPath) == "" {
 		return c.fail("--out is required")
@@ -1159,8 +1381,8 @@ func (c *CLI) runBackupRestore(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("backup restore", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	inPath := fs.String("in", "", "backup directory (v2) or snapshot file (legacy v1)")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if strings.TrimSpace(*inPath) == "" {
 		return c.fail("--in is required")
@@ -1175,8 +1397,8 @@ func (c *CLI) runBackupVerify(args []string) int {
 	fs := flag.NewFlagSet("backup verify", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	inPath := fs.String("in", "", "backup directory (v2) or snapshot file (legacy v1)")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if strings.TrimSpace(*inPath) == "" {
 		return c.fail("--in is required")
@@ -1201,8 +1423,8 @@ func (c *CLI) runHealth(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	output := fs.String("output", "json", "json|table")
 	summary := fs.Bool("summary", false, "emit readiness status summary")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	report, err := c.Store.Readiness(ctx)
 	if err != nil {
@@ -1249,8 +1471,8 @@ func (c *CLI) runBootstrap(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	defaultApp := fs.String("default-app", "default", "default app namespace owner id")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	seed := []contextstore.NamespacePolicyEntry{
@@ -1302,8 +1524,8 @@ func (c *CLI) runCompact(ctx context.Context, args []string) int {
 	keepRevisions := fs.Int("keep-revisions", 1, "revisions to keep per namespace/key")
 	keepAudit := fs.Int("keep-audit", 1000, "audit events to keep")
 	output := fs.String("output", "json", "json|table")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	deletedRevisions, err := c.Store.CompactRevisions(ctx, *keepRevisions)
@@ -1428,7 +1650,7 @@ func readSelector(raw, filePath string) (contextstore.Selector, error) {
 
 func (c *CLI) runMaintenance(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context maintenance <trim|compact> ...")
+		return c.fail("usage: tesseract context maintenance <trim|compact> ...")
 	}
 	switch args[0] {
 	case "trim":
@@ -1436,7 +1658,7 @@ func (c *CLI) runMaintenance(ctx context.Context, args []string) int {
 	case "compact":
 		return c.runMaintenanceCompact(ctx, args[1:])
 	default:
-		return c.fail("usage: context maintenance <trim|compact> ...")
+		return c.fail("usage: tesseract context maintenance <trim|compact> ...")
 	}
 }
 
@@ -1446,8 +1668,8 @@ func (c *CLI) runMaintenanceTrim(ctx context.Context, args []string) int {
 	namespace := fs.String("namespace", "user/cache/%", "namespace pattern (SQL LIKE syntax)")
 	retention := fs.String("retention", "72h", "trim records older than this duration")
 	dryRun := fs.Bool("dry-run", false, "show what would be trimmed without modifying data")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	dur, err := time.ParseDuration(*retention)
@@ -1477,8 +1699,8 @@ func (c *CLI) runMaintenanceCompact(ctx context.Context, args []string) int {
 	namespace := fs.String("namespace", "", "namespace pattern (SQL LIKE syntax, required)")
 	maxRevisions := fs.Int("max-revisions", 1, "revisions to keep per (namespace,key)")
 	dryRun := fs.Bool("dry-run", false, "show what would be compacted without modifying data")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if strings.TrimSpace(*namespace) == "" {
 		return c.fail("--namespace is required")
@@ -1523,8 +1745,8 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 	payloadMaxBytes := fs.Int("payload-max-bytes", 0, "cap each payload at N bytes (0=no cap); a capped item reports payload_head, payload_truncated and payload_bytes instead of payload")
 	manifest := fs.String("manifest", "summary", "manifest detail: summary|full")
 	output := fs.String("output", "human", "output mode: human|json|manifest-only")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 	if *payloadMode != "" && *payloadMode != "full" {
 		return c.fail("payload-mode accepts only \"full\"; the former -payload-mode=head_only is now -payload-max-bytes=512")
@@ -1675,7 +1897,7 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 
 func (c *CLI) runBroker(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: context broker <plan|fetch> ...")
+		return c.fail("usage: tesseract context broker <plan|fetch> ...")
 	}
 	switch args[0] {
 	case "plan":
@@ -1760,8 +1982,8 @@ func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
 	maxItems := fs.Int("budget-items", 50, "max items budget")
 	maxTokens := fs.Int("budget-tokens", 4000, "max tokens estimate budget")
 	output := fs.String("output", "human", "human|json")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	namespaces, includePins, rationale := brokerBuildPlan(*intent, *summary, *maxItems, *maxTokens)
@@ -1820,8 +2042,8 @@ func (c *CLI) runBrokerFetch(ctx context.Context, args []string) int {
 	maxItems := fs.Int("budget-items", 50, "max items budget")
 	maxTokens := fs.Int("budget-tokens", 4000, "max tokens estimate budget")
 	output := fs.String("output", "human", "human|json")
-	if err := fs.Parse(args); err != nil {
-		return c.fail(err.Error())
+	if code, done := c.parseFlags(fs, args); done {
+		return code
 	}
 
 	namespaces, _, rationale := brokerBuildPlan(*intent, *summary, *maxItems, *maxTokens)

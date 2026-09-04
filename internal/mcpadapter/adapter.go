@@ -39,6 +39,13 @@ type Adapter struct {
 	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_write
 	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
 
+	// Version is reported to the client in the MCP initialize handshake. The
+	// binary stamps it from build info so there is one source of truth; this
+	// was previously a hardcoded literal, which rotted past the release it
+	// named. Empty falls back to "dev" rather than to a stale number, so an
+	// unstamped embedding caller is honest about not knowing.
+	Version string
+
 	// DefaultPayloadMode is the projection applied to tesseract_recall
 	// results when the call does not pass payload_mode.
 	// Wired from config (read.payload_mode). Empty or unrecognized falls
@@ -377,12 +384,20 @@ func New(store *contextstore.Store, token string) *Adapter {
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
 		"tesseract",
-		"0.9.0",
+		a.version(),
 		server.WithToolCapabilities(true),
 	)
 	a.RegisterAllTools(s)
 	ctxFunc := func(_ context.Context) context.Context { return ctx }
 	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
+}
+
+// version is what the initialize handshake reports. See the Version field.
+func (a *Adapter) version() string {
+	if v := strings.TrimSpace(a.Version); v != "" {
+		return v
+	}
+	return "dev"
 }
 
 // RegisterAllTools registers every MCP tool supported by this adapter on s.
