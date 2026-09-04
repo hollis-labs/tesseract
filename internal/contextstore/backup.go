@@ -50,6 +50,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 )
 
@@ -67,11 +68,11 @@ const (
 	backupDirMode  os.FileMode = 0o700
 	backupFileMode os.FileMode = 0o600
 
-	// Modes for material restored back into a live store. These match what
-	// AppendRecord writes so a restored tree is indistinguishable from a grown
-	// one; store-wide permission policy is deliberately not decided here.
-	storeDirMode  os.FileMode = 0o755
-	storeFileMode os.FileMode = 0o644
+	// Modes for material restored back into a live store. A restored tree must
+	// be indistinguishable from a grown one, so these track what AppendRecord
+	// writes rather than restating a policy: fsperm owns the answer.
+	storeDirMode  os.FileMode = fsperm.DirMode
+	storeFileMode os.FileMode = fsperm.FileMode
 )
 
 // BackupFile describes one file inside a v2 backup directory.

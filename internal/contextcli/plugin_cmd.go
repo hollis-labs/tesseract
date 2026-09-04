@@ -114,7 +114,19 @@ func pluginInstall(pluginsDir, name string, stdout, stderr *os.File) int {
 		return 1
 	}
 
-	os.MkdirAll(pluginsDir, 0755)
+	// The plugins directory is an operator-supplied path, not one Tesseract
+	// owns: it defaults to ./plugins relative to the working directory and is
+	// replaced wholesale by TESSERACT_PLUGINS_DIR, which may well name a
+	// directory shared with other tools or other people. So it is created with
+	// the ordinary 0o755 and its mode is never forced — the owner-only policy
+	// in internal/fsperm deliberately stops at this boundary.
+	//
+	// The error is reported rather than dropped: without it, an unwritable or
+	// conflicting parent surfaces as a confusing git clone failure below.
+	if err := os.MkdirAll(pluginsDir, 0o755); err != nil { //nolint:gosec // 0755 is deliberate: see above, this is an operator-supplied path
+		fmt.Fprintf(stderr, "Failed to create plugins directory %s: %v\n", pluginsDir, err)
+		return 1
+	}
 
 	repoURL := fmt.Sprintf("git@github.com:%s/%s.git", pluginGitOrg, name)
 	fmt.Fprintf(stdout, "Installing %s from %s...\n", name, repoURL)

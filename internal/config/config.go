@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/hollis-labs/tesseract/internal/fsperm"
 )
 
 // Config holds the top-level tesseract configuration loaded from config.yaml.
@@ -159,16 +161,21 @@ func Normalize(cfg Config) Config {
 }
 
 // Save writes cfg to path as YAML, creating the parent directory when needed.
+//
+// config.yaml carries provider credentials, so both it and the directory it
+// lives in are owner-only. fsperm re-applies the mode after the write because
+// O_CREATE's mode is ignored for a file that already exists: a config saved by
+// a build older than CW-20260904-0078 would otherwise keep its 0644.
 func Save(path string, cfg Config) error {
 	cfg = Normalize(cfg)
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := fsperm.EnsureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fsperm.WriteFile(path, data)
 }
 
 // DefaultSynthesisSystemPrompt is used when Synthesis.SystemPrompt is empty.
