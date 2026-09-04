@@ -1,7 +1,15 @@
-import { NavRail, type NavRailItem, PageHeader, ThemeSwitcher } from "@hollis-labs/sysop-ui";
+import {
+  cn,
+  LiveDot,
+  NavRail,
+  type NavRailItem,
+  PageHeader,
+  Pill,
+  ThemeSwitcher,
+  Toaster,
+} from "@hollis-labs/sysop-ui";
 import { Activity, Boxes } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Toaster } from "sonner";
 import { getHealth } from "./api/client";
 import type { BrokerPlanResponse, HealthStatus } from "./api/types";
 import { AppFooter } from "./components/layout/AppFooter";
@@ -131,7 +139,7 @@ export default function App() {
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (document.querySelector(".hud-modal-overlay")) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
@@ -217,7 +225,13 @@ export default function App() {
   }));
 
   const status = health?.status ?? "unknown";
-  const dotClass = status === "ready" ? "ok" : status === "degraded" ? "warn" : "idle";
+  const statusTone =
+    status === "ready" || status === "ok" || status === "healthy"
+      ? "success"
+      : status === "degraded"
+        ? "warning"
+        : "neutral";
+  const fullBleed = page === "dashboard" || page === "explorer" || page === "recall";
 
   return (
     <div className="flex h-dvh w-dvw flex-col overflow-hidden bg-bg text-text">
@@ -230,20 +244,19 @@ export default function App() {
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PageHeader title={PAGE_TITLES[page]}>
-            {isDemoMode() && (
-              <span className="hud-badge-warn" style={{ fontSize: "0.6rem" }}>
-                DEMO
-              </span>
-            )}
-            <span className="app-header-status">
-              <span className={`status-dot ${dotClass}`} />
-              <Activity size={13} />
-              <span>{status}</span>
+            {isDemoMode() && <Pill tone="warning">Demo</Pill>}
+            <span className="flex items-center gap-1.5 text-xs text-text-subtle">
+              <LiveDot tone={statusTone} pulsing={status === "degraded"} label={status} />
+              <Activity aria-hidden="true" size={13} />
+              <span className="font-mono">{status}</span>
             </span>
             <ThemeSwitcher />
           </PageHeader>
 
-          <main className="app-content min-h-0" id="main-content">
+          <main
+            className={cn("app-content min-h-0", fullBleed && "app-content--full-bleed")}
+            id="main-content"
+          >
             {/* ── Sprint 2: Read paths ─────────────────── */}
             {page === "explorer" && (
               <ExplorerPage
@@ -291,7 +304,9 @@ export default function App() {
               <RecordDetailPage
                 namespace={ctx.namespace}
                 recordKey={ctx.key}
-                onBack={() => navigate("namespaceDetail", { namespace: ctx.namespace! })}
+                onBack={() => {
+                  if (ctx.namespace) navigate("namespaceDetail", { namespace: ctx.namespace });
+                }}
                 onOpenHistory={(ns, key) => navigate("keyHistory", { namespace: ns, key })}
               />
             )}
@@ -300,9 +315,11 @@ export default function App() {
               <KeyHistoryPage
                 namespace={ctx.namespace}
                 recordKey={ctx.key}
-                onBack={() =>
-                  navigate("recordDetail", { namespace: ctx.namespace!, key: ctx.key! })
-                }
+                onBack={() => {
+                  if (ctx.namespace && ctx.key) {
+                    navigate("recordDetail", { namespace: ctx.namespace, key: ctx.key });
+                  }
+                }}
                 onCompare={(ns, key, a, b) =>
                   navigate("compareRevisions", { namespace: ns, key, revisionA: a, revisionB: b })
                 }
@@ -318,9 +335,11 @@ export default function App() {
                   recordKey={ctx.key}
                   revisionA={ctx.revisionA}
                   revisionB={ctx.revisionB}
-                  onBack={() =>
-                    navigate("keyHistory", { namespace: ctx.namespace!, key: ctx.key! })
-                  }
+                  onBack={() => {
+                    if (ctx.namespace && ctx.key) {
+                      navigate("keyHistory", { namespace: ctx.namespace, key: ctx.key });
+                    }
+                  }}
                 />
               )}
 
@@ -395,19 +414,7 @@ export default function App() {
 
       <AppFooter />
 
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          style: {
-            background: "rgb(var(--panel2))",
-            border: "1px solid rgb(var(--border))",
-            color: "rgb(var(--text))",
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "13px",
-          },
-        }}
-        theme="dark"
-      />
+      <Toaster position="bottom-right" />
     </div>
   );
 }

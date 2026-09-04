@@ -1,7 +1,7 @@
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
-import { useEffect } from 'react';
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { useEffect } from "react";
+import { Markdown } from "tiptap-markdown";
 
 interface Props {
   content: string;
@@ -15,7 +15,7 @@ export function MarkdownViewer({ content, maxHeight }: Props) {
     editable: false,
     editorProps: {
       attributes: {
-        class: 'tiptap-readonly',
+        class: "tiptap-readonly",
       },
     },
   });
@@ -29,7 +29,7 @@ export function MarkdownViewer({ content, maxHeight }: Props) {
   return (
     <div
       className="markdown-viewer"
-      style={{ maxHeight, overflow: maxHeight ? 'auto' : undefined }}
+      style={{ maxHeight, overflow: maxHeight ? "auto" : undefined }}
     >
       <EditorContent editor={editor} />
     </div>

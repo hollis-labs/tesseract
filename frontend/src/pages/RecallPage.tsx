@@ -1,3 +1,14 @@
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Pill,
+} from "@hollis-labs/sysop-ui";
 import { Tag, Telescope } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -7,9 +18,6 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
 
-// Common namespace patterns surfaced in the suggestion dropdown.
-// Picked from the placeholders that already appear across PacketBuilder /
-// ViewBuilder / Broker / Promote so operators see the same shapes.
 const NAMESPACE_SUGGESTIONS = [
   "user/<actor>/memory",
   "user/<actor>/knowledge",
@@ -29,32 +37,30 @@ function loadRecentNamespaces(): string[] {
     const raw = window.localStorage.getItem(RECENT_NAMESPACES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
   } catch {
     return [];
   }
 }
 
-function pushRecentNamespace(ns: string): string[] {
+function pushRecentNamespace(namespace: string): string[] {
   const current = loadRecentNamespaces();
-  const next = [ns, ...current.filter((n) => n !== ns)].slice(0, RECENT_NAMESPACES_MAX);
+  const next = [namespace, ...current.filter((item) => item !== namespace)].slice(
+    0,
+    RECENT_NAMESPACES_MAX,
+  );
   try {
     window.localStorage.setItem(RECENT_NAMESPACES_KEY, JSON.stringify(next));
   } catch {
-    // localStorage may be unavailable; ignore.
+    // localStorage may be unavailable; recall itself should still work.
   }
   return next;
 }
 
 interface Props {
-  // Routes a recall result to the correct detail page based on its domain.
-  // Memory results need MemoryDetailPage (uses /v1/memory/current); knowledge
-  // results need KnowledgeDetailPage (uses /v1/knowledge/current).
   onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
 }
 
-// Read recall parameters out of the URL hash so a recall page is shareable.
-// Format: #recall?namespace=…&tags=…&limit=…&format=…&domain=…
 function readHashParams(): {
   namespace?: string;
   tags?: string;
@@ -64,24 +70,24 @@ function readHashParams(): {
 } {
   if (typeof window === "undefined") return {};
   const hash = window.location.hash;
-  const idx = hash.indexOf("?");
-  if (idx < 0) return {};
-  const params = new URLSearchParams(hash.slice(idx + 1));
-  const out: ReturnType<typeof readHashParams> = {};
-  const ns = params.get("namespace");
-  if (ns) out.namespace = ns;
-  const t = params.get("tags");
-  if (t) out.tags = t;
-  const l = params.get("limit");
-  if (l) out.limit = l;
-  const f = params.get("format");
-  if (f === "brief" || f === "full") out.format = f;
-  const d = params.get("domain");
-  if (d === "memory" || d === "knowledge") out.domain = d;
-  return out;
+  const index = hash.indexOf("?");
+  if (index < 0) return {};
+  const params = new URLSearchParams(hash.slice(index + 1));
+  const output: ReturnType<typeof readHashParams> = {};
+  const namespace = params.get("namespace");
+  if (namespace) output.namespace = namespace;
+  const tags = params.get("tags");
+  if (tags) output.tags = tags;
+  const limit = params.get("limit");
+  if (limit) output.limit = limit;
+  const format = params.get("format");
+  if (format === "brief" || format === "full") output.format = format;
+  const domain = params.get("domain");
+  if (domain === "memory" || domain === "knowledge") output.domain = domain;
+  return output;
 }
 
-function writeHashParams(p: {
+function writeHashParams(parameters: {
   namespace: string;
   tags: string;
   limit: string;
@@ -90,16 +96,14 @@ function writeHashParams(p: {
 }): void {
   if (typeof window === "undefined") return;
   const params = new URLSearchParams();
-  if (p.namespace) params.set("namespace", p.namespace);
-  if (p.tags) params.set("tags", p.tags);
-  if (p.limit && p.limit !== "15") params.set("limit", p.limit);
-  if (p.format && p.format !== "brief") params.set("format", p.format);
-  if (p.domain) params.set("domain", p.domain);
-  const qs = params.toString();
-  const newHash = qs ? `#recall?${qs}` : "#recall";
-  if (window.location.hash !== newHash) {
-    history.replaceState(null, "", newHash);
-  }
+  if (parameters.namespace) params.set("namespace", parameters.namespace);
+  if (parameters.tags) params.set("tags", parameters.tags);
+  if (parameters.limit && parameters.limit !== "15") params.set("limit", parameters.limit);
+  if (parameters.format && parameters.format !== "brief") params.set("format", parameters.format);
+  if (parameters.domain) params.set("domain", parameters.domain);
+  const query = params.toString();
+  const nextHash = query ? `#recall?${query}` : "#recall";
+  if (window.location.hash !== nextHash) history.replaceState(null, "", nextHash);
 }
 
 export function RecallPage({ onOpenItem }: Props) {
@@ -120,15 +124,13 @@ export function RecallPage({ onOpenItem }: Props) {
     setRecentNamespaces(loadRecentNamespaces());
   }, []);
 
-  // Mirror current form state into the URL hash so the page is bookmarkable
-  // and shareable. Skipped while loading to avoid intermediate-state churn.
   useEffect(() => {
     writeHashParams({ namespace, tags, limit, format, domain: domainFilter });
   }, [namespace, tags, limit, format, domainFilter]);
 
   const handleRecall = async () => {
-    const ns = namespace.trim();
-    if (!ns) {
+    const requestedNamespace = namespace.trim();
+    if (!requestedNamespace) {
       setError("Namespace is required.");
       toast.error("Namespace is required");
       return;
@@ -140,391 +142,283 @@ export function RecallPage({ onOpenItem }: Props) {
       const tagList = tags.trim()
         ? tags
             .split(",")
-            .map((t) => t.trim())
+            .map((tag) => tag.trim())
             .filter(Boolean)
         : undefined;
-      const parsedLimit = parseInt(limit, 10);
-      const params: Parameters<typeof recall>[0] = {
-        namespace: ns,
+      const parsedLimit = Number.parseInt(limit, 10);
+      const parameters: Parameters<typeof recall>[0] = {
+        namespace: requestedNamespace,
         format,
       };
-      if (tagList) params.tags = tagList;
-      if (Number.isFinite(parsedLimit) && parsedLimit > 0) params.limit = parsedLimit;
-      const res = await recall(params);
-      setResponse(res);
-      setRecentNamespaces(pushRecentNamespace(ns));
-      toast.success(`Returned ${res.meta.returned} result${res.meta.returned === 1 ? "" : "s"}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      toast.error(`Recall failed: ${msg}`);
+      if (tagList) parameters.tags = tagList;
+      if (Number.isFinite(parsedLimit) && parsedLimit > 0) parameters.limit = parsedLimit;
+      const result = await recall(parameters);
+      setResponse(result);
+      setRecentNamespaces(pushRecentNamespace(requestedNamespace));
+      toast.success(
+        `Returned ${result.meta.returned} result${result.meta.returned === 1 ? "" : "s"}`,
+      );
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Recall failed: ${message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleRecall();
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") void handleRecall();
   };
 
-  // When the user clicks a domain facet chip we filter the brief result list
-  // client-side. The /v1/recall API's domains arg is a tag-style filter on the
-  // memory ranker; doing it client-side keeps the round-trip out of the loop
-  // and lets the user toggle freely without re-fetching.
   const allBriefItems: RecallBriefItem[] =
     format === "brief" && response ? (response.results as RecallBriefItem[]) : [];
-  const briefItems: RecallBriefItem[] = domainFilter
+  const briefItems = domainFilter
     ? allBriefItems.filter((item) => item.domain === domainFilter)
     : allBriefItems;
-
   const facetEntries = response ? Object.entries(response.facets.domains ?? {}) : [];
 
   return (
-    <div>
-      <div className="page-header">
-        <h2 className="page-title">Recall</h2>
-      </div>
+    <div className="min-h-full bg-bg text-text">
+      <section className="border-b border-border-strong px-4 py-4">
+        <h2 className="text-lg font-semibold tracking-tight">Recall relevant memory</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-text-subtle">
+          Query one namespace, optionally narrow it with tags, and inspect the ranked memory or
+          knowledge revisions returned by the service.
+        </p>
+      </section>
 
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: response ? "1fr 1.4fr" : "1fr",
-          gap: "1rem",
-        }}
+        className={
+          response
+            ? "grid gap-4 p-4 lg:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.25fr)]"
+            : "max-w-2xl p-4"
+        }
       >
-        {/* ── Form ───────────────────────────────────────── */}
-        <div className="hud-panel" style={{ padding: "1rem" }}>
-          <div className="form-field">
-            <label className="hud-label" htmlFor="recall-namespace">
-              Namespace <span style={{ color: "rgb(var(--danger))" }}>*</span>
-            </label>
-            <input
-              id="recall-namespace"
-              className="hud-input"
-              list="recall-namespace-suggestions"
-              placeholder="user/chrispian/memory"
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              onKeyDown={handleKeyDown}
-              style={{ width: "100%" }}
-            />
-            <datalist id="recall-namespace-suggestions">
-              {recentNamespaces.map((ns) => (
-                <option key={`recent-${ns}`} value={ns} label="recent" />
-              ))}
-              {NAMESPACE_SUGGESTIONS.map((ns) => (
-                <option key={ns} value={ns} label="template" />
-              ))}
-            </datalist>
-            <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))", marginTop: "0.2rem" }}>
-              Single namespace only. Recent picks appear first; templates use `&lt;actor&gt;` /
-              `&lt;id&gt;` placeholders to replace.
-            </div>
-          </div>
-
-          <div className="form-field" style={{ marginTop: "0.75rem" }}>
-            <label className="hud-label" htmlFor="recall-tags">
-              Tags <span style={{ color: "rgb(var(--muted))" }}>(optional, comma-separated)</span>
-            </label>
-            <input
-              id="recall-tags"
-              className="hud-input"
-              placeholder="decision, scope:agent-ops.steward.main"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              onKeyDown={handleKeyDown}
-              style={{ width: "100%" }}
-            />
-          </div>
-
-          <div className="form-grid" style={{ marginTop: "0.75rem" }}>
-            <div className="form-field">
-              <label className="hud-label" htmlFor="recall-limit">
-                Limit
-              </label>
-              <input
-                id="recall-limit"
-                className="hud-input"
-                type="number"
-                min="1"
-                max="500"
-                value={limit}
-                onChange={(e) => setLimit(e.target.value)}
+        <Card size="sm" className="self-start">
+          <CardHeader className="border-b border-border-strong">
+            <CardTitle>Recall parameters</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recall-namespace">
+                Namespace <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="recall-namespace"
+                className="font-mono"
+                list="recall-namespace-suggestions"
+                placeholder="user/chrispian/memory"
+                value={namespace}
+                onChange={(event) => setNamespace(event.target.value)}
                 onKeyDown={handleKeyDown}
-                style={{ width: "100%" }}
+                aria-describedby="recall-namespace-help"
+                required
+              />
+              <datalist id="recall-namespace-suggestions">
+                {recentNamespaces.map((item) => (
+                  <option key={`recent-${item}`} value={item} label="recent" />
+                ))}
+                {NAMESPACE_SUGGESTIONS.map((item) => (
+                  <option key={item} value={item} label="template" />
+                ))}
+              </datalist>
+              <p id="recall-namespace-help" className="text-xs leading-5 text-text-subtle">
+                Recent picks appear first. Replace the placeholders in namespace templates.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="recall-tags">Tags (optional, comma-separated)</Label>
+              <Input
+                id="recall-tags"
+                className="font-mono"
+                placeholder="decision, scope:agent-ops.steward.main"
+                value={tags}
+                onChange={(event) => setTags(event.target.value)}
+                onKeyDown={handleKeyDown}
               />
             </div>
-            <div className="form-field">
-              <span className="hud-label">Format</span>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  paddingTop: "0.3rem",
-                }}
-              >
-                {(["brief", "full"] as const).map((f) => (
-                  <label
-                    key={f}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                      cursor: "pointer",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="recall-format"
-                      value={f}
-                      checked={format === f}
-                      onChange={() => setFormat(f)}
-                      style={{ accentColor: "rgb(var(--primary))" }}
-                    />
-                    {f}
-                  </label>
-                ))}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="recall-limit">Limit</Label>
+                <Input
+                  id="recall-limit"
+                  className="font-mono"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={limit}
+                  onChange={(event) => setLimit(event.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
               </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Format</legend>
+                <div className="flex h-8 items-center gap-4">
+                  {(["brief", "full"] as const).map((option) => (
+                    <label key={option} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="recall-format"
+                        value={option}
+                        checked={format === option}
+                        onChange={() => setFormat(option)}
+                        className="accent-[var(--theme-color-accent)]"
+                      />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </div>
-          </div>
 
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-            <button
-              type="button"
-              className="hud-button-primary"
-              onClick={handleRecall}
-              disabled={loading || !namespace.trim()}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                {loading ? <Spinner size={13} /> : <Telescope size={13} />} Recall
-              </span>
-            </button>
-          </div>
-        </div>
+            <Button onClick={() => void handleRecall()} disabled={loading || !namespace.trim()}>
+              {loading ? <Spinner size={14} /> : <Telescope aria-hidden="true" />}
+              Recall
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* ── Results ───────────────────────────────────── */}
-        {response && (
-          <div>
-            {/* Meta header */}
-            <div className="hud-panel" style={{ padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                }}
-              >
-                <div style={{ fontSize: "0.85rem" }}>
-                  <span style={{ color: "rgb(var(--muted))" }}>namespace </span>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{response.meta.namespace}</span>
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "rgb(var(--muted))" }}>
-                  returned {response.meta.returned} / limit {response.meta.limit} · format{" "}
+        {response ? (
+          <section className="min-w-0 space-y-3" aria-label="Recall results">
+            <div className="border-y border-border-strong bg-panel px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">
+                  <span className="text-text-subtle">Namespace </span>
+                  <span className="font-mono">{response.meta.namespace}</span>
+                </p>
+                <p className="font-mono text-xs tabular-nums text-text-subtle">
+                  {response.meta.returned} returned / {response.meta.limit} limit /{" "}
                   {response.meta.format}
-                </div>
+                </p>
               </div>
-              {facetEntries.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.4rem",
-                    marginTop: "0.5rem",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
+              {facetEntries.length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   {facetEntries.map(([domain, count]) => {
-                    const isActive = domainFilter === domain;
-                    const isFilterable = domain === "memory" || domain === "knowledge";
+                    const active = domainFilter === domain;
+                    const filterable = domain === "memory" || domain === "knowledge";
                     return (
-                      <button
+                      <Button
                         type="button"
                         key={domain}
+                        variant={active ? "default" : "outline"}
+                        size="xs"
                         onClick={() => {
-                          if (!isFilterable) return;
-                          setDomainFilter(isActive ? "" : (domain as "memory" | "knowledge"));
+                          if (!filterable) return;
+                          setDomainFilter(active ? "" : (domain as "memory" | "knowledge"));
                         }}
-                        disabled={!isFilterable}
-                        title={
-                          isFilterable
-                            ? isActive
-                              ? `Clear ${domain} filter`
-                              : `Filter to ${domain} only`
-                            : undefined
-                        }
-                        style={{
-                          padding: "0.15rem 0.5rem",
-                          background: isActive
-                            ? "rgb(var(--primary))"
-                            : "rgba(var(--primary) / 0.08)",
-                          border: "1px solid rgba(var(--primary) / 0.3)",
-                          borderRadius: "var(--radius-sm)",
-                          fontSize: "0.7rem",
-                          fontFamily: "var(--font-mono)",
-                          color: isActive ? "rgb(var(--bg))" : "inherit",
-                          cursor: isFilterable ? "pointer" : "default",
-                        }}
+                        disabled={!filterable}
+                        aria-pressed={active}
                       >
-                        {domain} · {count}
-                      </button>
+                        {domain} <span className="font-mono">{count}</span>
+                      </Button>
                     );
                   })}
-                  {domainFilter && (
-                    <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                      showing {briefItems.length} / {allBriefItems.length} (filtered)
+                  {domainFilter ? (
+                    <span className="font-mono text-[11px] text-text-subtle" aria-live="polite">
+                      showing {briefItems.length} / {allBriefItems.length}
                     </span>
-                  )}
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Brief list */}
-            {format === "brief" && briefItems.length === 0 && (
-              <EmptyState message="No results for this namespace + tag filter." />
-            )}
-            {format === "brief" && briefItems.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {format === "brief" && briefItems.length === 0 ? (
+              <EmptyState message="No recall results" sub="Adjust the namespace or tag filter." />
+            ) : null}
+
+            {format === "brief" && briefItems.length > 0 ? (
+              <div className="border-y border-border-strong bg-panel">
                 {briefItems.map((item) => {
-                  const domain = (item.domain === "knowledge" ? "knowledge" : "memory") as
-                    | "memory"
-                    | "knowledge";
-                  const canOpen = !!item.memory_key && !!onOpenItem;
+                  const domain = item.domain === "knowledge" ? "knowledge" : "memory";
+                  const canOpen = Boolean(item.memory_key && onOpenItem);
                   return (
-                    <button
-                      type="button"
+                    <article
                       key={item.revision_id}
-                      className="hud-panel"
-                      onClick={() =>
-                        item.memory_key && onOpenItem?.(domain, item.namespace, item.memory_key)
-                      }
-                      disabled={!canOpen}
-                      style={{
-                        padding: "0.6rem 0.75rem",
-                        textAlign: "left",
-                        cursor: canOpen ? "pointer" : "default",
-                        background: "transparent",
-                        color: "inherit",
-                        width: "100%",
-                      }}
+                      className="border-b border-border-soft last:border-b-0"
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "0.5rem",
-                          alignItems: "baseline",
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto w-full items-start justify-start rounded-none px-4 py-3 text-left font-normal"
+                        onClick={() => {
+                          if (item.memory_key)
+                            onOpenItem?.(domain, item.namespace, item.memory_key);
                         }}
+                        disabled={!canOpen}
                       >
-                        <div
-                          style={{
-                            fontSize: "0.85rem",
-                            fontFamily: "var(--font-mono)",
-                            color: "rgb(var(--primary))",
-                          }}
-                        >
-                          {item.memory_key ?? (
-                            <span style={{ color: "rgb(var(--muted))" }}>(no key)</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-                          {item.domain} · conf {item.confidence.toFixed(2)}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: "0.8rem", marginTop: "0.3rem", lineHeight: 1.4 }}>
-                        {item.summary || (
-                          <span style={{ color: "rgb(var(--muted))" }}>(no summary)</span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginTop: "0.4rem",
-                          gap: "0.5rem",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
-                          {item.tags.slice(0, 6).map((t) => (
-                            <button
-                              type="button"
-                              key={t}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const existing = tags
-                                  .split(",")
-                                  .map((x) => x.trim())
-                                  .filter(Boolean);
-                                if (existing.includes(t)) return;
-                                setTags([...existing, t].join(", "));
-                                toast.success(`Added tag: ${t}`);
-                              }}
-                              style={{
-                                padding: "0.1rem 0.4rem",
-                                background: "rgba(var(--panel2) / 0.6)",
-                                border: "1px solid rgb(var(--border))",
-                                borderRadius: "var(--radius-sm)",
-                                fontSize: "0.65rem",
-                                fontFamily: "var(--font-mono)",
-                                color: "rgb(var(--muted))",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.2rem",
-                                cursor: "pointer",
-                              }}
-                              title={`Add tag "${t}" to filter`}
-                            >
-                              <Tag size={9} /> {t}
-                            </button>
-                          ))}
-                          {item.tags.length > 6 && (
-                            <span style={{ fontSize: "0.65rem", color: "rgb(var(--muted))" }}>
-                              +{item.tags.length - 6}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="truncate font-mono text-sm text-status-doing">
+                              {item.memory_key ?? "(no key)"}
                             </span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "rgb(var(--muted))",
-                            fontFamily: "var(--font-mono)",
-                          }}
-                        >
+                            <span className="font-mono text-[11px] text-text-subtle">
+                              {item.domain} / confidence {item.confidence.toFixed(2)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block whitespace-normal text-sm leading-5 text-text-soft">
+                            {item.summary || "(no summary)"}
+                          </span>
+                        </span>
+                      </Button>
+                      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+                        {item.tags.slice(0, 6).map((tag) => (
+                          <Button
+                            type="button"
+                            key={tag}
+                            variant="outline"
+                            size="xs"
+                            className="h-5 font-mono text-[10px] text-text-subtle"
+                            onClick={() => {
+                              const existing = tags
+                                .split(",")
+                                .map((value) => value.trim())
+                                .filter(Boolean);
+                              if (existing.includes(tag)) return;
+                              setTags([...existing, tag].join(", "));
+                              toast.success(`Added tag: ${tag}`);
+                            }}
+                            title={`Add tag "${tag}" to filter`}
+                          >
+                            <Tag aria-hidden="true" /> {tag}
+                          </Button>
+                        ))}
+                        {item.tags.length > 6 ? (
+                          <Pill tone="neutral">+{item.tags.length - 6}</Pill>
+                        ) : null}
+                        <time className="ml-auto font-mono text-[10px] text-text-subtle">
                           {item.created_at}
-                        </div>
+                        </time>
                       </div>
-                    </button>
+                    </article>
                   );
                 })}
               </div>
-            )}
+            ) : null}
 
-            {/* Full format: raw RecallResult JSON for now */}
-            {format === "full" && (
-              <div className="hud-panel" style={{ padding: "0.75rem" }}>
-                <div className="hud-label" style={{ marginBottom: "0.3rem" }}>
-                  Raw RecallResult[]
-                </div>
-                <JsonViewer data={response.results} maxHeight="500px" />
-              </div>
-            )}
-          </div>
-        )}
+            {format === "full" ? (
+              <Card size="sm">
+                <CardHeader className="border-b border-border-strong">
+                  <CardTitle>Raw RecallResult[]</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <JsonViewer data={response.results} maxHeight="500px" />
+                </CardContent>
+              </Card>
+            ) : null}
+          </section>
+        ) : null}
       </div>
 
-      {error && (
-        <div
-          className="hud-panel"
-          style={{ padding: "0.75rem", color: "rgb(var(--danger))", marginTop: "0.75rem" }}
-        >
-          {error}
+      {error ? (
+        <div className="px-4 pb-4">
+          <Callout tone="danger" title="Recall failed">
+            {error}
+          </Callout>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

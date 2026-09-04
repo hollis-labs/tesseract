@@ -1,9 +1,5 @@
-/* Sysop UI kit — Tailwind v4 + the canonical [data-theme] palette.
-   Imported first so the kit's @layer base/components sit *below*
-   Tesseract's own (unlayered) HUD CSS in the cascade. That keeps the
-   existing pages visually stable while only the app shell adopts the
-   kit; page content migrates in a later pass. */
-@import "tailwindcss";
+/* Sysop UI owns Tailwind and the canonical [data-theme] palette. The
+   compatibility styles below remain only for pages awaiting migration. */
 @import "@hollis-labs/sysop-ui/theme.css";
 
 /* Tailwind v4 scans the kit's built output so the utility classes baked
@@ -27,8 +23,8 @@
   --danger:   251 113 133;     /* rose-400 — errors */
   --warn:     245 158 11;      /* amber-500 — warnings */
 
-  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
-  --font-body: 'Share Tech Mono', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius-sm: 3px;
   --radius-md: 6px;
   --radius-lg: 12px;
@@ -42,10 +38,10 @@
 body {
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
-  background-color: rgb(var(--bg));
-  color: rgb(var(--text));
+  background-color: var(--theme-color-bg);
+  color: var(--theme-color-text);
   overflow: hidden;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   font-size: 14px;
 }
 
@@ -322,6 +318,10 @@ body {
   padding: 1.25rem;
 }
 
+.app-content.app-content--full-bleed {
+  padding: 0;
+}
+
 /* ── AppHeader ─────────────────────────────────────────────────────── */
 .app-header {
   height: 44px;
@@ -549,27 +549,6 @@ body {
 .hud-badge-danger  { background: rgba(var(--danger) / 0.15); color: rgb(var(--danger)); }
 .hud-badge-muted   { background: rgba(var(--muted) / 0.15); color: rgb(var(--muted)); }
 
-/* ── JSON Viewer ───────────────────────────────────────────────────── */
-.json-viewer {
-  background: rgb(var(--panel));
-  border: 1px solid rgb(var(--border));
-  border-radius: var(--radius-sm);
-  padding: 0.75rem;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.5;
-  color: rgb(var(--text));
-}
-
-.json-key    { color: rgb(var(--primary)); }
-.json-string { color: rgb(var(--ok)); }
-.json-number { color: rgb(var(--warn)); }
-.json-bool   { color: rgb(var(--danger)); }
-.json-null   { color: rgb(var(--muted)); }
-
 /* ── Record Tabs ──────────────────────────────────────────────────── */
 .record-tabs {
   display: flex;
@@ -656,7 +635,7 @@ body {
   font-family: var(--font-body);
   font-size: 0.85rem;
   line-height: 1.7;
-  color: rgb(var(--text));
+  color: var(--theme-color-text);
 }
 
 .markdown-viewer .tiptap-readonly {
@@ -670,7 +649,7 @@ body {
 .markdown-viewer h1 {
   font-size: 1.4rem;
   font-weight: 700;
-  color: rgb(var(--primary));
+  color: var(--theme-color-accent);
   margin: 1.5rem 0 0.5rem;
   letter-spacing: 0.02em;
 }
@@ -678,7 +657,7 @@ body {
 .markdown-viewer h2 {
   font-size: 1.1rem;
   font-weight: 700;
-  color: rgb(var(--accent));
+  color: var(--theme-color-text-muted);
   margin: 1.25rem 0 0.4rem;
   letter-spacing: 0.02em;
 }
@@ -686,7 +665,7 @@ body {
 .markdown-viewer h3 {
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgb(var(--text));
+  color: var(--theme-color-text);
   margin: 1rem 0 0.3rem;
 }
 
@@ -695,7 +674,7 @@ body {
 }
 
 .markdown-viewer strong {
-  color: rgb(var(--accent));
+  color: var(--theme-color-text-muted);
   font-weight: 600;
 }
 
@@ -710,22 +689,22 @@ body {
 }
 
 .markdown-viewer li::marker {
-  color: rgb(var(--muted));
+  color: var(--theme-color-text-subtle);
 }
 
 .markdown-viewer code {
-  background: rgba(var(--panel2) / 0.8);
-  border: 1px solid rgba(var(--border) / 0.5);
+  background: var(--theme-color-panel-2);
+  border: 1px solid var(--theme-color-border-soft);
   border-radius: 3px;
   padding: 1px 5px;
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: rgb(var(--primary));
+  color: var(--theme-color-accent);
 }
 
 .markdown-viewer pre {
-  background: rgb(var(--bg));
-  border: 1px solid rgb(var(--border));
+  background: var(--theme-color-bg);
+  border: 1px solid var(--theme-color-border);
   border-radius: var(--radius-sm);
   padding: 0.75rem;
   margin: 0.5rem 0;
@@ -736,21 +715,21 @@ body {
   background: none;
   border: none;
   padding: 0;
-  color: rgb(var(--text));
+  color: var(--theme-color-text);
   font-size: 0.8rem;
 }
 
 .markdown-viewer blockquote {
-  border-left: 3px solid rgb(var(--primary));
+  border-left: 3px solid var(--theme-color-accent);
   padding-left: 0.75rem;
   margin: 0.5rem 0;
-  color: rgb(var(--muted));
+  color: var(--theme-color-text-subtle);
   font-style: italic;
 }
 
 .markdown-viewer hr {
   border: none;
-  border-top: 1px solid rgba(var(--border) / 0.5);
+  border-top: 1px solid var(--theme-color-border-soft);
   margin: 1rem 0;
 }
 
@@ -831,16 +810,16 @@ body {
 
 /* ── Toast overrides ───────────────────────────────────────────────── */
 [data-sonner-toaster] [data-sonner-toast] {
-  border: 1px solid rgb(var(--border));
-  background: rgb(var(--panel2));
-  color: rgb(var(--text));
-  font-family: var(--font-mono);
+  border: 1px solid var(--theme-color-border);
+  background: var(--theme-color-panel-2);
+  color: var(--theme-color-text);
+  font-family: var(--font-body);
 }
 [data-sonner-toaster] [data-sonner-toast][data-type="error"] {
-  border-color: rgb(var(--danger));
+  border-color: var(--theme-color-danger);
 }
 [data-sonner-toaster] [data-sonner-toast][data-type="success"] {
-  border-color: rgb(var(--ok));
+  border-color: var(--theme-color-status-done);
 }
 
 /* ── Responsive breakpoints ──────────────────────────────────────── */
@@ -925,8 +904,14 @@ body {
 
 /* Focus rings for keyboard navigation */
 :focus-visible {
-  outline: 2px solid rgb(var(--primary));
+  outline: 2px solid var(--theme-color-accent);
   outline-offset: 2px;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--theme-color-accent) !important;
+  outline-offset: 2px !important;
 }
 
 /* Reduce motion for vestibular motion sensitivity */
@@ -946,8 +931,8 @@ body {
   position: absolute;
   top: -100%;
   left: 0;
-  background: rgb(var(--primary));
-  color: rgb(var(--bg));
+  background: var(--theme-color-accent);
+  color: var(--theme-color-accent-foreground);
   padding: 0.5rem 1rem;
   z-index: 1000;
   font-size: 0.85rem;
