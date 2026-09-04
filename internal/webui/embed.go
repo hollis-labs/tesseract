@@ -1,41 +1,47 @@
 // Package webui serves the embedded Tesseract frontend as an SPA.
+//
+// The SPA routing itself lives in github.com/hollis-labs/go-webui, which was
+// extracted (CW-20260515-0127) from the copy of this file that Tesseract and
+// Fragments Engine had each grown independently. This package keeps only what
+// is genuinely Tesseract's: the //go:embed of its own bundle and the mount
+// point. go-webui deliberately ships no assets, so the host owns the embed.
 package webui
 
 import (
 	"embed"
 	"io/fs"
 	"net/http"
-	"strings"
+
+	gowebui "github.com/hollis-labs/go-webui"
 )
 
 //go:embed all:dist
 var distFS embed.FS
 
-// Handler returns an http.Handler that serves the embedded frontend.
-// Any path not matching a real file serves index.html (SPA fallback).
+// Handler returns an http.Handler that serves the embedded frontend at the
+// site root, where cmd/tesseract mounts it as the catch-all behind /v1/.
+//
+// Routing comes from go-webui: a real file is served as itself, an
+// extension-less path that matches no file falls back to index.html so
+// client-side routes resolve, and a path with an extension that matches no
+// file is a 404 rather than an HTML body served under the asset's name.
+//
+// When dist holds no built bundle the returned handler serves go-webui's
+// placeholder page instead. The previous implementation panicked, which made
+// a fresh clone that had not yet run `make frontend` fail at daemon start
+// rather than at the one page that could explain the problem.
 func Handler() http.Handler {
-	sub, err := fs.Sub(distFS, "dist")
+	// fs.Sub only fails on a malformed path, so this cannot trip while the
+	// //go:embed above compiles. A nil FS still selects placeholder mode,
+	// which is the right degradation for an unreachable branch: a broken
+	// bundle should cost a page, not the process.
+	dist, err := fs.Sub(distFS, "dist")
 	if err != nil {
-		panic("webui: embedded dist directory missing: " + err.Error())
+		dist = nil
 	}
-	fileServer := http.FileServer(http.FS(sub))
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try serving the file directly
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-
-		// Check if the file exists in the embedded FS
-		if f, err := sub.Open(path); err == nil {
-			f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-
-		// SPA fallback: serve index.html for non-file paths
-		r.URL.Path = "/"
-		fileServer.ServeHTTP(w, r)
+	return gowebui.Handler(gowebui.Config{
+		FS:       dist,
+		BasePath: "/",
 	})
 }

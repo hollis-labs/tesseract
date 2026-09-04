@@ -26,7 +26,7 @@ cd tesseract
 go build -o tesseract ./cmd/tesseract
 ```
 
-Use `make build` only if you want to rebuild the embedded web UI as part of the binary. A normal `go install` or `go build` path does not require Node.
+`make build` and `make install` compile the committed web UI bundle with Go alone. Use `make build-all` / `make install-all` only if you want to rebuild the embedded web UI from source first, which requires Node. A normal `go install` or `go build` path does not require Node.
 
 ## Quick Start
 
