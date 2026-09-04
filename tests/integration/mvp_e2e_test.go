@@ -64,9 +64,11 @@ func TestMVPEndToEndWorkflow(t *testing.T) {
 		t.Fatalf("step3: app session write expected 200, got %d: %s", writeRes.Code, writeRes.Body)
 	}
 
-	// Verify record is readable.
-	headRes := perform(t, srv, http.MethodGet,
-		"/v1/context/head?namespace=app/test/session/task-001&key=state", nil)
+	// Verify record is readable. Reads need credentials too: with managed auth
+	// configured, every route but readiness and metrics requires a token.
+	headRes := performWithHeaders(t, srv, http.MethodGet,
+		"/v1/context/head?namespace=app/test/session/task-001&key=state", nil,
+		map[string]string{"Authorization": "Bearer " + appToken})
 	if headRes.Code != http.StatusOK {
 		t.Fatalf("step3: head after write expected 200, got %d: %s", headRes.Code, headRes.Body)
 	}
@@ -229,15 +231,17 @@ func TestMVPEndToEndWorkflow(t *testing.T) {
 	t.Logf("step8: promotion applied: record_id=%s", newRecordID)
 
 	// Verify record appears in target namespace.
-	targetHead := perform(t, srv, http.MethodGet,
-		"/v1/context/head?namespace=user/memory/preferences&key=test-preference", nil)
+	targetHead := performWithHeaders(t, srv, http.MethodGet,
+		"/v1/context/head?namespace=user/memory/preferences&key=test-preference", nil,
+		map[string]string{"Authorization": "Bearer " + userToken})
 	if targetHead.Code != http.StatusOK {
 		t.Fatalf("step8: head in target namespace expected 200, got %d: %s", targetHead.Code, targetHead.Body)
 	}
 
 	// Verify audit trail has 3 linked entries.
-	auditRes := perform(t, srv, http.MethodGet,
-		"/v1/context/audit?event_type=promote&limit=20", nil)
+	auditRes := performWithHeaders(t, srv, http.MethodGet,
+		"/v1/context/audit?event_type=promote&limit=20", nil,
+		map[string]string{"Authorization": "Bearer " + userToken})
 	if auditRes.Code != http.StatusOK {
 		t.Fatalf("step8: audit expected 200, got %d", auditRes.Code)
 	}

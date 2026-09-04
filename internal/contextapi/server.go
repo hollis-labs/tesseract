@@ -2,6 +2,7 @@ package contextapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -35,13 +36,60 @@ import (
 
 type contextKey int
 
-const tokenClaimsKey contextKey = iota
+const (
+	tokenClaimsKey contextKey = iota
+	// authConfiguredKey marks a request that was admitted by a configured
+	// token mode. It is what lets the scope and namespace guards below tell
+	// "no credentials were ever required" (the loopback dev default) apart
+	// from "a token mode is in force" — without it, an absent claim set is
+	// ambiguous and the guards can only fail open.
+	authConfiguredKey
+)
 
-// getTokenClaims extracts token claims from the request context (set by authorizeMutatingRequest).
-// Returns zero-value AuthToken when no managed-auth session (full access assumed).
+// getTokenClaims extracts token claims from the request context (set by authorizeRequest).
+// Returns false when the request carries no claims at all, which happens only
+// when no token mode is configured — every configured mode attaches claims.
 func getTokenClaims(r *http.Request) (contextstore.AuthToken, bool) {
 	v, ok := r.Context().Value(tokenClaimsKey).(contextstore.AuthToken)
 	return v, ok
+}
+
+// authModeConfigured reports whether this request passed through a configured
+// token mode (managed or static). Set by authorizeRequest.
+func authModeConfigured(r *http.Request) bool {
+	v, _ := r.Context().Value(authConfiguredKey).(bool)
+	return v
+}
+
+// staticTokenClaims are the claims attached to a request that presented a
+// valid --static-token bearer. The static token is a single credential with no
+// stored metadata, so it is granted exactly the scope set contextstore assigns
+// to a managed token created without explicit scopes (see
+// contextstore.defaultTokenScopes) plus the "*" namespace glob.
+//
+// Note what is absent: "admin". Neither a default managed token nor the static
+// token can drive /v1/admin/settings/apply or /v1/admin/config/restore; those
+// need a token minted with an explicit admin scope, which only managed auth
+// can issue. Attaching claims here rather than leaving the request claim-less
+// is what makes those guards real in static-token mode — previously they were
+// no-ops there, because a missing claim set meant "allow".
+//
+// TestStaticTokenClaimsMatchStoreDefaults guards the duplication of the scope
+// list against drift in contextstore.
+var staticTokenClaims = contextstore.AuthToken{
+	TokenID:  "static",
+	Label:    "static-token",
+	ClientID: "static-token",
+	Scopes: []string{
+		"write",
+		"promote.request",
+		"promote.approve",
+		"promote.apply",
+		"packet",
+		"repair",
+		"namespace.register",
+	},
+	NamespaceGlobs: []string{"*"},
 }
 
 // requireScope checks that the request's token claims include the given scope.
@@ -49,7 +97,19 @@ func getTokenClaims(r *http.Request) (contextstore.AuthToken, bool) {
 func requireScope(w http.ResponseWriter, r *http.Request, scope string) bool {
 	claims, ok := getTokenClaims(r)
 	if !ok {
-		return true // no managed-auth; pass through
+		// No claims on the request. With a token mode configured this must
+		// fail closed: we cannot prove the caller holds the scope, and
+		// returning true here is what previously reduced every scope guard to
+		// a no-op. With no token mode configured at all (loopback dev) there
+		// is nothing to check and the request passes, which is the documented
+		// local-first behaviour.
+		if authModeConfigured(r) {
+			writeError(w, http.StatusForbidden, "insufficient_scope", "request carries no token claims", map[string]any{
+				"required": scope,
+			})
+			return false
+		}
+		return true
 	}
 	for _, s := range claims.Scopes {
 		if s == scope {
@@ -69,7 +129,16 @@ func requireScope(w http.ResponseWriter, r *http.Request, scope string) bool {
 func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace string) bool {
 	claims, ok := getTokenClaims(r)
 	if !ok {
-		return true // no managed-auth; pass through
+		// Same fail-closed rule as requireScope: absent claims under a
+		// configured token mode is a denial, not a pass.
+		if authModeConfigured(r) {
+			writeError(w, http.StatusForbidden, "namespace_not_permitted",
+				"request carries no token claims", map[string]any{
+					"namespace": namespace,
+				})
+			return false
+		}
+		return true
 	}
 	for _, glob := range claims.NamespaceGlobs {
 		if glob == "*" || glob == namespace {
@@ -163,6 +232,177 @@ func NewServer(store *contextstore.Store, policy *contextpolicy.Engine) *Server 
 	return s
 }
 
+// routeAuthKind classifies how a dispatcher route is authorized.
+type routeAuthKind int
+
+const (
+	// authUnclassified is the zero value and is deliberately invalid. A route
+	// added to the table without an explicit classification is rejected by
+	// TestRouteTableClassifiesEveryRoute and is treated as authRequired at
+	// runtime, so forgetting to classify a new route fails closed rather than
+	// silently publishing it.
+	authUnclassified routeAuthKind = iota
+	// authPublic routes answer without credentials even when a token mode is
+	// configured. The set is deliberately tiny: an orchestrator has to be able
+	// to probe readiness and scrape metrics before it holds a token, and
+	// neither route discloses stored content.
+	authPublic
+	// authRequired routes demand valid credentials whenever a token mode
+	// (--managed-auth or --static-token) is configured. Reads included: a
+	// namespace listing, an audit trail, or a recall result is content, and
+	// content is what this service exists to protect. With no token mode
+	// configured — the loopback dev default — these answer unauthenticated.
+	authRequired
+)
+
+// apiRoute binds one dispatcher entry to its authorization classification.
+// The table below is the single source of truth for both routing and the
+// authorization decision made in ServeHTTP: there is exactly one place a route
+// can be added, and it cannot be added without saying how it is protected.
+//
+// Scope and namespace-glob checks are a second layer applied inside the
+// handlers (requireScope / requireNamespaceAccess); this table governs only
+// whether credentials are required to reach the handler at all.
+type apiRoute struct {
+	method string
+	path   string
+	// prefix matches r.URL.Path by prefix instead of equality. The only
+	// current case is /v1/memory/revisions/{id}.
+	prefix  bool
+	auth    routeAuthKind
+	handler func(*Server, http.ResponseWriter, *http.Request)
+}
+
+type routeKey struct {
+	method string
+	path   string
+}
+
+var apiRoutes = []apiRoute{
+	// --- public ---
+	{http.MethodGet, "/v1/health/readiness", false, authPublic, (*Server).handleReadiness},
+	{http.MethodGet, "/v1/metrics", false, authPublic, (*Server).handleMetricsRoute},
+
+	// --- namespaces ---
+	{http.MethodPost, "/v1/namespaces/register", false, authRequired, (*Server).handleNamespaceRegister},
+	{http.MethodGet, "/v1/namespaces/list", false, authRequired, (*Server).handleNamespacesList},
+	{http.MethodGet, "/v1/namespaces/get", false, authRequired, (*Server).handleNamespaceGet},
+
+	// --- context records ---
+	{http.MethodPost, "/v1/context/write", false, authRequired, (*Server).handleWrite},
+	{http.MethodPost, "/v1/context/promote", false, authRequired, (*Server).handlePromoteDeprecated},
+	{http.MethodPost, "/v1/context/promote/request", false, authRequired, (*Server).handlePromoteRequest},
+	{http.MethodPost, "/v1/context/promote/approve", false, authRequired, (*Server).handlePromoteApprove},
+	{http.MethodPost, "/v1/context/promote/apply", false, authRequired, (*Server).handlePromoteApply},
+	{http.MethodGet, "/v1/context/head", false, authRequired, (*Server).handleHead},
+	{http.MethodGet, "/v1/context/history", false, authRequired, (*Server).handleHistory},
+	{http.MethodGet, "/v1/context/audit", false, authRequired, (*Server).handleAudit},
+	{http.MethodGet, "/v1/context/consistency/scan", false, authRequired, (*Server).handleConsistencyScan},
+	{http.MethodPost, "/v1/context/consistency/repair", false, authRequired, (*Server).handleConsistencyRepair},
+	{http.MethodPost, "/v1/context/typed-write", false, authRequired, (*Server).handleTypedWrite},
+	{http.MethodPost, "/v1/context/bulk-ingest", false, authRequired, (*Server).handleBulkIngest},
+	{http.MethodPost, "/v1/context/status/promote", false, authRequired, (*Server).handleStatusPromote},
+	{http.MethodPost, "/v1/context/status/deprecate", false, authRequired, (*Server).handleStatusDeprecate},
+	{http.MethodPost, "/v1/context/typed-view", false, authRequired, (*Server).handleTypedView},
+	{http.MethodGet, "/v1/context/types", false, authRequired, (*Server).handleTypesList},
+	{http.MethodGet, "/v1/context/views", false, authRequired, (*Server).handleViewsList},
+	{http.MethodPost, "/v1/context/pack", false, authRequired, (*Server).handleContextPack},
+	{http.MethodPost, "/v1/context/plan", false, authRequired, (*Server).handleContextPlan},
+	{http.MethodPost, "/v1/context/packet", false, authRequired, (*Server).handlePacket},
+	{http.MethodPost, "/v1/context/estimate", false, authRequired, (*Server).handleEstimate},
+	// Legacy alias kept for backward compatibility; internally renamed to context plan.
+	{http.MethodPost, "/v1/broker/plan", false, authRequired, (*Server).handleContextPlan},
+
+	// --- views ---
+	{http.MethodPost, "/v1/views/evaluate", false, authRequired, (*Server).handleView},
+
+	// --- maintenance ---
+	{http.MethodPost, "/v1/maintenance/trim", false, authRequired, (*Server).handleMaintenanceTrim},
+	{http.MethodPost, "/v1/maintenance/compact", false, authRequired, (*Server).handleMaintenanceCompact},
+	{http.MethodPost, "/v1/maintenance/ttl-cleanup", false, authRequired, (*Server).handleTTLCleanup},
+
+	// --- admin ---
+	{http.MethodGet, "/v1/admin/setup", false, authRequired, (*Server).handleAdminSetup},
+	{http.MethodGet, "/v1/admin/settings", false, authRequired, (*Server).handleAdminSettings},
+	{http.MethodPost, "/v1/admin/settings/preview", false, authRequired, (*Server).handleAdminSettingsPreview},
+	{http.MethodPost, "/v1/admin/settings/apply", false, authRequired, (*Server).handleAdminSettingsApply},
+	{http.MethodGet, "/v1/admin/config/backups", false, authRequired, (*Server).handleAdminConfigBackups},
+	{http.MethodPost, "/v1/admin/config/backup", false, authRequired, (*Server).handleAdminConfigBackup},
+	{http.MethodPost, "/v1/admin/config/restore", false, authRequired, (*Server).handleAdminConfigRestore},
+	{http.MethodGet, "/v1/admin/queue", false, authRequired, (*Server).handleAdminQueue},
+	{http.MethodGet, "/v1/admin/queue/failures", false, authRequired, (*Server).handleAdminQueueFailures},
+	{http.MethodPost, "/v1/admin/queue/retry-failed", false, authRequired, (*Server).handleAdminQueueRetryFailed},
+	{http.MethodPost, "/v1/admin/queue/backfill", false, authRequired, (*Server).handleAdminQueueBackfill},
+	{http.MethodGet, "/v1/admin/storage", false, authRequired, (*Server).handleAdminStorage},
+	{http.MethodPost, "/v1/admin/namespaces/preview", false, authRequired, (*Server).handleAdminNamespacePreview},
+	{http.MethodPost, "/v1/admin/namespaces/update", false, authRequired, (*Server).handleAdminNamespaceUpdate},
+	{http.MethodGet, "/v1/admin/namespaces/history", false, authRequired, (*Server).handleAdminNamespaceHistory},
+
+	// --- auth token lifecycle ---
+	// tokens/list discloses every token's id, client, scopes, namespace globs
+	// and expiry. It is a read, and it is exactly the read an attacker wants.
+	{http.MethodPost, "/v1/auth/tokens/create", false, authRequired, (*Server).handleTokenCreate},
+	{http.MethodGet, "/v1/auth/tokens/list", false, authRequired, (*Server).handleTokenList},
+	{http.MethodPost, "/v1/auth/tokens/revoke", false, authRequired, (*Server).handleTokenRevoke},
+
+	// --- memory ---
+	{http.MethodPost, "/v1/memory/write", false, authRequired, (*Server).handleMemoryWrite},
+	{http.MethodPost, "/v1/memory/recall", false, authRequired, (*Server).handleMemoryRecall},
+	{http.MethodGet, "/v1/memory/revisions/", true, authRequired, (*Server).handleMemoryGetRevision},
+	{http.MethodGet, "/v1/memory/current", false, authRequired, (*Server).handleMemoryGetCurrent},
+	{http.MethodGet, "/v1/memory/history", false, authRequired, (*Server).handleMemoryHistory},
+	{http.MethodPost, "/v1/memory/touch", false, authRequired, (*Server).handleMemoryTouch},
+	{http.MethodPost, "/v1/memory/deprecate", false, authRequired, (*Server).handleMemoryDeprecate},
+	{http.MethodPost, "/v1/memory/promote", false, authRequired, (*Server).handleMemoryPromote},
+
+	// --- knowledge ---
+	{http.MethodPost, "/v1/knowledge/write", false, authRequired, (*Server).handleKnowledgeWrite},
+	{http.MethodGet, "/v1/knowledge/current", false, authRequired, (*Server).handleKnowledgeGetCurrent},
+	{http.MethodGet, "/v1/knowledge/history", false, authRequired, (*Server).handleKnowledgeGetHistory},
+
+	// --- retrieval and synthesis ---
+	{http.MethodPost, "/v1/tesseract/lookup", false, authRequired, (*Server).handleTesseractLookup},
+	{http.MethodGet, "/v1/recall", false, authRequired, (*Server).handleRecall},
+	{http.MethodPost, "/v1/synthesis/ask", false, authRequired, (*Server).handleSynthesisAsk},
+}
+
+var (
+	exactRoutes  = map[routeKey]*apiRoute{}
+	prefixRoutes []*apiRoute
+)
+
+func init() {
+	for i := range apiRoutes {
+		rt := &apiRoutes[i]
+		if rt.prefix {
+			prefixRoutes = append(prefixRoutes, rt)
+			continue
+		}
+		exactRoutes[routeKey{method: rt.method, path: rt.path}] = rt
+	}
+}
+
+// lookupRoute resolves a method+path to its table entry. Exact matches win
+// over prefix matches; no current prefix route shadows an exact one.
+func lookupRoute(method, urlPath string) (*apiRoute, bool) {
+	if rt, ok := exactRoutes[routeKey{method: method, path: urlPath}]; ok {
+		return rt, true
+	}
+	for _, rt := range prefixRoutes {
+		if rt.method == method && strings.HasPrefix(urlPath, rt.path) {
+			return rt, true
+		}
+	}
+	return nil, false
+}
+
+// maxRequestBodyBytes caps the request body every route will read. 10 MiB
+// leaves ample headroom for the largest legitimate payload — a 100-item
+// /v1/context/bulk-ingest batch — while keeping one connection from pinning
+// arbitrary memory. Exceeding it surfaces through decodeJSON as a
+// validation_error naming the limit, not a raw JSON parse failure.
+const maxRequestBodyBytes = 10 << 20
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := strings.TrimSpace(r.Header.Get("X-Request-Id"))
 	if requestID == "" {
@@ -171,6 +411,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Request-Id", requestID)
 
 	started := time.Now()
+	// Keep the raw ResponseWriter: http.MaxBytesReader uses it to tell the
+	// transport the request was too large, and statusWriter does not forward
+	// that private interface.
+	rawWriter := w
 	sw := &statusWriter{ResponseWriter: w}
 	defer func() {
 		status := sw.status
@@ -190,225 +434,43 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "startup_failed", s.startupErr.Error(), nil)
 		return
 	}
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/metrics":
-		if !s.EnableMetrics {
-			writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
-			return
-		}
-		s.handleMetrics(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/namespaces/register":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleNamespaceRegister(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/namespaces/preview":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminNamespacePreview(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/namespaces/update":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminNamespaceUpdate(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/namespaces/history":
-		s.handleAdminNamespaceHistory(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/list":
-		s.handleNamespacesList(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/namespaces/get":
-		s.handleNamespaceGet(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/write":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleWrite(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/promote":
-		s.handlePromoteDeprecated(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/promote/request":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handlePromoteRequest(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/promote/approve":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handlePromoteApprove(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/promote/apply":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handlePromoteApply(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/head":
-		s.handleHead(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/history":
-		s.handleHistory(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/health/readiness":
-		s.handleReadiness(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/setup":
-		s.handleAdminSetup(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/settings":
-		s.handleAdminSettings(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/settings/preview":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminSettingsPreview(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/settings/apply":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminSettingsApply(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/config/backups":
-		s.handleAdminConfigBackups(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/config/backup":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminConfigBackup(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/config/restore":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminConfigRestore(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/queue":
-		s.handleAdminQueue(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/queue/failures":
-		s.handleAdminQueueFailures(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/queue/retry-failed":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminQueueRetryFailed(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/admin/queue/backfill":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleAdminQueueBackfill(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/storage":
-		s.handleAdminStorage(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/audit":
-		s.handleAudit(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/views/evaluate":
-		s.handleView(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/consistency/scan":
-		s.handleConsistencyScan(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/consistency/repair":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleConsistencyRepair(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/maintenance/trim":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMaintenanceTrim(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/maintenance/compact":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMaintenanceCompact(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/tokens/create":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleTokenCreate(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/tokens/list":
-		s.handleTokenList(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/tokens/revoke":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleTokenRevoke(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/broker/plan":
-		// Legacy route kept for backward compatibility; internally renamed to context plan.
-		s.handleContextPlan(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/plan":
-		s.handleContextPlan(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/packet":
-		s.handlePacket(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/estimate":
-		s.handleEstimate(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/typed-write":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleTypedWrite(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/bulk-ingest":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleBulkIngest(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/status/promote":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleStatusPromote(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/status/deprecate":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleStatusDeprecate(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/typed-view":
-		s.handleTypedView(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/types":
-		s.handleTypesList(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/context/views":
-		s.handleViewsList(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/maintenance/ttl-cleanup":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleTTLCleanup(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/context/pack":
-		s.handleContextPack(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/write":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMemoryWrite(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/recall":
-		s.handleMemoryRecall(w, r)
-	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/memory/revisions/"):
-		s.handleMemoryGetRevision(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/memory/current":
-		s.handleMemoryGetCurrent(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/memory/history":
-		s.handleMemoryHistory(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/touch":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMemoryTouch(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/deprecate":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMemoryDeprecate(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/memory/promote":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleMemoryPromote(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/knowledge/write":
-		if r = s.authorizeMutatingRequest(w, r); r == nil {
-			return
-		}
-		s.handleKnowledgeWrite(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/knowledge/current":
-		s.handleKnowledgeGetCurrent(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/knowledge/history":
-		s.handleKnowledgeGetHistory(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/tesseract/lookup":
-		s.handleTesseractLookup(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/recall":
-		s.handleRecall(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/synthesis/ask":
-		s.handleSynthesisAsk(w, r)
-	default:
-		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
+
+	// Cap the body before any handler can touch it. decodeJSON caps again at
+	// its own chokepoint; this outer cap also covers the handlers that decode
+	// r.Body directly.
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(rawWriter, r.Body, maxRequestBodyBytes)
 	}
+
+	route, ok := lookupRoute(r.Method, r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
+		return
+	}
+
+	// One authorization decision for the whole API surface. Doing this here
+	// rather than per-case is the point: a route that forgets to call the
+	// authorizer is no longer possible, and an unclassified route is treated
+	// as protected.
+	if route.auth != authPublic {
+		authorized := s.authorizeRequest(w, r)
+		if authorized == nil {
+			return
+		}
+		r = authorized
+	}
+
+	route.handler(s, w, r)
+}
+
+// handleMetricsRoute keeps /v1/metrics behind --metrics: with the flag off the
+// route must be indistinguishable from an unregistered path.
+func (s *Server) handleMetricsRoute(w http.ResponseWriter, r *http.Request) {
+	if !s.EnableMetrics {
+		writeError(w, http.StatusNotFound, "not_found", "endpoint not found", nil)
+		return
+	}
+	s.handleMetrics(w, r)
 }
 
 func (s *Server) nextRequestID() string {
@@ -452,9 +514,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.metrics.Snapshot())
 }
 
-// authorizeMutatingRequest validates auth and returns the (possibly claims-enriched) request.
+// authorizeRequest validates auth and returns the claims-enriched request.
 // Returns nil if auth failed (response already written).
-func (s *Server) authorizeMutatingRequest(w http.ResponseWriter, r *http.Request) *http.Request {
+//
+// This is the former authorizeMutatingRequest. The managed and static
+// validation semantics are unchanged; what changed is where it runs — every
+// non-public route now passes through it, reads included, so a configured
+// token mode protects the whole API surface rather than just the writes.
+func (s *Server) authorizeRequest(w http.ResponseWriter, r *http.Request) *http.Request {
 	if s.ManagedAuth {
 		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 		if !strings.HasPrefix(authHeader, "Bearer ") {
@@ -470,6 +537,7 @@ func (s *Server) authorizeMutatingRequest(w http.ResponseWriter, r *http.Request
 		if err == nil {
 			// Attach claims to context for scope/namespace checking downstream.
 			ctx := context.WithValue(r.Context(), tokenClaimsKey, claims)
+			ctx = context.WithValue(ctx, authConfiguredKey, true)
 			return r.WithContext(ctx)
 		}
 		switch {
@@ -486,6 +554,9 @@ func (s *Server) authorizeMutatingRequest(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// No token mode configured at all: the local-first loopback default. The
+	// request passes with no claims attached, and the downstream scope and
+	// namespace guards read that absence as "nothing to check".
 	if strings.TrimSpace(s.AuthToken) == "" {
 		return r
 	}
@@ -495,11 +566,20 @@ func (s *Server) authorizeMutatingRequest(w http.ResponseWriter, r *http.Request
 		return nil
 	}
 	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-	if token == "" || token != s.AuthToken {
+	// Constant-time comparison: a plain != leaks the shared secret's prefix
+	// through response timing, and the static token is the only credential in
+	// this mode. The length guard is not secret — subtle.ConstantTimeCompare
+	// already returns 0 for mismatched lengths.
+	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(s.AuthToken)) != 1 {
 		writeError(w, http.StatusUnauthorized, "auth_required", "missing or invalid bearer token", nil)
 		return nil
 	}
-	return r
+	// The static token carries no stored metadata, so synthesise its claims
+	// (see staticTokenClaims) instead of letting the request travel
+	// claim-less — that is what keeps the scope guards live in this mode.
+	ctx := context.WithValue(r.Context(), tokenClaimsKey, staticTokenClaims)
+	ctx = context.WithValue(ctx, authConfiguredKey, true)
+	return r.WithContext(ctx)
 }
 
 type issueTokenRequest struct {
@@ -2608,11 +2688,22 @@ func (s *Server) handleConsistencyRepair(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// decodeJSON is the chokepoint every JSON route funnels through, so the body
+// cap lives here as well as in ServeHTTP: a handler reached by any other path
+// still gets the limit, and the over-limit error is translated into a message
+// that names the limit rather than surfacing as an opaque read failure.
 func decodeJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
-	dec := json.NewDecoder(r.Body)
+	// A nil ResponseWriter is fine here: MaxBytesReader only uses it to hint
+	// the transport to close the connection, and ServeHTTP's outer wrapper
+	// already passes the real writer.
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxRequestBodyBytes))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return fmt.Errorf("request body exceeds the %d byte limit", maxRequestBodyBytes)
+		}
 		return err
 	}
 	return nil

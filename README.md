@@ -53,8 +53,12 @@ Use [`env.example`](env.example) as a template.
 4. Start the daemon:
 
 ```bash
-tesseract serve --addr :8089
+tesseract serve
 ```
+
+It binds `127.0.0.1:8089` and runs unauthenticated — that is the local-first
+default. To reach it from another machine you must also configure
+authentication; see [Exposing the daemon](#exposing-the-daemon).
 
 5. Write and read your first record:
 
@@ -67,6 +71,32 @@ tesseract context put \
 
 tesseract context get --namespace app/demo/session --key goal
 ```
+
+## Exposing The Daemon
+
+`tesseract serve` binds `127.0.0.1:8089` by default and runs without
+authentication. That combination is safe because nothing outside the machine
+can reach it.
+
+Binding anywhere else changes that, so it requires a token mode:
+
+```bash
+# managed capability tokens (recommended)
+tesseract context token create --name laptop --scopes write --namespaces "app/*"
+tesseract serve --managed-auth --addr 0.0.0.0:8089
+
+# single shared bearer token
+tesseract serve --static-token "$TESSERACT_TOKEN" --addr 0.0.0.0:8089
+```
+
+With either mode configured, every route requires a valid token — reads
+included. The only exceptions are `GET /v1/health/readiness` and, when enabled
+with `--metrics`, `GET /v1/metrics`.
+
+Note that the bare `:8089` form binds every interface, not loopback. Starting
+on a non-loopback address with no token mode is refused; if you truly want an
+unauthenticated daemon on the network, say so explicitly with
+`--allow-unauthenticated-remote`.
 
 ## Provider Setup
 
@@ -119,7 +149,7 @@ Typical setup flow:
 ## Common Commands
 
 ```bash
-tesseract serve --addr :8089
+tesseract serve
 tesseract path
 tesseract context put --namespace app/demo/session --key state --actor app:demo --json '{"status":"ok"}'
 tesseract context get --namespace app/demo/session --key state

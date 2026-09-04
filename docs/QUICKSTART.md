@@ -98,13 +98,19 @@ export ANTHROPIC_API_KEY=...
 ## 5. Start the daemon
 
 ```bash
-tesseract serve --addr :8089
+tesseract serve
 ```
 
 What this gives you:
 
 - HTTP API at `http://127.0.0.1:8089/v1/`
 - embedded web UI at `http://127.0.0.1:8089/`
+
+The default bind address is `127.0.0.1:8089` — loopback only, and
+unauthenticated. Tesseract refuses to start on an address other machines can
+reach unless you configure a token mode (`--managed-auth` or
+`--static-token <token>`), because with no token mode every route, including
+`/v1/admin/*`, answers anyone who can reach the port.
 
 The CLI does not require the server to be running, but the HTTP API and browser UI do.
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,14 +34,81 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// defaultServeAddr binds loopback only. Tesseract is a local-first content
+// memory service: the default listener must not be reachable from the network,
+// because the default configuration has no authentication. Widening the bind
+// address is an explicit act, and one that requires a token mode — see
+// validateExposure.
+const defaultServeAddr = "127.0.0.1:8089"
+
 type serveConfig struct {
-	Addr              string
-	ManagedAuth       bool
-	StaticToken       string
-	EnableMetrics     bool
-	EnableRequestLogs bool
-	RequestLogMode    string
-	ShutdownTimeout   time.Duration
+	Addr        string
+	ManagedAuth bool
+	StaticToken string
+	// AllowUnauthenticatedRemote opts out of the refusal to serve an
+	// unauthenticated listener on a non-loopback address.
+	AllowUnauthenticatedRemote bool
+	EnableMetrics              bool
+	EnableRequestLogs          bool
+	RequestLogMode             string
+	ShutdownTimeout            time.Duration
+}
+
+// authConfigured reports whether a token mode is in force. Both modes make the
+// API server demand credentials on every route except readiness and metrics.
+func (c serveConfig) authConfigured() bool {
+	return c.ManagedAuth || strings.TrimSpace(c.StaticToken) != ""
+}
+
+// isLoopbackAddr reports whether a listen address reaches only the loopback
+// interface.
+//
+// The cases that matter:
+//   - "127.0.0.1:8089", "[::1]:8089", "localhost:8089" — loopback.
+//   - ":8089" and "" — an empty host means every interface, so NOT loopback.
+//     This is the case the old default fell into.
+//   - anything else, including a hostname we would have to resolve — treated
+//     as non-loopback. Resolution is deliberately not attempted: a DNS answer
+//     is not a property of this machine, and guessing wrong here fails open.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// No port separator (e.g. "localhost"). Treat the whole value as the
+		// host; ListenAndServe will reject it later if it is malformed.
+		host = addr
+	}
+	host = strings.TrimSpace(strings.Trim(strings.TrimSpace(host), "[]"))
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// validateExposure refuses to start an unauthenticated listener that is
+// reachable from outside this machine. Loopback without a token stays fully
+// supported — that is the local-first dev experience — and so does any bind
+// address once a token mode is configured. Only the combination of a
+// network-reachable address and no credentials is rejected, and even that can
+// be overridden explicitly.
+func validateExposure(cfg serveConfig) error {
+	if cfg.authConfigured() || cfg.AllowUnauthenticatedRemote || isLoopbackAddr(cfg.Addr) {
+		return nil
+	}
+	return fmt.Errorf(
+		"refusing to serve %s: address is reachable from the network and no authentication is configured.\n"+
+			"  Every route, including /v1/admin/* and every stored record, would be readable by anyone who can reach this port.\n"+
+			"  Choose one:\n"+
+			"    --addr %s                 bind loopback only (default)\n"+
+			"    --managed-auth                       require store-backed capability tokens\n"+
+			"    --static-token <token>               require a single shared bearer token\n"+
+			"    --allow-unauthenticated-remote       serve anyway, unauthenticated (not recommended)",
+		cfg.Addr, defaultServeAddr)
 }
 
 func main() {
@@ -147,9 +215,11 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 func parseServeArgs(args []string) (serveConfig, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	addr := fs.String("addr", ":8089", "listen address")
+	addr := fs.String("addr", defaultServeAddr, "listen address")
 	managed := fs.Bool("managed-auth", false, "enable managed token auth")
 	static := fs.String("static-token", "", "static bearer token (legacy mode)")
+	allowUnauthRemote := fs.Bool("allow-unauthenticated-remote", false,
+		"serve a non-loopback address without authentication (not recommended)")
 	metrics := fs.Bool("metrics", false, "enable /v1/metrics endpoint")
 	requestLogs := fs.Bool("request-logs", false, "enable structured request logs")
 	requestLogMode := fs.String("request-log-mode", "redacted", "request log mode: redacted|full")
@@ -164,15 +234,20 @@ func parseServeArgs(args []string) (serveConfig, error) {
 	if mode != "redacted" && mode != "full" {
 		return serveConfig{}, fmt.Errorf("request-log-mode must be one of: redacted, full")
 	}
-	return serveConfig{
-		Addr:              *addr,
-		ManagedAuth:       *managed,
-		StaticToken:       strings.TrimSpace(*static),
-		EnableMetrics:     *metrics,
-		EnableRequestLogs: *requestLogs,
-		RequestLogMode:    mode,
-		ShutdownTimeout:   *shutdownTimeout,
-	}, nil
+	cfg := serveConfig{
+		Addr:                       strings.TrimSpace(*addr),
+		ManagedAuth:                *managed,
+		StaticToken:                strings.TrimSpace(*static),
+		AllowUnauthenticatedRemote: *allowUnauthRemote,
+		EnableMetrics:              *metrics,
+		EnableRequestLogs:          *requestLogs,
+		RequestLogMode:             mode,
+		ShutdownTimeout:            *shutdownTimeout,
+	}
+	if err := validateExposure(cfg); err != nil {
+		return serveConfig{}, err
+	}
+	return cfg, nil
 }
 
 func parseMCPArgs(args []string) (string, error) {
@@ -270,6 +345,71 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	return 0
 }
 
+// httpServerTimeouts groups the request boundaries applied to the daemon's
+// listener. Grouped rather than inlined so tests can drive the same
+// constructor with short values and assert the behaviour, not just the field.
+type httpServerTimeouts struct {
+	ReadHeader     time.Duration
+	Read           time.Duration
+	Idle           time.Duration
+	MaxHeaderBytes int
+}
+
+// defaultHTTPServerTimeouts are the production boundaries.
+//
+// ReadHeader is the Slowloris fix: without it, a client that opens a
+// connection and dribbles header bytes holds a goroutine and a file descriptor
+// indefinitely, and a few hundred such connections are enough to stop the
+// daemon answering.
+//
+// Read bounds the whole request including the body. It is generous because the
+// largest legitimate body is a 100-item /v1/context/bulk-ingest batch capped at
+// contextapi's 10 MiB, which is fast on any working link but slow on a bad one.
+//
+// Idle bounds a kept-alive connection between requests — the MCP adapter and
+// the web UI both hold connections open across long stretches of user
+// think-time, so this is comfortably longer than Read.
+func defaultHTTPServerTimeouts() httpServerTimeouts {
+	return httpServerTimeouts{
+		ReadHeader:     10 * time.Second,
+		Read:           60 * time.Second,
+		Idle:           120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MiB, vs net/http's 1 MB default — explicit, not inherited
+	}
+}
+
+// newHTTPServer builds the daemon's listener with explicit request boundaries.
+//
+// WriteTimeout is deliberately NOT set, and must not be added. It is an
+// absolute deadline measured from the start of the request read, and several
+// routes make synchronous outbound calls or unbounded database work on the
+// request path, so any value large enough to be safe for them is too large to
+// be a useful defence:
+//
+//   - POST /v1/synthesis/ask — a full LLM completion, unbounded by us
+//   - POST /v1/memory/recall, GET /v1/recall, POST /v1/tesseract/lookup —
+//     synchronous embedding of the query
+//   - POST /v1/memory/write, POST /v1/knowledge/write — dedup embeds inline
+//   - POST /v1/context/bulk-ingest, /v1/maintenance/compact,
+//     /v1/maintenance/trim, /v1/context/consistency/repair,
+//     /v1/admin/queue/backfill — unbounded DB work
+//
+// A blanket WriteTimeout truncates those responses mid-flight and surfaces to
+// the caller as a connection reset with no error body. The slow-client attack
+// it would otherwise mitigate is covered by ReadHeaderTimeout and ReadTimeout
+// on the way in; per-route write deadlines belong with the routes that can
+// bound their own work, not on the server.
+func newHTTPServer(addr string, handler http.Handler, t httpServerTimeouts) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: t.ReadHeader,
+		ReadTimeout:       t.Read,
+		IdleTimeout:       t.Idle,
+		MaxHeaderBytes:    t.MaxHeaderBytes,
+	}
+}
+
 func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, layout paths.Layout, tesseractCfg config.Config) int {
 	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
@@ -339,10 +479,18 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	mux.Handle("/v1/", srv)
 	mux.Handle("/", webui.Handler())
 
-	httpServer := &http.Server{Addr: cfg.Addr, Handler: propagation.HTTPMiddleware(mux)}
+	httpServer := newHTTPServer(cfg.Addr, propagation.HTTPMiddleware(mux), defaultHTTPServerTimeouts())
 	_, _ = stderr.WriteString("Tesseract — Content Memory Service\n")
 	_, _ = stderr.WriteString("  API: http://" + cfg.Addr + "/v1/\n")
 	_, _ = stderr.WriteString("  UI:  http://" + cfg.Addr + "/\n")
+	if cfg.AllowUnauthenticatedRemote && !cfg.authConfigured() && !isLoopbackAddr(cfg.Addr) {
+		_, _ = stderr.WriteString(
+			"\n" +
+				"  !! WARNING: serving " + cfg.Addr + " with NO authentication.\n" +
+				"  !! Every route — records, memory, knowledge, audit, and /v1/admin/* —\n" +
+				"  !! is readable and writable by anyone who can reach this port.\n" +
+				"  !! Configure --managed-auth or --static-token, or bind " + defaultServeAddr + ".\n\n")
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- httpServer.ListenAndServe()
