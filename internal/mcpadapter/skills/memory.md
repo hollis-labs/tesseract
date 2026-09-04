@@ -36,6 +36,61 @@ From the `memory_write` MCP declaration:
 
 Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; default `draft`), `author_version`, `tags` (JSON array), `ttl_seconds`, `payload_body`, `dedup` (`none`|`semantic`), `dedup_threshold`.
 
+## A complete write, on both surfaces
+
+Copy one of these and edit it. They write the same revision; the shapes differ, and the differences are structural rather than cosmetic — see `tesseract_skills start-here` for the two-surface rules and for what `$TESSERACT_URL` / `$TESSERACT_TOKEN` are.
+
+Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
+
+```json
+{
+  "namespace": "user/chrispian/memory/decisions",
+  "memory_key": "sqlite.pragma.journal_mode",
+  "author_agent_id": "claude",
+  "author_version": "opus-5",
+  "trigger": "explicit",
+  "session_id": "2026-04-19:backend",
+  "origin": "user",
+  "confidence": 0.9,
+  "tags": "[\"sqlite\",\"durability\"]",
+  "payload_summary": "Journal mode stays WAL; DELETE was measured and rejected.",
+  "payload_body": "WAL survives the concurrent-reader case the CLI hits during a serve. DELETE mode serialized readers behind the writer and doubled p99 on the audit list. Revisit only if we ever ship a networked filesystem target, where WAL is unsafe."
+}
+```
+
+Over HTTP the same fields nest: `author` and `payload` are objects, and `tags` is a real array.
+
+```bash
+curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "user/chrispian/memory/decisions",
+    "memory_key": "sqlite.pragma.journal_mode",
+    "author": {"agent_id": "claude", "agent_version": "opus-5"},
+    "trigger": "explicit",
+    "session_id": "2026-04-19:backend",
+    "origin": "user",
+    "confidence": 0.9,
+    "tags": ["sqlite", "durability"],
+    "payload": {
+      "summary": "Journal mode stays WAL; DELETE was measured and rejected.",
+      "body": "WAL survives the concurrent-reader case the CLI hits during a serve."
+    }
+  }'
+```
+
+The field-by-field mapping, for the fields that do not simply carry across:
+
+| MCP argument | HTTP field |
+|---|---|
+| `author_agent_id`, `author_version` | `author: {agent_id, agent_version}` |
+| `payload_summary`, `payload_body` | `payload: {summary, body}` |
+| `tags` (JSON-encoded string) | `tags` (JSON array) |
+| — | `domain` (optional; defaults to `memory`, and `/v1/memory/write` refuses any other value) |
+
+`facets` exists on the HTTP body but is a knowledge-domain field: a memory write carrying a non-zero facet is rejected. Facets go to `POST /v1/knowledge/write` — see `tesseract_skills knowledge`.
+
 ## The read loop: recall → use → touch
 
 **This is the default shape of a turn that consults memory, not one option among several.** Three steps, and the third is the one that is easy to skip and expensive to skip.
@@ -79,6 +134,8 @@ Recall's ranking modes — `relevance` (the default when `query` is set), `activ
 ## Keyed vs. unkeyed
 
 - **Keyed memory** - a stable `memory_key` that represents an evolving concept (e.g. `user.prefs.style`). Re-writing the key creates a new revision; `tesseract_get` returns the current head.
+  - **The key format is enforced, not normalized.** Dot-separated segments, each matching `^[a-z0-9_]+$`; at most 6 segments, 64 characters per segment, 256 characters total. A hyphen, an uppercase letter or a space anywhere in the key is a `validation_error` — `user.prefs-style` and `User.Prefs.Style` are both rejected rather than lowercased or rewritten, so pick the key in that shape up front.
+  - The rule is memory-domain only. `knowledge_write` keys are free-form slugs, because they usually come from an external source that does not obey it.
 - **Unkeyed memory** - no `memory_key`; each write stands alone. Use for observation streams where no stable identity exists. Note: `tesseract_get` / `tesseract_history` require a key; unkeyed memories are reachable via `tesseract_recall` and `tesseract_get_revision`.
 
 ## Promotion

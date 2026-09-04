@@ -837,9 +837,9 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 	a := New(s, "")
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"execute":      true,
-		"intent":       "boot_project",
-		"budget_items": float64(50),
+		"execute":   true,
+		"intent":    "boot_project",
+		"max_items": float64(50),
 	}
 	res, err := a.handleContextPlan(context.Background(), req)
 	if err != nil {

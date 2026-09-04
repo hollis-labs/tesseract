@@ -68,7 +68,7 @@ Every knowledge write is stamped `Domain=knowledge`, `status=canonical`, `trigge
 
 ## Example
 
-The body carries what you learned; the entry stays useful with no external source to point at.
+The body carries what you learned; the entry stays useful with no external source to point at. This is the MCP shape — every field flat, `tags` a JSON-encoded string when you pass it.
 
 ```json
 {
@@ -86,6 +86,39 @@ The body carries what you learned; the entry stays useful with no external sourc
 ```
 
 `pointer_locator` is still required when the scheme is `nil` — give it a stable identifier for the thing (a slug, a module path), not a filesystem path. It is a label, and nothing tries to resolve it.
+
+### The same entry over HTTP
+
+`POST /v1/knowledge/write` writes the same revision, but **it does not take the shape above.** `pointer` and `author` are nested objects there, and `tags` is a real array. Copying the flat MCP body into this route writes an entry with no pointer facet at all. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
+
+```bash
+curl -sS -X POST "$TESSERACT_URL/v1/knowledge/write" \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "user/chrispian/knowledge/framework",
+    "key": "framework.go-providers",
+    "kind": "package",
+    "source": "manual",
+    "pointer": {"scheme": "nil", "locator": "framework/go-providers"},
+    "summary": "go-providers: multi-provider AI adapter (Anthropic, OpenAI, Ollama, ...)",
+    "body": "Exports provider.Embedder and provider.Completer, both single-method interfaces.",
+    "author": {"agent_id": "indexer", "agent_version": ""},
+    "session_id": "indexer:2026-04-15",
+    "tags": ["go", "embeddings"]
+  }'
+```
+
+The mapping, for every field whose name or shape changes between the two:
+
+| MCP argument | HTTP field |
+|---|---|
+| `pointer_scheme`, `pointer_locator`, `pointer_resolved_at` | `pointer: {scheme, locator, resolved_at}` |
+| `author_agent_id`, `author_version` | `author: {agent_id, agent_version}` |
+| `tags` (JSON-encoded string) | `tags` (JSON array) |
+| `summary`, `body` | unchanged — top-level on both, unlike memory, where they nest under `payload` |
+
+Everything else — `namespace`, `key`, `kind`, `source`, `session_id`, `ttl_seconds`, `confidence`, `supersedes` — carries across unchanged.
 
 When the external artifact genuinely is the point, use a real scheme — and **verify the path exists before you write it**. A pointer is only ever as good as the moment it was written:
 

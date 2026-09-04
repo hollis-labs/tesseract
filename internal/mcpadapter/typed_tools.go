@@ -16,7 +16,10 @@ import (
 
 func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_typed_write",
-		mcp.WithDescription("Write a typed context record with type, status, and optional TTL/pointers/provenance. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for a worked `context_typed_write` payload on this surface and on its HTTP peer POST /v1/context/typed-write, "+
+			"then `context_registry_list` with kind=types for the `record_type` vocabulary this deployment accepts. "+
+			"Three registry rules reject a write rather than relax it: an unregistered `record_type`, a `status` the type does not allow, and a payload missing a field the type requires (e.g. task/spec requires `title`). "+
+			"Writes a typed context record with type, status, and optional TTL/pointers/provenance."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload")),
@@ -28,9 +31,9 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleTypedWrite)
 
 	a.addTool(s, mcp.NewTool("context_status_set",
-		mcp.WithDescription("Move a context record to a different lifecycle status. Requires 'write' scope. "+
-			"`status` names the target and selects which transition rules apply — see its description. "+
-			"See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills promotion` — it covers this tool alongside cross-namespace promotion, which it is NOT, and names the one argument on the whole write surface that the two doors spell differently (`status` here, `to_status` on POST /v1/context/status/promote). "+
+			"Moves a context record to a different lifecycle status, in place, in its own namespace. Requires 'write' scope. "+
+			"`status` names the target and selects which transition rules apply — see its description."),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("status", mcp.Description(statusSetArgDescription)),
@@ -38,7 +41,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	), a.handleStatusSet)
 
 	a.addTool(s, mcp.NewTool("context_typed_view",
-		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `tesseract_skills views` for what a view is and what it deliberately does not do."),
 		mcp.WithString("view_id", mcp.Required(), mcp.Description("View ID: task_exec, strategy, or custom")),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs (default: all)")),
 		mcp.WithNumber("max_items", mcp.Description("Max items to return")),
@@ -48,13 +51,12 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_pack",
 		mcp.WithDescription("Assemble a budget-bounded bundle of context records. "+
 			"`shape` selects how the bundle is chosen and what envelope comes back — the two shapes take different arguments; see its description. "+
-			"See `tesseract_skills start-here` for the primitive model."),
+			"See `tesseract_skills context-packet` for the budget vocabulary both shapes share."),
 		mcp.WithString("shape", mcp.Description(packShapeArgDescription)),
 		mcp.WithString("view_id", mcp.Description("shape=list only, required there: view ID — task_exec, strategy, or custom")),
 		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs. shape=list: narrows the view (default: all). shape=packet: the records to include.")),
 		mcp.WithNumber("max_items", mcp.Description("Max items (default: 50 on both shapes)")),
-		mcp.WithNumber("max_tokens", mcp.Description("shape=list only: max tokens estimate (default: 8000)")),
-		mcp.WithNumber("max_tokens_estimate", mcp.Description("shape=packet only: token budget limit (default: 8000)")),
+		mcp.WithNumber("max_tokens_estimate", mcp.Description("Max tokens estimate (default: 8000 on both shapes)")),
 		mcp.WithBoolean("include_pins", mcp.Description("shape=packet only: prepend user/pins/* records (default true)")),
 		mcp.WithNumber("payload_max_bytes", mcp.Description("shape=packet only. "+payloadMaxBytesArgDescription)),
 	), a.handleContextPackShape)
@@ -65,7 +67,7 @@ func (a *Adapter) registerTypedTools(s *server.MCPServer) {
 const (
 	packShapeArgDescription = "How the bundle is chosen and what envelope comes back. The two shapes take DIFFERENT arguments; " +
 		"passing one shape's argument to the other is a validation_error rather than a silently ignored knob. " +
-		"`list` (default): rank the records of a named view (`view_id`, required) by type bias and status weight, bounded by `max_items` and `max_tokens`. " +
+		"`list` (default): rank the records of a named view (`view_id`, required) by type bias and status weight, bounded by `max_items` and `max_tokens_estimate`. " +
 		"Answers `{view, generated_at, token_estimate, items, count}`, payloads always included. Peer of POST /v1/context/pack. " +
 		"`packet`: take the heads under `namespaces`, optionally prepending user/pins/*, bounded by `max_items` and `max_tokens_estimate`, " +
 		"filtered by the capability token's namespace globs when a token is configured. " +
@@ -90,6 +92,16 @@ const (
 func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	shape := req.GetString("shape", "list")
 
+	// The list arm used to spell the token budget `max_tokens`. Both arms now
+	// take `max_tokens_estimate` — the name the packet arm, context_plan and
+	// the HTTP peers already use — so the old spelling names nothing. Ignoring
+	// it would silently restore the 8000 default under a caller who asked for
+	// less, which is the failure this merge exists to remove.
+	if errResult := rejectRetiredArg(req, "max_tokens",
+		"the token budget is named `max_tokens_estimate` on both shapes."); errResult != nil {
+		return errResult, nil
+	}
+
 	// Reject the other shape's knobs rather than accept and ignore them.
 	reject := func(shapeName string, knobs ...string) *mcp.CallToolResult {
 		for _, knob := range knobs {
@@ -102,12 +114,12 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 
 	switch shape {
 	case "list":
-		if errResult := reject("list", "include_pins", "max_tokens_estimate", "payload_max_bytes", "payload_mode"); errResult != nil {
+		if errResult := reject("list", "include_pins", "payload_max_bytes", "payload_mode"); errResult != nil {
 			return errResult, nil
 		}
 		return a.handleContextPack(ctx, req)
 	case "packet":
-		if errResult := reject("packet", "view_id", "max_tokens"); errResult != nil {
+		if errResult := reject("packet", "view_id"); errResult != nil {
 			return errResult, nil
 		}
 		return a.handlePacket(ctx, req)
@@ -149,7 +161,8 @@ func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) 
 
 func (a *Adapter) registerSessionTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("context_session_write",
-		mcp.WithDescription("Write a structured session snapshot to Tesseract and auto-embed for semantic search. Combines `context_typed_write` + `context_embed` into one call with enforced session schema. See `tesseract_skills start-here` for the primitive model."),
+		mcp.WithDescription("Read this first: call `tesseract_skills context-packet` for how a snapshot is read back at the next boot — the fields below are only worth filling in as well as the thing that will consume them. "+
+			"Writes a structured session snapshot to Tesseract and auto-embeds it for semantic search. Combines `context_typed_write` + `context_embed` into one call with an enforced session schema."),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("Brief session summary (1-3 sentences)")),
@@ -617,7 +630,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 	}
 
 	maxItems := req.GetInt("max_items", 50)
-	maxTokens := req.GetInt("max_tokens", 8000)
+	maxTokens := req.GetInt("max_tokens_estimate", 8000)
 
 	reg := a.getRegistry()
 	viewDef, ok := reg.GetView(viewID)

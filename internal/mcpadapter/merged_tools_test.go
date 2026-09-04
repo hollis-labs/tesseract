@@ -291,9 +291,7 @@ func TestContextPack_ShapeRejectsTheOtherShapesKnobs(t *testing.T) {
 	}{
 		{"include_pins under list", map[string]any{"view_id": "task_exec", "include_pins": true}},
 		{"payload_max_bytes under list", map[string]any{"view_id": "task_exec", "payload_max_bytes": float64(10)}},
-		{"max_tokens_estimate under list", map[string]any{"view_id": "task_exec", "max_tokens_estimate": float64(10)}},
 		{"view_id under packet", map[string]any{"shape": "packet", "view_id": "task_exec"}},
-		{"max_tokens under packet", map[string]any{"shape": "packet", "max_tokens": float64(10)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantErrorCode(t, mustCall(t, a.handleContextPackShape, tc.args), "validation_error")
@@ -308,10 +306,9 @@ func TestContextPack_RejectListIsLoadBearing(t *testing.T) {
 	a := New(newTestStore(t), "")
 
 	for knob, value := range map[string]any{
-		"include_pins":        true,
-		"max_tokens_estimate": float64(10),
-		"payload_max_bytes":   float64(10),
-		"payload_mode":        "full",
+		"include_pins":      true,
+		"payload_max_bytes": float64(10),
+		"payload_mode":      "full",
 	} {
 		t.Run("list/"+knob, func(t *testing.T) {
 			body := mustCall(t, a.handleContextPackShape, map[string]any{"view_id": "task_exec", knob: value})
@@ -320,8 +317,7 @@ func TestContextPack_RejectListIsLoadBearing(t *testing.T) {
 		})
 	}
 	for knob, value := range map[string]any{
-		"view_id":    "task_exec",
-		"max_tokens": float64(10),
+		"view_id": "task_exec",
 	} {
 		t.Run("packet/"+knob, func(t *testing.T) {
 			body := mustCall(t, a.handleContextPackShape, map[string]any{"shape": "packet", knob: value})
@@ -331,9 +327,15 @@ func TestContextPack_RejectListIsLoadBearing(t *testing.T) {
 	}
 
 	// Positive controls: each shape's own arguments are accepted, so the
-	// rejections above are about the wrong-arm knob and nothing else.
-	wantNoError(t, mustCall(t, a.handleContextPackShape, map[string]any{"view_id": "task_exec", "max_tokens": float64(100)}))
-	wantNoError(t, mustCall(t, a.handleContextPackShape, map[string]any{"shape": "packet", "include_pins": false}))
+	// rejections above are about the wrong-arm knob and nothing else. The
+	// budget pair is deliberately on BOTH sides — it is one knob under one
+	// name now, not a per-shape spelling.
+	for _, args := range []map[string]any{
+		{"view_id": "task_exec", "max_items": float64(100), "max_tokens_estimate": float64(100)},
+		{"shape": "packet", "include_pins": false, "max_items": float64(100), "max_tokens_estimate": float64(100)},
+	} {
+		wantNoError(t, mustCall(t, a.handleContextPackShape, args))
+	}
 }
 
 // TestContextPack_UnrecognizedShapeFailsClosed: an unparseable arm selector
@@ -937,6 +939,144 @@ func TestRetiredArg_NamespaceIsRefusedNotIgnored(t *testing.T) {
 	}))
 	if got["namespace"] != "app/one/ns" {
 		t.Fatalf("name form returned %v", got)
+	}
+}
+
+// ── One budget knob, one name, one default (CW-20260419-0041) ───────────────
+
+// TestRetiredArg_BudgetNamesAreRefusedNotIgnored covers the unification of the
+// packet-assembly budget: context_plan's `budget_items` / `budget_tokens` and
+// context_pack shape=list's `max_tokens` all become `max_items` /
+// `max_tokens_estimate`.
+//
+// Ignoring the old spellings would be worse than dropping a knob. context_plan
+// defaulted its token budget to 4000 against 8000 everywhere else, so an
+// ignored `budget_tokens: 1000` would assemble against 8000 — eight times the
+// budget the caller asked for — and report success.
+func TestRetiredArg_BudgetNamesAreRefusedNotIgnored(t *testing.T) {
+	a := New(newTestStore(t), "")
+
+	for _, tc := range []struct {
+		name    string
+		handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		args    map[string]any
+		names   string
+	}{
+		{"context_plan/budget_items", a.handleContextPlan,
+			map[string]any{"intent": "custom", "budget_items": float64(10)}, "budget_items"},
+		{"context_plan/budget_tokens", a.handleContextPlan,
+			map[string]any{"intent": "custom", "budget_tokens": float64(1000)}, "budget_tokens"},
+		{"context_plan/budget_tokens under execute", a.handleContextPlan,
+			map[string]any{"intent": "custom", "execute": true, "budget_tokens": float64(1000)}, "budget_tokens"},
+		{"context_pack/max_tokens under list", a.handleContextPackShape,
+			map[string]any{"view_id": "task_exec", "max_tokens": float64(10)}, "max_tokens"},
+		{"context_pack/max_tokens under packet", a.handleContextPackShape,
+			map[string]any{"shape": "packet", "max_tokens": float64(10)}, "max_tokens"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := mustCall(t, tc.handler, tc.args)
+			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, tc.names)
+			// The message has to carry the caller forward, not just say no.
+			wantMessageNames(t, body, "max_")
+		})
+	}
+
+	// Positive controls: the unified spellings are accepted on every one of
+	// those surfaces, so the rejections above are about the NAME and nothing
+	// else.
+	for _, tc := range []struct {
+		name    string
+		handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		args    map[string]any
+	}{
+		{"context_plan", a.handleContextPlan,
+			map[string]any{"intent": "custom", "max_items": float64(10), "max_tokens_estimate": float64(1000)}},
+		{"context_plan/execute", a.handleContextPlan,
+			map[string]any{"intent": "custom", "execute": true, "max_items": float64(10), "max_tokens_estimate": float64(1000)}},
+		{"context_pack/list", a.handleContextPackShape,
+			map[string]any{"view_id": "task_exec", "max_items": float64(10), "max_tokens_estimate": float64(1000)}},
+		{"context_pack/packet", a.handleContextPackShape,
+			map[string]any{"shape": "packet", "max_items": float64(10), "max_tokens_estimate": float64(1000)}},
+	} {
+		t.Run("accepted/"+tc.name, func(t *testing.T) {
+			wantNoError(t, mustCall(t, tc.handler, tc.args))
+		})
+	}
+}
+
+// TestBudgetContract_OneNameOneDefaultAcrossPacketAssembly reads the LIVE tool
+// schemas rather than the handlers, because the defect this fixes was a schema
+// defect: the same knob was advertised to agents under three names at two
+// defaults, so a correct call to one tool was a wrong call to its neighbor.
+//
+// The negative half is the load-bearing one. Re-adding an alias would let the
+// three names drift apart again one deprecation cycle later.
+func TestBudgetContract_OneNameOneDefaultAcrossPacketAssembly(t *testing.T) {
+	tools := registeredToolSchemas(t)
+	for _, tool := range []string{"context_plan", "context_pack"} {
+		props, ok := tools[tool]
+		if !ok {
+			t.Fatalf("tool %s is not registered", tool)
+		}
+		for _, arg := range []string{"max_items", "max_tokens_estimate"} {
+			if _, ok := props[arg]; !ok {
+				t.Errorf("%s does not declare %q — the packet-assembly budget is one vocabulary", tool, arg)
+			}
+		}
+		for _, arg := range []string{"budget_items", "budget_tokens", "max_tokens"} {
+			if _, ok := props[arg]; ok {
+				t.Errorf("%s declares %q — the pre-unification spelling is gone, aliases included", tool, arg)
+			}
+		}
+	}
+
+	// `budget_tokens` legitimately survives on the paged read tools, where it
+	// means the response serialization ceiling. Asserting it stays keeps the
+	// cleanup above from being over-applied to a knob that merely shares a
+	// name. (tesseract_get answers one entry and declares no budget at all.)
+	for _, tool := range []string{"tesseract_recall", "tesseract_history"} {
+		if _, ok := tools[tool]["budget_tokens"]; !ok {
+			t.Errorf("%s lost budget_tokens — that is the serialization ceiling, a different knob", tool)
+		}
+	}
+}
+
+// TestContextPlan_EchoedBudgetUsesTheNamesItAccepts: context_plan answers with
+// a `plan.budget` object meant to be edited and fed back in. Before the
+// unification it took `budget_items` / `budget_tokens` and answered
+// `max_items` / `max_tokens_estimate`, so round-tripping its own output was a
+// validation error.
+func TestContextPlan_EchoedBudgetUsesTheNamesItAccepts(t *testing.T) {
+	a := New(newTestStore(t), "")
+
+	body := wantNoError(t, mustCall(t, a.handleContextPlan, map[string]any{"intent": "custom"}))
+	plan, ok := body["plan"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing plan; got %v", body)
+	}
+	budgetObj, ok := plan["budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing plan.budget; got %v", plan)
+	}
+	if budgetObj["max_items"] != float64(50) {
+		t.Errorf("plan.budget.max_items = %v, want 50", budgetObj["max_items"])
+	}
+	if budgetObj["max_tokens_estimate"] != float64(8000) {
+		t.Errorf("plan.budget.max_tokens_estimate = %v, want 8000 — the packet-assembly default", budgetObj["max_tokens_estimate"])
+	}
+
+	// The output object IS a legal input object: feed it straight back.
+	roundTrip := map[string]any{"intent": "custom"}
+	for k, v := range budgetObj {
+		roundTrip[k] = v
+	}
+	echoed := wantNoError(t, mustCall(t, a.handleContextPlan, roundTrip))
+	again := echoed["plan"].(map[string]any)["budget"].(map[string]any)
+	for k, v := range budgetObj {
+		if again[k] != v {
+			t.Errorf("round trip changed %s: %v → %v", k, v, again[k])
+		}
 	}
 }
 

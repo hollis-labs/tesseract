@@ -244,8 +244,8 @@ mcp__tesseract__context_plan {
   "execute": true,
   "intent": "boot_project",
   "summary": "Tesseract backend — batch 1 parity work",
-  "budget_items": 80,
-  "budget_tokens": 8000
+  "max_items": 80,
+  "max_tokens_estimate": 8000
 }
 ```
 
