@@ -1,14 +1,39 @@
 import {
   Button,
   Callout,
+  Card,
+  CardContent,
   CopyableId,
   cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   EmptyState,
+  Input,
+  Label,
   Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   SettingsField,
   SettingsGrid,
+  SettingsNotice,
   SettingsPanel,
+  SettingsStatusPill,
   SummaryCards,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
 } from "@hollis-labs/sysop-ui";
 import { type ColumnDef, DataTable } from "@hollis-labs/sysop-ui/data";
 import { ListPageLayout, TabStrip, type TabStripItem } from "@hollis-labs/sysop-ui/layout";
@@ -35,15 +60,7 @@ import {
   Trash2,
   Wrench,
 } from "lucide-react";
-import {
-  type ComponentProps,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   applyAdminSettings,
@@ -68,24 +85,24 @@ import {
   previewNamespacePolicy,
   registerNamespace,
   repairConsistency,
-  retryAdminQueueFailed,
   restoreAdminConfigBackup,
+  retryAdminQueueFailed,
   revokeToken,
   scanConsistency,
   trimRecords,
   updateNamespacePolicy,
 } from "../api/client";
 import type {
+  AdminConfigBackupInfo,
+  AdminConfigBackupsResponse,
+  AdminNamespaceHistoryResponse,
+  AdminNamespacePreviewResponse,
   AdminQueueBackfillResponse,
   AdminQueueFailureInfo,
   AdminQueueFailuresResponse,
-  AdminQueueRetryFailedResponse,
-  AdminNamespaceHistoryResponse,
-  AdminNamespacePreviewResponse,
-  AdminConfigBackupInfo,
-  AdminConfigBackupsResponse,
-  AdminSettingsMutationResponse,
   AdminQueueResponse,
+  AdminQueueRetryFailedResponse,
+  AdminSettingsMutationResponse,
   AdminSettingsResponse,
   AdminSetupResponse,
   AdminStorageNamespaceInfo,
@@ -158,6 +175,14 @@ interface RoadmapRow {
 
 type EditableAdminSettings = AdminSettingsResponse["config"];
 type EditableNamespacePolicy = NamespacePolicy["policy"];
+
+interface ConfirmationAction {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+}
 
 const AVAILABLE_SCOPES = [
   "read",
@@ -315,6 +340,7 @@ const tokenColumns = (
     cell: (token) =>
       token.revoked ? null : (
         <Button
+          type="button"
           variant="ghost"
           size="xs"
           onClick={() => onRevoke(token)}
@@ -552,6 +578,7 @@ const namespaceColumns = (
     header: "",
     cell: (row) => (
       <Button
+        type="button"
         variant="ghost"
         size="xs"
         onClick={() => onEdit(row)}
@@ -699,37 +726,10 @@ function buildNamespacePolicy(
 
 function AdminField({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
-    <label
-      className="grid gap-1.5 text-[11px] uppercase tracking-[.16em] text-text-muted"
-      htmlFor={id}
-    >
-      {label}
+    <div className="grid min-w-0 gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
       {children}
-    </label>
-  );
-}
-
-function AdminInput(props: ComponentProps<"input">) {
-  return (
-    <input
-      {...props}
-      className={cn(
-        "h-8 min-w-0 border border-border bg-bg px-2.5 font-mono text-[12px] text-text outline-none transition-colors placeholder:text-text-subtle focus:border-border-strong",
-        props.className,
-      )}
-    />
-  );
-}
-
-function AdminTextarea(props: ComponentProps<"textarea">) {
-  return (
-    <textarea
-      {...props}
-      className={cn(
-        "min-h-28 min-w-0 border border-border bg-bg px-2.5 py-2 font-mono text-[12px] text-text outline-none transition-colors placeholder:text-text-subtle focus:border-border-strong",
-        props.className,
-      )}
-    />
+    </div>
   );
 }
 
@@ -755,7 +755,9 @@ export function AdminPage() {
   });
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<EditableAdminSettings>(emptyEditableSettings);
-  const [settingsPreview, setSettingsPreview] = useState<AdminSettingsMutationResponse | null>(null);
+  const [settingsPreview, setSettingsPreview] = useState<AdminSettingsMutationResponse | null>(
+    null,
+  );
   const [settingsPreviewKey, setSettingsPreviewKey] = useState<string | null>(null);
   const [previewingSettings, setPreviewingSettings] = useState(false);
   const [applyingSettings, setApplyingSettings] = useState(false);
@@ -763,8 +765,12 @@ export function AdminPage() {
   const [restoringConfigBackup, setRestoringConfigBackup] = useState<string | null>(null);
   const [queueBackfillNamespace, setQueueBackfillNamespace] = useState("");
   const [queueBackfillLimit, setQueueBackfillLimit] = useState("25");
-  const [queueBackfillResult, setQueueBackfillResult] = useState<AdminQueueBackfillResponse | null>(null);
-  const [queueRetryResult, setQueueRetryResult] = useState<AdminQueueRetryFailedResponse | null>(null);
+  const [queueBackfillResult, setQueueBackfillResult] = useState<AdminQueueBackfillResponse | null>(
+    null,
+  );
+  const [queueRetryResult, setQueueRetryResult] = useState<AdminQueueRetryFailedResponse | null>(
+    null,
+  );
   const [runningQueueBackfill, setRunningQueueBackfill] = useState(false);
   const [retryingQueueFailureID, setRetryingQueueFailureID] = useState<number | null>(null);
   const [namespaceName, setNamespaceName] = useState("");
@@ -774,8 +780,12 @@ export function AdminPage() {
   const [namespaceRetention, setNamespaceRetention] = useState("");
   const [namespaceMaxRevisions, setNamespaceMaxRevisions] = useState("");
   const [namespaceMaxBytes, setNamespaceMaxBytes] = useState("");
-  const [namespacePreview, setNamespacePreview] = useState<AdminNamespacePreviewResponse | null>(null);
-  const [namespaceHistory, setNamespaceHistory] = useState<AdminNamespaceHistoryResponse | null>(null);
+  const [namespacePreview, setNamespacePreview] = useState<AdminNamespacePreviewResponse | null>(
+    null,
+  );
+  const [namespaceHistory, setNamespaceHistory] = useState<AdminNamespaceHistoryResponse | null>(
+    null,
+  );
   const [editingNamespace, setEditingNamespace] = useState<string | null>(null);
   const [previewingNamespace, setPreviewingNamespace] = useState(false);
   const [updatingNamespace, setUpdatingNamespace] = useState(false);
@@ -804,6 +814,7 @@ export function AdminPage() {
   const [creatingToken, setCreatingToken] = useState(false);
   const [createdToken, setCreatedToken] = useState<TokenCreateResponse | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationAction | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(() => {
@@ -956,7 +967,9 @@ export function AdminPage() {
     setNamespaceTier(policyText(row.policy, "tier") || "");
     setNamespaceRetention(policyText(row.policy, "retention") || "");
     setNamespaceMaxRevisions(
-      policyNumber(row.policy, "max_revisions") > 0 ? String(policyNumber(row.policy, "max_revisions")) : "",
+      policyNumber(row.policy, "max_revisions") > 0
+        ? String(policyNumber(row.policy, "max_revisions"))
+        : "",
     );
     setNamespaceMaxBytes(
       policyNumber(row.policy, "max_bytes_per_key") > 0
@@ -1087,19 +1100,12 @@ export function AdminPage() {
       setWorkflowError("Run a matching settings preview before applying.");
       return;
     }
-    if (
-      !window.confirm(
-        "Apply these config changes to config.yaml? Provider and runtime changes require a daemon restart.",
-      )
-    ) {
-      return;
-    }
     setApplyingSettings(true);
     setWorkflowError(null);
     try {
       const result = await applyAdminSettings({ config: settingsDraft });
       setSettingsPreview(result);
-      setSettingsPreviewKey(currentKey)
+      setSettingsPreviewKey(currentKey);
       setState((current) =>
         current.settings
           ? {
@@ -1114,7 +1120,9 @@ export function AdminPage() {
           : current,
       );
       await refreshConfigBackups();
-      toast.success("Config saved to config.yaml. Restart the daemon to apply provider/runtime changes.");
+      toast.success(
+        "Config saved to config.yaml. Restart the daemon to apply provider/runtime changes.",
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setWorkflowError(message);
@@ -1142,13 +1150,6 @@ export function AdminPage() {
 
   const handleRestoreConfigBackup = useCallback(
     async (backup: AdminConfigBackupInfo) => {
-      if (
-        !window.confirm(
-          `Restore config from "${backup.name}"? A pre-restore safety backup will be created and a daemon restart will still be required.`,
-        )
-      ) {
-        return;
-      }
       setRestoringConfigBackup(backup.path);
       setWorkflowError(null);
       try {
@@ -1192,7 +1193,9 @@ export function AdminPage() {
         const result = await retryAdminQueueFailed(failure.id);
         setQueueRetryResult(result);
         await refreshQueueAdmin();
-        toast.success(`Retried ${result.retried} failed queue job${result.retried === 1 ? "" : "s"}`);
+        toast.success(
+          `Retried ${result.retried} failed queue job${result.retried === 1 ? "" : "s"}`,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setWorkflowError(message);
@@ -1209,14 +1212,14 @@ export function AdminPage() {
     setWorkflowError(null);
     try {
       const result = await backfillAdminQueue({
-        ...(queueBackfillNamespace.trim()
-          ? { namespace: queueBackfillNamespace.trim() }
-          : {}),
+        ...(queueBackfillNamespace.trim() ? { namespace: queueBackfillNamespace.trim() } : {}),
         limit: Number.parseInt(queueBackfillLimit, 10) || 0,
       });
       setQueueBackfillResult(result);
       await refreshQueueAdmin();
-      toast.success(`Queued ${result.queued} embedding backfill job${result.queued === 1 ? "" : "s"}`);
+      toast.success(
+        `Queued ${result.queued} embedding backfill job${result.queued === 1 ? "" : "s"}`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setWorkflowError(message);
@@ -1295,7 +1298,6 @@ export function AdminPage() {
   const handleRepair = useCallback(async () => {
     const count = state.consistency?.count ?? 0;
     if (count <= 0) return;
-    if (!window.confirm(`Repair ${count} consistency issue(s) by rebuilding heads?`)) return;
     setRepairing(true);
     setWorkflowError(null);
     try {
@@ -1320,14 +1322,6 @@ export function AdminPage() {
       const currentKey = trimKey(trimPattern, trimRetention);
       if (!dryRun && trimDryRunKey !== currentKey) {
         setWorkflowError("Run a matching trim dry run before applying.");
-        return;
-      }
-      if (
-        !dryRun &&
-        !window.confirm(
-          `Trim records matching "${trimPattern.trim() || "*"}" outside retention ${trimRetention.trim()}?`,
-        )
-      ) {
         return;
       }
       setTrimSubmitting(true);
@@ -1365,14 +1359,6 @@ export function AdminPage() {
         setWorkflowError("Run a matching compact dry run before applying.");
         return;
       }
-      if (
-        !dryRun &&
-        !window.confirm(
-          `Compact records matching "${compactPattern.trim() || "*"}" to ${Number.parseInt(compactMaxRevisions, 10) || 10} revisions per key?`,
-        )
-      ) {
-        return;
-      }
       setCompactSubmitting(true);
       setWorkflowError(null);
       try {
@@ -1402,13 +1388,6 @@ export function AdminPage() {
   );
 
   const handleTTLCleanup = useCallback(async () => {
-    if (
-      !window.confirm(
-        "Clean up all expired TTL records? This removes expired records and does not have a dry-run mode yet.",
-      )
-    ) {
-      return;
-    }
     setTTLSubmitting(true);
     setWorkflowError(null);
     try {
@@ -1479,7 +1458,6 @@ export function AdminPage() {
 
   const handleRevokeToken = useCallback(
     async (token: AuthToken) => {
-      if (!window.confirm(`Revoke token "${token.name}"? This cannot be undone.`)) return;
       setRevokingID(token.id);
       setWorkflowError(null);
       try {
@@ -1505,6 +1483,13 @@ export function AdminPage() {
     toast.success("Token copied");
     setTimeout(() => setTokenCopied(false), 1800);
   }, [createdToken]);
+
+  const handleConfirm = useCallback(() => {
+    const action = confirmation;
+    if (!action) return;
+    setConfirmation(null);
+    action.onConfirm();
+  }, [confirmation]);
 
   const namespaceTiers = useMemo(() => {
     const counts = new globalThis.Map<string, number>();
@@ -1635,19 +1620,12 @@ export function AdminPage() {
     {
       label: "Readiness",
       value: state.health?.status ?? "...",
-      accentColor: isHealthy(state.health?.status)
-        ? "var(--color-status-done)"
-        : "var(--color-status-blocked)",
     },
     { label: "Records", value: state.health?.record_count ?? "..." },
     { label: "Namespaces", value: state.namespaces.length || "..." },
     {
       label: "Consistency",
       value: state.consistency?.count ?? "...",
-      accentColor:
-        (state.consistency?.count ?? 0) > 0
-          ? "var(--color-status-blocked)"
-          : "var(--color-status-done)",
     },
     { label: "Tokens", value: state.tokenCount ?? "..." },
     { label: "Queue", value: state.queue?.total ?? "..." },
@@ -1663,10 +1641,6 @@ export function AdminPage() {
               : 0,
           )
         : "...",
-      accentColor:
-        (state.metrics?.totals.errors ?? 0) > 0
-          ? "var(--color-status-blocked)"
-          : "var(--color-status-done)",
     },
   ];
 
@@ -1680,7 +1654,13 @@ export function AdminPage() {
           value={tab}
           onChange={setTab}
           actions={
-            <Button variant="outline" size="sm" onClick={() => load()} disabled={loading}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => load()}
+              disabled={loading}
+            >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               Refresh
             </Button>
@@ -1699,13 +1679,11 @@ export function AdminPage() {
     >
       {state.errors.length > 0 && (
         <SettingsPanel title="Preflight Warnings" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-          <SettingsGrid>
+          <div className="grid gap-2 px-4 py-3">
             {state.errors.map((error) => (
-              <SettingsField key={error} label="Warning">
-                {error}
-              </SettingsField>
+              <SettingsNotice key={error} title="Preflight check unavailable" description={error} />
             ))}
-          </SettingsGrid>
+          </div>
         </SettingsPanel>
       )}
 
@@ -1844,7 +1822,9 @@ export function AdminPage() {
                 </Pill>
               </SettingsField>
               <SettingsField label="Knowledge store">
-                <Pill tone={state.settings?.runtime.knowledge_store_enabled ? "success" : "warning"}>
+                <Pill
+                  tone={state.settings?.runtime.knowledge_store_enabled ? "success" : "warning"}
+                >
                   {state.settings?.runtime.knowledge_store_enabled ? "enabled" : "unavailable"}
                 </Pill>
               </SettingsField>
@@ -1891,7 +1871,8 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-3">
                 <AdminField id="admin-settings-embedding-provider" label="Embedding Provider">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-embedding-provider"
                     value={settingsDraft.embedding_provider}
                     onChange={(event) =>
@@ -1904,7 +1885,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-settings-embedding-model" label="Embedding Model">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-embedding-model"
                     value={settingsDraft.embedding_model}
                     onChange={(event) =>
@@ -1917,7 +1899,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-settings-dedup" label="Dedup Threshold">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-dedup"
                     type="number"
                     min="0"
@@ -1927,8 +1910,7 @@ export function AdminPage() {
                     onChange={(event) =>
                       setSettingsDraft((current) => ({
                         ...current,
-                        dedup_similarity_threshold:
-                          Number.parseFloat(event.target.value) || 0,
+                        dedup_similarity_threshold: Number.parseFloat(event.target.value) || 0,
                       }))
                     }
                     placeholder="0.85"
@@ -1938,7 +1920,8 @@ export function AdminPage() {
 
               <div className="grid gap-3 md:grid-cols-4">
                 <AdminField id="admin-settings-synthesis-provider" label="Synthesis Provider">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-synthesis-provider"
                     value={settingsDraft.synthesis_provider}
                     onChange={(event) =>
@@ -1951,7 +1934,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-settings-synthesis-model" label="Synthesis Model">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-synthesis-model"
                     value={settingsDraft.synthesis_model}
                     onChange={(event) =>
@@ -1964,7 +1948,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-settings-synthesis-max" label="Synthesis Max Tokens">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-synthesis-max"
                     type="number"
                     min="0"
@@ -1980,7 +1965,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-settings-synthesis-temp" label="Synthesis Temperature">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-settings-synthesis-temp"
                     type="number"
                     min="0"
@@ -1999,7 +1985,8 @@ export function AdminPage() {
               </div>
 
               <AdminField id="admin-settings-synthesis-prompt" label="Synthesis System Prompt">
-                <AdminTextarea
+                <Textarea
+                  className="min-h-28 font-mono text-xs md:text-xs"
                   id="admin-settings-synthesis-prompt"
                   value={settingsDraft.synthesis_system_prompt}
                   onChange={(event) =>
@@ -2015,6 +2002,7 @@ export function AdminPage() {
 
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handlePreviewSettings}
@@ -2024,17 +2012,35 @@ export function AdminPage() {
                   Preview Changes
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={handleApplySettings}
-                  disabled={applyingSettings || settingsPreviewKey !== settingsDraftKey(settingsDraft)}
+                  onClick={() =>
+                    setConfirmation({
+                      title: "Apply admin settings?",
+                      description:
+                        "This writes the previewed changes to config.yaml. Provider and runtime changes still require a daemon restart.",
+                      confirmLabel: "Apply settings",
+                      onConfirm: handleApplySettings,
+                    })
+                  }
+                  disabled={
+                    applyingSettings || settingsPreviewKey !== settingsDraftKey(settingsDraft)
+                  }
                 >
                   <Check className={cn("h-3.5 w-3.5", applyingSettings && "animate-pulse")} />
                   Apply To Config
                 </Button>
                 <Pill tone="neutral">
-                  {state.settings?.config_file || state.settings?.paths.find((path) => path.label === "config-file")?.path || "config.yaml"}
+                  {state.settings?.config_file ||
+                    state.settings?.paths.find((path) => path.label === "config-file")?.path ||
+                    "config.yaml"}
                 </Pill>
+                <SettingsStatusPill
+                  pending={settingsPreviewKey !== settingsDraftKey(settingsDraft)}
+                  pendingLabel="preview required"
+                  currentLabel="preview current"
+                />
               </div>
 
               {settingsPreview && (
@@ -2055,9 +2061,18 @@ export function AdminPage() {
                       : "none"}
                   </SettingsField>
                   <SettingsField label="Preview target">
-                    <CopyableId id={settingsPreview.config_file} label={settingsPreview.config_file} />
+                    <CopyableId
+                      id={settingsPreview.config_file}
+                      label={settingsPreview.config_file}
+                    />
                   </SettingsField>
                 </SettingsGrid>
+              )}
+              {settingsPreview && settingsPreview.warnings.length > 0 && (
+                <SettingsNotice
+                  title="Preview warnings"
+                  description={settingsPreview.warnings.join(" ")}
+                />
               )}
             </div>
           </SettingsPanel>
@@ -2078,6 +2093,7 @@ export function AdminPage() {
 
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleCreateConfigBackup}
@@ -2091,21 +2107,29 @@ export function AdminPage() {
               {state.configBackups?.items.length ? (
                 <div className="grid gap-2">
                   {state.configBackups.items.map((backup) => (
-                    <div
-                      key={backup.path}
-                      className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-mono text-[12px] text-text">{backup.name}</div>
-                        <div className="text-[11px] text-text-soft">
-                          {formatDateTime(backup.created_at)} · {formatBytes(backup.size)} · {backup.source}
+                    <Card key={backup.path} size="sm">
+                      <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-xs text-text">{backup.name}</div>
+                          <div className="text-xs text-text-soft">
+                            {formatDateTime(backup.created_at)} · {formatBytes(backup.size)} ·{" "}
+                            {backup.source}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
                         <Button
+                          type="button"
                           variant="ghost"
                           size="xs"
-                          onClick={() => handleRestoreConfigBackup(backup)}
+                          onClick={() =>
+                            setConfirmation({
+                              title: `Restore ${backup.name}?`,
+                              description:
+                                "The current config will be safety-backed up before this snapshot is restored. A daemon restart is still required.",
+                              confirmLabel: "Restore backup",
+                              destructive: true,
+                              onConfirm: () => handleRestoreConfigBackup(backup),
+                            })
+                          }
                           disabled={restoringConfigBackup === backup.path}
                         >
                           <RefreshCw
@@ -2116,8 +2140,8 @@ export function AdminPage() {
                           />
                           Restore
                         </Button>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               ) : (
@@ -2138,8 +2162,8 @@ export function AdminPage() {
                   "unconfigured"}
               </SettingsField>
               <SettingsField label="Embedding env">
-                {(settingsPreview?.providers.embedding.env_var ||
-                  state.settings?.providers.embedding.env_var)
+                {settingsPreview?.providers.embedding.env_var ||
+                state.settings?.providers.embedding.env_var
                   ? `${settingsPreview?.providers.embedding.env_var || state.settings?.providers.embedding.env_var}: ${(settingsPreview?.providers.embedding.env_present ?? state.settings?.providers.embedding.env_present) ? "present" : "missing"}`
                   : settingsPreview?.providers.embedding.reason ||
                     state.settings?.providers.embedding.reason ||
@@ -2149,13 +2173,13 @@ export function AdminPage() {
                 <Pill
                   tone={
                     (settingsPreview?.providers.embedding.available ??
-                      state.settings?.providers.embedding.available)
+                    state.settings?.providers.embedding.available)
                       ? "success"
                       : "warning"
                   }
                 >
                   {(settingsPreview?.providers.embedding.available ??
-                    state.settings?.providers.embedding.available)
+                  state.settings?.providers.embedding.available)
                     ? "available"
                     : "not ready"}
                 </Pill>
@@ -2166,8 +2190,8 @@ export function AdminPage() {
                   "unconfigured"}
               </SettingsField>
               <SettingsField label="Synthesis env">
-                {(settingsPreview?.providers.synthesis.env_var ||
-                  state.settings?.providers.synthesis.env_var)
+                {settingsPreview?.providers.synthesis.env_var ||
+                state.settings?.providers.synthesis.env_var
                   ? `${settingsPreview?.providers.synthesis.env_var || state.settings?.providers.synthesis.env_var}: ${(settingsPreview?.providers.synthesis.env_present ?? state.settings?.providers.synthesis.env_present) ? "present" : "missing"}`
                   : settingsPreview?.providers.synthesis.reason ||
                     state.settings?.providers.synthesis.reason ||
@@ -2177,13 +2201,13 @@ export function AdminPage() {
                 <Pill
                   tone={
                     (settingsPreview?.providers.synthesis.available ??
-                      state.settings?.providers.synthesis.available)
+                    state.settings?.providers.synthesis.available)
                       ? "success"
                       : "warning"
                   }
                 >
                   {(settingsPreview?.providers.synthesis.available ??
-                    state.settings?.providers.synthesis.available)
+                  state.settings?.providers.synthesis.available)
                     ? "available"
                     : "not ready"}
                 </Pill>
@@ -2238,7 +2262,8 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto]">
                 <AdminField id="admin-queue-backfill-namespace" label="Backfill Namespace">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-queue-backfill-namespace"
                     value={queueBackfillNamespace}
                     onChange={(event) => setQueueBackfillNamespace(event.target.value)}
@@ -2246,7 +2271,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-queue-backfill-limit" label="Backfill Limit">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-queue-backfill-limit"
                     type="number"
                     min="0"
@@ -2257,12 +2283,15 @@ export function AdminPage() {
                 </AdminField>
                 <div className="flex items-end">
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleQueueBackfill}
                     disabled={runningQueueBackfill}
                   >
-                    <Archive className={cn("h-3.5 w-3.5", runningQueueBackfill && "animate-pulse")} />
+                    <Archive
+                      className={cn("h-3.5 w-3.5", runningQueueBackfill && "animate-pulse")}
+                    />
                     Queue Backfill
                   </Button>
                 </div>
@@ -2285,21 +2314,19 @@ export function AdminPage() {
             <div className="grid gap-2 px-4 py-3">
               {state.queueFailures?.items.length ? (
                 state.queueFailures.items.map((failure) => (
-                  <div
-                    key={failure.id}
-                    className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-mono text-[12px] text-text">
-                        #{failure.id} {failure.type}
+                  <Card key={failure.id} size="sm">
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-xs text-text">
+                          #{failure.id} {failure.type}
+                        </div>
+                        <div className="text-xs text-text-soft">
+                          {formatDateTime(failure.failed_at)} · attempts {failure.attempts}
+                        </div>
+                        <div className="text-xs text-text-soft">{failure.error}</div>
                       </div>
-                      <div className="text-[11px] text-text-soft">
-                        {formatDateTime(failure.failed_at)} · attempts {failure.attempts}
-                      </div>
-                      <div className="text-[11px] text-text-soft">{failure.error}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
                       <Button
+                        type="button"
                         variant="ghost"
                         size="xs"
                         onClick={() => handleRetryQueueFailure(failure)}
@@ -2313,8 +2340,8 @@ export function AdminPage() {
                         />
                         Retry
                       </Button>
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 ))
               ) : (
                 <EmptyState
@@ -2363,9 +2390,13 @@ export function AdminPage() {
         <>
           {workflowError && (
             <SettingsPanel title="Workflow Error" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-              <SettingsGrid>
-                <SettingsField label="Error">{workflowError}</SettingsField>
-              </SettingsGrid>
+              <div className="px-4 py-3">
+                <SettingsNotice
+                  title="Management action failed"
+                  description={workflowError}
+                  tone="danger"
+                />
+              </div>
             </SettingsPanel>
           )}
 
@@ -2373,6 +2404,7 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3 text-[12px] text-text-soft">
               <div className="flex flex-wrap items-center gap-2">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleScan}
@@ -2382,9 +2414,18 @@ export function AdminPage() {
                   Scan
                 </Button>
                 <Button
+                  type="button"
                   variant="destructive"
                   size="sm"
-                  onClick={handleRepair}
+                  onClick={() =>
+                    setConfirmation({
+                      title: "Repair consistency issues?",
+                      description: `Rebuild heads for ${state.consistency?.count ?? 0} detected issue${(state.consistency?.count ?? 0) === 1 ? "" : "s"}.`,
+                      confirmLabel: "Repair issues",
+                      destructive: true,
+                      onConfirm: handleRepair,
+                    })
+                  }
                   disabled={repairing || (state.consistency?.count ?? 0) <= 0}
                 >
                   <Wrench className={cn("h-3.5 w-3.5", repairing && "animate-pulse")} />
@@ -2407,40 +2448,30 @@ export function AdminPage() {
 
               {(state.consistency?.issues.length ?? 0) > 0 && (
                 <div className="max-h-48 overflow-auto border border-border bg-bg">
-                  <table className="w-full text-left text-[11px]">
-                    <thead className="sticky top-0 bg-panel text-text-muted">
-                      <tr>
-                        <th className="border-b border-border px-2 py-1.5 font-medium uppercase tracking-[.14em]">
-                          Type
-                        </th>
-                        <th className="border-b border-border px-2 py-1.5 font-medium uppercase tracking-[.14em]">
-                          Namespace
-                        </th>
-                        <th className="border-b border-border px-2 py-1.5 font-medium uppercase tracking-[.14em]">
-                          Key
-                        </th>
-                        <th className="border-b border-border px-2 py-1.5 font-medium uppercase tracking-[.14em]">
-                          Details
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table className="text-xs">
+                    <TableHeader className="sticky top-0 bg-panel">
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Namespace</TableHead>
+                        <TableHead>Key</TableHead>
+                        <TableHead>Details</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {state.consistency?.issues.map((issue) => (
-                        <tr key={`${issue.type}-${issue.namespace}-${issue.key}-${issue.details}`}>
-                          <td className="border-b border-border/70 px-2 py-1.5">
+                        <TableRow
+                          key={`${issue.type}-${issue.namespace}-${issue.key}-${issue.details}`}
+                        >
+                          <TableCell>
                             <Pill tone="warning">{issue.type}</Pill>
-                          </td>
-                          <td className="border-b border-border/70 px-2 py-1.5 font-mono">
-                            {issue.namespace}
-                          </td>
-                          <td className="border-b border-border/70 px-2 py-1.5 font-mono">
-                            {issue.key}
-                          </td>
-                          <td className="border-b border-border/70 px-2 py-1.5">{issue.details}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="font-mono">{issue.namespace}</TableCell>
+                          <TableCell className="font-mono">{issue.key}</TableCell>
+                          <TableCell>{issue.details}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </div>
@@ -2450,14 +2481,16 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto_auto]">
                 <AdminField id="admin-trim-pattern" label="Namespace Pattern">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-trim-pattern"
                     value={trimPattern}
                     onChange={(event) => setTrimPattern(event.target.value)}
                   />
                 </AdminField>
                 <AdminField id="admin-trim-retention" label="Retention">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-trim-retention"
                     value={trimRetention}
                     onChange={(event) => setTrimRetention(event.target.value)}
@@ -2466,6 +2499,7 @@ export function AdminPage() {
                 </AdminField>
                 <div className="flex items-end">
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => handleTrim(true)}
@@ -2477,9 +2511,18 @@ export function AdminPage() {
                 </div>
                 <div className="flex items-end">
                   <Button
+                    type="button"
                     variant="destructive"
                     size="sm"
-                    onClick={() => handleTrim(false)}
+                    onClick={() =>
+                      setConfirmation({
+                        title: "Apply retention trim?",
+                        description: `Trim records matching "${trimPattern.trim() || "*"}" outside retention ${trimRetention.trim()}.`,
+                        confirmLabel: "Apply trim",
+                        destructive: true,
+                        onConfirm: () => handleTrim(false),
+                      })
+                    }
                     disabled={
                       trimSubmitting || trimDryRunKey !== trimKey(trimPattern, trimRetention)
                     }
@@ -2508,14 +2551,16 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto_auto]">
                 <AdminField id="admin-compact-pattern" label="Namespace Pattern">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-compact-pattern"
                     value={compactPattern}
                     onChange={(event) => setCompactPattern(event.target.value)}
                   />
                 </AdminField>
                 <AdminField id="admin-compact-max" label="Max Revisions">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-compact-max"
                     type="number"
                     min="1"
@@ -2525,6 +2570,7 @@ export function AdminPage() {
                 </AdminField>
                 <div className="flex items-end">
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => handleCompact(true)}
@@ -2536,9 +2582,18 @@ export function AdminPage() {
                 </div>
                 <div className="flex items-end">
                   <Button
+                    type="button"
                     variant="destructive"
                     size="sm"
-                    onClick={() => handleCompact(false)}
+                    onClick={() =>
+                      setConfirmation({
+                        title: "Apply revision compact?",
+                        description: `Compact records matching "${compactPattern.trim() || "*"}" to ${Number.parseInt(compactMaxRevisions, 10) || 10} revisions per key.`,
+                        confirmLabel: "Apply compact",
+                        destructive: true,
+                        onConfirm: () => handleCompact(false),
+                      })
+                    }
                     disabled={
                       compactSubmitting ||
                       compactDryRunKey !== compactKey(compactPattern, compactMaxRevisions)
@@ -2572,9 +2627,19 @@ export function AdminPage() {
               </Callout>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
+                  type="button"
                   variant="destructive"
                   size="sm"
-                  onClick={handleTTLCleanup}
+                  onClick={() =>
+                    setConfirmation({
+                      title: "Clean expired TTL records?",
+                      description:
+                        "This removes every record whose TTL has expired. This operation does not have a dry-run mode.",
+                      confirmLabel: "Clean expired records",
+                      destructive: true,
+                      onConfirm: handleTTLCleanup,
+                    })
+                  }
                   disabled={ttlSubmitting}
                 >
                   <Wrench className={cn("h-3.5 w-3.5", ttlSubmitting && "animate-pulse")} />
@@ -2610,9 +2675,13 @@ export function AdminPage() {
         <>
           {workflowError && (
             <SettingsPanel title="Namespace Error" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-              <SettingsGrid>
-                <SettingsField label="Error">{workflowError}</SettingsField>
-              </SettingsGrid>
+              <div className="px-4 py-3">
+                <SettingsNotice
+                  title="Namespace action failed"
+                  description={workflowError}
+                  tone="danger"
+                />
+              </div>
             </SettingsPanel>
           )}
 
@@ -2623,37 +2692,36 @@ export function AdminPage() {
             <div className="grid gap-3 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)]">
                 <AdminField id="admin-namespace-name" label="Namespace">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-name"
                     value={namespaceName}
                     onChange={(event) => setNamespaceName(event.target.value)}
                     placeholder="app/my-tool/session"
                   />
                 </AdminField>
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] uppercase tracking-[.16em] text-text-muted">
-                    Owner Type
-                  </div>
-                  <div className="flex h-8 items-center gap-1">
-                    {OWNER_TYPES.map((type) => (
-                      <button
-                        type="button"
-                        key={type}
-                        onClick={() => setNamespaceOwnerType(type)}
-                        className={cn(
-                          "h-8 border px-2 font-mono text-[11px] transition-colors",
-                          namespaceOwnerType === type
-                            ? "border-border-strong bg-panel text-text"
-                            : "border-border bg-bg text-text-subtle",
-                        )}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <AdminField id="admin-namespace-owner-type" label="Owner type">
+                  <Select
+                    value={namespaceOwnerType}
+                    onValueChange={(value) => {
+                      if (value) setNamespaceOwnerType(value);
+                    }}
+                  >
+                    <SelectTrigger id="admin-namespace-owner-type" size="sm" className="font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OWNER_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </AdminField>
                 <AdminField id="admin-namespace-owner" label="Owner ID">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-owner"
                     value={namespaceOwnerID}
                     onChange={(event) => setNamespaceOwnerID(event.target.value)}
@@ -2664,7 +2732,8 @@ export function AdminPage() {
 
               <div className="grid gap-3 md:grid-cols-4">
                 <AdminField id="admin-namespace-tier" label="Tier">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-tier"
                     value={namespaceTier}
                     onChange={(event) => setNamespaceTier(event.target.value)}
@@ -2672,7 +2741,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-namespace-retention" label="Retention">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-retention"
                     value={namespaceRetention}
                     onChange={(event) => setNamespaceRetention(event.target.value)}
@@ -2680,7 +2750,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-namespace-revisions" label="Max Revisions">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-revisions"
                     type="number"
                     min="1"
@@ -2690,7 +2761,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-namespace-bytes" label="Max Bytes/Key">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-namespace-bytes"
                     type="number"
                     min="1"
@@ -2703,15 +2775,19 @@ export function AdminPage() {
 
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handlePreviewNamespace}
-                  disabled={previewingNamespace || !namespaceName.trim() || !namespaceOwnerID.trim()}
+                  disabled={
+                    previewingNamespace || !namespaceName.trim() || !namespaceOwnerID.trim()
+                  }
                 >
                   <Search className={cn("h-3.5 w-3.5", previewingNamespace && "animate-pulse")} />
                   Preview Policy
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleRegisterNamespace}
@@ -2723,6 +2799,7 @@ export function AdminPage() {
                   Register Namespace
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleUpdateNamespace}
@@ -2733,6 +2810,7 @@ export function AdminPage() {
                 </Button>
                 {editingNamespace && (
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
@@ -2752,6 +2830,11 @@ export function AdminPage() {
                   </Button>
                 )}
                 <Pill tone="neutral">{state.namespaces.length} registered</Pill>
+                <SettingsStatusPill
+                  pending={!namespacePreview}
+                  pendingLabel="preview required"
+                  currentLabel="preview ready"
+                />
               </div>
 
               {namespacePreview && (
@@ -2781,17 +2864,14 @@ export function AdminPage() {
               <div className="grid gap-2 px-4 py-3">
                 {namespaceHistory.items.length ? (
                   namespaceHistory.items.map((event) => (
-                    <div
-                      key={event.id}
-                      className="flex flex-wrap items-center justify-between gap-3 border border-border bg-bg px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-mono text-[12px] text-text">{event.event_type}</div>
-                        <div className="text-[11px] text-text-soft">
+                    <Card key={event.id} size="sm">
+                      <CardContent>
+                        <div className="font-mono text-xs text-text">{event.event_type}</div>
+                        <div className="text-xs text-text-soft">
                           {formatDateTime(event.created_at)} · {event.actor || "system"}
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))
                 ) : (
                   <EmptyState
@@ -2825,35 +2905,47 @@ export function AdminPage() {
         <>
           {workflowError && (
             <SettingsPanel title="Access Error" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-              <SettingsGrid>
-                <SettingsField label="Error">{workflowError}</SettingsField>
-              </SettingsGrid>
+              <div className="px-4 py-3">
+                <SettingsNotice
+                  title="Access action failed"
+                  description={workflowError}
+                  tone="danger"
+                />
+              </div>
             </SettingsPanel>
           )}
 
           <SettingsPanel title="Create Token" icon={<Plus className="h-3.5 w-3.5" />}>
             <div className="grid gap-3 px-4 py-3">
               {createdToken && (
-                <div className="border border-status-done/40 bg-status-done/10 p-3">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[.18em] text-status-done">
-                    Token created. Copy this value now; it will not be shown again.
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 border border-border bg-bg p-2 font-mono text-[12px] text-text">
-                    <span className="min-w-0 flex-1 break-all">{createdToken.token}</span>
-                    <Button variant="outline" size="icon-sm" onClick={handleCopyCreatedToken}>
+                <Callout
+                  tone="success"
+                  title="Token created"
+                  actions={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={handleCopyCreatedToken}
+                      aria-label={tokenCopied ? "Token copied" : "Copy created token"}
+                    >
                       {tokenCopied ? (
                         <Check className="h-3.5 w-3.5" />
                       ) : (
                         <Copy className="h-3.5 w-3.5" />
                       )}
                     </Button>
-                  </div>
-                </div>
+                  }
+                >
+                  <span className="break-all font-mono text-xs">{createdToken.token}</span>
+                  <span className="sr-only">Copy this value now; it will not be shown again.</span>
+                </Callout>
               )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <AdminField id="admin-token-name" label="Name">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-token-name"
                     value={tokenName}
                     onChange={(event) => setTokenName(event.target.value)}
@@ -2862,7 +2954,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-token-client" label="Client ID">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-token-client"
                     value={tokenClientID}
                     onChange={(event) => setTokenClientID(event.target.value)}
@@ -2874,7 +2967,8 @@ export function AdminPage() {
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
                 <AdminField id="admin-token-namespaces" label="Namespace Globs">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-token-namespaces"
                     value={tokenNamespaces}
                     onChange={(event) => setTokenNamespaces(event.target.value)}
@@ -2883,7 +2977,8 @@ export function AdminPage() {
                   />
                 </AdminField>
                 <AdminField id="admin-token-ttl" label="TTL">
-                  <AdminInput
+                  <Input
+                    className="font-mono text-xs md:text-xs"
                     id="admin-token-ttl"
                     value={tokenTTL}
                     onChange={(event) => setTokenTTL(event.target.value)}
@@ -2893,33 +2988,35 @@ export function AdminPage() {
                 </AdminField>
               </div>
 
-              <div className="grid gap-1.5">
-                <div className="text-[11px] uppercase tracking-[.16em] text-text-muted">Scopes</div>
-                <div className="flex flex-wrap gap-2">
+              <fieldset className="grid gap-2">
+                <legend className="text-sm font-medium text-text">Scopes</legend>
+                <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
                   {AVAILABLE_SCOPES.map((scope) => {
                     const checked = tokenScopes.includes(scope);
                     return (
-                      <button
-                        type="button"
-                        key={scope}
-                        onClick={() => toggleTokenScope(scope)}
-                        disabled={Boolean(createdToken)}
-                        className={cn(
-                          "border px-2 py-1 font-mono text-[11px] transition-colors",
-                          checked
-                            ? "border-border-strong bg-panel text-text"
-                            : "border-border bg-bg text-text-subtle",
-                        )}
-                      >
-                        {scope}
-                      </button>
+                      <div key={scope} className="flex min-w-0 items-center gap-2">
+                        <Switch
+                          id={`admin-token-scope-${scope}`}
+                          size="sm"
+                          checked={checked}
+                          onCheckedChange={() => toggleTokenScope(scope)}
+                          disabled={Boolean(createdToken)}
+                        />
+                        <Label
+                          htmlFor={`admin-token-scope-${scope}`}
+                          className="min-w-0 truncate font-mono text-xs font-normal"
+                        >
+                          {scope}
+                        </Label>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
+              </fieldset>
 
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleCreateToken}
@@ -2936,6 +3033,7 @@ export function AdminPage() {
                 </Button>
                 {createdToken && (
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
@@ -2957,7 +3055,17 @@ export function AdminPage() {
 
           <DataTable
             items={state.tokens}
-            columns={tokenColumns(handleRevokeToken, revokingID)}
+            columns={tokenColumns(
+              (token) =>
+                setConfirmation({
+                  title: `Revoke ${token.name}?`,
+                  description: "This token will stop authorizing requests and cannot be restored.",
+                  confirmLabel: "Revoke token",
+                  destructive: true,
+                  onConfirm: () => handleRevokeToken(token),
+                }),
+              revokingID,
+            )}
             getRowId={(token) => token.id}
             initialSort={{ key: "name", dir: "asc" }}
             scrollRootRef={scrollRef}
@@ -3029,21 +3137,25 @@ export function AdminPage() {
         <>
           {workflowError && (
             <SettingsPanel title="Audit Error" icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-              <SettingsGrid>
-                <SettingsField label="Error">{workflowError}</SettingsField>
-              </SettingsGrid>
+              <div className="px-4 py-3">
+                <SettingsNotice
+                  title="Audit action failed"
+                  description={workflowError}
+                  tone="danger"
+                />
+              </div>
             </SettingsPanel>
           )}
 
           <SettingsPanel title="Recent Operations" icon={<ScrollText className="h-3.5 w-3.5" />}>
             <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-[12px] text-text-soft">
-              <Button variant="outline" size="sm" onClick={refreshAudit}>
+              <Button type="button" variant="outline" size="sm" onClick={refreshAudit}>
                 <RefreshCw className="h-3.5 w-3.5" />
                 Refresh Audit
               </Button>
               <Pill tone="neutral">{state.auditEvents.length} loaded</Pill>
               {state.auditNextCursor !== null && (
-                <Button variant="ghost" size="sm" onClick={handleLoadMoreAudit}>
+                <Button type="button" variant="ghost" size="sm" onClick={handleLoadMoreAudit}>
                   Load More
                 </Button>
               )}
@@ -3083,6 +3195,32 @@ export function AdminPage() {
           }
         />
       )}
+
+      <Dialog
+        open={confirmation !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null);
+        }}
+      >
+        <DialogContent widthClassName="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{confirmation?.title}</DialogTitle>
+            <DialogDescription>{confirmation?.description}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmation(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant={confirmation?.destructive ? "destructive" : "default"}
+              onClick={handleConfirm}
+            >
+              {confirmation?.confirmLabel ?? "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ListPageLayout>
   );
 }
