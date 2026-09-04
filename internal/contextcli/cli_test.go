@@ -567,6 +567,24 @@ func TestContractRunExecuteUsesInjectedRunner(t *testing.T) {
 	}
 }
 
+func TestContractRunExecuteReturnsNonZeroWhenSuiteFails(t *testing.T) {
+	cli, out, errOut, _ := newTestCLIWithRoot(t)
+	cli.ExecCommand = func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("simulated failure"), fmt.Errorf("suite failed")
+	}
+
+	code := cli.Run(context.Background(), []string{"context", "contract", "run", "--suite", "metrics", "--execute", "--output", "json"})
+	if code == 0 {
+		t.Fatalf("expected failed suite to produce a non-zero exit; output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "\"executed\":true") || !strings.Contains(out.String(), "\"ok\":false") {
+		t.Fatalf("unexpected failed execute output: %s", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("structured suite failure should not write stderr, got: %s", errOut.String())
+	}
+}
+
 // extractCLIRequestID parses the request_id from the output of "context promote request".
 // The output contains a line like "  Request ID:  req-...".
 func extractCLIRequestID(t *testing.T, output string) string {

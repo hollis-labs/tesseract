@@ -45,7 +45,7 @@ func TestContractRunExecuteTableContractAgainstGolden(t *testing.T) {
 		},
 	}
 
-	successOutput := runContractTable(t, cli, out, errOut, []string{"context", "contract", "run", "--suite", "api", "--execute", "--output", "table"})
+	successOutput := runContractTable(t, cli, out, errOut, 0, []string{"context", "contract", "run", "--suite", "api", "--execute", "--output", "table"})
 	for _, marker := range golden.HeaderMarkers {
 		if !strings.Contains(successOutput, marker) {
 			t.Fatalf("missing table header marker %q in success output:\n%s", marker, successOutput)
@@ -57,7 +57,7 @@ func TestContractRunExecuteTableContractAgainstGolden(t *testing.T) {
 		}
 	}
 
-	failureOutput := runContractTable(t, cli, out, errOut, []string{"context", "contract", "run", "--suite", "api-errors", "--execute", "--output", "table"})
+	failureOutput := runContractTable(t, cli, out, errOut, 1, []string{"context", "contract", "run", "--suite", "api-errors", "--execute", "--output", "table"})
 	for _, marker := range golden.HeaderMarkers {
 		if !strings.Contains(failureOutput, marker) {
 			t.Fatalf("missing table header marker %q in failure output:\n%s", marker, failureOutput)
@@ -83,12 +83,12 @@ func loadContractRunExecuteTableGolden(t *testing.T) contractRunExecuteTableGold
 	return out
 }
 
-func runContractTable(t *testing.T, cli *contextcli.CLI, out, errOut *bytes.Buffer, args []string) string {
+func runContractTable(t *testing.T, cli *contextcli.CLI, out, errOut *bytes.Buffer, wantCode int, args []string) string {
 	t.Helper()
 	out.Reset()
 	errOut.Reset()
-	if code := cli.Run(context.Background(), args); code != 0 {
-		t.Fatalf("cli run failed: %s", errOut.String())
+	if code := cli.Run(context.Background(), args); code != wantCode {
+		t.Fatalf("cli run exit code=%d, want=%d; stderr: %s", code, wantCode, errOut.String())
 	}
 	return out.String()
 }

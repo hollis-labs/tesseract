@@ -1,6 +1,5 @@
 {
   "markers": [
-    "context contract list --output table",
     "SUITE",
     "api",
     "api-errors"

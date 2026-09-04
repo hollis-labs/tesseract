@@ -1,8 +1,8 @@
 {
   "markers": [
-    "context contract run --suite api --output table",
     "SUITE",
     "api",
+    "true",
     "APIContract"
   ]
 }

@@ -18,8 +18,9 @@
 version: "2"
 
 run:
-  # Go version for the portfolio.
-  go: "1.25"
+  # Match go.mod; analysis against an older language version can misclassify
+  # valid code or omit checks introduced by the active toolchain.
+  go: "1.26.1"
 
 # ---------------------------------------------------------------------------
 # Linter selection

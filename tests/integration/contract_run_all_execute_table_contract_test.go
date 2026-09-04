@@ -45,7 +45,7 @@ func TestContractRunAllExecuteTableContractAgainstGolden(t *testing.T) {
 		},
 	}
 
-	table := runContractTable(t, cli, out, errOut, []string{"context", "contract", "run", "--suite", "all", "--execute", "--output", "table"})
+	table := runContractTable(t, cli, out, errOut, 1, []string{"context", "contract", "run", "--suite", "all", "--execute", "--output", "table"})
 	for _, marker := range golden.HeaderMarkers {
 		if !strings.Contains(table, marker) {
 			t.Fatalf("missing table header marker %q in output:\n%s", marker, table)

@@ -1,6 +1,9 @@
-# lefthook.yml — Fragments Engine shared pre-commit/pre-push hooks
-# Reference copy lives in mentat repo; copied to all FE projects.
-# Target: all checks complete in <15 seconds on staged files only.
+# lefthook.yml — Tesseract pre-commit/pre-push hooks
+#
+# Pre-commit formatting and frontend linting inspect staged files. Go lint and
+# vet run repository analysis when a staged Go file makes them relevant.
+# Pre-push always runs the repository test gate: filtering it by pushed file
+# types would let documentation-only pushes bypass qualification entirely.
 
 pre-commit:
   parallel: true
@@ -10,49 +13,54 @@ pre-commit:
     # These three run simultaneously on staged .go files.
 
     go-format:
-      # Fail if any staged Go file is not gofmt + goimports clean.
+      # Fail if any staged Go file is not gofmt clean (and goimports clean when
+      # goimports is installed). Tool failures are errors, not empty success.
       glob: "*.go"
-      skip_empty: true
       run: |
-        unformatted=$(gofmt -l {staged_files} 2>/dev/null)
+        unformatted=$(gofmt -l {staged_files} 2>&1)
+        status=$?
+        if [ "$status" -ne 0 ]; then
+          echo "gofmt failed (exit $status):"
+          printf '%s\n' "$unformatted"
+          exit "$status"
+        fi
         if command -v goimports >/dev/null 2>&1; then
-          unformatted="$unformatted$(goimports -l {staged_files} 2>/dev/null)"
+          imports=$(goimports -l {staged_files} 2>&1)
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "goimports failed (exit $status):"
+            printf '%s\n' "$imports"
+            exit "$status"
+          fi
+          unformatted=$(printf '%s\n%s' "$unformatted" "$imports")
         fi
         if [ -n "$unformatted" ]; then
           echo "Unformatted files:"
-          echo "$unformatted" | sort -u
+          printf '%s\n' "$unformatted" | sed '/^$/d' | sort -u
           exit 1
         fi
 
     go-lint:
       # Only lints new/modified code so existing warnings don't block commits.
       glob: "*.go"
-      skip_empty: true
-      run: golangci-lint run --new --timeout 30s
+      run: golangci-lint run --new
 
     go-vet:
       glob: "*.go"
-      skip_empty: true
       run: go vet ./...
 
-    # ── Frontend parallel group (optional) ────────────────────────────
-    # Runs only when a ui/, web/, or frontend/ directory exists.
-    # Safe to leave in Go-only repos — skip conditions prevent errors.
+    # ── Frontend parallel group ───────────────────────────────────────
 
     frontend-lint:
       glob: "*.{ts,tsx,js,jsx}"
-      skip_empty: true
       root: "frontend/"
-      run: npx biome check --no-errors-on-unmatched {staged_files}
-      # Skip entirely if none of the common frontend dirs exist.
-      skip:
-        - run: "test ! -d ui && test ! -d web && test ! -d frontend"
+      # Use the lockfile-installed binary. Bare `npx biome` may silently fetch
+      # the unrelated biome@0.3 package when node_modules is absent.
+      run: ./node_modules/.bin/biome check --no-errors-on-unmatched {staged_files}
 
 pre-push:
   commands:
 
     go-test:
       # Full test suite gate before code reaches the remote.
-      glob: "*.go"
-      skip_empty: true
-      run: go test ./...
+      run: make test

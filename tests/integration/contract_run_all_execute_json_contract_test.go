@@ -45,7 +45,15 @@ func TestContractRunAllExecuteJSONContractAgainstGolden(t *testing.T) {
 		},
 	}
 
-	payload := runCLIJSON(t, cli, out, errOut, []string{"context", "contract", "run", "--suite", "all", "--execute"})
+	out.Reset()
+	errOut.Reset()
+	if code := cli.Run(context.Background(), []string{"context", "contract", "run", "--suite", "all", "--execute"}); code == 0 {
+		t.Fatalf("expected a non-zero exit when one suite fails")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal cli output: %v", err)
+	}
 	checkKeys(t, payload, golden.TopKeys)
 	if payload["executed"] != true {
 		t.Fatalf("expected executed=true, got %v", payload["executed"])

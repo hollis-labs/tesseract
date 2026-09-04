@@ -19,7 +19,15 @@ func TestContractRunTableHeaderContract(t *testing.T) {
 	defer store.Close()
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
-	cli := &contextcli.CLI{Store: store, Policy: contextpolicy.New(), Stdout: out, Stderr: errOut}
+	cli := &contextcli.CLI{
+		Store:  store,
+		Policy: contextpolicy.New(),
+		Stdout: out,
+		Stderr: errOut,
+		ExecCommand: func(context.Context, string, ...string) ([]byte, error) {
+			return []byte("simulated success"), nil
+		},
+	}
 
 	out.Reset()
 	errOut.Reset()

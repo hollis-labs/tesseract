@@ -94,13 +94,13 @@ curl_json() {
   body_file="$(mktemp /tmp/tesseract-smoke-body.XXXXXX)"
 
   if [[ -n "$data" ]]; then
-    if ! out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" -H "Content-Type: application/json" "${AUTH_ARGS[@]}" "$@" --data "$data"); then
+    if ! out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" -H "Content-Type: application/json" ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} "$@" --data "$data"); then
       echo "request failed: $method $path status=000 body=<curl_error>" >&2
       rm -f "$body_file"
       return 1
     fi
   else
-    if ! out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" "${AUTH_ARGS[@]}" "$@"); then
+    if ! out=$(curl -sS -o "$body_file" -w "%{http_code}" -X "$method" "$url" ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} "$@"); then
       echo "request failed: $method $path status=000 body=<curl_error>" >&2
       rm -f "$body_file"
       return 1

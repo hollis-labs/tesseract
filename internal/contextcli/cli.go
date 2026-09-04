@@ -489,6 +489,7 @@ func (c *CLI) runContractRun(ctx context.Context, args []string) int {
 		Output  string `json:"output,omitempty"`
 	}
 	results := make([]result, 0, len(selected))
+	allOK := true
 	for _, suite := range selected {
 		entry := result{Suite: suite.Name, Command: suite.Command, OK: true}
 		if *execute {
@@ -496,18 +497,26 @@ func (c *CLI) runContractRun(ctx context.Context, args []string) int {
 			entry.Output = strings.TrimSpace(string(out))
 			if err != nil {
 				entry.OK = false
+				allOK = false
 			}
 		}
 		results = append(results, entry)
 	}
+	exitCode := 0
+	if *execute && !allOK {
+		exitCode = 1
+	}
 
 	switch strings.TrimSpace(*output) {
 	case "json", "":
-		return c.writeJSON(map[string]any{
+		if code := c.writeJSON(map[string]any{
 			"executed": *execute,
 			"count":    len(results),
 			"items":    results,
-		})
+		}); code != 0 {
+			return code
+		}
+		return exitCode
 	case "table":
 		w := tabwriter.NewWriter(c.Stdout, 2, 4, 2, ' ', 0)
 		if *execute {
@@ -522,7 +531,7 @@ func (c *CLI) runContractRun(ctx context.Context, args []string) int {
 			}
 		}
 		_ = w.Flush()
-		return 0
+		return exitCode
 	default:
 		return c.fail("output must be json|table")
 	}
