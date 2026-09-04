@@ -30,6 +30,10 @@ go build -o tesseract ./cmd/tesseract
 
 ## Quick Start
 
+`tesseract --help` lists every command and `tesseract --version` reports the
+build. Neither reads or creates anything on disk, so they are safe to run
+before any setup.
+
 1. Inspect the paths Tesseract will use on your machine:
 
 ```bash
@@ -98,6 +102,32 @@ on a non-loopback address with no token mode is refused; if you truly want an
 unauthenticated daemon on the network, say so explicitly with
 `--allow-unauthenticated-remote`.
 
+## Backups
+
+A backup is a directory: a consistent snapshot of the database taken while
+writes are in flight, the record payload tree, an optional copy of your config,
+and a manifest recording the schema version and a checksum per file.
+
+```bash
+tesseract context backup export --out ~/tesseract-backup-2026-09-04
+tesseract context backup verify --in ~/tesseract-backup-2026-09-04
+tesseract context backup restore --in ~/tesseract-backup-2026-09-04
+```
+
+`verify` re-checks every checksum, refuses a directory carrying files the
+manifest does not list, and confirms each record row resolves to its payload.
+`restore` validates the whole snapshot before touching live state, stages the
+new store beside the old one, and swaps atomically — a failure at any point
+leaves the existing store unchanged, and an interrupted swap is resolved on the
+next start. Restore is a replacement, not a merge: it does not preserve data
+present only in the destination.
+
+Backups contain authentication token hashes, so they are written owner-only.
+So is everything else Tesseract owns — its directories are `0700` and its files
+`0600`, including the database, the record payloads, and your config. Stores
+created by earlier versions are tightened in place the next time they are
+opened.
+
 ## Provider Setup
 
 Tesseract currently supports these runtime provider paths:
@@ -149,6 +179,8 @@ Typical setup flow:
 ## Common Commands
 
 ```bash
+tesseract --help
+tesseract --version
 tesseract serve
 tesseract path
 tesseract context put --namespace app/demo/session --key state --actor app:demo --json '{"status":"ok"}'
@@ -157,6 +189,7 @@ tesseract context history --namespace app/demo/session --key state
 tesseract context token create --name demo --scopes write,promote.request --namespaces "app/demo/*"
 tesseract context packet --namespace "app/demo/*" --budget-items 20 --budget-tokens 4000
 tesseract backfill-embeddings
+tesseract context backup export --out ~/tesseract-backup
 ```
 
 ## Documentation
