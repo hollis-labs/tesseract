@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,6 +74,42 @@ func TestParseServeArgsShutdownTimeoutFlag(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 2*time.Second {
 		t.Fatalf("unexpected shutdown-timeout: %s", cfg.ShutdownTimeout)
+	}
+}
+
+func TestShutdownTelemetryUsesFreshBoundedContext(t *testing.T) {
+	const timeout = 100 * time.Millisecond
+	called := false
+	err := shutdownTelemetry(func(ctx context.Context) error {
+		called = true
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("shutdown context starts canceled: %v", err)
+		}
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("shutdown context has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > timeout {
+			t.Fatalf("shutdown deadline remaining = %s, want (0, %s]", remaining, timeout)
+		}
+		return nil
+	}, timeout)
+	if err != nil {
+		t.Fatalf("shutdownTelemetry: %v", err)
+	}
+	if !called {
+		t.Fatal("shutdown function was not called")
+	}
+}
+
+func TestShutdownTelemetryHonorsTimeout(t *testing.T) {
+	err := shutdownTelemetry(func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}, time.Millisecond)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdownTelemetry error = %v, want context deadline exceeded", err)
 	}
 }
 

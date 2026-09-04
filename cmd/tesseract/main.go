@@ -41,7 +41,10 @@ import (
 // because the default configuration has no authentication. Widening the bind
 // address is an explicit act, and one that requires a token mode — see
 // validateExposure.
-const defaultServeAddr = "127.0.0.1:8089"
+const (
+	defaultServeAddr         = "127.0.0.1:8089"
+	telemetryShutdownTimeout = 5 * time.Second
+)
 
 type serveConfig struct {
 	Addr        string
@@ -442,7 +445,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		log.Printf("warning: OTel init failed: %v", err)
 	} else {
 		defer func() {
-			if shutdownErr := shutdown(ctx); shutdownErr != nil {
+			if shutdownErr := shutdownTelemetry(shutdown, telemetryShutdownTimeout); shutdownErr != nil {
 				log.Printf("warning: OTel shutdown failed: %v", shutdownErr)
 			}
 		}()
@@ -510,6 +513,15 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		Stderr: stderr,
 	}
 	return cli.Run(ctx, args)
+}
+
+// shutdownTelemetry gives exporters a bounded opportunity to flush after the
+// process context has been canceled. Passing the signal context through would
+// make every normal Ctrl-C shutdown fail immediately with context.Canceled.
+func shutdownTelemetry(shutdown func(context.Context) error, timeout time.Duration) error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return shutdown(shutdownCtx)
 }
 
 // serveFlags holds the pointers a serve flagset writes into.
