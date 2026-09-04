@@ -312,6 +312,46 @@ func (c *CLI) parseFlags(fs *flag.FlagSet, args []string) (int, bool) {
 	return 0, false
 }
 
+// deprecatedIntFlagAlias keeps renamed CLI flags usable for one release while
+// making the canonical spelling unambiguous. Command-line flags need a softer
+// migration than MCP arguments: they persist in shell history and scripts, so
+// refusing the old spelling immediately would break otherwise valid local
+// workflows. We still reject passing both names because accepting both would
+// make the winner depend on argument order.
+type deprecatedIntFlagAlias struct {
+	canonical       string
+	canonicalValue  *int
+	deprecated      string
+	deprecatedValue *int
+}
+
+func (c *CLI) applyDeprecatedIntFlagAliases(fs *flag.FlagSet, aliases ...deprecatedIntFlagAlias) (int, bool) {
+	visited := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+	})
+
+	for _, alias := range aliases {
+		if visited[alias.canonical] && visited[alias.deprecated] {
+			return c.fail(fmt.Sprintf("--%s and deprecated --%s cannot be used together", alias.canonical, alias.deprecated)), true
+		}
+	}
+
+	errOut := c.Stderr
+	if errOut == nil {
+		errOut = os.Stderr
+	}
+	for _, alias := range aliases {
+		if !visited[alias.deprecated] {
+			continue
+		}
+		*alias.canonicalValue = *alias.deprecatedValue
+		_, _ = fmt.Fprintf(errOut, "warning: --%s is deprecated and will be removed after the next release; use --%s\n",
+			alias.deprecated, alias.canonical)
+	}
+	return 0, false
+}
+
 // printFlags writes a flagset's own flag list to stdout under a usage line
 // built from the flagset's name, which is the command path — "promote request"
 // prints as `tesseract context promote request`.
@@ -1755,9 +1795,11 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 		namespaces = append(namespaces, v)
 		return nil
 	})
-	budgetItems := fs.Int("budget-items", 0, "max items to include (0=unlimited)")
+	maxItems := fs.Int("max-items", 50, "max items to include (0=unlimited)")
+	maxTokensEstimate := fs.Int("max-tokens-estimate", 8000, "max estimated tokens to include (0=unlimited)")
+	budgetItems := fs.Int("budget-items", 50, "deprecated alias for --max-items")
+	budgetTokens := fs.Int("budget-tokens", 8000, "deprecated alias for --max-tokens-estimate")
 	budgetBytes := fs.Int("budget-bytes", 0, "max bytes to include (0=unlimited)")
-	budgetTokens := fs.Int("budget-tokens", 0, "max estimated tokens to include (0=unlimited)")
 	since := fs.String("since", "", "include records created after this RFC3339 time")
 	until := fs.String("until", "", "include records created before this RFC3339 time")
 	noPins := fs.Bool("no-pins", false, "skip user/pins/* prepend")
@@ -1771,6 +1813,18 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 	manifest := fs.String("manifest", "summary", "manifest detail: summary|full")
 	output := fs.String("output", "human", "output mode: human|json|manifest-only")
 	if code, done := c.parseFlags(fs, args); done {
+		return code
+	}
+	if code, done := c.applyDeprecatedIntFlagAliases(fs,
+		deprecatedIntFlagAlias{
+			canonical: "max-items", canonicalValue: maxItems,
+			deprecated: "budget-items", deprecatedValue: budgetItems,
+		},
+		deprecatedIntFlagAlias{
+			canonical: "max-tokens-estimate", canonicalValue: maxTokensEstimate,
+			deprecated: "budget-tokens", deprecatedValue: budgetTokens,
+		},
+	); done {
 		return code
 	}
 	if *payloadMode != "" && *payloadMode != "full" {
@@ -1788,7 +1842,7 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 	truncationReason := ""
 
 	budgetExceeded := func() bool {
-		if *budgetItems > 0 && len(items) >= *budgetItems {
+		if *maxItems > 0 && len(items) >= *maxItems {
 			truncationReason = "budget.max_items"
 			return true
 		}
@@ -1796,7 +1850,7 @@ func (c *CLI) runPacket(ctx context.Context, args []string) int {
 			truncationReason = "budget.max_bytes"
 			return true
 		}
-		if *budgetTokens > 0 && tokensSoFar >= *budgetTokens {
+		if *maxTokensEstimate > 0 && tokensSoFar >= *maxTokensEstimate {
 			truncationReason = "budget.max_tokens_estimate"
 			return true
 		}
@@ -2004,10 +2058,24 @@ func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	intent := fs.String("intent", "custom", "intent: resume_task|boot_project|review_session|custom")
 	summary := fs.String("summary", "", "task summary for keyword extraction (resume_task intent)")
-	maxItems := fs.Int("budget-items", 50, "max items budget")
-	maxTokens := fs.Int("budget-tokens", 4000, "max tokens estimate budget")
+	maxItems := fs.Int("max-items", 50, "max items budget")
+	maxTokens := fs.Int("max-tokens-estimate", 8000, "max tokens estimate budget")
+	budgetItems := fs.Int("budget-items", 50, "deprecated alias for --max-items")
+	budgetTokens := fs.Int("budget-tokens", 8000, "deprecated alias for --max-tokens-estimate")
 	output := fs.String("output", "human", "human|json")
 	if code, done := c.parseFlags(fs, args); done {
+		return code
+	}
+	if code, done := c.applyDeprecatedIntFlagAliases(fs,
+		deprecatedIntFlagAlias{
+			canonical: "max-items", canonicalValue: maxItems,
+			deprecated: "budget-items", deprecatedValue: budgetItems,
+		},
+		deprecatedIntFlagAlias{
+			canonical: "max-tokens-estimate", canonicalValue: maxTokens,
+			deprecated: "budget-tokens", deprecatedValue: budgetTokens,
+		},
+	); done {
 		return code
 	}
 
@@ -2052,7 +2120,7 @@ func (c *CLI) runBrokerPlan(ctx context.Context, args []string) int {
 		for _, ns := range namespaces {
 			_, _ = fmt.Fprintf(c.Stdout, "    context packet --namespace %q", ns)
 		}
-		_, _ = fmt.Fprintf(c.Stdout, " --budget-items %d --budget-tokens %d\n", *maxItems, *maxTokens)
+		_, _ = fmt.Fprintf(c.Stdout, " --max-items %d --max-tokens-estimate %d\n", *maxItems, *maxTokens)
 		_, _ = fmt.Fprintln(c.Stdout)
 		_, _ = fmt.Fprintln(c.Stdout, "  Or: context broker fetch --intent "+*intent+" --summary \""+*summary+"\"")
 		return 0
@@ -2064,10 +2132,24 @@ func (c *CLI) runBrokerFetch(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	intent := fs.String("intent", "custom", "intent: resume_task|boot_project|review_session|custom")
 	summary := fs.String("summary", "", "task summary for keyword extraction")
-	maxItems := fs.Int("budget-items", 50, "max items budget")
-	maxTokens := fs.Int("budget-tokens", 4000, "max tokens estimate budget")
+	maxItems := fs.Int("max-items", 50, "max items budget")
+	maxTokens := fs.Int("max-tokens-estimate", 8000, "max tokens estimate budget")
+	budgetItems := fs.Int("budget-items", 50, "deprecated alias for --max-items")
+	budgetTokens := fs.Int("budget-tokens", 8000, "deprecated alias for --max-tokens-estimate")
 	output := fs.String("output", "human", "human|json")
 	if code, done := c.parseFlags(fs, args); done {
+		return code
+	}
+	if code, done := c.applyDeprecatedIntFlagAliases(fs,
+		deprecatedIntFlagAlias{
+			canonical: "max-items", canonicalValue: maxItems,
+			deprecated: "budget-items", deprecatedValue: budgetItems,
+		},
+		deprecatedIntFlagAlias{
+			canonical: "max-tokens-estimate", canonicalValue: maxTokens,
+			deprecated: "budget-tokens", deprecatedValue: budgetTokens,
+		},
+	); done {
 		return code
 	}
 

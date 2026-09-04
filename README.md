@@ -187,7 +187,7 @@ tesseract context put --namespace app/demo/session --key state --actor app:demo 
 tesseract context get --namespace app/demo/session --key state
 tesseract context history --namespace app/demo/session --key state
 tesseract context token create --name demo --scopes write,promote.request --namespaces "app/demo/*"
-tesseract context packet --namespace "app/demo/*" --budget-items 20 --budget-tokens 4000
+tesseract context packet --namespace "app/demo/*" --max-items 20 --max-tokens-estimate 4000
 tesseract backfill-embeddings
 tesseract context backup export --out ~/tesseract-backup
 ```

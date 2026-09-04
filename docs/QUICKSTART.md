@@ -162,12 +162,13 @@ tesseract context namespace register \
 ## 9. Optional: build a context packet
 
 Packets assemble a budget-bounded bundle of records for agent context loading.
+The default assembly budget is 50 items and an estimated 8000 tokens.
 
 ```bash
 tesseract context packet \
   --namespace "app/demo/*" \
-  --budget-items 20 \
-  --budget-tokens 4000
+  --max-items 20 \
+  --max-tokens-estimate 4000
 ```
 
 ## 10. Optional: request a promotion

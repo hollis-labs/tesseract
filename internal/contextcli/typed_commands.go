@@ -305,9 +305,23 @@ func (c *CLI) runContextPack(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	viewID := fs.String("view", "", "view ID")
 	nsPattern := fs.String("namespace", "", "namespace glob")
-	maxItems := fs.Int("limit", 50, "max items")
-	maxTokens := fs.Int("max-tokens", 8000, "max tokens estimate")
+	maxItems := fs.Int("max-items", 50, "max items")
+	maxTokens := fs.Int("max-tokens-estimate", 8000, "max tokens estimate")
+	limit := fs.Int("limit", 50, "deprecated alias for --max-items")
+	legacyMaxTokens := fs.Int("max-tokens", 8000, "deprecated alias for --max-tokens-estimate")
 	if code, done := c.parseFlags(fs, args); done {
+		return code
+	}
+	if code, done := c.applyDeprecatedIntFlagAliases(fs,
+		deprecatedIntFlagAlias{
+			canonical: "max-items", canonicalValue: maxItems,
+			deprecated: "limit", deprecatedValue: limit,
+		},
+		deprecatedIntFlagAlias{
+			canonical: "max-tokens-estimate", canonicalValue: maxTokens,
+			deprecated: "max-tokens", deprecatedValue: legacyMaxTokens,
+		},
+	); done {
 		return code
 	}
 	if *viewID == "" {

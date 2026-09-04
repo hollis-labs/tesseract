@@ -208,7 +208,7 @@ func TestSubcommandHelpPrintsItsFlags(t *testing.T) {
 		{[]string{"audit", "-h"}, "-event-type"},
 		{[]string{"token", "issue", "--help"}, "-ttl"},
 		{[]string{"typed-put", "--help"}, "-pointers"},
-		{[]string{"context-pack", "--help"}, "-max-tokens"},
+		{[]string{"context-pack", "--help"}, "-max-tokens-estimate"},
 	} {
 		t.Run(strings.Join(tc.verbs, " "), func(t *testing.T) {
 			stdout := &bytes.Buffer{}

@@ -109,6 +109,15 @@ next open; backups taken by earlier versions remain restorable.
 
 ### Changed
 
+- **CLI packet assembly now uses the same budget vocabulary and defaults as
+  MCP:** `--max-items 50` and `--max-tokens-estimate 8000` on `context packet`,
+  `context broker plan`, `context broker fetch`, and `context-pack`. Generated
+  broker commands use the canonical names too. The former `--budget-items` /
+  `--budget-tokens` spellings remain warning aliases for one release because
+  CLI invocations persist in shell history and scripts; `context-pack` likewise
+  warns on its former `--limit` / `--max-tokens` spellings. Passing an old and
+  new name for the same knob is rejected rather than made argument-order
+  dependent.
 - **Everything Tesseract owns on disk is owner-only** — `0700` directories,
   `0600` files, covering the database, record payloads, config, and the config
   backup tree. There was previously no `0600` or `0700` anywhere in production
@@ -164,14 +173,6 @@ next open; backups taken by earlier versions remain restorable.
   `docs/SPECS/PROMOTION.md` were corrected against the code as well.
 - `internal/contextcli/plugin_cmd.go` discarded the error from creating the
   plugins directory.
-
-### Known inconsistency
-
-The budget vocabulary was unified across the **MCP and HTTP** surfaces but not
-the **CLI**: `tesseract context broker` still takes `--budget-items` and
-`--budget-tokens` at a 4000-token default, while `context-pack` takes
-`--max-tokens` at 8000. Renaming user-facing CLI flags is a separate breaking
-change and is tracked rather than folded in here.
 
 ## [0.9.0] — 2026-09-04
 
