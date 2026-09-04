@@ -43,7 +43,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
 		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload as a string, e.g. '{\"status\":\"in_progress\"}'")),
 		mcp.WithString("actor", mcp.Description("Actor identity, e.g. app:my-agent (default: mcp-agent)")),
-		mcp.WithString("record_type", mcp.Description("Record type tag (default: state)")),
+		mcp.WithString("record_type", mcp.Description("Optional record type tag; omitted writes remain untyped")),
 	), a.handleWrite)
 
 	a.addTool(s, mcp.NewTool("context_promote",
@@ -668,12 +668,14 @@ func (a *Adapter) handleWrite(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 
 	actor := req.GetString("actor", "mcp-agent")
+	recordType := req.GetString("record_type", "")
 
 	rec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
-		Namespace: ns,
-		Key:       key,
-		Actor:     actor,
-		Payload:   payload,
+		Namespace:  ns,
+		Key:        key,
+		Actor:      actor,
+		Payload:    payload,
+		RecordType: recordType,
 	})
 	if err != nil {
 		return toolError(codeWriteFailed, err.Error()), nil
@@ -990,7 +992,7 @@ func (a *Adapter) handlePlanOnly(_ context.Context, req mcp.CallToolRequest) (*m
 	maxItems := req.GetInt("max_items", 50)
 	maxTokens := req.GetInt("max_tokens_estimate", 8000)
 
-	namespaces, includePins, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
+	namespaces, includePins, maxItems, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
 
 	// The response echoes the budget under the SAME names the request takes,
 	// so a caller can feed `plan.budget` straight back into the next call.
@@ -1020,7 +1022,7 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req mcp.CallToolRequest)
 		return errResult, nil
 	}
 
-	namespaces, includePins, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
+	namespaces, includePins, maxItems, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
 
 	// Load optional token globs for filtering.
 	var tokenGlobs []string
@@ -1141,7 +1143,8 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req mcp.CallToolRequest)
 
 // buildContextPlan derives namespace patterns and fetch strategy from an intent.
 // This is Tesseract's internal query planner — not the universal ContextBroker.
-func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []string, includePins bool, rationale string) {
+func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []string, includePins bool, plannedMaxItems int, rationale string) {
+	plannedMaxItems = maxItems
 	switch intent {
 	case "resume_task":
 		keywords := plannerExtractKeywords(summary, 3)
@@ -1159,8 +1162,8 @@ func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []str
 	case "boot_project":
 		namespaces = []string{"user/memory/*", "user/pins/*"}
 		includePins = true
-		if maxItems < 100 {
-			maxItems = 100
+		if plannedMaxItems < 100 {
+			plannedMaxItems = 100
 		}
 		rationale = "boot_project: user/memory/* + user/pins/* for full project boot"
 	case "review_session":
@@ -1171,7 +1174,7 @@ func buildContextPlan(intent, summary string, maxItems, _ int) (namespaces []str
 		namespaces = []string{"user/*"}
 		rationale = "custom: using user/* (no explicit constraints provided)"
 	}
-	return namespaces, includePins, rationale
+	return namespaces, includePins, plannedMaxItems, rationale
 }
 
 // plannerExtractKeywords pulls up to n meaningful words from text, skipping stopwords.
