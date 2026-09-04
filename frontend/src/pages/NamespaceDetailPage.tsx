@@ -11,8 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@hollis-labs/sysop-ui";
-import { DetailHeader, DetailPageLayout } from "@hollis-labs/sysop-ui/layout";
-import { FileText, RefreshCw } from "lucide-react";
+import { DetailPageLayout } from "@hollis-labs/sysop-ui/layout";
+import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { evaluateView } from "../api/client";
 import { Spinner } from "../components/ui/Spinner";
@@ -51,13 +51,24 @@ export function NamespaceDetailPage({ namespace, onBack, onOpenRecord }: Props) 
   return (
     <DetailPageLayout
       header={
-        <DetailHeader
-          title={namespace}
-          backLabel="Explorer"
-          onBack={onBack}
-          id={namespace}
-          actions={
-            <>
+        <div>
+          <div className="flex items-center gap-2 border-b border-border-strong bg-bg px-4 py-2.5">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1 text-[11px] uppercase tracking-[.14em] text-text-subtle transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              Explorer
+            </button>
+            <span className="text-text-subtle/40">/</span>
+            <span className="font-mono text-[11px] text-text-subtle">{namespace}</span>
+          </div>
+          <div className="flex items-start justify-between gap-4 border-b border-border-strong bg-bg px-4 py-3">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h2 className="text-lg font-semibold leading-tight text-foreground">{namespace}</h2>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
               <CopyButton text={namespace} label="Copy namespace" size="sm" />
               <Button
                 type="button"
@@ -69,9 +80,9 @@ export function NamespaceDetailPage({ namespace, onBack, onOpenRecord }: Props) 
                 {loading ? <Spinner size={13} /> : <RefreshCw aria-hidden="true" />}
                 Refresh
               </Button>
-            </>
-          }
-        />
+            </div>
+          </div>
+        </div>
       }
     >
       <SummaryCards
