@@ -8,6 +8,8 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-07
+
 Public-preview hardening: the daemon stops being open by default, backup starts
 including the data this product exists to hold, restore stops being able to
 destroy a store on the way to replacing it, and everything Tesseract owns on
@@ -61,6 +63,19 @@ next open; backups taken by earlier versions remain restorable.
   `promote.request.created` → `promote.request`, `promote.request.approved` →
   `promote.approve`. Apply stays `promote` on all surfaces. No data migration
   ships: no row under either spelling has ever been persisted.
+- **MCP's promotion audit events point at the stored request record, and
+  promotion audit metadata is unified across MCP and CLI.** MCP's
+  `promote.request` event previously recorded its subject as the *source*
+  record; it now matches HTTP/CLI and records the stored request record,
+  consistent with the event-name unification above. Metadata on
+  `promote.request`/`promote.approve`/`promote` gains `request_id` (and
+  `approval_id`/`record_id` on approve/apply); the `source: "mcp"`
+  discriminator is removed on both MCP and CLI. A consumer reading promotion
+  audit rows by subject or by the old discriminator field will see different
+  data. No data migration ships: existing rows keep their old subject and
+  their old `source: "mcp"` field, so a query for promotion history that
+  spans the upgrade boundary sees both the old and the new shape in one
+  result set.
 - **Backups are directories, not a single JSON file** (format v2). Backups
   written by earlier versions are still restorable; only v2 is written. Restore
   is a replacement, not a merge — restoring a v1 snapshot drops the memory and
@@ -111,6 +126,11 @@ next open; backups taken by earlier versions remain restorable.
   in shape — so it documented only the flat MCP form and misled HTTP callers.
   Ten mutating tools now open with a pointer to their own skill rather than
   ending with a generic footer.
+- **The web UI can hold and apply a bearer token.** A token-entry control lets
+  an operator paste a capability token, which is stored for the browser
+  session and attached to every API call. Without it, the web UI had no way
+  to authenticate at all once a token mode is configured — see the auth
+  breaking changes above.
 
 ### Changed
 
@@ -197,6 +217,22 @@ next open; backups taken by earlier versions remain restorable.
   `RevokeAuthToken` internally, so the same gap could let a rotation report
   success while the old token stayed live. Found by golangci-lint's `nilerr`
   check during the public-preview qualification pass (`CW-20260904-0083`).
+- **A graceful shutdown no longer logs a false telemetry failure and no longer
+  drops telemetry recorded near shutdown.** OTel shutdown was passed the same
+  context the shutdown signal had already canceled, so exporters got no window
+  to flush; every normal `Ctrl-C` exit logged `warning: OTel shutdown failed:
+  context canceled` regardless of whether anything was actually wrong.
+  Shutdown now runs against a fresh context bounded to 5 seconds.
+- **`context_write`'s `record_type` and `context_plan`/`context_broker`'s
+  `boot_project` item floor are no longer silently ignored.** MCP's
+  `context_write` accepted a `record_type` argument but never passed it to the
+  store, so every write landed untyped no matter what was requested — its
+  documented default of `state` was fictional; writes with no `record_type`
+  now land untyped, matching what the tool actually did. Separately,
+  `buildContextPlan` raised `max_items` to at least 100 for `boot_project`
+  intents but the raised value was computed and discarded rather than
+  returned, so the response and the fetch it drove still used the caller's
+  original, smaller budget.
 
 ## [0.9.0] — 2026-09-04
 
@@ -1010,7 +1046,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/hollis-labs/tesseract/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/hollis-labs/tesseract/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hollis-labs/tesseract/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/hollis-labs/tesseract/compare/v0.6.1...v0.7.0
