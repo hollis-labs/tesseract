@@ -3,7 +3,7 @@ module github.com/hollis-labs/tesseract
 go 1.26.6
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.70.1
+	github.com/anthropics/anthropic-sdk-go v1.71.0
 	github.com/hollis-labs/go-apppaths v0.1.0
 	github.com/hollis-labs/go-embed-contracts v0.1.1
 	github.com/hollis-labs/go-llm-contracts v0.3.0
