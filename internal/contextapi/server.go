@@ -204,7 +204,7 @@ type Server struct {
 	// cmd/tesseract from config.Synthesis settings.
 	SynthesisProvider llmcontracts.Provider
 	// SynthesisConfig carries the model id, system prompt, max output tokens,
-	// and temperature used for synthesis calls. Honoured only when
+	// and temperature used for synthesis calls. Honored only when
 	// SynthesisProvider is non-nil.
 	SynthesisConfig config.SynthesisConfig
 	// ModelsDev is the cached client used to look up per-model pricing for

@@ -596,7 +596,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 			"rank_score":      rr.score,
 		}
 		if includePayload {
-			item["payload"] = json.RawMessage(rr.rec.Payload)
+			item["payload"] = rr.rec.Payload
 		}
 		resultItems[i] = item
 	}
@@ -691,7 +691,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 			"key":         rr.rec.Key,
 			"record_type": rr.rec.RecordType,
 			"status":      rr.rec.Status,
-			"payload":     json.RawMessage(rr.rec.Payload),
+			"payload":     rr.rec.Payload,
 		})
 		tokensSoFar += tokens
 	}

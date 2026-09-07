@@ -1331,7 +1331,7 @@ func (a *Adapter) handleAuditList(_ context.Context, req mcp.CallToolRequest) (*
 		if len(ev.Metadata) > 0 {
 			// Metadata is json.RawMessage; pass as-is so callers receive
 			// the parsed object rather than a quoted string.
-			item["metadata"] = json.RawMessage(ev.Metadata)
+			item["metadata"] = ev.Metadata
 		}
 		items[i] = item
 	}

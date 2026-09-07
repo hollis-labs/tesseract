@@ -380,7 +380,7 @@ func New(store *contextstore.Store, token string) *Adapter {
 }
 
 // Run registers all tools and starts the MCP stdio server. Blocks until ctx is
-// cancelled or the client disconnects.
+// canceled or the client disconnects.
 func (a *Adapter) Run(ctx context.Context) error {
 	s := server.NewMCPServer(
 		"tesseract",

@@ -50,7 +50,7 @@ func (c *Client) Embed(ctx context.Context, text, model string) (*embedcontracts
 	}
 	resp, err := c.sdk.Embeddings.New(ctx, sdk.EmbeddingNewParams{
 		Input: sdk.EmbeddingNewParamsInputUnion{OfString: sdk.String(text)},
-		Model: sdk.EmbeddingModel(model),
+		Model: model,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai embed: %w", err)
@@ -76,7 +76,7 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string, model string) (
 	}
 	resp, err := c.sdk.Embeddings.New(ctx, sdk.EmbeddingNewParams{
 		Input: sdk.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},
-		Model: sdk.EmbeddingModel(model),
+		Model: model,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai embed-batch: %w", err)

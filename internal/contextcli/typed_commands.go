@@ -392,7 +392,7 @@ func (c *CLI) runContextPack(ctx context.Context, args []string) int {
 			"key":         rr.rec.Key,
 			"record_type": rr.rec.RecordType,
 			"status":      rr.rec.Status,
-			"payload":     json.RawMessage(rr.rec.Payload),
+			"payload":     rr.rec.Payload,
 		})
 		tokensSoFar += tokens
 	}

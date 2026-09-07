@@ -354,7 +354,7 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 			item["pointers"] = rr.rec.Pointers
 		}
 		if req.IncludePayload {
-			item["payload"] = json.RawMessage(rr.rec.Payload)
+			item["payload"] = rr.rec.Payload
 		}
 		totalBytes += len(rr.rec.Payload)
 		resultItems[i] = item
@@ -697,7 +697,7 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 			"record_type":     rr.rec.RecordType,
 			"status":          rr.rec.Status,
 			"content_version": rr.rec.ContentVersion,
-			"payload":         json.RawMessage(rr.rec.Payload),
+			"payload":         rr.rec.Payload,
 		})
 		tokensSoFar += tokens
 	}

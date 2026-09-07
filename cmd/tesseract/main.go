@@ -798,7 +798,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 		}
 	}
 
-	// Initialise plugin host and discover plugins.
+	// Initialize plugin host and discover plugins.
 	pluginLogger := cplugin.NewLogger("tesseract-plugin")
 	pluginHost := cplugin.NewHost(http.NewServeMux(), pluginLogger)
 	pluginHost.RegisterService("store", store)
