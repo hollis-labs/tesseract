@@ -1730,7 +1730,7 @@ WHERE token_id = ? AND revoked_at IS NULL`, now, tokenID)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return nil
+		return err
 	}
 	if n == 0 {
 		return ErrAuthTokenInvalid
@@ -1765,7 +1765,7 @@ WHERE token_hash = ? AND revoked_at IS NULL`, now, hash)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return nil
+		return err
 	}
 	if n == 0 {
 		return ErrAuthTokenInvalid
@@ -2006,7 +2006,7 @@ WHERE id IN (
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 	return n, nil
 }

@@ -189,6 +189,14 @@ next open; backups taken by earlier versions remain restorable.
   `docs/SPECS/PROMOTION.md` were corrected against the code as well.
 - `internal/contextcli/plugin_cmd.go` discarded the error from creating the
   plugins directory.
+- **Auth-token revocation no longer reports success when it cannot confirm
+  the token was actually revoked.** `RevokeAuthToken`, `RevokeAuthTokenByID`
+  and `TrimAuditEvents` discarded a `RowsAffected` error and returned `nil`
+  regardless, so a driver-level failure on the revocation `UPDATE` was
+  indistinguishable from a normal revoke. `RotateAuthToken` calls
+  `RevokeAuthToken` internally, so the same gap could let a rotation report
+  success while the old token stayed live. Found by golangci-lint's `nilerr`
+  check during the public-preview qualification pass (`CW-20260904-0083`).
 
 ## [0.9.0] — 2026-09-04
 
