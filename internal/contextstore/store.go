@@ -1517,7 +1517,7 @@ ON latest.namespace = r.namespace AND latest.key_name = r.key_name AND latest.ma
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 	return n, nil
 }
