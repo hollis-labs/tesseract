@@ -8,6 +8,19 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Fixed
+
+- **Recall across many namespaces no longer fails to parse.** The namespace
+  filter rendered one `OR` level per namespace, and SQLite refuses an
+  expression tree deeper than `SQLITE_MAX_EXPR_DEPTH` (1000). A caller
+  recalling across every registered namespace — the memory review queue in the
+  web UI does exactly that — got `SQL logic error: Expression tree is too large
+  (maximum depth 1000)` instead of results, on both the metadata and the BM25
+  arm. Exact namespaces now collapse into a single `IN (...)` list and the
+  remaining prefix terms are `OR`'d as a balanced tree, so depth grows as
+  log2(n). Matching semantics are unchanged, and a single-namespace recall
+  still emits the same `r.namespace = ?` it always did.
+
 ## [0.10.0] — 2026-09-07
 
 Public-preview hardening: the daemon stops being open by default, backup starts

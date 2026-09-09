@@ -19,22 +19,71 @@ import "strings"
 // Returns a single fragment of the form `(... OR ...)` for `len > 0`; returns
 // `1=0` (matches nothing) for an empty list so callers don't accidentally
 // short-circuit to "everything".
+//
+// Shape is chosen to keep the parsed expression SHALLOW, not just correct.
+// SQLite rejects any expression whose tree is deeper than
+// SQLITE_MAX_EXPR_DEPTH (1000 by default) at prepare time, and a flat
+// `a OR b OR ... ` chain is one level per term. A caller recalling across
+// every registered namespace — the memory review queue does exactly that —
+// used to reach that ceiling and fail the whole query with "Expression tree
+// is too large". Two things keep the depth bounded: exact matches collapse
+// into one `IN (...)` list regardless of count, and the remaining terms are
+// OR'd as a balanced tree whose height grows as log2(n).
 func buildNamespaceClause(namespaces []string) (string, []interface{}) {
 	if len(namespaces) == 0 {
 		return "1=0", nil
 	}
-	conds := make([]string, 0, len(namespaces))
-	args := make([]interface{}, 0, len(namespaces))
+
+	exact := make([]string, 0, len(namespaces))
+	prefixes := make([]string, 0, len(namespaces))
 	for _, ns := range namespaces {
 		if pfx, ok := memoryPrefix(ns); ok {
-			conds = append(conds, "r.namespace LIKE ?")
-			args = append(args, pfx+"/%")
+			prefixes = append(prefixes, pfx+"/%")
 		} else {
-			conds = append(conds, "r.namespace = ?")
+			exact = append(exact, ns)
+		}
+	}
+
+	conds := make([]string, 0, len(prefixes)+1)
+	args := make([]interface{}, 0, len(namespaces))
+
+	// One exact namespace stays `= ?` rather than a one-element IN list: it is
+	// the shape every ordinary single-namespace recall emits, and there is no
+	// reason to hand the planner a different one.
+	switch len(exact) {
+	case 0:
+	case 1:
+		conds = append(conds, "r.namespace = ?")
+		args = append(args, exact[0])
+	default:
+		conds = append(conds, "r.namespace IN ("+placeholders(len(exact))+")")
+		for _, ns := range exact {
 			args = append(args, ns)
 		}
 	}
-	return "(" + strings.Join(conds, " OR ") + ")", args
+
+	for _, pfx := range prefixes {
+		conds = append(conds, "r.namespace LIKE ?")
+		args = append(args, pfx)
+	}
+
+	if len(conds) == 1 {
+		return "(" + conds[0] + ")", args
+	}
+	return orTree(conds), args
+}
+
+// orTree joins conditions with OR, parenthesized as a balanced binary tree so
+// the parsed expression's height is log2(n) rather than n. OR is associative,
+// so the grouping changes only the parse depth, never the result.
+//
+// Callers must pass at least one condition.
+func orTree(conds []string) string {
+	if len(conds) == 1 {
+		return conds[0]
+	}
+	mid := len(conds) / 2
+	return "(" + orTree(conds[:mid]) + " OR " + orTree(conds[mid:]) + ")"
 }
 
 // memoryPrefix returns (prefix-without-trailing-slash, true) if ns is a
