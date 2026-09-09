@@ -16,9 +16,17 @@ import "strings"
 //   - a fully-typed memory namespace `user/{id}/memory/{type}` etc.
 //   - non-memory namespaces (knowledge, etc.) — passed through unchanged.
 //
-// Returns a single fragment of the form `(... OR ...)` for `len > 0`; returns
-// `1=0` (matches nothing) for an empty list so callers don't accidentally
-// short-circuit to "everything".
+// Returns one parenthesized fragment for `len > 0`. Its shape depends on what
+// the input contained, and callers must not assume an OR chain:
+//
+//	(r.namespace = ?)                            one exact namespace
+//	(r.namespace IN (?,?,?))                     several exact, no prefixes
+//	(r.namespace LIKE ?)                         one prefix
+//	(r.namespace IN (?,?) OR r.namespace LIKE ?) mixed
+//	((a OR b) OR (c OR d))                       many prefixes, balanced
+//
+// An empty list returns `1=0` (matches nothing) rather than an empty string,
+// so callers don't accidentally short-circuit to "everything".
 //
 // Shape is chosen to keep the parsed expression SHALLOW, not just correct.
 // SQLite rejects any expression whose tree is deeper than
