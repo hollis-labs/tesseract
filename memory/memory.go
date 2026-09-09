@@ -260,3 +260,16 @@ var PointerHealthStatusVocabulary = internal.PointerHealthStatusVocabulary
 
 // NewHTTPReranker constructs a Cohere/Voyage-compatible HTTP reranker.
 var NewHTTPReranker = internal.NewHTTPReranker
+
+// LinkRelation is an edge type in the link graph exposed by the `related`
+// recall expansion.
+type LinkRelation = internal.LinkRelation
+
+// The two members of the link relation vocabulary.
+const (
+	LinkRelationReferences = internal.LinkRelationReferences
+	LinkRelationSupersedes = internal.LinkRelationSupersedes
+)
+
+// LinkRelationVocabulary returns the accepted link relations in stable order.
+var LinkRelationVocabulary = internal.LinkRelationVocabulary

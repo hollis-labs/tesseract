@@ -51,6 +51,30 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"`unchecked` = the pointer names something external and nobody has looked yet. "+
 				"`not_applicable` = scheme `nil`, the record declares it has no external source. "+
 				"Filtering happens in SQL before `limit`, so [\"unresolvable\"] enumerates the dead set rather than sampling it.")),
+		// Rendered from the vocabulary rather than restated, so this cannot
+		// advertise a relation the filter does not accept.
+		mcp.WithString("related_to", mcp.Description(
+			"JSON array of memory KEYS to expand along the link graph — the fourth retrieval signal, "+
+				"alongside similarity, lexical and chronological. Results are narrowed to entries adjacent "+
+				"to one of these keys IN EITHER DIRECTION: entries the anchor links to via `[[wikilink]]`, "+
+				"and entries that link to the anchor. Undirected because \"what is related to this decision\" "+
+				"means both the records it cites and the records citing it, and a forward-only answer makes "+
+				"a heavily-cited entry look unreferenced. "+
+				"Anchors are KEYS (what a `[[link]]` names), not revision or memory ids. "+
+				"An anchor with no edges yields no results rather than an error — the graph is legitimately "+
+				"sparse. A link whose target names no entry is retained but not traversable, so a key that "+
+				"was renamed away is cited by rows you can read and cannot walk. "+
+				"Combines with every other filter: `related_to` selects the neighborhood, `query` and "+
+				"`ranking` order it.")),
+		mcp.WithString("related_relations", mcp.Description(
+			"JSON array narrowing which edge types count as adjacency for `related_to`. Allowed: "+
+				strings.Join(memory.LinkRelationVocabulary(), ", ")+
+				". Omit for both. `references` is a `[[wikilink]]` parsed from a payload. `supersedes` is "+
+				"revision lineage, and it is ALWAYS intra-entry — Tesseract rejects a supersedes edge "+
+				"crossing memories — so `related_relations: [\"supersedes\"]` returns the anchor's own entry "+
+				"and nothing else. That is the lineage query: pair it with `revision_scope: \"timeline\"` to "+
+				"get the entry's revision history through the graph. "+
+				"No effect without `related_to`.")),
 		mcp.WithString("origins", mcp.Description("JSON array of origin filters")),
 		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
@@ -129,6 +153,18 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		}
 	}
 
+	relatedTo, errRes := unmarshalStrings("related_to")
+	if errRes != nil {
+		return errRes, nil
+	}
+	relatedRelations, errRes := unmarshalStrings("related_relations")
+	if errRes != nil {
+		return errRes, nil
+	}
+	// Vocabulary and anchor-pairing are validated by RecallPaged, not here, so
+	// this door, both HTTP peers and the nested-filters route cannot drift on
+	// what a relation is.
+
 	originStrs, errRes := unmarshalStrings("origins")
 	if errRes != nil {
 		return errRes, nil
@@ -189,13 +225,15 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 			// See handleMemoryRecall: validated by RecallPaged, not here, so
 			// this door and its HTTP peer cannot drift on the accepted range
 			// or on which rankings admit a similarity floor.
-			SimilarityMin: similarityMin,
-			Since:         since,
-			Until:         until,
-			Domains:       doms,
-			FacetKinds:    kinds,
-			FacetSources:  sources,
-			PointerHealth: pointerHealth,
+			SimilarityMin:    similarityMin,
+			Since:            since,
+			Until:            until,
+			Domains:          doms,
+			FacetKinds:       kinds,
+			FacetSources:     sources,
+			PointerHealth:    pointerHealth,
+			RelatedTo:        relatedTo,
+			RelatedRelations: relatedRelations,
 		},
 	}
 

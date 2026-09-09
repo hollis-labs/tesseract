@@ -1,6 +1,6 @@
 ---
 name: recall-and-ranking
-description: The four ranking modes — activation, chronological, similarity, relevance — plus search_mode, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
+description: The four ranking modes — activation, chronological, similarity, relevance — plus search_mode, related_to and the link graph, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
 scope_hint: memory:read
 related: [memory, revisions]
 ---
@@ -28,7 +28,7 @@ related: [memory, revisions]
 
 The default is `hybrid`, which is what every caller got before the knob existed.
 
-**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a `memory_key`. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbours, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
+**Reach for `lexical` when you know the exact string.** A ticket ID (`CW-20260519-0032`), a function or symbol name, a dotted or slashed path, a `memory_key`. Semantic similarity is the wrong tool for an identifier: it returns things that *mean* something like your query, and an identifier means nothing — it only matches. Fusion blurs the one exact hit in among its semantic neighbors, and the weighting can then push it further down, because a low-confidence draft that happens to be the right answer scores below a canonical entry that merely shares its tokens.
 
 **`memory_key` is in the index, and outranks a mention of it.** The indexed columns are `memory_key`, `payload.summary`, `payload.body` and tags — and `memory_key` carries a heavier `bm25()` column weight than the prose, because a key is what a record *is* while a body hit is usually a citation of some *other* record. Entries here cite each other by key in `[[wikilink]]` form, so without that weight an exact-key search hands back the citations and buries the referent. Searching a key you hold is a reliable existence check.
 
@@ -146,6 +146,43 @@ All rankings accept the same filter set:
 - `since` / `until` (RFC3339 bounds)
 - `facet_kinds` / `facet_sources` (knowledge-aware)
 - `domains` (JSON array; narrow to `["memory"]` or `["knowledge"]` instead of reaching for a different tool)
+- `related_to` / `related_relations` (the link graph — see below)
+
+## `related_to` — the link graph
+
+The three ranking signals above all score a revision by something *about that revision*: how close its embedding sits to your query, which of your keywords it contains, when it was written. None of them can express **"what else did I write about this"**, because relatedness is not a property of one record — it is a property of a pair.
+
+`related_to` is that fourth signal. Pass a JSON array of memory **keys** and recall narrows to the entries adjacent to them in the link graph built from the `[[wikilink]]` citations already in the corpus.
+
+**Adjacency is undirected.** You get both the entries the anchor cites *and* the entries citing the anchor. That is deliberate: the densest direction in this corpus is followups → decisions, so a forward-only answer would make every well-referenced decision look unreferenced.
+
+```
+related_to: ["kinds_taxonomy"]
+  → the records it cites, and the records that cite it
+```
+
+It **selects**, it does not rank. Combine it freely: `related_to` chooses the neighborhood, `query` and `ranking` order what is inside it. It applies to both retrieval arms, so a `search_mode=lexical` search inside a neighborhood works exactly as you would expect.
+
+### `related_relations`
+
+Narrows which edge types count as adjacency. Two members, and omitting it means both:
+
+| relation | what it is |
+|---|---|
+| `references` | a `[[wikilink]]` parsed out of a payload |
+| `supersedes` | revision lineage |
+
+`supersedes` is **always intra-entry** — Tesseract rejects a lineage edge that crosses memories — so `related_relations: ["supersedes"]` returns the anchor's own entry and nothing else. That is not a dead end, it is the lineage query: pair it with `revision_scope: "timeline"` to walk an entry's revision history through the graph.
+
+Passing `related_relations` without `related_to` is a `validation_error` rather than a silent no-op, and so is a relation outside the two above.
+
+### What does not resolve
+
+A link whose target names no entry is **kept, not dropped** — the raw text is retained regardless of whether resolution succeeded. About 15% of the corpus's links are in this state: keys renamed away under an older convention, and prose *about* the link syntax. You can read those rows; you cannot walk them, because there is nothing at the far end.
+
+Resolution prefers an entry in the citing record's own namespace, then any unique match anywhere — roughly a third of real links cross namespaces, and those crossings are the interesting third. When two namespaces both claim a key, the edge stays unresolved rather than guessing.
+
+An edge written before its target existed binds when the target is finally written, so citing a record you are about to create works.
 
 ## Access reinforcement — recall → use → touch
 

@@ -37,6 +37,13 @@ type tesseractLookupRequest struct {
 	// same semantics, same SQL-before-limit application.
 	PointerHealth []string `json:"pointer_health,omitempty"`
 
+	// RelatedTo expands recall along the link graph, anchored on memory keys.
+	// RelatedRelations narrows which edge types count as adjacency. Peers of
+	// the MCP tesseract_recall arguments of the same names — same undirected
+	// adjacency, same vocabulary, same no-op when RelatedTo is absent.
+	RelatedTo        []string `json:"related_to,omitempty"`
+	RelatedRelations []string `json:"related_relations,omitempty"`
+
 	Origins       []memory.Origin `json:"origins,omitempty"`
 	Statuses      []memory.Status `json:"statuses,omitempty"`
 	Tags          []string        `json:"tags,omitempty"`
@@ -135,17 +142,19 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		SearchMode:    req.SearchMode,
 		Query:         req.Query,
 		Filters: memory.RecallFilters{
-			Origins:       req.Origins,
-			Statuses:      req.Statuses,
-			Tags:          req.Tags,
-			ConfidenceMin: req.ConfidenceMin,
-			SimilarityMin: req.SimilarityMin,
-			Since:         req.Since,
-			Until:         req.Until,
-			Domains:       req.Domains,
-			FacetKinds:    req.FacetKinds,
-			FacetSources:  req.FacetSources,
-			PointerHealth: req.PointerHealth,
+			Origins:          req.Origins,
+			Statuses:         req.Statuses,
+			Tags:             req.Tags,
+			ConfidenceMin:    req.ConfidenceMin,
+			SimilarityMin:    req.SimilarityMin,
+			Since:            req.Since,
+			Until:            req.Until,
+			Domains:          req.Domains,
+			FacetKinds:       req.FacetKinds,
+			FacetSources:     req.FacetSources,
+			PointerHealth:    req.PointerHealth,
+			RelatedTo:        req.RelatedTo,
+			RelatedRelations: req.RelatedRelations,
 		},
 	}
 	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)

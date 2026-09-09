@@ -55,7 +55,13 @@ VALUES ('rev-new', 'https', 'https://example.test', 'resolved', ?)`, checkedAt);
 	}
 
 	// Simulate opening the unreleased schema-15 database that case 16 upgrades.
-	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version = 16`); err != nil {
+	//
+	// `>= 16` rather than `= 16`: migrate() reads the HIGHEST recorded version,
+	// so deleting only 16 stops rolling anything back the moment a later
+	// migration exists — the loop sees 17, runs nothing, and every assertion
+	// below reads unnormalized timestamps. Every case from 16 up re-runs here,
+	// which is also a standing check that they are re-runnable.
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 16`); err != nil {
 		t.Fatalf("roll schema version back: %v", err)
 	}
 	if err := s.migrate(ctx); err != nil {
@@ -164,7 +170,9 @@ INSERT INTO memory_revisions (
 )`); err != nil {
 		t.Fatalf("seed invalid revision: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version = 16`); err != nil {
+	// See the sibling test: `>= 16` keeps this rolling back once a later
+	// migration exists.
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 16`); err != nil {
 		t.Fatalf("roll schema version back: %v", err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/memorylinks"
 )
 
 // Sentinels for the memory write path.
@@ -209,6 +210,38 @@ INSERT INTO memory_revisions (
 		if depErr := deprecateRevisionTx(ctx, tx, in.Supersedes); depErr != nil {
 			return Revision{}, fmt.Errorf("deprecate superseded: %w", depErr)
 		}
+	}
+
+	// Parse this revision's `[[links]]` into the edge table (CW-20260825-0017).
+	//
+	// Inside the same transaction as the revision, so a committed revision
+	// always has its edges and a rolled-back one leaves none behind. It runs
+	// AFTER the insert above because the edge rows carry from_revision_id as a
+	// foreign key, and after resolveOrCreateMemory because a revision that
+	// cites its own key resolves against the memory_state row that call
+	// created.
+	//
+	// A link whose target names nothing is stored unresolved rather than
+	// dropped, and that is not a degraded case: 15% of the corpus's links
+	// point at keys renamed away years of revisions ago, and the graph is
+	// more useful knowing they were written than pretending they were not.
+	if err = memorylinks.WriteReferences(ctx, tx, memorylinks.TxResolver{Tx: tx},
+		memorylinks.RevisionRef{
+			RevisionID: revisionID,
+			MemoryID:   memoryID,
+			Namespace:  in.Namespace,
+			CreatedAt:  now.Format(memoryTimeFormat),
+		},
+		memorylinks.LinkText(in.Payload.Summary, in.Payload.Body),
+	); err != nil {
+		return Revision{}, fmt.Errorf("index links: %w", err)
+	}
+
+	// Bind edges that were written pointing at this key before anything
+	// carried it. Resolution is otherwise forward-only, and the ordinary
+	// authoring order writes the citing record first.
+	if err = memorylinks.ResolvePending(ctx, tx, memorylinks.TxResolver{Tx: tx}, in.MemoryKey); err != nil {
+		return Revision{}, fmt.Errorf("resolve pending links: %w", err)
 	}
 
 	// Point the memory_state current_revision to this new revision.

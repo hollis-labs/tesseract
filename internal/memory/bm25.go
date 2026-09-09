@@ -118,6 +118,17 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 		}
 	}
 
+	// The link-graph expansion. A subquery rather than a JOIN because this
+	// builder emits WHERE fragments only — its two callers own their own
+	// FROM/JOIN, and the BM25 arm's FROM is already a three-way join through
+	// the FTS5 shadow table. Landing here rather than in either caller is what
+	// makes `related` apply identically to the dense and lexical arms, which
+	// is the property that made buildRecallFilters the right seam for it.
+	if relFrag, relArgs := buildRelatedClause(in.Filters.RelatedTo, in.Filters.RelatedRelations); relFrag != "" {
+		where = append(where, relFrag)
+		args = append(args, relArgs...)
+	}
+
 	// Pointer health is computed inline (pointerHealthStatusExpr) rather than
 	// joined, because this builder produces WHERE fragments only — the two
 	// callers own their own FROM/JOIN. Filtering here rather than after the

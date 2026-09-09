@@ -140,6 +140,35 @@ type RecallFilters struct {
 	FacetKinds   []string
 	FacetSources []string
 
+	// RelatedTo expands recall along the link graph: results are narrowed to
+	// entries adjacent to one of these memory KEYS, in either direction —
+	// entries the anchor cites, and entries that cite the anchor.
+	//
+	// It is the fourth retrieval signal. Similarity, lexical and chronological
+	// all rank a corpus by a property of each revision in isolation; this one
+	// ranks nothing and instead selects by a relationship BETWEEN revisions,
+	// which is the question the other three cannot express — "what else did I
+	// write about this" has no embedding and no keyword.
+	//
+	// Anchors are keys rather than revision or memory ids because a `[[link]]`
+	// names a key, and a caller who has just read an entry has its key in hand.
+	// An anchor naming nothing yields no neighbors rather than an error: the
+	// graph is legitimately sparse, and a key with no edges is the normal state
+	// for most of the corpus.
+	//
+	// See buildRelatedClause (related.go) for why adjacency is undirected and
+	// what relation=supersedes means here.
+	RelatedTo []string
+
+	// RelatedRelations narrows which edge types count as adjacency for
+	// RelatedTo. Empty means every relation in the vocabulary. Values outside
+	// the vocabulary are rejected at the surfaces rather than silently
+	// matching nothing — see memorylinks.Relation.Valid.
+	//
+	// It has no effect without RelatedTo, and that asymmetry is deliberate:
+	// on its own it would describe edges nobody asked to traverse.
+	RelatedRelations []string
+
 	// PointerHealth constrains results to revisions whose derived pointer
 	// health is one of the listed statuses (see PointerHealthStatus).
 	//
@@ -355,6 +384,31 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 					"search_mode=semantic, or drop similarity_min",
 				ErrInvalidInput, string(in.Ranking), searchModeClause(in))
 		}
+	}
+
+	// 2d. related_relations must name edge types the graph actually holds.
+	//
+	// Same placement and same reasoning as 2b and 2c, with one addition that
+	// makes this the only workable home rather than merely the tidiest: the
+	// /v1/memory/recall route decodes memory.RecallFilters as a nested object,
+	// so its `related_relations` never passes through a hand-written surface
+	// check at all. A vocabulary guard on the other three doors would leave
+	// that one silently accepting anything.
+	for _, rel := range in.Filters.RelatedRelations {
+		if !LinkRelation(rel).Valid() {
+			return RecallPageResult{}, fmt.Errorf(
+				"%w: related_relations must be one of %s, got %q",
+				ErrInvalidInput, strings.Join(LinkRelationVocabulary(), "|"), rel)
+		}
+	}
+	// A relation filter with no anchor describes edges nobody asked to walk.
+	// Ignoring it would be silent, and honoring it is impossible — there is no
+	// neighborhood to narrow — so say which of the two the caller meant.
+	if len(in.Filters.RelatedRelations) > 0 && len(in.Filters.RelatedTo) == 0 {
+		return RecallPageResult{}, fmt.Errorf(
+			"%w: related_relations narrows which edges count as adjacency for related_to, "+
+				"but no related_to anchor was given — pass related_to, or drop related_relations",
+			ErrInvalidInput)
 	}
 
 	// 3. Similarity ranking requires an embedder and a query.
