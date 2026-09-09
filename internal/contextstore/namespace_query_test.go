@@ -365,3 +365,98 @@ func TestListNamespacePoliciesReturnsEverythingUnpaged(t *testing.T) {
 		t.Fatalf("expected namespace-ascending order, got %s..%s", all[0].Namespace, all[49].Namespace)
 	}
 }
+
+// The prefix/match-mode conflict message tells a caller to re-issue with
+// `match` and the mode they named. That is sound advice for a supported mode
+// and a nudge toward a second rejected request for an unsupported one, so the
+// vocabulary is checked first and only a usable mode is ever suggested back.
+func TestNamespaceFilterArgsRejectsUnknownModeBeforeSuggestingIt(t *testing.T) {
+	_, err := NamespaceFilterArgs{Prefix: "user/", MatchMode: "regex"}.Query()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, ErrNamespaceQuery) {
+		t.Fatalf("error %v does not wrap ErrNamespaceQuery", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, NamespaceMatchModeNames()) {
+		t.Errorf("error should name the supported modes (%s), got: %s", NamespaceMatchModeNames(), msg)
+	}
+	if strings.Contains(msg, "match_mode=regex") {
+		t.Errorf("error suggests re-issuing with the unsupported mode, which would be rejected too: %s", msg)
+	}
+
+	// A SUPPORTED mode conflicting with prefix still gets the useful redirect —
+	// rejecting the mode outright would lose advice the caller can act on.
+	_, err = NamespaceFilterArgs{Prefix: "user/", MatchMode: "glob"}.Query()
+	if err == nil {
+		t.Fatal("expected an error for prefix with a non-prefix mode")
+	}
+	if !strings.Contains(err.Error(), "match_mode=glob") {
+		t.Errorf("error should redirect a supported mode to `match`, got: %s", err.Error())
+	}
+}
+
+// The three surfaces share one parser, so the vocabulary and the precedence
+// between prefix and match cannot drift between them.
+func TestNamespaceFilterArgsVocabulary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args NamespaceFilterArgs
+		want NamespaceQuery
+	}{
+		{"empty is the default query", NamespaceFilterArgs{}, NamespaceQuery{}},
+		{
+			"prefix is shorthand for match with prefix mode",
+			NamespaceFilterArgs{Prefix: "user/"},
+			NamespaceQuery{Match: "user/", MatchMode: NamespaceMatchPrefix},
+		},
+		{
+			"prefix with an explicit prefix mode is not a conflict",
+			NamespaceFilterArgs{Prefix: "user/", MatchMode: "prefix"},
+			NamespaceQuery{Match: "user/", MatchMode: NamespaceMatchPrefix},
+		},
+		{
+			"every knob together",
+			NamespaceFilterArgs{
+				Match: "mem", MatchMode: "contains", OwnerType: "user",
+				OwnerID: "chrispian", Sort: "updated_at", Dir: "desc",
+			},
+			NamespaceQuery{
+				Match: "mem", MatchMode: NamespaceMatchContains, OwnerType: "user",
+				OwnerID: "chrispian", Sort: NamespaceSortUpdatedAt, Desc: true,
+			},
+		},
+		{
+			"surrounding whitespace is trimmed, not treated as a filter",
+			NamespaceFilterArgs{Match: "  user/  ", OwnerID: " bob "},
+			NamespaceQuery{Match: "user/", OwnerID: "bob"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.args.Query()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		args NamespaceFilterArgs
+	}{
+		{"unknown match mode", NamespaceFilterArgs{Match: "x", MatchMode: "regex"}},
+		{"unknown sort", NamespaceFilterArgs{Sort: "owner_id"}},
+		{"unknown dir", NamespaceFilterArgs{Dir: "sideways"}},
+		{"prefix and match together", NamespaceFilterArgs{Prefix: "user/", Match: "bob"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := tc.args.Query(); err == nil || !errors.Is(err, ErrNamespaceQuery) {
+				t.Fatalf("expected an ErrNamespaceQuery, got %v", err)
+			}
+		})
+	}
+}

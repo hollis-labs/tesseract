@@ -22,7 +22,9 @@ import type {
   NamespaceListItem,
   NamespaceListParams,
   NamespaceListResponse,
+  NamespaceMatchMode,
   NamespacePolicy,
+  NamespaceSortField,
   PacketResponse,
   RecallBriefItem,
   RecallResponse,
@@ -140,6 +142,12 @@ const MOCK_RECORDS: Record[] = [
     payload: { port: 8080, metrics: true, auth_mode: "token", max_payload_kb: 512 },
   },
 ];
+
+// The vocabularies /v1/namespaces/list accepts. Kept beside the demo data so
+// demo mode refuses the same values the server does; the Go side's single
+// source of truth is contextstore.NamespaceMatchModeNames / SortFieldNames.
+const NAMESPACE_MATCH_MODES: NamespaceMatchMode[] = ["prefix", "contains", "glob"];
+const NAMESPACE_SORT_FIELDS: NamespaceSortField[] = ["namespace", "owner", "updated_at"];
 
 const DEMO_NAMESPACES: { namespace: string; owner_type: string; owner_id: string }[] = [
   { namespace: "user/jane/memory", owner_type: "user", owner_id: "jane" },
@@ -629,6 +637,31 @@ export const demo = {
   },
 
   listNamespaces(params?: NamespaceListParams): NamespaceListResponse {
+    // Demo mode refuses exactly what the server refuses. Accepting an argument
+    // here that /v1/namespaces/list rejects would let a UI bug pass review in
+    // demo and fail against a real daemon — and silently widening an unknown
+    // match_mode to "no filter at all" is the worst of those, because the page
+    // still renders, just over the wrong set.
+    if (params?.prefix && params?.match) {
+      throw new Error("prefix and match are two spellings of the same filter; pass one");
+    }
+    if (params?.match_mode && !NAMESPACE_MATCH_MODES.includes(params.match_mode)) {
+      throw new Error(
+        `unknown match mode "${params.match_mode}", want ${NAMESPACE_MATCH_MODES.join("|")}`,
+      );
+    }
+    if (params?.prefix && params.match_mode && params.match_mode !== "prefix") {
+      throw new Error(
+        `prefix is a literal prefix match; pass match="${params.prefix}" with match_mode=${params.match_mode} instead`,
+      );
+    }
+    if (params?.sort && !NAMESPACE_SORT_FIELDS.includes(params.sort)) {
+      throw new Error(`unknown sort "${params.sort}", want ${NAMESPACE_SORT_FIELDS.join("|")}`);
+    }
+    if (params?.dir && params.dir !== "asc" && params.dir !== "desc") {
+      throw new Error(`dir must be asc or desc, got "${params.dir}"`);
+    }
+
     const match = params?.prefix ?? params?.match ?? "";
     const mode = params?.prefix ? "prefix" : (params?.match_mode ?? "prefix");
 
@@ -663,7 +696,18 @@ export const demo = {
     // Demo mode pages the same way the server does, cursor and all. A demo
     // that always answered in one complete page would hide exactly the bug
     // the paging exists to prevent.
-    const start = params?.cursor ? Number(params.cursor) : 0;
+    //
+    // The demo cursor is an offset rather than the server's opaque keyset
+    // token, so an unparseable one is refused here too: Number("abc") is NaN,
+    // and slice(NaN, ...) would quietly restart from the first page while the
+    // real API answers 400.
+    let start = 0;
+    if (params?.cursor) {
+      start = Number(params.cursor);
+      if (!Number.isInteger(start) || start < 0) {
+        throw new Error("cursor is not a valid pagination token");
+      }
+    }
     const limit = params?.limit && params.limit > 0 ? params.limit : filtered.length;
     const page = filtered.slice(start, start + limit);
     const end = start + page.length;

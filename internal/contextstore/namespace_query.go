@@ -354,3 +354,142 @@ FROM namespace_policies`
 	}
 	return page, nil
 }
+
+// ── Transport argument parsing ───────────────────────────────────────────────
+//
+// HTTP, MCP and CLI all take the same filter and ordering arguments as raw
+// strings and mean the same thing by them. Parsing them here rather than three
+// times keeps the vocabulary, the precedence rules and the error wording in one
+// place — the same reason the filtering itself lives here.
+
+// namespaceMatchModes is the supported set, in the order an error should name
+// them: the default first.
+var namespaceMatchModes = []NamespaceMatchMode{
+	NamespaceMatchPrefix, NamespaceMatchContains, NamespaceMatchGlob,
+}
+
+// namespaceSortFields is the supported set, default first.
+var namespaceSortFields = []NamespaceSortField{
+	NamespaceSortNamespace, NamespaceSortOwner, NamespaceSortUpdatedAt,
+}
+
+// NamespaceMatchModeNames lists the supported match modes for an error message
+// or a flag description, so no surface hand-maintains its own copy.
+func NamespaceMatchModeNames() string {
+	out := make([]string, len(namespaceMatchModes))
+	for i, m := range namespaceMatchModes {
+		out[i] = string(m)
+	}
+	return strings.Join(out, "|")
+}
+
+// NamespaceSortFieldNames lists the supported sort fields, same purpose.
+func NamespaceSortFieldNames() string {
+	out := make([]string, len(namespaceSortFields))
+	for i, f := range namespaceSortFields {
+		out[i] = string(f)
+	}
+	return strings.Join(out, "|")
+}
+
+func parseNamespaceMatchMode(raw string) (NamespaceMatchMode, error) {
+	if raw == "" {
+		return "", nil
+	}
+	for _, m := range namespaceMatchModes {
+		if string(m) == raw {
+			return m, nil
+		}
+	}
+	return "", fmt.Errorf("%w: unknown match mode %q, want %s",
+		ErrNamespaceQuery, raw, NamespaceMatchModeNames())
+}
+
+func parseNamespaceSortField(raw string) (NamespaceSortField, error) {
+	if raw == "" {
+		return "", nil
+	}
+	for _, f := range namespaceSortFields {
+		if string(f) == raw {
+			return f, nil
+		}
+	}
+	return "", fmt.Errorf("%w: unknown sort %q, want %s",
+		ErrNamespaceQuery, raw, NamespaceSortFieldNames())
+}
+
+// NamespaceFilterArgs is the raw, transport-independent spelling of a namespace
+// listing's filter and ordering arguments. Limit and cursor are deliberately
+// absent: their bounds and defaults differ per surface (the CLI returns
+// everything, MCP is clamped by its response budget), so each transport sets
+// those on the NamespaceQuery itself.
+type NamespaceFilterArgs struct {
+	// Prefix is the original literal-prefix spelling, kept because callers and
+	// scripts already use it. It is shorthand for Match with MatchMode=prefix.
+	Prefix string
+
+	Match     string
+	MatchMode string
+	OwnerType string
+	OwnerID   string
+	Sort      string
+	Dir       string
+}
+
+// Query validates the arguments and returns the store query they describe.
+//
+// Every failure wraps ErrNamespaceQuery, so a transport reports a caller
+// mistake as a validation error rather than a store fault.
+//
+// Values are checked against the vocabulary BEFORE the prefix/match-mode
+// conflict is reported. That order matters: the conflict message tells a caller
+// to re-issue with `match` and the mode they asked for, which is sound advice
+// for a supported mode and a nudge toward a second rejected request for an
+// unsupported one. Rejecting the unknown mode first means the advice is only
+// ever given about a mode that will actually work.
+func (a NamespaceFilterArgs) Query() (NamespaceQuery, error) {
+	prefix := strings.TrimSpace(a.Prefix)
+	match := strings.TrimSpace(a.Match)
+
+	mode, err := parseNamespaceMatchMode(strings.TrimSpace(a.MatchMode))
+	if err != nil {
+		return NamespaceQuery{}, err
+	}
+	sort, err := parseNamespaceSortField(strings.TrimSpace(a.Sort))
+	if err != nil {
+		return NamespaceQuery{}, err
+	}
+
+	var desc bool
+	switch dir := strings.TrimSpace(a.Dir); dir {
+	case "", "asc":
+	case "desc":
+		desc = true
+	default:
+		return NamespaceQuery{}, fmt.Errorf("%w: dir must be asc or desc, got %q",
+			ErrNamespaceQuery, dir)
+	}
+
+	if prefix != "" && match != "" {
+		return NamespaceQuery{}, fmt.Errorf(
+			"%w: prefix and match are two spellings of the same filter; pass one", ErrNamespaceQuery)
+	}
+	if prefix != "" && mode != "" && mode != NamespaceMatchPrefix {
+		return NamespaceQuery{}, fmt.Errorf(
+			"%w: prefix is a literal prefix match; pass match=%q with match_mode=%s instead",
+			ErrNamespaceQuery, prefix, mode)
+	}
+	if prefix != "" {
+		match = prefix
+		mode = NamespaceMatchPrefix
+	}
+
+	return NamespaceQuery{
+		Match:     match,
+		MatchMode: mode,
+		OwnerType: strings.TrimSpace(a.OwnerType),
+		OwnerID:   strings.TrimSpace(a.OwnerID),
+		Sort:      sort,
+		Desc:      desc,
+	}, nil
+}

@@ -1301,7 +1301,15 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 	// copies had already drifted once — the MCP side read `prefix` as a glob
 	// while HTTP read it literally (CW-20260428-0005). Glob is now a mode both
 	// surfaces name explicitly rather than a difference either one discovers.
-	query, err := namespaceQueryFromRequest(req)
+	query, err := contextstore.NamespaceFilterArgs{
+		Prefix:    req.GetString("prefix", ""),
+		Match:     req.GetString("match", ""),
+		MatchMode: req.GetString("match_mode", ""),
+		OwnerType: req.GetString("owner_type", ""),
+		OwnerID:   req.GetString("owner_id", ""),
+		Sort:      req.GetString("sort", ""),
+		Dir:       req.GetString("dir", ""),
+	}.Query()
 	if err != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
@@ -1344,44 +1352,6 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolReques
 		Envelope:   env,
 		NextCursor: page.NextCursor,
 	})), nil
-}
-
-// namespaceQueryFromRequest maps context_registry_list's kind=namespaces
-// arguments onto a store query. Limit and cursor stay with the caller because
-// the budget layer owns the limit's bounds.
-func namespaceQueryFromRequest(req mcp.CallToolRequest) (contextstore.NamespaceQuery, error) {
-	prefix := strings.TrimSpace(req.GetString("prefix", ""))
-	match := strings.TrimSpace(req.GetString("match", ""))
-	mode := strings.TrimSpace(req.GetString("match_mode", ""))
-
-	if prefix != "" && match != "" {
-		return contextstore.NamespaceQuery{}, errors.New("prefix and match are two spellings of the same filter; pass one")
-	}
-	if prefix != "" && mode != "" && mode != string(contextstore.NamespaceMatchPrefix) {
-		return contextstore.NamespaceQuery{}, errors.New("prefix is a literal prefix match; use match with match_mode=" + mode + " instead")
-	}
-	if prefix != "" {
-		match = prefix
-		mode = string(contextstore.NamespaceMatchPrefix)
-	}
-
-	out := contextstore.NamespaceQuery{
-		Match:     match,
-		MatchMode: contextstore.NamespaceMatchMode(mode),
-		OwnerType: strings.TrimSpace(req.GetString("owner_type", "")),
-		OwnerID:   strings.TrimSpace(req.GetString("owner_id", "")),
-		Sort:      contextstore.NamespaceSortField(strings.TrimSpace(req.GetString("sort", ""))),
-	}
-
-	switch dir := strings.TrimSpace(req.GetString("dir", "")); dir {
-	case "", "asc":
-	case "desc":
-		out.Desc = true
-	default:
-		return contextstore.NamespaceQuery{}, errors.New("dir must be asc or desc, got " + strconv.Quote(dir))
-	}
-
-	return out, nil
 }
 
 // --- Audit tool ---

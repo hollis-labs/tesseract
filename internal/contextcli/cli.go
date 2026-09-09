@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -620,10 +619,10 @@ func (c *CLI) runNamespaceList(args []string) int {
 	fs.SetOutput(io.Discard)
 	prefix := fs.String("prefix", "", "literal prefix filter (shorthand for -match with -match-mode prefix)")
 	match := fs.String("match", "", "pattern to filter namespaces by, read under -match-mode")
-	matchMode := fs.String("match-mode", "", "how -match is compared: prefix (default), contains, glob")
+	matchMode := fs.String("match-mode", "", "how -match is compared: "+contextstore.NamespaceMatchModeNames()+" (default prefix)")
 	ownerType := fs.String("owner-type", "", "filter to this exact owner type")
 	ownerID := fs.String("owner-id", "", "filter to this exact owner id")
-	sort := fs.String("sort", "", "ordering: namespace (default), owner, updated_at")
+	sort := fs.String("sort", "", "ordering: "+contextstore.NamespaceSortFieldNames()+" (default namespace)")
 	dir := fs.String("dir", "", "sort direction: asc (default) or desc")
 	limit := fs.Int("limit", 0, "max namespaces per page; 0 returns every match unpaged")
 	cursor := fs.String("cursor", "", "paging token from a previous run's next_cursor")
@@ -632,36 +631,28 @@ func (c *CLI) runNamespaceList(args []string) int {
 		return code
 	}
 
-	if *prefix != "" && *match != "" {
-		return c.fail("-prefix and -match are two spellings of the same filter; pass one")
-	}
-	if *prefix != "" && *matchMode != "" && *matchMode != string(contextstore.NamespaceMatchPrefix) {
-		return c.fail("-prefix is a literal prefix match; use -match with -match-mode " + *matchMode + " instead")
-	}
-	if *prefix != "" {
-		*match = *prefix
-		*matchMode = string(contextstore.NamespaceMatchPrefix)
-	}
 	if *limit < 0 {
 		return c.fail("-limit must be zero or positive")
 	}
 
-	query := contextstore.NamespaceQuery{
+	// Same parser the HTTP and MCP surfaces use, so the vocabulary and the
+	// precedence between -prefix and -match cannot drift between them. Flag
+	// names are spelled with a leading dash here; the message names the value,
+	// which is what a caller has to change either way.
+	query, err := contextstore.NamespaceFilterArgs{
+		Prefix:    *prefix,
 		Match:     *match,
-		MatchMode: contextstore.NamespaceMatchMode(*matchMode),
+		MatchMode: *matchMode,
 		OwnerType: *ownerType,
 		OwnerID:   *ownerID,
-		Sort:      contextstore.NamespaceSortField(*sort),
-		Limit:     *limit,
-		Cursor:    *cursor,
+		Sort:      *sort,
+		Dir:       *dir,
+	}.Query()
+	if err != nil {
+		return c.fail(err.Error())
 	}
-	switch *dir {
-	case "", "asc":
-	case "desc":
-		query.Desc = true
-	default:
-		return c.fail("-dir must be asc or desc, got " + strconv.Quote(*dir))
-	}
+	query.Limit = *limit
+	query.Cursor = *cursor
 
 	page, err := c.Store.ListNamespacePolicyPage(context.Background(), query)
 	if err != nil {
