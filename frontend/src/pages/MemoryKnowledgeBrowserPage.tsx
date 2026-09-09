@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listNamespaces, recall, registerNamespace } from "../api/client";
+import { listAllNamespaces, recall, registerNamespace } from "../api/client";
 import type { NamespaceListItem, RecallBriefItem } from "../api/types";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
@@ -76,8 +76,15 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
   const loadNamespaces = useCallback(() => {
     setLoadingNs(true);
     setNsError(null);
-    listNamespaces({ limit: 1000 })
-      .then((res) => setNamespaces(res.items))
+    listAllNamespaces()
+      .then((res) => {
+        setNamespaces(res.items);
+        if (!res.complete) {
+          toast.warning(
+            `Namespace registry did not finish loading: showing ${res.items.length} of ${res.count}.`,
+          );
+        }
+      })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         setNsError(msg);

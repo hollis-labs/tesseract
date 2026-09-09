@@ -104,11 +104,24 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("kind", mcp.Required(), mcp.Description(registryKindArgDescription)),
 		mcp.WithString("name", mcp.Description("kind=namespaces only: return the single named namespace's ownership policy instead of the list. "+
 			"Answers `{namespace, owner_type, owner_id, policy}` — a different shape from the list, because it is a different question. "+
-			"Not accepted under kind=types or kind=views, and not accepted together with `prefix` or `limit`, which shape a list this arm does not return. "+
+			"Not accepted under kind=types or kind=views, and not accepted together with any list-shaping argument "+
+			"(`prefix`, `match`, `match_mode`, `owner_type`, `owner_id`, `sort`, `dir`, `limit`, `cursor`), which shape a list this arm does not return. "+
 			"Every one of those is a validation_error rather than a silently ignored knob. "+
 			"The retired context_namespace_show spelled this `namespace`; that name is refused, not ignored.")),
-		mcp.WithString("prefix", mcp.Description("kind=namespaces only: filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). Pure string-prefix match, not a glob.")),
-		mcp.WithNumber("limit", mcp.Description("kind=namespaces only: max namespaces to return (default 10, max 25)")),
+		mcp.WithString("prefix", mcp.Description("kind=namespaces only: filter to namespaces whose name starts with this string prefix (e.g. \"user/chrispian/\", \"app/\"). "+
+			"Pure string-prefix match, not a glob — for glob use match with match_mode=glob. Equivalent to match with match_mode=prefix; passing both is a validation_error.")),
+		mcp.WithString("match", mcp.Description("kind=namespaces only: the pattern to filter namespaces by, interpreted under match_mode. The general form of `prefix`.")),
+		mcp.WithString("match_mode", mcp.Description("kind=namespaces only: how `match` is compared — prefix (default), contains, or glob. "+
+			"glob is the shell-glob syntax SQLite's GLOB accepts (e.g. \"user/*/memory/*\"). Any other value is a validation_error.")),
+		mcp.WithString("owner_type", mcp.Description("kind=namespaces only: filter to namespaces with this exact owner type (user or app).")),
+		mcp.WithString("owner_id", mcp.Description("kind=namespaces only: filter to namespaces with this exact owner id.")),
+		mcp.WithString("sort", mcp.Description("kind=namespaces only: ordering — namespace (default), owner, or updated_at. Every ordering breaks ties on namespace, so it is stable across pages.")),
+		mcp.WithString("dir", mcp.Description("kind=namespaces only: sort direction, asc (default) or desc.")),
+		mcp.WithNumber("limit", mcp.Description("kind=namespaces only: max namespaces to return in this page (default 10, max 25). "+
+			"`total` reports how many match in all; `truncated` and `next_cursor` say whether more remain.")),
+		mcp.WithString("cursor", mcp.Description("kind=namespaces only: opaque paging token from a previous response's next_cursor. "+
+			"Bound to the sort and dir it was issued under — resuming it under a different ordering is a validation_error, not a page with holes in it. "+
+			"Page until next_cursor is absent to see the complete set.")),
 	), a.handleRegistryList)
 
 	a.addTool(s, mcp.NewTool("context_audit_list",
@@ -284,6 +297,15 @@ func (a *Adapter) handleContextPlan(ctx context.Context, req mcp.CallToolRequest
 	return a.handlePlanOnly(ctx, req)
 }
 
+// namespaceListKnobs is every argument that shapes the kind=namespaces LIST.
+// It exists so the arms that return something other than a list refuse all of
+// them together: a knob added to the tool schema but forgotten here would be
+// accepted and silently dropped, which is the failure this merge exists to
+// remove. Keep it in step with the schema in registerTools.
+var namespaceListKnobs = []string{
+	"prefix", "match", "match_mode", "owner_type", "owner_id", "sort", "dir", "limit", "cursor",
+}
+
 // handleRegistryList serves the merged context_registry_list. `kind` selects
 // which registry is read.
 func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -312,7 +334,7 @@ func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolReques
 	switch kind {
 	case "types", "views":
 		// These two registries take no arguments at all.
-		if errResult := reject("under kind="+kind, "name", "prefix", "limit"); errResult != nil {
+		if errResult := reject("under kind="+kind, append([]string{"name"}, namespaceListKnobs...)...); errResult != nil {
 			return errResult, nil
 		}
 		if kind == "types" {
@@ -321,11 +343,11 @@ func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolReques
 		return a.handleViewsList(ctx, req)
 	case "namespaces":
 		if name != "" {
-			// `name` asks for ONE namespace's policy. prefix and limit shape a
-			// list, and namespaceShowResult cannot consult them — so they are
-			// refused here rather than accepted and dropped.
+			// `name` asks for ONE namespace's policy. Every list-shaping knob
+			// shapes a list, and namespaceShowResult cannot consult any of
+			// them — so they are refused here rather than accepted and dropped.
 			if errResult := reject("together with name, which returns a single namespace rather than a list",
-				"prefix", "limit"); errResult != nil {
+				namespaceListKnobs...); errResult != nil {
 				return errResult, nil
 			}
 			return a.namespaceShowResult(ctx, name), nil
@@ -1262,37 +1284,104 @@ func (a *Adapter) namespaceShowResult(_ context.Context, ns string) *mcp.CallToo
 	})
 }
 
+// namespaceListEnvelope is budget's list envelope plus the paging token. The
+// embedded fields flatten into the same JSON object, so the shape callers
+// already parse is unchanged and next_cursor is additive.
+type namespaceListEnvelope struct {
+	budget.Envelope
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
 func (a *Adapter) handleNamespacesList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx := context.Background()
-	prefix := req.GetString("prefix", "")
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 
-	entries, err := a.Store.ListNamespacePolicies(ctx)
+	// Filtering, sorting and paging all happen in SQL, in the store. This
+	// handler used to open-code the prefix loop a second time and the two
+	// copies had already drifted once — the MCP side read `prefix` as a glob
+	// while HTTP read it literally (CW-20260428-0005). Glob is now a mode both
+	// surfaces name explicitly rather than a difference either one discovers.
+	query, err := namespaceQueryFromRequest(req)
 	if err != nil {
+		return toolError(codeValidationError, err.Error()), nil
+	}
+	query.Limit = limit
+	query.Cursor = strings.TrimSpace(req.GetString("cursor", ""))
+
+	page, err := a.Store.ListNamespacePolicyPage(ctx, query)
+	if err != nil {
+		if errors.Is(err, contextstore.ErrNamespaceQuery) {
+			return toolError(codeValidationError, err.Error()), nil
+		}
 		return toolError(codeInternalError, err.Error()), nil
 	}
 
-	// String-prefix filtering, matching the HTTP /v1/namespaces/list semantics.
-	// Was using globsPermit, which treats `prefix` as a glob — divergent from
-	// HTTP and surprising for callers who pass a literal path prefix like
-	// `user/chrispian/project/`. CW-20260428-0005 follow-up.
-	var items []map[string]any
-	for _, entry := range entries {
-		if prefix != "" && !strings.HasPrefix(entry.Namespace, prefix) {
-			continue
-		}
+	items := make([]map[string]any, 0, len(page.Items))
+	for _, entry := range page.Items {
 		items = append(items, map[string]any{
 			"namespace":  entry.Namespace,
 			"owner_type": entry.OwnerType,
 			"owner_id":   entry.OwnerID,
 			"policy":     entry.Policy,
+			"updated_at": entry.UpdatedAt,
 		})
 	}
-	if items == nil {
-		items = []map[string]any{}
+
+	env := budget.Apply(items, budget.Config{Limit: limit}, "")
+	// budget.Apply infers total and truncation from the slice it is handed,
+	// which is now one page rather than the whole match. Left alone it would
+	// report this page as the complete set — the precise silent-completeness
+	// bug this change exists to remove — so the store's counts win.
+	env.Total = page.Total
+	env.Truncated = page.NextCursor != ""
+	env.Hint = ""
+	if env.Truncated {
+		env.Hint = fmt.Sprintf("%d namespaces match; %d returned. Pass cursor=<next_cursor> for the next page, "+
+			"or narrow with match/owner_type/owner_id. Use kind=namespaces with name=<namespace> for one namespace's policy.",
+			page.Total, env.Count)
 	}
-	env := budget.Apply(items, budget.Config{Limit: limit}, "%d namespaces available. Use context_registry_list with kind=namespaces and name=<namespace> for details on a specific one.")
-	return mcp.NewToolResultText(budget.ToolJSON(env)), nil
+	return mcp.NewToolResultText(budget.ToolJSON(namespaceListEnvelope{
+		Envelope:   env,
+		NextCursor: page.NextCursor,
+	})), nil
+}
+
+// namespaceQueryFromRequest maps context_registry_list's kind=namespaces
+// arguments onto a store query. Limit and cursor stay with the caller because
+// the budget layer owns the limit's bounds.
+func namespaceQueryFromRequest(req mcp.CallToolRequest) (contextstore.NamespaceQuery, error) {
+	prefix := strings.TrimSpace(req.GetString("prefix", ""))
+	match := strings.TrimSpace(req.GetString("match", ""))
+	mode := strings.TrimSpace(req.GetString("match_mode", ""))
+
+	if prefix != "" && match != "" {
+		return contextstore.NamespaceQuery{}, errors.New("prefix and match are two spellings of the same filter; pass one")
+	}
+	if prefix != "" && mode != "" && mode != string(contextstore.NamespaceMatchPrefix) {
+		return contextstore.NamespaceQuery{}, errors.New("prefix is a literal prefix match; use match with match_mode=" + mode + " instead")
+	}
+	if prefix != "" {
+		match = prefix
+		mode = string(contextstore.NamespaceMatchPrefix)
+	}
+
+	out := contextstore.NamespaceQuery{
+		Match:     match,
+		MatchMode: contextstore.NamespaceMatchMode(mode),
+		OwnerType: strings.TrimSpace(req.GetString("owner_type", "")),
+		OwnerID:   strings.TrimSpace(req.GetString("owner_id", "")),
+		Sort:      contextstore.NamespaceSortField(strings.TrimSpace(req.GetString("sort", ""))),
+	}
+
+	switch dir := strings.TrimSpace(req.GetString("dir", "")); dir {
+	case "", "asc":
+	case "desc":
+		out.Desc = true
+	default:
+		return contextstore.NamespaceQuery{}, errors.New("dir must be asc or desc, got " + strconv.Quote(dir))
+	}
+
+	return out, nil
 }
 
 // --- Audit tool ---

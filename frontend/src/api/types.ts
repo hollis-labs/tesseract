@@ -647,10 +647,44 @@ export interface NamespaceListItem {
   updated_at?: string;
 }
 
+export type NamespaceMatchMode = "prefix" | "contains" | "glob";
+export type NamespaceSortField = "namespace" | "owner" | "updated_at";
+export type NamespaceSortDir = "asc" | "desc";
+
+export interface NamespaceListParams {
+  /** Literal prefix filter. Shorthand for `match` with `match_mode: "prefix"`; passing both is rejected. */
+  prefix?: string;
+  match?: string;
+  match_mode?: NamespaceMatchMode;
+  owner_type?: string;
+  owner_id?: string;
+  sort?: NamespaceSortField;
+  dir?: NamespaceSortDir;
+  limit?: number;
+  /** Opaque paging token from a previous response's `next_cursor`. */
+  cursor?: string;
+}
+
 export interface NamespaceListResponse {
   items: NamespaceListItem[];
+  /** Namespaces matching the filter in all — NOT the length of `items`. */
   count: number;
   truncated: boolean;
+  /** Absent or empty on the last page. */
+  next_cursor?: string;
+}
+
+/**
+ * A namespace listing assembled by paging until the server says there is no
+ * more. `complete` is false only when the page ceiling was hit first, and a
+ * caller that renders the list must say so rather than present a short list as
+ * the whole registry.
+ */
+export interface CompleteNamespaceList {
+  items: NamespaceListItem[];
+  /** Namespaces matching the filter in all, as the server reported it. */
+  count: number;
+  complete: boolean;
 }
 
 // ── Tesseract lookup (unified search) types ───────────────────────────

@@ -2335,36 +2335,16 @@ func (s *Store) ReconcileNamespaceRegistry(ctx context.Context) (int, error) {
 }
 
 // ListNamespacePolicies returns all persisted policies ordered by namespace.
+//
+// This is the unfiltered, unpaged read, for the callers that genuinely want
+// every row — policy reload and the admin rollup. Anything that narrows goes
+// through ListNamespacePolicyPage so the filter lives in SQL and in one place.
 func (s *Store) ListNamespacePolicies(ctx context.Context) ([]NamespacePolicyEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT namespace, owner_type, owner_id, COALESCE(policy_json, ''), updated_at
-FROM namespace_policies
-ORDER BY namespace ASC`)
+	page, err := s.ListNamespacePolicyPage(ctx, NamespaceQuery{})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var out []NamespacePolicyEntry
-	for rows.Next() {
-		var entry NamespacePolicyEntry
-		var policyJSON string
-		if err := rows.Scan(&entry.Namespace, &entry.OwnerType, &entry.OwnerID, &policyJSON, &entry.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(policyJSON) != "" {
-			var policy map[string]any
-			if err := json.Unmarshal([]byte(policyJSON), &policy); err != nil {
-				return nil, err
-			}
-			entry.Policy = policy
-		}
-		out = append(out, entry)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return page.Items, nil
 }
 
 func generateToken() (string, error) {

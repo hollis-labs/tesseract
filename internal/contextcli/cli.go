@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -151,7 +152,7 @@ type Command struct {
 // Commands returns the context subcommands, in dispatch order.
 func Commands() []Command {
 	return []Command{
-		{Name: "namespace", Summary: "register a namespace or show its policy", Subcommands: []string{"register", "show"}},
+		{Name: "namespace", Summary: "register a namespace, show its policy, or list the registry", Subcommands: []string{"register", "show", "list"}},
 		{Name: "put", Summary: "write a new revision of a namespace/key"},
 		{Name: "get", Summary: "read the head (or a specific revision) of a namespace/key"},
 		{Name: "history", Summary: "list the revision history of a namespace/key"},
@@ -550,15 +551,17 @@ func (c *CLI) execCommand(ctx context.Context, cmdline string) ([]byte, error) {
 
 func (c *CLI) runNamespace(args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: tesseract context namespace <register|show> ...")
+		return c.fail("usage: tesseract context namespace <register|show|list> ...")
 	}
 	switch args[0] {
 	case "register":
 		return c.runNamespaceRegister(args[1:])
 	case "show":
 		return c.runNamespaceShow(args[1:])
+	case "list":
+		return c.runNamespaceList(args[1:])
 	default:
-		return c.fail("usage: tesseract context namespace <register|show> ...")
+		return c.fail("usage: tesseract context namespace <register|show|list> ...")
 	}
 }
 
@@ -603,6 +606,103 @@ func (c *CLI) runNamespaceShow(args []string) int {
 		"owner_id":   entry.OwnerID,
 		"policy":     entry.Policy,
 	})
+}
+
+// runNamespaceList lists the namespace registry with the same filter, sort and
+// paging the HTTP and MCP surfaces expose.
+//
+// -limit defaults to 0, meaning "every match, unpaged". The CLI is the one
+// surface with no response budget to protect, so it is also the one surface
+// that cannot silently hand back a partial registry — a caller who wants pages
+// asks for them.
+func (c *CLI) runNamespaceList(args []string) int {
+	fs := flag.NewFlagSet("namespace list", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	prefix := fs.String("prefix", "", "literal prefix filter (shorthand for -match with -match-mode prefix)")
+	match := fs.String("match", "", "pattern to filter namespaces by, read under -match-mode")
+	matchMode := fs.String("match-mode", "", "how -match is compared: prefix (default), contains, glob")
+	ownerType := fs.String("owner-type", "", "filter to this exact owner type")
+	ownerID := fs.String("owner-id", "", "filter to this exact owner id")
+	sort := fs.String("sort", "", "ordering: namespace (default), owner, updated_at")
+	dir := fs.String("dir", "", "sort direction: asc (default) or desc")
+	limit := fs.Int("limit", 0, "max namespaces per page; 0 returns every match unpaged")
+	cursor := fs.String("cursor", "", "paging token from a previous run's next_cursor")
+	output := fs.String("output", "json", "output format: json|table")
+	if code, done := c.parseFlags(fs, args); done {
+		return code
+	}
+
+	if *prefix != "" && *match != "" {
+		return c.fail("-prefix and -match are two spellings of the same filter; pass one")
+	}
+	if *prefix != "" && *matchMode != "" && *matchMode != string(contextstore.NamespaceMatchPrefix) {
+		return c.fail("-prefix is a literal prefix match; use -match with -match-mode " + *matchMode + " instead")
+	}
+	if *prefix != "" {
+		*match = *prefix
+		*matchMode = string(contextstore.NamespaceMatchPrefix)
+	}
+	if *limit < 0 {
+		return c.fail("-limit must be zero or positive")
+	}
+
+	query := contextstore.NamespaceQuery{
+		Match:     *match,
+		MatchMode: contextstore.NamespaceMatchMode(*matchMode),
+		OwnerType: *ownerType,
+		OwnerID:   *ownerID,
+		Sort:      contextstore.NamespaceSortField(*sort),
+		Limit:     *limit,
+		Cursor:    *cursor,
+	}
+	switch *dir {
+	case "", "asc":
+	case "desc":
+		query.Desc = true
+	default:
+		return c.fail("-dir must be asc or desc, got " + strconv.Quote(*dir))
+	}
+
+	page, err := c.Store.ListNamespacePolicyPage(context.Background(), query)
+	if err != nil {
+		return c.fail(err.Error())
+	}
+
+	switch strings.TrimSpace(*output) {
+	case "json", "":
+		items := make([]map[string]any, 0, len(page.Items))
+		for _, entry := range page.Items {
+			items = append(items, map[string]any{
+				"namespace":  entry.Namespace,
+				"owner_type": entry.OwnerType,
+				"owner_id":   entry.OwnerID,
+				"policy":     entry.Policy,
+				"updated_at": entry.UpdatedAt,
+			})
+		}
+		return c.writeJSON(map[string]any{
+			"items":       items,
+			"count":       page.Total,
+			"truncated":   page.NextCursor != "",
+			"next_cursor": page.NextCursor,
+		})
+	case "table":
+		w := tabwriter.NewWriter(c.Stdout, 2, 4, 2, ' ', 0)
+		_, _ = fmt.Fprintln(w, "NAMESPACE\tOWNER_TYPE\tOWNER_ID\tUPDATED_AT")
+		for _, entry := range page.Items {
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", entry.Namespace, entry.OwnerType, entry.OwnerID, entry.UpdatedAt)
+		}
+		_ = w.Flush()
+		// A table read by a human is exactly where a partial set passes for a
+		// complete one, so say so on the page rather than only in JSON.
+		if page.NextCursor != "" {
+			_, _ = fmt.Fprintf(c.Stdout, "\n%d of %d shown. Next page: -cursor %s\n",
+				len(page.Items), page.Total, page.NextCursor)
+		}
+		return 0
+	default:
+		return c.fail("output must be json|table")
+	}
 }
 
 func (c *CLI) runPut(ctx context.Context, args []string) int {

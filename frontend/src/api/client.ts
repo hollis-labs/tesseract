@@ -21,6 +21,7 @@ import type {
   BrokerPlanResponse,
   CompactRequest,
   CompactResponse,
+  CompleteNamespaceList,
   ConsistencyRepairResponse,
   ConsistencyScanResponse,
   EstimateResponse,
@@ -33,6 +34,8 @@ import type {
   MemoryRevision,
   MemoryWriteRequest,
   MetricsResponse,
+  NamespaceListItem,
+  NamespaceListParams,
   NamespaceListResponse,
   NamespacePolicy,
   PacketRequest,
@@ -558,16 +561,68 @@ export async function getAdminNamespaceHistory(
   return apiFetch<AdminNamespaceHistoryResponse>(`/v1/admin/namespaces/history?${q.toString()}`);
 }
 
-export async function listNamespaces(params?: {
-  prefix?: string;
-  limit?: number;
-}): Promise<NamespaceListResponse> {
-  if (isDemoMode()) return demo.listNamespaces(params?.prefix);
+export async function listNamespaces(params?: NamespaceListParams): Promise<NamespaceListResponse> {
+  if (isDemoMode()) return demo.listNamespaces(params);
   const q = new URLSearchParams();
   if (params?.prefix) q.set("prefix", params.prefix);
+  if (params?.match) q.set("match", params.match);
+  if (params?.match_mode) q.set("match_mode", params.match_mode);
+  if (params?.owner_type) q.set("owner_type", params.owner_type);
+  if (params?.owner_id) q.set("owner_id", params.owner_id);
+  if (params?.sort) q.set("sort", params.sort);
+  if (params?.dir) q.set("dir", params.dir);
   if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.cursor) q.set("cursor", params.cursor);
   const qs = q.toString() ? `?${q.toString()}` : "";
   return apiFetch<NamespaceListResponse>(`/v1/namespaces/list${qs}`);
+}
+
+/** The server's per-page ceiling. Asking for more is clamped to this. */
+const NAMESPACE_PAGE_LIMIT = 1000;
+
+/**
+ * Hard stop on the paging loop. At the page size above this is 100k
+ * namespaces — far past any real registry, and there only so a server that
+ * kept handing back cursors could never hang the page.
+ */
+const NAMESPACE_MAX_PAGES = 100;
+
+/**
+ * Fetch every namespace matching `params`, paging until the server reports no
+ * more.
+ *
+ * Callers that need a complete set — a dropdown, a review queue — must use this
+ * rather than listNamespaces with a large limit. A single request is capped at
+ * NAMESPACE_PAGE_LIMIT server-side, and a page that ignored `truncated` showed
+ * 1000 of 1125 registered namespaces as though that were all of them.
+ *
+ * `complete: false` means the page ceiling was reached with a cursor still
+ * outstanding. It is not a normal outcome, and a caller that renders the result
+ * should surface it rather than quietly show a short list.
+ */
+export async function listAllNamespaces(
+  params?: Omit<NamespaceListParams, "limit" | "cursor">,
+): Promise<CompleteNamespaceList> {
+  const items: NamespaceListItem[] = [];
+  let cursor: string | undefined;
+  let count = 0;
+
+  for (let page = 0; page < NAMESPACE_MAX_PAGES; page++) {
+    const response = await listNamespaces(
+      cursor === undefined
+        ? { ...params, limit: NAMESPACE_PAGE_LIMIT }
+        : { ...params, limit: NAMESPACE_PAGE_LIMIT, cursor },
+    );
+    items.push(...response.items);
+    count = response.count;
+
+    if (!response.next_cursor) {
+      return { items, count, complete: true };
+    }
+    cursor = response.next_cursor;
+  }
+
+  return { items, count, complete: false };
 }
 
 // ── Memory ──────────────────────────────────────────────────────────

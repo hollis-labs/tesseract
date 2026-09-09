@@ -173,4 +173,5 @@ Session expires or trimmed: maintenance trim removes old records
 
 - Register a namespace: `context namespace register --namespace <ns> --owner-type user|app --owner-id <id>`
 - Show namespace policy: `context namespace show --namespace <ns>`
+- List the registry: `context namespace list [-match <pattern> -match-mode prefix|contains|glob] [-owner-type <t>] [-owner-id <id>] [-sort namespace|owner|updated_at] [-dir asc|desc] [-limit N] [-cursor <token>]`. `-limit` defaults to 0, which returns every match; a paged run reports `count` (the whole match) and `next_cursor`.
 - API: `POST /v1/namespaces/register`, `GET /v1/namespaces/get`
