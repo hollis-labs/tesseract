@@ -70,6 +70,7 @@ All 26 live context commands are listed here in dispatch order.
 |---|---|
 | `context namespace register` | `--namespace`, `--owner-type user|app`, `--owner-id` |
 | `context namespace show` | `--namespace` |
+| `context namespace list` | `-prefix`, or `-match` with `-match-mode prefix\|contains\|glob`; `-owner-type`, `-owner-id`; `-sort namespace\|owner\|updated_at`, `-dir asc\|desc`; `-limit` (0 = every match, unpaged), `-cursor`; `-output json\|table` |
 | `context put` | `--client-id`, `--actor`, `--namespace`, `--key`, and exactly one of `--json` or `--file` |
 | `context get` | `--namespace`, `--key`, `--output json|table` (default `json`) |
 | `context history` | `--namespace`, `--key`, `--limit`, `--output json|table` (default `json`) |

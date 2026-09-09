@@ -28,15 +28,15 @@ import {
   estimate,
   getAuditEvents,
   getMetrics,
-  listNamespaces,
+  listAllNamespaces,
   tesseractLookup,
 } from "../api/client";
 import type {
   AuditResponse,
+  CompleteNamespaceList,
   EstimateResponse,
   HealthStatus,
   MetricsResponse,
-  NamespaceListResponse,
 } from "../api/types";
 import type { NavPage } from "../components/layout/nav";
 import { Spinner } from "../components/ui/Spinner";
@@ -61,8 +61,11 @@ export function DashboardPage({ health, onNavigate }: Props) {
   const auditFetcher = useCallback(() => getAuditEvents({ limit: 8 }), []);
   const { data: auditData, loading: auditLoading } = usePoll<AuditResponse>(auditFetcher, 10_000);
 
-  const namespaceFetcher = useCallback(() => listNamespaces({ limit: 1000 }), []);
-  const { data: namespaceData } = usePoll<NamespaceListResponse>(namespaceFetcher, 20_000);
+  // The review-count tiles below are computed over EVERY namespace, so this
+  // pages the registry to completion rather than taking one capped request as
+  // the whole set (CW-20260909-0003).
+  const namespaceFetcher = useCallback(() => listAllNamespaces(), []);
+  const { data: namespaceData } = usePoll<CompleteNamespaceList>(namespaceFetcher, 20_000);
 
   const metricsFetcher = useCallback(() => getMetrics(), []);
   const { data: metricsData, error: metricsError } = usePoll<MetricsResponse>(

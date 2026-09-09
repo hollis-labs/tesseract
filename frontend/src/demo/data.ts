@@ -19,6 +19,8 @@ import type {
   MemoryRevision,
   MemoryWriteRequest,
   MetricsResponse,
+  NamespaceListItem,
+  NamespaceListParams,
   NamespaceListResponse,
   NamespacePolicy,
   PacketResponse,
@@ -626,14 +628,52 @@ export const demo = {
     };
   },
 
-  listNamespaces(prefix?: string): NamespaceListResponse {
-    const filtered = prefix
-      ? DEMO_NAMESPACES.filter((n) => n.namespace.startsWith(prefix))
-      : DEMO_NAMESPACES;
+  listNamespaces(params?: NamespaceListParams): NamespaceListResponse {
+    const match = params?.prefix ?? params?.match ?? "";
+    const mode = params?.prefix ? "prefix" : (params?.match_mode ?? "prefix");
+
+    let filtered = DEMO_NAMESPACES.filter((n) => {
+      if (match) {
+        if (mode === "contains" && !n.namespace.includes(match)) return false;
+        if (mode === "prefix" && !n.namespace.startsWith(match)) return false;
+        if (mode === "glob") {
+          const pattern = new RegExp(
+            `^${match
+              .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+              .replace(/\*/g, ".*")
+              .replace(/\?/g, ".")}$`,
+          );
+          if (!pattern.test(n.namespace)) return false;
+        }
+      }
+      if (params?.owner_type && n.owner_type !== params.owner_type) return false;
+      if (params?.owner_id && n.owner_id !== params.owner_id) return false;
+      return true;
+    }).map((n) => ({ ...n, updated_at: ago(48) }));
+
+    const dir = params?.dir === "desc" ? -1 : 1;
+    const key = (n: NamespaceListItem) =>
+      params?.sort === "owner"
+        ? `${n.owner_type}/${n.owner_id}/${n.namespace}`
+        : params?.sort === "updated_at"
+          ? `${n.updated_at ?? ""}/${n.namespace}`
+          : n.namespace;
+    filtered = [...filtered].sort((a, b) => (key(a) < key(b) ? -dir : key(a) > key(b) ? dir : 0));
+
+    // Demo mode pages the same way the server does, cursor and all. A demo
+    // that always answered in one complete page would hide exactly the bug
+    // the paging exists to prevent.
+    const start = params?.cursor ? Number(params.cursor) : 0;
+    const limit = params?.limit && params.limit > 0 ? params.limit : filtered.length;
+    const page = filtered.slice(start, start + limit);
+    const end = start + page.length;
+
+    const more = end < filtered.length;
     return {
-      items: filtered.map((n) => ({ ...n, updated_at: ago(48) })),
+      items: page,
       count: filtered.length,
-      truncated: false,
+      truncated: more,
+      ...(more ? { next_cursor: String(end) } : {}),
     };
   },
 

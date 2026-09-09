@@ -30,7 +30,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  listNamespaces,
+  listAllNamespaces,
   memoryDeprecate,
   memoryPromote,
   memoryWrite,
@@ -191,9 +191,18 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
     setLoading(true);
     setError(null);
     try {
-      const nsResponse = await listNamespaces({ limit: 1000 });
+      // The queue is built over EVERY registered namespace, so this pages
+      // until the server says there is no more. A single capped request
+      // returned 1000 of 1125 registered namespaces and the queue looked
+      // complete while silently omitting the rest (CW-20260909-0003).
+      const nsResponse = await listAllNamespaces();
       const allNamespaces = nsResponse.items.map((item) => item.namespace);
       setNamespaces(allNamespaces);
+      if (!nsResponse.complete) {
+        toast.warning(
+          `Namespace registry did not finish loading: reviewing ${allNamespaces.length} of ${nsResponse.count}. The queue below is incomplete.`,
+        );
+      }
 
       if (allNamespaces.length === 0) {
         setItems([]);

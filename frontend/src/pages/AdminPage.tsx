@@ -79,7 +79,7 @@ import {
   getAuditEvents,
   getHealth,
   getMetrics,
-  listNamespaces,
+  listAllNamespaces,
   listTokens,
   previewAdminSettings,
   previewNamespacePolicy,
@@ -121,6 +121,7 @@ import type {
   TrimResponse,
   TTLCleanupResponse,
 } from "../api/types";
+import { NamespaceRegistryTable } from "../components/admin/NamespaceRegistryTable";
 
 type AdminTab =
   | "setup"
@@ -787,6 +788,10 @@ export function AdminPage() {
     null,
   );
   const [editingNamespace, setEditingNamespace] = useState<string | null>(null);
+  // Bumped whenever a namespace is registered or its policy edited, so the
+  // server-paged registry table below re-queries its current page instead of
+  // rendering the registry as it was before the write.
+  const [namespaceRefreshToken, setNamespaceRefreshToken] = useState(0);
   const [previewingNamespace, setPreviewingNamespace] = useState(false);
   const [updatingNamespace, setUpdatingNamespace] = useState(false);
   const [registeringNamespace, setRegisteringNamespace] = useState(false);
@@ -830,7 +835,7 @@ export function AdminPage() {
       getAdminStorage(),
       getHealth(),
       getMetrics(),
-      listNamespaces({ limit: 500 }),
+      listAllNamespaces(),
       listTokens(),
       getAuditEvents({ limit: 50 }),
       scanConsistency(),
@@ -923,7 +928,7 @@ export function AdminPage() {
 
   const refreshNamespaceInventory = useCallback(async () => {
     const [namespacesResult, storageResult] = await Promise.all([
-      listNamespaces({ limit: 500 }),
+      listAllNamespaces(),
       getAdminStorage(),
     ]);
     setState((current) => ({
@@ -931,6 +936,7 @@ export function AdminPage() {
       namespaces: namespacesResult.items,
       storage: storageResult,
     }));
+    setNamespaceRefreshToken((token) => token + 1);
   }, []);
 
   const refreshAudit = useCallback(async () => {
@@ -2884,19 +2890,10 @@ export function AdminPage() {
             </SettingsPanel>
           )}
 
-          <DataTable
-            items={state.namespaces}
+          <NamespaceRegistryTable
             columns={namespaceColumns(loadNamespaceEditor, editingNamespace)}
-            getRowId={(row) => row.namespace}
-            initialSort={{ key: "namespace", dir: "asc" }}
             scrollRootRef={scrollRef}
-            emptyState={
-              <EmptyState
-                variant="empty"
-                title={loading ? "Loading namespaces..." : "No namespaces"}
-                description="Registered namespace policy rows will appear here."
-              />
-            }
+            refreshToken={namespaceRefreshToken}
           />
         </>
       )}

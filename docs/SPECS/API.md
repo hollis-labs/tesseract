@@ -118,7 +118,7 @@ HTTP and MCP use different scope names for namespace registration:
 | Method and path | Additional authorization | Contract |
 |---|---|---|
 | `POST /v1/namespaces/register` | `namespace.register` | Register or update ownership policy. Body: `namespace`, `owner_type`, `owner_id`, optional `policy`. |
-| `GET /v1/namespaces/list` | — | List policies; accepts `prefix` and `limit`. |
+| `GET /v1/namespaces/list` | — | List policies, filtered, sorted and paged. Filters: `prefix` (literal), or `match` with `match_mode` (`prefix` default, `contains`, `glob`), plus `owner_type` and `owner_id`. Order: `sort` (`namespace` default, `owner`, `updated_at`) and `dir` (`asc` default, `desc`). Paging: `limit` (default 200, max 1000) and `cursor`. Answers `{items, count, truncated, next_cursor}` where `count` is the whole matching set, not the page; page until `next_cursor` is absent to read it all. A cursor is bound to the `sort`/`dir` it was issued under. |
 | `GET /v1/namespaces/get` | — | Read one policy; requires `namespace`. |
 
 ### Context records, views, and packets

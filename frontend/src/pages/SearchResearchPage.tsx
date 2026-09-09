@@ -14,7 +14,7 @@ import {
 import { MessageSquare, Search, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { listNamespaces, synthesisAsk, tesseractLookup } from "../api/client";
+import { listAllNamespaces, synthesisAsk, tesseractLookup } from "../api/client";
 import type {
   MemoryStatus,
   SynthesisAskResponse,
@@ -123,8 +123,17 @@ export function SearchResearchPage({ onOpenItem }: Props) {
   // can blanket-search without typing. They can override with the field.
   const [defaultNamespaces, setDefaultNamespaces] = useState<string[]>([]);
   useEffect(() => {
-    listNamespaces({ limit: 1000 })
-      .then((res) => setDefaultNamespaces(res.items.map((n) => n.namespace)))
+    // Pages until the registry is exhausted: a blanket search over a capped
+    // list would silently miss whatever fell past the cap.
+    listAllNamespaces()
+      .then((res) => {
+        setDefaultNamespaces(res.items.map((n) => n.namespace));
+        if (!res.complete) {
+          toast.warning(
+            `Namespace registry did not finish loading: searching ${res.items.length} of ${res.count}.`,
+          );
+        }
+      })
       .catch(() => setDefaultNamespaces([]));
   }, []);
 
