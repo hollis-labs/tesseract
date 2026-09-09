@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/internal/fsperm"
+	"github.com/hollis-labs/tesseract/internal/memorylinks"
 	"github.com/hollis-labs/tesseract/internal/memorytime"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
 
@@ -25,7 +26,7 @@ import (
 )
 
 const (
-	schemaVersion = 16
+	schemaVersion = 17
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -893,6 +894,30 @@ END`); err != nil {
 			// This preserves the existing created_at/expires_at indexes and the
 			// direct SQL ORDER BY/range/MAX paths that rely on them.
 			if err = normalizeMemoryTimestamps(ctx, tx); err != nil {
+				return err
+			}
+		case 17:
+			// The link graph (CW-20260825-0017). `[[wikilink]]` syntax has been
+			// accumulating in payloads since the corpus began -- 969 occurrences
+			// across 357 revisions when this landed -- parsed by nothing and
+			// indexed by nothing. memory_links makes it the fourth retrieval
+			// signal alongside similarity, lexical and chronological.
+			//
+			// The shape is Loom's 007_wiki_links_redesign.sql, which mirrors
+			// Fragments Engine's fragment_links: a nullable resolved target, and
+			// the raw link text retained as the source of truth whether or not
+			// resolution succeeded. See internal/memorylinks for why the target
+			// is two nullable columns here rather than one.
+			for _, stmt := range memorylinks.Schema {
+				if _, err = tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			// Backfill is not best-effort in the sense of being allowed to fail:
+			// it is the whole point of the migration. An empty edge table would
+			// leave `related` answering "no links" for a corpus full of them,
+			// which is the failure mode a caller cannot tell from the truth.
+			if err = memorylinks.Backfill(ctx, tx); err != nil {
 				return err
 			}
 		}

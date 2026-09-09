@@ -311,8 +311,13 @@ type orderingKey struct {
 	FacetKinds    []string `json:"kinds"`
 	FacetSources  []string `json:"sources"`
 	PointerHealth []string `json:"pointer_health"`
-	Reranker      string   `json:"reranker"`
-	RerankerTopK  int      `json:"reranker_topk"`
+	// The link expansion selects an entirely different candidate set — a
+	// neighborhood rather than a corpus slice — so a cursor cannot survive a
+	// change to either field.
+	RelatedTo        []string `json:"related_to"`
+	RelatedRelations []string `json:"related_relations"`
+	Reranker         string   `json:"reranker"`
+	RerankerTopK     int      `json:"reranker_topk"`
 }
 
 // RecallOrderingFingerprint derives the ordering fingerprint for in.
@@ -349,8 +354,13 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		FacetKinds:    sortedCopy(in.Filters.FacetKinds),
 		FacetSources:  sortedCopy(in.Filters.FacetSources),
 		PointerHealth: sortedCopy(in.Filters.PointerHealth),
-		Reranker:      in.Reranker,
-		RerankerTopK:  in.RerankerTopK,
+		// Sorted because a set of anchors is a set: asking for [a,b] and [b,a]
+		// selects the same neighborhood in the same order, so the two must
+		// fingerprint alike or paging restarts for no reason.
+		RelatedTo:        sortedCopy(in.Filters.RelatedTo),
+		RelatedRelations: sortedCopy(in.Filters.RelatedRelations),
+		Reranker:         in.Reranker,
+		RerankerTopK:     in.RerankerTopK,
 	}
 	return fingerprintOf(key)
 }
