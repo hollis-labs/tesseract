@@ -145,6 +145,44 @@ func TestOrTree_BalancedAndAssociative(t *testing.T) {
 	if got := orTree([]string{"a", "b", "c"}); got != "(a OR (b OR c))" {
 		t.Errorf("orTree(3) = %q, want %q", got, "(a OR (b OR c))")
 	}
+	// Pins the balanced shape the package doc advertises.
+	if got := orTree([]string{"a", "b", "c", "d"}); got != "((a OR b) OR (c OR d))" {
+		t.Errorf("orTree(4) = %q, want %q", got, "((a OR b) OR (c OR d))")
+	}
+}
+
+// TestBuildNamespaceClause_DocumentedShapes pins every fragment shape named in
+// buildNamespaceClause's doc comment. The comment previously promised a
+// `(... OR ...)` chain unconditionally, which stopped being true once exact
+// matches collapsed into an IN list; this keeps the documentation and the code
+// from drifting apart again.
+func TestBuildNamespaceClause_DocumentedShapes(t *testing.T) {
+	cases := []struct {
+		name  string
+		input []string
+		want  string
+	}{
+		{"one exact", []string{"user/x/memory/notes"}, "(r.namespace = ?)"},
+		{"several exact, no prefixes", []string{
+			"user/x/memory/notes", "user/y/memory/decisions", "user/z/knowledge/f",
+		}, "(r.namespace IN (?,?,?))"},
+		{"one prefix", []string{"user/x/memory"}, "(r.namespace LIKE ?)"},
+		{"mixed", []string{
+			"user/x/memory/notes", "user/y/memory/decisions", "user/z/memory",
+		}, "(r.namespace IN (?,?) OR r.namespace LIKE ?)"},
+		{"many prefixes, balanced", []string{
+			"user/a/memory", "user/b/memory", "user/c/memory", "user/d/memory",
+		}, "((r.namespace LIKE ? OR r.namespace LIKE ?) OR " +
+			"(r.namespace LIKE ? OR r.namespace LIKE ?))"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, _ := buildNamespaceClause(tc.input)
+			if got != tc.want {
+				t.Errorf("sql = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 // parenDepth returns the maximum parenthesis nesting depth of s, which for a
