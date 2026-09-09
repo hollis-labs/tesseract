@@ -143,8 +143,13 @@ export function NamespaceRegistryTable({ columns, scrollRootRef, refreshToken = 
     setPageIndex((index) => index - 1);
   };
 
-  const firstRow = total === 0 ? 0 : pageIndex * pageSize + 1;
-  const lastRow = pageIndex * pageSize + items.length;
+  // An empty page with a non-zero total is reachable: rows deleted between two
+  // requests can strand a cursor past the end of the set. Deriving the range
+  // from pageIndex alone then reads "51 to 50 of 100", so the empty page is its
+  // own case rather than an arithmetic edge.
+  const emptyPage = items.length === 0;
+  const firstRow = emptyPage ? 0 : pageIndex * pageSize + 1;
+  const lastRow = emptyPage ? 0 : pageIndex * pageSize + items.length;
 
   return (
     <div className="grid gap-3">
@@ -281,7 +286,9 @@ export function NamespaceRegistryTable({ columns, scrollRootRef, refreshToken = 
         <Pill tone="neutral">
           {total === 0
             ? "0 namespaces"
-            : `${firstRow} to ${lastRow} of ${total} namespace${total === 1 ? "" : "s"}`}
+            : emptyPage
+              ? `No rows on this page; ${total} match. Refresh to start from the first page.`
+              : `${firstRow} to ${lastRow} of ${total} namespace${total === 1 ? "" : "s"}`}
         </Pill>
         <div className="flex items-center gap-2">
           <Button

@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -845,7 +844,15 @@ func (s *Server) handleAdminNamespaceHistory(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	query, apiErr := namespaceQueryFromValues(q)
+	query, apiErr := contextstore.NamespaceFilterArgs{
+		Prefix:    q.Get("prefix"),
+		Match:     q.Get("match"),
+		MatchMode: q.Get("match_mode"),
+		OwnerType: q.Get("owner_type"),
+		OwnerID:   q.Get("owner_id"),
+		Sort:      q.Get("sort"),
+		Dir:       q.Get("dir"),
+	}.Query()
 	if apiErr != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", apiErr.Error(), nil)
 		return
@@ -905,48 +912,6 @@ func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 		"truncated":   page.NextCursor != "",
 		"next_cursor": page.NextCursor,
 	})
-}
-
-// namespaceQueryFromValues maps the /v1/namespaces/list query string onto a
-// store query. Limit and cursor are left to the caller because their bounds
-// are the transport's business.
-//
-// `prefix` predates the other knobs and keeps working unchanged; `match` with
-// `match_mode` is the general form. Passing both is refused rather than
-// resolved by precedence, because a caller who set both meant one of them.
-func namespaceQueryFromValues(q url.Values) (contextstore.NamespaceQuery, error) {
-	prefix := strings.TrimSpace(q.Get("prefix"))
-	match := strings.TrimSpace(q.Get("match"))
-	mode := strings.TrimSpace(q.Get("match_mode"))
-
-	if prefix != "" && match != "" {
-		return contextstore.NamespaceQuery{}, errors.New("prefix and match are two spellings of the same filter; pass one")
-	}
-	if prefix != "" && mode != "" && mode != string(contextstore.NamespaceMatchPrefix) {
-		return contextstore.NamespaceQuery{}, errors.New("prefix is a literal prefix match; use match with match_mode=" + mode + " instead")
-	}
-	if prefix != "" {
-		match = prefix
-		mode = string(contextstore.NamespaceMatchPrefix)
-	}
-
-	out := contextstore.NamespaceQuery{
-		Match:     match,
-		MatchMode: contextstore.NamespaceMatchMode(mode),
-		OwnerType: strings.TrimSpace(q.Get("owner_type")),
-		OwnerID:   strings.TrimSpace(q.Get("owner_id")),
-		Sort:      contextstore.NamespaceSortField(strings.TrimSpace(q.Get("sort"))),
-	}
-
-	switch dir := strings.TrimSpace(q.Get("dir")); dir {
-	case "", "asc":
-	case "desc":
-		out.Desc = true
-	default:
-		return contextstore.NamespaceQuery{}, errors.New("dir must be asc or desc, got " + strconv.Quote(dir))
-	}
-
-	return out, nil
 }
 
 func (s *Server) handleNamespaceGet(w http.ResponseWriter, r *http.Request) {
