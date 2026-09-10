@@ -100,8 +100,8 @@ func defaultMemoryTypes() Vocabulary {
 //
 // The set is the taxonomy locked 2026-05-14 (nine kinds), plus `mcp_server` and
 // `investigation` promoted 2026-08-25 because a shipped producer emits each
-// systematically, plus `wiki_page` added here, minus `learning` retired
-// 2026-09-10.
+// systematically, plus `wiki_page` and `boot_prompt` added here, minus
+// `learning` retired 2026-09-10.
 //
 // `wiki_page` is a compiled OKF page — a compiler, a template, a provenance
 // chain and a link graph. Not `doc` (an external documentation reference) and
@@ -111,6 +111,25 @@ func defaultMemoryTypes() Vocabulary {
 // usual rule, because Loom is BUILT AND BLOCKED waiting for it: the rule exists
 // to stop a vocabulary filling with entries nothing writes, and a stalled
 // compiler is the opposite case. See [[tesseract_wiki_page_kind_approved]].
+//
+// `boot_prompt` is a rendered briefing an agent authored for Chrispian to hand
+// to another agent — prose, not slots, addressed by id and never searched for.
+// Added on Chrispian's direction 2026-09-10 (CW-20260910-0068). It is NOT the
+// agent's identity and NOT its materialized boot directory: an agent is a
+// profile plus scope plus args ([[local_agent_object_model]]), and the boot dir
+// under agent-workspaces/boot/<project>/ is session state that rots in hours
+// ([[feedback_boot_prompt_layout]]). Both of those are regenerable from config
+// and stay on the filesystem. This kind holds the half that is not — the
+// judgment about what the next agent must be told, which is why the corrected
+// premise in this task's own boot prompt could not have been re-derived.
+//
+// No MCP tool was added with it. `tesseract_get` already takes domain +
+// namespace + key across every domain, so a `tesseract_boot` would be a second
+// way to do a thing that works; the skill carries the semantic mapping instead.
+// Worth knowing at the call site: `tesseract_get` reinforces activation under
+// `memory` but not under `knowledge`, so re-reading a popular boot prompt does
+// not climb it up recall rankings. That is the wanted behavior here, not a
+// gap — this kind is addressed, never discovered.
 //
 // `learning` was retired by CW-20260910-0067. It duplicated the `learnings`
 // memory type across a domain boundary that cannot be crossed afterwards — one
@@ -127,14 +146,16 @@ func defaultMemoryTypes() Vocabulary {
 // SQL, so `facet_kinds: ["learning"]` still returns them. Re-filing them as
 // `investigation` is a corpus edit, filed rather than done here.
 //
-// One kind is canonical and unpopulated: `wiki_page`, waiting on its first Loom
-// emission. It stays writable on purpose — a vocabulary naming only what
-// already exists could never be written into, which is the readable-but-
-// unwritable trap the 2026-08-25 normalization existed to remove. The other ten
-// all have corpus entries as of 2026-09-10; `playbook`, `learning` and
-// `handoff` were described as unpopulated here and in facets-and-kinds.md long
-// after they had been seeded, which is what made three healthy kinds look
-// mis-filed.
+// Two kinds are canonical and unpopulated: `wiki_page`, waiting on its first
+// Loom emission, and `boot_prompt`, added the day it was specified. Both stay
+// writable on purpose — a vocabulary naming only what already exists could
+// never be written into, which is the readable-but-unwritable trap the
+// 2026-08-25 normalization existed to remove. The other ten all have corpus
+// entries as of 2026-09-10; `playbook`, `learning` and `handoff` were described
+// as unpopulated here and in facets-and-kinds.md long after they had been
+// seeded, which is what made three healthy kinds look mis-filed. So do not read
+// this paragraph as current: count them (`tesseract_recall` with `facet_kinds`
+// and `estimate_only`) before you rely on a number written in a comment.
 //
 // Naming rule: snake_case. Adding a kind is a governed change — the vocabulary
 // and the [[kinds_taxonomy]] record are revised as one change.
@@ -143,6 +164,7 @@ func defaultKnowledgeFacetKinds() Vocabulary {
 		VocabularyID: VocabKnowledgeFacetKind,
 		Closed:       true,
 		Types: []Type{
+			{TypeID: "boot_prompt"},
 			{TypeID: "doc"},
 			{TypeID: "handoff"},
 			{TypeID: "investigation"},
