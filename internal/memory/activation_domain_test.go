@@ -187,11 +187,17 @@ func TestKnowledgeDeliberateReadReinforces(t *testing.T) {
 		t.Fatalf("write knowledge revision: %v", err)
 	}
 
-	before, _ := ms.GetState(ctx, rev.MemoryID)
-	if _, err := ms.GetCurrentInDomainReinforced(ctx, domains.Knowledge, rev.Namespace, rev.MemoryKey); err != nil {
-		t.Fatalf("deliberate knowledge read: %v", err)
+	before, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("state before: %v", err)
 	}
-	after, _ := ms.GetState(ctx, rev.MemoryID)
+	if _, readErr := ms.GetCurrentInDomainReinforced(ctx, domains.Knowledge, rev.Namespace, rev.MemoryKey); readErr != nil {
+		t.Fatalf("deliberate knowledge read: %v", readErr)
+	}
+	after, err := ms.GetState(ctx, rev.MemoryID)
+	if err != nil {
+		t.Fatalf("state after: %v", err)
+	}
 
 	if after.AccessCount != before.AccessCount+1 {
 		t.Errorf("knowledge access_count %d -> %d, want +1", before.AccessCount, after.AccessCount)
