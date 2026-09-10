@@ -32,6 +32,7 @@ import (
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/webui"
 	_ "modernc.org/sqlite"
 )
@@ -476,6 +477,11 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		tesseractCfg = config.Defaults()
 	}
 
+	if regErr := loadTypeRegistry(filepath.Join(layout.ConfigDir(), "types.yaml")); regErr != nil {
+		_, _ = stderr.WriteString("error: " + regErr.Error() + "\n")
+		return 1
+	}
+
 	store, err := contextstore.Open(ctx, contextstore.Config{
 		RootDir:    layout.DataDir(),
 		RecordsDir: filepath.Join(layout.StateDir(), "records"),
@@ -862,4 +868,36 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 		}
 	}
 	return 0
+}
+
+// loadTypeRegistry installs the process type registry from types.yaml, if the
+// file exists.
+//
+// Absent is normal and means "run the shipped vocabularies" — a fresh install
+// has no file and needs none, and the defaults in internal/typeregistry are
+// what governance signed off on.
+//
+// MALFORMED IS FATAL, and that is deliberately harsher than config.Load two
+// lines above, which warns and falls back. The asymmetry is the mitigation for
+// what CW-20260909-0034 gave up: enforcement authority now lives in a file a
+// bad edit can change without a compile ([[config_is_policy_code_is_engine]]).
+//
+// A typo in config.yaml costs a payload_mode. A typo here means the process
+// enforces a DIFFERENT VOCABULARY than the operator declared — silently
+// widening what can be written, or narrowing it. Refusing to start is
+// recoverable in the time it takes to fix or delete the file; writing rows
+// under a vocabulary nobody chose is not.
+func loadTypeRegistry(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("type registry: %w", err)
+	}
+	r := typeregistry.NewRegistry()
+	if err := r.LoadFromFile(path); err != nil {
+		return fmt.Errorf("type registry: %w", err)
+	}
+	typeregistry.Install(r)
+	return nil
 }

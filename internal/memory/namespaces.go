@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
+
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 )
 
 // Scope is the memory namespace scope (D10).
@@ -74,58 +75,55 @@ var idSegmentRE = regexp.MustCompile(`^[a-zA-Z0-9_\-:.]+$`)
 // Constrained to keep types stable and grep-able across the catalog.
 var typeSegmentRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
-// DefaultTypeAllowlist is the config-driven allowlist of memory namespace
-// {type} segment values. Adding a type = append one entry here.
+// The memory namespace {type} vocabulary — now a registry lookup.
 //
-// The list is locked by decision in CW-20260519-0029 (sprint SP-20260518-0012,
-// "Memory namespace shallow + faceted"). `notes` is the catch-all default
-// bucket for memories that don't carry a stronger type.
-var DefaultTypeAllowlist = []string{
-	"decisions",
-	"feedback",
-	"followups",
-	"learnings",
-	"limitations",
-	"notes",
-	"outcomes",
-	"references",
-}
+// It used to be DefaultTypeAllowlist, a Go slice whose own comment opened
+// "the config-driven allowlist of memory namespace {type} segment values."
+// It was not config-driven: it was a literal, `SetTypeAllowlist` had no
+// non-test caller, and `internal/config` had no key for it. That was
+// CW-20260909-0027, and this is what makes the sentence true rather than
+// deleting it — the values now live in the type registry under
+// `memory.type`, seeded from Go defaults and revisable in types.yaml.
+//
+// The list is still locked by decision in CW-20260519-0029 (sprint
+// SP-20260518-0012, "Memory namespace shallow + faceted"), and `notes` is
+// still the deliberate catch-all for memories that carry no stronger type.
+// Config-driven means an operator can revise it without a release; it does
+// not mean the list is arbitrary. Revise it in the registry, not by widening
+// the parser.
 
-// allowedTypes holds the package-level allowlist as a set for O(1) lookup.
-// Initialized from DefaultTypeAllowlist; exposed via SetTypeAllowlist for
-// future config-driven overrides and test scenarios.
-var allowedTypes = makeTypeSet(DefaultTypeAllowlist)
-
-func makeTypeSet(list []string) map[string]struct{} {
-	m := make(map[string]struct{}, len(list))
-	for _, t := range list {
-		m[t] = struct{}{}
-	}
-	return m
-}
-
-// IsValidType reports whether t is in the current namespace type allowlist.
+// IsValidType reports whether t is in the current namespace type vocabulary.
 func IsValidType(t string) bool {
-	_, ok := allowedTypes[t]
-	return ok
+	return typeregistry.Default().Allows(typeregistry.VocabMemoryType, t)
 }
 
-// TypeAllowlist returns a sorted copy of the current type allowlist.
+// TypeAllowlist returns the current type vocabulary, sorted.
 func TypeAllowlist() []string {
-	out := make([]string, 0, len(allowedTypes))
-	for t := range allowedTypes {
-		out = append(out, t)
-	}
-	sort.Strings(out)
-	return out
+	return typeregistry.Default().Values(typeregistry.VocabMemoryType)
 }
 
-// SetTypeAllowlist replaces the active allowlist. Returns a restore function
-// that resets the prior allowlist; intended for tests and future config wiring.
+// SetTypeAllowlist replaces the active vocabulary and returns a restore
+// function.
+//
+// Kept as a thin wrapper over typeregistry.Install rather than deleted: it is
+// the shape the existing tests are written against, and a test that needs a
+// narrower vocabulary should not have to build a whole registry to get one.
+// Production wiring goes through the registry directly — cmd/tesseract reads
+// types.yaml at boot.
 func SetTypeAllowlist(list []string) (restore func()) {
-	prev := allowedTypes
-	allowedTypes = makeTypeSet(list)
-	return func() { allowedTypes = prev }
+	types := make([]typeregistry.Type, 0, len(list))
+	for _, t := range list {
+		types = append(types, typeregistry.Type{TypeID: t})
+	}
+	r := typeregistry.NewRegistry()
+	// Errors are impossible here: the config is built in-process from a
+	// []string, so there is no parse to fail and no field to misspell.
+	_ = r.LoadVocabulary(typeregistry.Vocabulary{
+		VocabularyID: typeregistry.VocabMemoryType,
+		Closed:       true,
+		Types:        types,
+	})
+	return typeregistry.Install(r)
 }
 
 // ParseNamespace parses a memory namespace string into its components.
@@ -135,9 +133,9 @@ func SetTypeAllowlist(list []string) (restore func()) {
 //	user/{user_id}/project/{project_id}/memory/{type}
 //	user/{user_id}/session/{session_id}/memory/{type}
 //
-// {type} is validated against the package allowlist (DefaultTypeAllowlist by
-// default). Any other shape — including the legacy flat
-// `user/{id}/memory` — returns a wrapped ErrInvalidNamespace.
+// {type} is validated against the `memory.type` vocabulary in the type
+// registry. Any other shape — including the legacy flat `user/{id}/memory` —
+// returns a wrapped ErrInvalidNamespace.
 func ParseNamespace(s string) (Namespace, error) {
 	if s == "" {
 		return Namespace{}, fmt.Errorf("%w: empty", ErrInvalidNamespace)

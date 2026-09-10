@@ -117,7 +117,7 @@ const kindCountQuery = `
 	GROUP BY COALESCE(facet_kind, '')`
 
 // BuildKindMigrationPlan scans the knowledge domain for `facet_kind` values
-// outside canonicalKnowledgeKinds and returns the rewrite plan. It does NOT
+// outside the canonical vocabulary and returns the rewrite plan. It does NOT
 // mutate the database — pass the plan to ApplyKindMigration to do that.
 //
 // Every revision carrying an off-vocabulary value is planned, not just current
@@ -125,12 +125,12 @@ const kindCountQuery = `
 // would otherwise still surface an off-vocabulary kind through a
 // revision-scoped read.
 func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan, error) {
-	vocab := sortedKeys(canonicalKnowledgeKinds)
+	vocab := KnowledgeKindVocabulary()
 
 	// Guard against a mapping table that points outside the vocabulary — that
 	// would migrate rows to a value the next step would reject.
 	for old, m := range kindMigrations {
-		if _, ok := canonicalKnowledgeKinds[m.NewKind]; !ok {
+		if !IsCanonicalKnowledgeKind(m.NewKind) {
 			return KindMigrationPlan{}, fmt.Errorf("mapping %q -> %q targets a kind outside the vocabulary", old, m.NewKind)
 		}
 	}
@@ -165,7 +165,7 @@ func BuildKindMigrationPlan(ctx context.Context, db *sql.DB) (KindMigrationPlan,
 		r.IsHead = isHead != 0
 
 		// Already conformant — not part of the migration.
-		if _, conformant := canonicalKnowledgeKinds[r.OldKind]; conformant {
+		if IsCanonicalKnowledgeKind(r.OldKind) {
 			continue
 		}
 
@@ -219,7 +219,7 @@ func ApplyKindMigration(ctx context.Context, db *sql.DB, plan KindMigrationPlan)
 		return 0, fmt.Errorf("plan has %d unmapped off-vocabulary kind(s); resolve before applying", len(plan.Unmapped))
 	}
 	for _, row := range plan.Rows {
-		if _, ok := canonicalKnowledgeKinds[row.NewKind]; !ok {
+		if !IsCanonicalKnowledgeKind(row.NewKind) {
 			return 0, fmt.Errorf("row %s targets kind %q outside the vocabulary", row.RevisionID, row.NewKind)
 		}
 	}
@@ -305,7 +305,7 @@ func CountNonConformantKinds(ctx context.Context, db *sql.DB) (int, error) {
 		if scanErr := rows.Scan(&kind, &n); scanErr != nil {
 			return 0, fmt.Errorf("scan kind count: %w", scanErr)
 		}
-		if _, conformant := canonicalKnowledgeKinds[kind]; !conformant {
+		if !IsCanonicalKnowledgeKind(kind) {
 			total += n
 		}
 	}

@@ -28,10 +28,10 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/contexttypes"
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -191,8 +191,11 @@ type Server struct {
 	QueueDB *sql.DB
 	// RuntimeConfig is the loaded Tesseract config, merged with defaults.
 	RuntimeConfig config.Config
-	// TypeRegistry manages context types and views. May be nil (defaults will be used).
-	TypeRegistry *contexttypes.Registry
+	// TypeRegistry holds the type vocabularies and views. May be nil, in
+	// which case the handlers use typeregistry.Default() — the process
+	// registry cmd/tesseract loads types.yaml into at boot. Set it only to
+	// give one server a registry of its own.
+	TypeRegistry *typeregistry.Registry
 	// MemoryStore backs the /v1/memory/* and /v1/knowledge/* routes. When
 	// nil, those routes respond with 503 service_unavailable.
 	MemoryStore *memory.Store

@@ -23,6 +23,7 @@ documentation drift.
 - [MCP](SPECS/MCP.md)
 - [MCP tool catalog](MCP_TOOLS.md)
 - [Namespace rules](SPECS/NAMESPACES.md)
+- [Type vocabularies](OPERATIONS.md#type-vocabularies-typesyaml)
 - [Promotion](SPECS/PROMOTION.md)
 - [Storage](SPECS/STORAGE.md)
 - [Views](SPECS/VIEWS.md)

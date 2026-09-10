@@ -10,6 +10,38 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- **The type registry serves all domains, and its vocabularies moved to
+  config.** `internal/contexttypes` is now `internal/typeregistry`, and the
+  three vocabularies that were spelled three different ways are declared in one
+  place: `context.record_type` (was `DefaultTypes`), `memory.type` (was
+  `memory.DefaultTypeAllowlist`, a Go slice) and `knowledge.facet_kind` (was a
+  closed Go map). Closure is now a declared `closed` property rather than an
+  accident of which container someone reached for.
+
+  An optional `types.yaml` beside `config.yaml` — the `types-file` reported by
+  `tesseract path` — revises them without a release. A vocabulary the file
+  names REPLACES the shipped one rather than merging, so an operator can remove
+  a value and not only add one. Unknown keys are an error, and a malformed file
+  stops the daemon starting rather than falling back to defaults: enforcing a
+  vocabulary nobody declared is worse than not starting. See
+  [`examples/types.yaml`](examples/types.yaml) and
+  [Type vocabularies](docs/OPERATIONS.md#type-vocabularies-typesyaml).
+
+  **This moves enforcement authority from code to config, deliberately.** A bad
+  config edit can now open a vocabulary that was closed, where before it took a
+  compile. What did not move is enforcement: `memory.WriteRevision` is still
+  the persistence boundary that rejects an off-vocabulary `facet_kind`, and the
+  namespace parser still rejects an unknown `{type}`.
+
+  `hot_fields` and `schema_ref` are new declarative fields. Declaring a hot
+  field does NOT create an index — the loader has no path to schema, asserted
+  by a test, so two config files can never produce two schemas from one binary.
+  Nothing reads `schema_ref` yet.
+
+- **`wiki_page` is a canonical knowledge kind**, the twelfth. A compiled wiki
+  page is compiler output with a template, a provenance chain and a link graph
+  — not `doc` (an external reference) and not `note` (a generic note).
+
 - **Activation participation is a domain property.**
   `DomainPolicy.ParticipatesInActivation() bool` gates both halves of activation
   — the decay sweep and the reinforcement `UPDATE` — in SQL, from one predicate
@@ -44,6 +76,23 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
   emitted `memory.write` and the log recorded a memory write that never
   happened. Adding a domain now fails loudly in three packages until it is
   fully described.
+
+### Removed
+
+- **`promotion_rules` and `retrieval_rank_bias` are gone from type
+  declarations**, and both were live on the context surface:
+
+  - Typed views (`/v1/context/typed-view`, `/v1/views/evaluate`,
+    `context_typed_view`, `context_view`, `context view`) now rank on status
+    weight alone. The per-type multiplier every context type declared is not
+    applied, so ordering within a view can differ.
+  - `decision/adr` no longer requires `actor=user` to move `draft -> reviewed`.
+    That guard was already vacuous — HTTP, MCP and the CLI all default `actor`
+    to `"user"` when the caller omits it, so it fired only for a caller that
+    volunteered a non-user actor.
+  - `GET /v1/context/types` and `context_registry_list` with `kind=types` no
+    longer return `promotion_rules` or `retrieval_rank_bias` on an entry, and a
+    `types.yaml` declaring either is refused rather than silently ignored.
 
 ### Fixed
 

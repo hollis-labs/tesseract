@@ -83,6 +83,11 @@ reported by `tesseract path` and set the matching environment variables:
 - [`examples/config.anthropic-openai.yaml`](examples/config.anthropic-openai.yaml)
 - [`env.example`](env.example)
 
+The type vocabularies Tesseract validates writes against are yours to revise,
+in the optional `types-file` reported by `tesseract path`. See
+[`examples/types.yaml`](examples/types.yaml) and
+[Type vocabularies](docs/OPERATIONS.md#type-vocabularies-typesyaml).
+
 Provider-backed features transmit selected content to the configured provider.
 Review the [data egress table](docs/OPERATIONS.md#outbound-connections-and-data-egress)
 before enabling them.

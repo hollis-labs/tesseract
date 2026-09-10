@@ -187,7 +187,7 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		}
 
 		// Type validation.
-		if err := reg.ValidateType(item.RecordType); err != nil {
+		if err := reg.ValidateContextType(item.RecordType); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			results = append(results, res)
@@ -202,7 +202,7 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		if status == "" {
 			status = "draft"
 		}
-		if err := reg.ValidateStatus(item.RecordType, status); err != nil {
+		if err := reg.ValidateContextStatus(item.RecordType, status); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			results = append(results, res)
@@ -217,7 +217,7 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		if item.RecordType != "" {
 			var payloadMap map[string]any
 			if err := json.Unmarshal(payloadBytes, &payloadMap); err == nil {
-				if err := reg.ValidateRequiredFields(item.RecordType, payloadMap); err != nil {
+				if err := reg.ValidateContextRequiredFields(item.RecordType, payloadMap); err != nil {
 					res.Status = "error"
 					res.Error = err.Error()
 					results = append(results, res)
@@ -233,7 +233,7 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		// Apply default TTL.
 		ttl := item.TTL
 		if ttl == "" && item.RecordType != "" {
-			ct, ok := reg.GetType(item.RecordType)
+			ct, ok := reg.ContextType(item.RecordType)
 			if ok {
 				defaultTTL := ct.ParseDefaultTTL()
 				if defaultTTL > 0 {
@@ -372,7 +372,7 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolReque
 	}
 
 	reg := a.getRegistry()
-	if err := reg.ValidateType(recordType); err != nil {
+	if err := reg.ValidateContextType(recordType); err != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
 

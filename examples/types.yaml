@@ -1,0 +1,93 @@
+# Tesseract type registry — the type vocabularies, as policy you own.
+#
+# Copy this to the `types-file` reported by `tesseract path`
+# (usually ~/.config/tesseract/types.yaml). The file is OPTIONAL: with no file,
+# Tesseract runs the shipped vocabularies, which is what most installs want.
+#
+# A vocabulary you name here REPLACES the shipped one — it is not merged. That
+# is what lets you remove a value, not only add one. A vocabulary you do not
+# name keeps its default, so a file need only carry what it changes.
+#
+# Unknown keys are an error and a malformed file stops the daemon starting,
+# rather than falling back to defaults. Enforcement authority lives here now:
+# running under a vocabulary you did not declare is worse than not running.
+
+vocabularies:
+  # ---------------------------------------------------------------------
+  # knowledge.facet_kind — the `kind` facet every knowledge write carries.
+  #
+  # Closed and governed. Restated in full below because replacing means
+  # replacing: dropping a line here makes that kind unwritable, and existing
+  # rows carrying it become readable but not rewritable.
+  # ---------------------------------------------------------------------
+  - vocabulary_id: knowledge.facet_kind
+    closed: true
+    types:
+      - type_id: doc # external documentation reference
+      - type_id: handoff # agent-to-agent or session-to-session packet
+      - type_id: investigation # dossier: findings, evidence, root cause
+      - type_id: learning # reusable insight or pattern from work
+      - type_id: mcp_server # an MCP server: what it is, what it exposes
+      - type_id: note # generic agent-authored note (the fallback)
+      - type_id: package # library or package reference
+      - type_id: playbook # codified process or runbook
+      - type_id: pointer # bare external reference
+      - type_id: project_canonical # single source of truth for a project
+      - type_id: session_close # session closure record
+      - type_id: wiki_page # compiled wiki page — compiler output
+
+  # ---------------------------------------------------------------------
+  # memory.type — the {type} segment of a memory namespace,
+  # e.g. user/chrispian/memory/decisions.
+  #
+  # A value removed here stops parsing, so existing namespaces using it stop
+  # accepting writes. Add before you migrate, remove after.
+  # ---------------------------------------------------------------------
+  - vocabulary_id: memory.type
+    closed: true
+    types:
+      - type_id: decisions
+      - type_id: feedback
+      - type_id: followups
+      - type_id: learnings
+      - type_id: limitations
+      - type_id: notes # the catch-all when nothing stronger fits
+      - type_id: outcomes
+      - type_id: references
+
+  # ---------------------------------------------------------------------
+  # context.record_type — the context store's record types.
+  #
+  # `open_prefixes` keeps `custom/...` writable without declaring each one,
+  # which is how an app carries its own types. Shown here with two of the
+  # fifteen shipped entries; naming this vocabulary at all replaces all of it.
+  # ---------------------------------------------------------------------
+  # - vocabulary_id: context.record_type
+  #   closed: true
+  #   open_prefixes: ["custom/"]
+  #   types:
+  #     - type_id: task/spec
+  #       allowed_statuses: [draft, reviewed, canonical, deprecated]
+  #       required_fields: [title]
+  #     - type_id: note/volatile
+  #       allowed_statuses: [draft]
+  #       default_ttl: 336h
+
+# ---------------------------------------------------------------------
+# The other fields a type may declare, none of them required:
+#
+#   default_ttl        a Go duration, e.g. "336h"
+#   allowed_statuses   the statuses this type permits; empty means all
+#   required_fields    payload keys that must be present and non-empty
+#   max_summary_bytes  a ceiling on the summary
+#   hot_fields         payload fields worth indexing. DECLARATIVE ONLY —
+#                      declaring one does NOT create an index. Indexes are
+#                      materialized by a reviewed migration, so that two
+#                      config files can never produce two schemas from one
+#                      binary and a restore stays deterministic.
+#   schema_ref         {source_path, schema_hash} pinning a payload schema
+#                      to a file on disk by sha256. Nothing reads it yet.
+#
+# `views` may also be declared at the top level; they are context-store
+# retrieval presets and are omitted here.
+# ---------------------------------------------------------------------

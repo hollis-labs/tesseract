@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -305,11 +305,11 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 	return toolJSON(result), nil
 }
 
-func (a *Adapter) getRegistry() *contexttypes.Registry {
+func (a *Adapter) getRegistry() *typeregistry.Registry {
 	if a.TypeRegistry != nil {
 		return a.TypeRegistry
 	}
-	return contexttypes.NewRegistry()
+	return typeregistry.Default()
 }
 
 func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -340,10 +340,10 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	reg := a.getRegistry()
-	if err := reg.ValidateType(recordType); err != nil {
+	if err := reg.ValidateContextType(recordType); err != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
-	if err := reg.ValidateStatus(recordType, status); err != nil {
+	if err := reg.ValidateContextStatus(recordType, status); err != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
 
@@ -351,7 +351,7 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 	if recordType != "" {
 		var payloadMap map[string]any
 		if err := json.Unmarshal(payload, &payloadMap); err == nil {
-			if err := reg.ValidateRequiredFields(recordType, payloadMap); err != nil {
+			if err := reg.ValidateContextRequiredFields(recordType, payloadMap); err != nil {
 				return toolError(codeValidationError, err.Error()), nil
 			}
 		}
@@ -359,7 +359,7 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 
 	// Apply default TTL.
 	if ttl == "" && recordType != "" {
-		ct, ok := reg.GetType(recordType)
+		ct, ok := reg.ContextType(recordType)
 		if ok {
 			defaultTTL := ct.ParseDefaultTTL()
 			if defaultTTL > 0 {
@@ -435,13 +435,13 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 
 	newStatus := toStatus
 	if newStatus == "" {
-		newStatus = contexttypes.NextPromotionStatus(oldStatus)
+		newStatus = typeregistry.NextPromotionStatus(oldStatus)
 		if newStatus == "" {
 			return toolError(codeValidationError, fmt.Sprintf("cannot promote from status %q", oldStatus)), nil
 		}
 	}
 
-	if err := reg.ValidateTransition(head.RecordType, oldStatus, newStatus, actor); err != nil {
+	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
 
@@ -563,15 +563,16 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 	}
 	ranked := make([]rankedItem, len(items))
 	for i, rec := range items {
-		typeScore := 1.0
-		if ct, ok := reg.GetType(rec.RecordType); ok && ct.RetrievalRankBias > 0 {
-			typeScore = ct.RetrievalRankBias
-		}
-		statusScore := 0.5
+		// Status weight alone. The per-type multiplier that used to sit here
+		// left with retrieval_rank_bias (CW-20260909-0034,
+		// [[tesseract_type_declaration_field_set]]): a type carrying its own
+		// thumb on the scale is unfixable from a bad result, because nobody
+		// debugging a ranking complaint thinks to check a type declaration.
+		score := 0.5
 		if w, ok := viewDef.RankWeights[rec.Status]; ok {
-			statusScore = w
+			score = w
 		}
-		ranked[i] = rankedItem{rec: rec, score: typeScore * statusScore}
+		ranked[i] = rankedItem{rec: rec, score: score}
 	}
 
 	// Sort by score desc.
@@ -657,15 +658,16 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 	}
 	ranked := make([]ri, len(items))
 	for i, rec := range items {
-		ts := 1.0
-		if ct, ok := reg.GetType(rec.RecordType); ok && ct.RetrievalRankBias > 0 {
-			ts = ct.RetrievalRankBias
-		}
-		ss := 0.5
+		// Status weight alone. The per-type multiplier that used to sit here
+		// left with retrieval_rank_bias (CW-20260909-0034,
+		// [[tesseract_type_declaration_field_set]]): a type carrying its own
+		// thumb on the scale is unfixable from a bad result, because nobody
+		// debugging a ranking complaint thinks to check a type declaration.
+		score := 0.5
 		if w, ok := viewDef.RankWeights[rec.Status]; ok {
-			ss = w
+			score = w
 		}
-		ranked[i] = ri{rec: rec, score: ts * ss}
+		ranked[i] = ri{rec: rec, score: score}
 	}
 	for i := 0; i < len(ranked)-1; i++ {
 		for j := i + 1; j < len(ranked); j++ {
@@ -711,7 +713,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 func (a *Adapter) handleTypesList(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	reg := a.getRegistry()
 	return toolJSON(map[string]any{
-		"types": reg.ListTypes(),
+		"types": reg.ListContextTypes(),
 	}), nil
 }
 
