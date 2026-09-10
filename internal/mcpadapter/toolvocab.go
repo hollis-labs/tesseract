@@ -46,7 +46,7 @@ type ToolPrefix struct {
 var ToolPrefixRule = []ToolPrefix{
 	{"context", "the context domain only — generic revisioned records"},
 	{"event", "the event domain only — the append-only narrative log"},
-	{"knowledge", "the knowledge domain only — pointer-first references"},
+	{"knowledge", "the knowledge domain only — content addressed by key"},
 	{"memory", "the memory domain only — agent-authored revisions"},
 	{"tesseract", "spans every domain, or serves the surface itself"},
 }

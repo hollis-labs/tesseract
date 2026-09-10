@@ -39,7 +39,10 @@ user/{user_id}/session/{session_id}/memory/{type}  # session scope, 6 seg
 - `limitations` — known constraints or preserved tech debt
 - `notes` — catch-all default bucket for everything else
 - `outcomes` — what happened / what was true after the work
-- `references` — pointers to where information lives
+
+Every one of those is content a later session should **meet** while working nearby rather than go looking for — which is what makes them memory. See `tesseract_skills start-here` for the boundary and where it stops.
+
+**`references` was retired 2026-09-10** (CW-20260910-0067). It meant "pointers to where information lives", and a pointer is content you go *to* — the knowledge kinds `pointer` and `doc` already carry it. Write those to `knowledge_write` instead. The ten entries filed under the old type stay readable: the vocabulary is enforced on the write path only, so recall and `tesseract_get` still return them; what stops is writing a new revision there.
 
 Adding a type is an edit to the `memory.type` vocabulary in the type registry (`types.yaml`, seeded from Go defaults) — config, not a release. Unknown types are rejected at write time with a clear error naming the allowed set.
 

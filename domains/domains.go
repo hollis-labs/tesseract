@@ -27,7 +27,10 @@ const (
 	// Memory is the default domain for agent memory revisions (D-core).
 	Memory Domain = "memory"
 
-	// Knowledge is the pointer-first external reference domain (S1).
+	// Knowledge is the reference domain (S1) — content addressed by key,
+	// carrying kind/source/pointer facets. "Pointer-first" describes the facet
+	// shape, not a requirement that the content live elsewhere: scheme `nil`
+	// declares no external source and is the common case.
 	Knowledge Domain = "knowledge"
 
 	// Event is the append-only narrative log: an agent's reasoning about what

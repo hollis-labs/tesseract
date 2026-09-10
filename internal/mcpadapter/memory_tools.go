@@ -18,11 +18,12 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which nests the same fields differently. Seven arguments are required, and `trigger`, `origin` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
 				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
 				"• **Scope:** `memory:write`.\n"+
-				"• **Use this when:** the content is authored by you or another agent and belongs to the memory domain.\n"+
-				"• **Don't use this for:** pointer-to-external-content (`knowledge_write`) or generic revisioned records (`context_write`).\n"+
+				domainBoundaryLine+
+				"• **Use this when:** a decision and its rationale, a limitation, a deferred follow-up, feedback, an outcome, what a session learned — something a later session should meet while working nearby, without having known to ask for it.\n"+
+				"• **Don't use this for:** content someone will come back for by name — a project's canonical, a handoff, a playbook, a doc or package reference. That is `knowledge_write`, whether or not it points at anything outside Tesseract. Generic revisioned records — `context_write`.\n"+
 				"• **Deeper:** `tesseract_skills namespaces` for namespace rules.",
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: decisions, feedback, followups, learnings, limitations, notes, outcomes, references.")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: "+memory.TypeList()+". `notes` is the deliberate catch-all when no stronger type fits.")),
 		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style). "+
 			"Dot-separated segments, each matching ^[a-z0-9_]+$ — lowercase letters, digits and underscore only. "+
 			"At most 6 segments, 64 characters per segment, 256 characters total. "+

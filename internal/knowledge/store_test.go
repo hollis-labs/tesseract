@@ -111,14 +111,18 @@ func TestWrite_UnknownKindRejected(t *testing.T) {
 }
 
 // TestWrite_EveryCanonicalKindAccepted is the converse of the rejection test:
-// enforcement must not make any canonical kind unwritable. The three
-// unpopulated kinds (playbook, learning, handoff) matter most here — they have
-// no corpus entries, so nothing else would catch it if they were excluded.
+// enforcement must not make any canonical kind unwritable. `wiki_page` matters
+// most here — it is the only kind with no corpus entries, so nothing else would
+// catch it if it were excluded.
+//
+// It named playbook, learning and handoff as the unpopulated ones until
+// CW-20260910-0067; all three had been seeded, and `learning` has since been
+// retired. Counts belong in a census, not in a comment that nothing re-runs.
 func TestWrite_EveryCanonicalKindAccepted(t *testing.T) {
 	s := newTestStore(t)
 	vocab := memory.KnowledgeKindVocabulary()
-	if len(vocab) != 12 {
-		t.Fatalf("vocabulary size = %d, want 12; got %v", len(vocab), vocab)
+	if len(vocab) != 11 {
+		t.Fatalf("vocabulary size = %d, want 11; got %v", len(vocab), vocab)
 	}
 	for i, kind := range vocab {
 		in := validInput()

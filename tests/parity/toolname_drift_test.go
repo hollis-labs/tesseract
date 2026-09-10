@@ -119,6 +119,7 @@ var nonToolVocabulary = map[string]string{
 	"memory_state":        "SQL table: one row per logical memory, holding current_revision, activation and access_count. It carries NO domain column, which is why (namespace, key) alone cannot identify a domain",
 	"memory_id":           "memory_revisions and memory_state SQL column (TEXT): the stable id of the memory a revision belongs to; surfaces as revision.memory_id on every recall result",
 	"memory_key":          "memory_write request field: the stable key of a keyed memory",
+	"memory_links":        "SQL table: one row per resolved or unresolved link edge between revisions, carrying the two-member relation vocabulary (references, supersedes) that recall's related_relations filter selects on. Named in docs/knowledge-memory-boundary.md as the third thing the retired `references` memory type collided with",
 	"missing_head":        "API error code: namespace/key has no head revision",
 	"rag_query":           "the operation segment of context_rag_query, quoted in the exemptions row of the generated tool-naming table in docs/MCP_TOOLS.md. Not a tool name on its own",
 	"session_snapshot":    "audit event_type emitted by context_session_write",

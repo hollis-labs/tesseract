@@ -40,13 +40,16 @@ func TestMapRow_TypeStripAndProjectExtraction(t *testing.T) {
 			wantTags: []string{"project:tesseract"},
 		},
 		{
-			name:     "singular reference -> references; project not lifted when not in set",
+			// `references` was retired by CW-20260910-0067, so the singular
+			// prefix now normalizes to the catch-all rather than to a namespace
+			// the write path would refuse a second revision in.
+			name:     "singular reference -> notes; project not lifted when not in set",
 			oldNS:    "user/chrispian/memory",
 			oldKey:   "reference.atlas.weekly_review",
-			wantNS:   "user/chrispian/memory/references",
+			wantNS:   "user/chrispian/memory/notes",
 			wantKey:  "atlas.weekly_review", // atlas not in project set, so not lifted
 			wantTags: nil,
-			wantNote: "normalized-type-prefix-reference-to-references",
+			wantNote: "normalized-type-prefix-reference-to-notes",
 		},
 		{
 			name:     "unknown prefix -> notes bucket; key preserved",
@@ -142,7 +145,7 @@ func TestStripTypePrefix(t *testing.T) {
 		{"decisions.foo.bar", "decisions", "foo.bar"},
 		{"decision.foo", "decisions", "foo"},
 		{"followup.bar", "followups", "bar"},
-		{"reference.x", "references", "x"},
+		{"reference.x", "notes", "x"},
 		{"unknown.thing", "notes", "unknown.thing"},
 		{"singleword", "notes", "singleword"},
 		{"", "notes", ""},

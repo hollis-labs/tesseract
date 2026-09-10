@@ -7,7 +7,9 @@ related: [facets-and-kinds, memory]
 
 # Knowledge domain
 
-Knowledge is for **references to external content**: packages, documents, notes that live somewhere else.
+**Knowledge is content you go *to*** — addressed by key, read whole, expected to stay true. A project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference. Memory is the other half: content that comes *to you*, surfaced by recall while you work nearby.
+
+Whether the content came from outside Tesseract does not decide this — most knowledge here is agent-authored, and `pointer_scheme: "nil"` is the first-class way to say there is nothing to link to. **The full statement, including where the rule stops applying, is in `tesseract_skills start-here`; it is stated once, there.** If you are about to reason from a one-line version of it, read that section first.
 
 ## Write the body as the artifact; the pointer is a convenience
 
@@ -31,14 +33,19 @@ Reach for a real `file:` or `https:` pointer when the external thing genuinely i
 
 ## When to use knowledge
 
-- Recording that a library exists and what it does.
-- Cataloging a document's location and summary.
-- Capturing a reference to external content you'll want to find later via search or similarity.
+- A project's single source of truth — paths, configs, roadmap.
+- A handoff written for whoever picks the work up next.
+- A codified process, or a dossier from a completed investigation.
+- Recording that a library exists and what it does; cataloging a document's location and summary.
+
+The thread through those: someone will come back for it **deliberately**, knowing it exists.
 
 ## When NOT to use knowledge
 
-- **Agent-authored content with no external source.** Use memory (`memory_write`).
+- **Content nobody would know to ask for.** A decision and its rationale, a limitation, a deferred follow-up, feedback, an outcome, what a session learned. Recall is how those get found — `memory_write`.
 - **Generic records.** Use `context_write`.
+
+Note what is *not* on that list: authorship. "Agent-authored content with no external source — use `memory_write`" is what this section said until 2026-09-10, and it was false for `investigation`, `session_close` and `project_canonical`, three populated kinds that agents write with nothing external to point at. If you meet that sentence somewhere still, it is stale.
 
 ## Namespace rule
 
@@ -52,7 +59,7 @@ A knowledge namespace MUST have shape `{user|app}/{id}/knowledge[/...]`. The thi
 From the `knowledge_write` MCP declaration:
 
 - `namespace` (required; must satisfy the shape above)
-- `kind` (required) - facet, **closed vocabulary**: `doc`, `handoff`, `investigation`, `learning`, `mcp_server`, `note`, `package`, `playbook`, `pointer`, `project_canonical`, `session_close`, `wiki_page`. Anything else is rejected with an error naming the allowed set. See `tesseract_skills facets-and-kinds` for what each means and how to request an addition.
+- `kind` (required) - facet, **closed vocabulary**: `doc`, `handoff`, `investigation`, `mcp_server`, `note`, `package`, `playbook`, `pointer`, `project_canonical`, `session_close`, `wiki_page`. Anything else is rejected with an error naming the allowed set — and the tool's own `kind` description is rendered from the enforced vocabulary, so trust that over this list if they ever disagree. See `tesseract_skills facets-and-kinds` for what each means and how to request an addition.
 - `source` (required) - facet, conventional (not validated): `filesystem`, `obsidian`, `nil`, `web`, `manual`, ...
 - `pointer_scheme` (required) - `file`, `http`, `https`, `obsidian`, `nil`, ...
 - `pointer_locator` (required) - scheme-specific address.
