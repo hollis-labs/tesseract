@@ -1001,9 +1001,12 @@ func TestCrossDomainGet_ReinforcementFollowsTheDomainArgument(t *testing.T) {
 			wantFound: true, wantBump: 1, reinforced: "memory",
 		},
 		{
-			name:   "knowledge namespace under domain=knowledge does not reinforce",
+			// Was wantBump: 0 until CW-20260910-0021. Knowledge decayed on the
+			// sweep and had no path that lifted it, so this row pinned half of
+			// an incoherent pair as though it were the design.
+			name:   "knowledge namespace under domain=knowledge reinforces",
 			domain: "knowledge", namespace: xdKnowNS, key: xdKnowKey,
-			wantFound: true, wantBump: 0, reinforced: "knowledge",
+			wantFound: true, wantBump: 1, reinforced: "knowledge",
 		},
 		{
 			// The row the old name promised and the old body never ran.

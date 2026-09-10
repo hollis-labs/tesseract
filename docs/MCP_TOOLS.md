@@ -165,7 +165,7 @@ Each of these covers several HTTP routes rather than one; the parity catalog car
 
 | Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` only, and only on a match. |
+| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` and `knowledge`, and only on a match; `context` has no activation state. |
 | `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain |
 | `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over memory + knowledge (activation / chronological / similarity / relevance). Narrow with `domains`. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
@@ -270,7 +270,7 @@ Useful when a `tesseract_recall` hit references a revision you want to inspect i
 mcp__tesseract__tesseract_touch { "revision_ids": ["01HXYZ…"] }
 ```
 
-Recall itself does not reinforce results — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning for projected hits that shaped the turn without a deliberate fetch. `tesseract_get` under `domain=memory` and `tesseract_get_revision` already reinforce once; touching the same hit adds a second reinforcement and should be intentional.
+Recall itself does not reinforce results — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning for projected hits that shaped the turn without a deliberate fetch. `tesseract_get` under `domain=memory` or `domain=knowledge`, and `tesseract_get_revision`, already reinforce once; touching the same hit adds a second reinforcement and should be intentional.
 
 Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal. See `tesseract_skills memory` for the worked loop.
 

@@ -119,7 +119,7 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 				"• **Kind of content:** the latest revision for a memory or knowledge entry, or the head record for a context record.\n"+
 				"• **Result shape:** domain-dependent, because the underlying rows are. `memory` and `knowledge` answer a revision object; `context` answers a record object. Read `domain` back off your own call, not off the response.\n"+
 				"• **Scope:** `memory:read` for `memory` and `knowledge`; `context` needs no token, matching the rest of the context read surface.\n"+
-				"• **Side effect:** under `memory`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `knowledge` and `context` do not reinforce.\n"+
+				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state.\n"+
 				"• **Use this when:** you know exactly which entry you want.\n"+
 				"• **Don't use this for:** revision history (`tesseract_history`), ranked search (`tesseract_recall`), or a specific revision by ID (`tesseract_get_revision`).\n"+
 				"• **Errors:** `validation_error` (bad or missing `domain`, missing `namespace`/`key`), `domain_unavailable` (no store wired for that domain here), `not_found`.\n"+
@@ -296,7 +296,11 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 		if a.KnowledgeStore == nil {
 			return domainUnavailable(domain), nil
 		}
-		rev, err = a.KnowledgeStore.GetCurrent(ctx, namespace, key)
+		// Deliberate read, same as the memory arm above: knowledge participates
+		// in activation (CW-20260910-0021), so resolving a known knowledge entry
+		// reinforces it. The domain check is inside the store call, before the
+		// bump, for the reason spelled out on GetCurrentInDomainReinforced.
+		rev, err = a.KnowledgeStore.GetCurrentReinforced(ctx, namespace, key)
 	default:
 		// resolveReadDomain accepts whatever readDomainVocabulary offers, and
 		// that is derived from domains.All(). A domain added to the registry

@@ -117,6 +117,26 @@ func (s *Store) GetCurrent(ctx context.Context, namespace, key string) (memory.R
 	return s.mem.GetCurrentInDomain(ctx, domains.Knowledge, namespace, key)
 }
 
+// GetCurrentReinforced is GetCurrent plus the deliberate-read activation bump,
+// mirroring memory.Store.GetCurrentReinforced. It is the entry point behind
+// tesseract_get's knowledge arm and GET /v1/knowledge/current.
+//
+// The pair exists for the same reason memory's does: the call site knows
+// whether a read is a deliberate agent consultation or internal bookkeeping,
+// and only the former is a use signal. What the call site does NOT decide is
+// whether knowledge reinforces at all — reinforceMemoryIDs gates that on the
+// domain policy, in SQL. Calling the reinforcing variant from a domain that
+// opted out bumps nothing.
+//
+// That split is the CW-20260910-0021 repair. Both agent-facing knowledge reads
+// called plain GetCurrent while their memory twins called the reinforcing
+// getter, so knowledge decayed with no path to lift it. Adding the variant
+// alone would have re-created a call-site choice; the policy gate is what makes
+// it a domain property.
+func (s *Store) GetCurrentReinforced(ctx context.Context, namespace, key string) (memory.Revision, error) {
+	return s.mem.GetCurrentInDomainReinforced(ctx, domains.Knowledge, namespace, key)
+}
+
 // GetHistory returns the revision history for the knowledge entry keyed by
 // (namespace, key), newest-first. Non-knowledge revisions are filtered out;
 // returns memory.ErrNotFound if the entry exists but has no knowledge revisions.

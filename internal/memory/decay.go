@@ -57,9 +57,15 @@ func (j *DecayJob) runOnce(ctx context.Context) {
 	}
 }
 
-// applyActivationDecay applies exponential decay to all memory_state rows
-// against the current wall clock. Half-life is 14 days. Floor is 0.05. Updates
-// that would change activation by less than decayWriteThreshold are skipped.
+// applyActivationDecay applies exponential decay to the memory_state rows of
+// every domain that participates in activation, against the current wall clock.
+// Half-life is 14 days. Floor is 0.05. Updates that would change activation by
+// less than decayWriteThreshold are skipped.
+//
+// "Participates" is DomainPolicy.ParticipatesInActivation, and it gates both
+// halves — this sweep and reinforceMemoryIDs. A domain gets decay and
+// reinforcement together or neither; see the note on that method for why the
+// pair is one predicate.
 //
 // The decay is relative to the current stored activation (per plan-time
 // decision 1):
@@ -161,8 +167,24 @@ type decayUpdate struct {
 const decayWriteThreshold = 0.001
 
 func (s *Store) collectDecayUpdates(ctx context.Context, now time.Time) ([]decayUpdate, error) {
+	// Only domains that opt into activation are swept. Before CW-20260910-0021
+	// this SELECT was domain-blind and its comment said so ("all memory_state
+	// rows") — which was half of why knowledge decayed with nothing to lift it.
+	// The predicate is read from the policy registry rather than written here,
+	// so decay and reinforcement cannot disagree about who participates.
+	//
+	// Every registered domain participates today, so this filter selects the
+	// same rows the unfiltered SELECT did. It is not dead code: it is the seam
+	// a non-participating domain needs, and without it such a domain would be
+	// decayed by a sweep that never asked.
+	domainFilter, filterArgs := activationDomainPredicate("domain")
+	// #nosec G202 -- domainFilter is built by activationDomainPredicate from a
+	// compile-time column name and one `?` per participating domain. The domain
+	// values travel as bound parameters in filterArgs, never as statement text.
 	rows, queryErr := s.db.QueryContext(ctx,
-		`SELECT memory_id, activation, last_decayed_at, created_at FROM memory_state`,
+		`SELECT memory_id, activation, last_decayed_at, created_at FROM memory_state
+		 WHERE `+domainFilter,
+		filterArgs...,
 	)
 	if queryErr != nil {
 		return nil, fmt.Errorf("query memory_state: %w", queryErr)
