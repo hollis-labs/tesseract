@@ -442,7 +442,7 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 	}
 
 	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
-		return toolError(codeValidationError, err.Error()), nil
+		return toolError(codeValidationError, transErr.Error()), nil
 	}
 
 	rec, err := a.Store.UpdateRecordStatus(ctx, ns, key, actor, newStatus)

@@ -389,3 +389,78 @@ func TestShippedExampleMatchesTheDefaults(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadRejectsAnUnparseableDefaultTTL. ParseDefaultTTL swallows a parse
+// error and answers zero, so an accepted-but-invalid duration means NO EXPIRY
+// — a retention change from a typo, on a file where a misspelled key is
+// already fatal. The loader is where an operator can still be told.
+func TestLoadRejectsAnUnparseableDefaultTTL(t *testing.T) {
+	for _, bad := range []string{"24hr", "1 day", "336", "-336h", "forever"} {
+		err := typeregistry.NewRegistry().LoadFromBytes([]byte(
+			"vocabularies:\n" +
+				"  - vocabulary_id: memory.type\n" +
+				"    types:\n" +
+				"      - type_id: notes\n" +
+				"        default_ttl: \"" + bad + "\"\n"))
+		if err == nil {
+			t.Errorf("default_ttl %q was accepted; it would silently mean no expiry", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "default_ttl") {
+			t.Errorf("default_ttl %q rejected with %q, which does not name the field", bad, err)
+		}
+	}
+
+	// The valid case still loads, so this narrowed rather than closed.
+	r := typeregistry.NewRegistry()
+	if err := r.LoadFromBytes([]byte(
+		"vocabularies:\n" +
+			"  - vocabulary_id: memory.type\n" +
+			"    types:\n" +
+			"      - type_id: notes\n" +
+			"        default_ttl: 336h\n")); err != nil {
+		t.Fatalf("a valid duration was rejected: %v", err)
+	}
+	got, _ := r.Lookup(typeregistry.VocabMemoryType, "notes")
+	if got.ParseDefaultTTL() != 336*time.Hour {
+		t.Errorf("default TTL = %v, want 336h", got.ParseDefaultTTL())
+	}
+}
+
+// TestLoadRejectsADuplicateView, for the same reason a duplicate vocabulary is
+// refused: last-one-wins on a policy file means the effective config is not the
+// one an operator reads top to bottom.
+func TestLoadRejectsADuplicateView(t *testing.T) {
+	err := typeregistry.NewRegistry().LoadFromBytes([]byte(`
+views:
+  - view_id: task_exec
+    types: ["task/spec"]
+  - view_id: task_exec
+    types: ["runbook"]
+`))
+	if err == nil {
+		t.Fatal("a duplicate view_id was accepted")
+	}
+	if !strings.Contains(err.Error(), "task_exec") {
+		t.Errorf("error %q does not name the duplicated view", err)
+	}
+}
+
+// TestShippedDefaultsParse covers the one path validateConfig does not gate:
+// a Type built as a Go literal in defaults.go. ParseDefaultTTL answers zero for
+// an unparseable value, so a typo there would silently drop a TTL that the
+// declaration says exists.
+func TestShippedDefaultsParse(t *testing.T) {
+	r := typeregistry.NewRegistry()
+	for _, vocab := range r.VocabularyIDs() {
+		for _, ty := range r.Types(vocab) {
+			if ty.DefaultTTL == "" {
+				continue
+			}
+			if ty.ParseDefaultTTL() <= 0 {
+				t.Errorf("%s %q declares default_ttl %q which parses to %v",
+					vocab, ty.TypeID, ty.DefaultTTL, ty.ParseDefaultTTL())
+			}
+		}
+	}
+}

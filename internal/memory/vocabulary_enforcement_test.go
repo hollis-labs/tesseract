@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -164,4 +165,23 @@ func TestWriteBoundaryFailsClosedWhenTheVocabularyIsMissing(t *testing.T) {
 	if _, err := ms.WriteRevision(context.Background(), in); err == nil {
 		t.Fatal("an empty vocabulary accepted a write; it must refuse everything")
 	}
+}
+
+// TestSetTypeAllowlistPanicsOnAnInvalidList. The helper builds a registry and
+// installs it; if the build fails and the error is swallowed, what gets
+// installed carries the DEFAULT vocabulary. The override then silently does
+// not apply and the calling test passes for the wrong reason — invisible in
+// exactly the tests this helper exists to serve.
+func TestSetTypeAllowlistPanicsOnAnInvalidList(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("SetTypeAllowlist accepted a list with an empty entry")
+		}
+		if !strings.Contains(fmt.Sprint(r), "SetTypeAllowlist") {
+			t.Errorf("panic %v does not name the helper that rejected the input", r)
+		}
+	}()
+	restore := memory.SetTypeAllowlist([]string{"decisions", ""})
+	restore()
 }

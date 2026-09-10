@@ -133,7 +133,7 @@ func (c *CLI) runStatusPromote(ctx context.Context, args []string) int {
 	}
 
 	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
-		return c.fail(err.Error())
+		return c.fail(transErr.Error())
 	}
 
 	rec, err := c.Store.UpdateRecordStatus(ctx, *ns, *key, *actor, newStatus)
