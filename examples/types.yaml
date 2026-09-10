@@ -8,9 +8,11 @@
 # is what lets you remove a value, not only add one. A vocabulary you do not
 # name keeps its default, so a file need only carry what it changes.
 #
-# Unknown keys are an error and a malformed file stops the daemon starting,
-# rather than falling back to defaults. Enforcement authority lives here now:
-# running under a vocabulary you did not declare is worse than not running.
+# A malformed file stops the daemon starting rather than falling back to
+# defaults. Enforcement authority lives here now: running under a vocabulary you
+# did not declare is worse than not running. Refused, not ignored: an unknown
+# key, a duplicate vocabulary_id or view_id, and a default_ttl that is not a Go
+# duration. One bad entry changes nothing — the load is atomic.
 
 vocabularies:
   # ---------------------------------------------------------------------
@@ -76,7 +78,8 @@ vocabularies:
 # ---------------------------------------------------------------------
 # The other fields a type may declare, none of them required:
 #
-#   default_ttl        a Go duration, e.g. "336h"
+#   default_ttl        a Go duration, e.g. "336h". Validated on load —
+#                      "24hr" is a refused file, not a silent no-expiry.
 #   allowed_statuses   the statuses this type permits; empty means all
 #   required_fields    payload keys that must be present and non-empty
 #   max_summary_bytes  a ceiling on the summary

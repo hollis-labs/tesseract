@@ -116,13 +116,19 @@ func SetTypeAllowlist(list []string) (restore func()) {
 		types = append(types, typeregistry.Type{TypeID: t})
 	}
 	r := typeregistry.NewRegistry()
-	// Errors are impossible here: the config is built in-process from a
-	// []string, so there is no parse to fail and no field to misspell.
-	_ = r.LoadVocabulary(typeregistry.Vocabulary{
+	if err := r.LoadVocabulary(typeregistry.Vocabulary{
 		VocabularyID: typeregistry.VocabMemoryType,
 		Closed:       true,
 		Types:        types,
-	})
+	}); err != nil {
+		// Panic rather than swallow. The only way to get here is an invalid
+		// entry — an empty string in the list — which is a programmer error in
+		// the test that called this. Ignoring it would install a registry
+		// carrying the DEFAULT vocabulary, so the override would silently not
+		// apply and the test would pass for the wrong reason. That failure is
+		// invisible in exactly the tests this helper exists to serve.
+		panic(fmt.Sprintf("memory.SetTypeAllowlist(%q): %v", list, err))
+	}
 	return typeregistry.Install(r)
 }
 

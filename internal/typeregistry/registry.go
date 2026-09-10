@@ -136,8 +136,13 @@ type Type struct {
 	SchemaRef *SchemaRef `json:"schema_ref,omitempty" yaml:"schema_ref,omitempty"`
 }
 
-// ParseDefaultTTL returns the parsed default TTL duration, or zero if unset or
-// unparseable.
+// ParseDefaultTTL returns the parsed default TTL duration, or zero if unset.
+//
+// The unparseable case cannot arrive from a loaded config — validateConfig
+// refuses a default_ttl that is not a Go duration, so a typo is a load error
+// rather than a silent zero. It stays lenient here for a Type built in Go,
+// where the value is a literal a compiler and TestShippedDefaultsParse both
+// see.
 func (t Type) ParseDefaultTTL() time.Duration {
 	if t.DefaultTTL == "" {
 		return 0
@@ -375,10 +380,18 @@ func validateConfig(cfg RegistryConfig) error {
 			}
 		}
 	}
+	seenView := make(map[string]struct{}, len(cfg.Views))
 	for _, v := range cfg.Views {
 		if v.ViewID == "" {
 			return errors.New("view_id is required for every view entry")
 		}
+		// Refused for the same reason a duplicate vocabulary is: last-one-wins
+		// on a file that carries policy means the effective config is not the
+		// one an operator reads top to bottom.
+		if _, dup := seenView[v.ViewID]; dup {
+			return fmt.Errorf("view %q declared twice", v.ViewID)
+		}
+		seenView[v.ViewID] = struct{}{}
 	}
 	return nil
 }
@@ -401,6 +414,22 @@ func validateType(vocabID string, t Type) error {
 		if !schemaHashRE.MatchString(t.SchemaRef.SchemaHash) {
 			return fmt.Errorf("vocabulary %q type %q: schema_hash %q is not a hex sha256 digest",
 				vocabID, t.TypeID, t.SchemaRef.SchemaHash)
+		}
+	}
+	// A default_ttl that does not parse is refused rather than accepted and
+	// silently read as zero. ParseDefaultTTL swallows the error and answers 0,
+	// so "24hr" for "24h" would load clean and quietly mean NO EXPIRY — a
+	// retention change from a typo, on a file where unknown keys are already
+	// fatal. Validate once, here, where the operator can be told.
+	if t.DefaultTTL != "" {
+		d, err := time.ParseDuration(t.DefaultTTL)
+		if err != nil {
+			return fmt.Errorf("vocabulary %q type %q: default_ttl %q is not a Go duration (e.g. \"336h\"): %w",
+				vocabID, t.TypeID, t.DefaultTTL, err)
+		}
+		if d < 0 {
+			return fmt.Errorf("vocabulary %q type %q: default_ttl %q must not be negative",
+				vocabID, t.TypeID, t.DefaultTTL)
 		}
 	}
 	if t.MaxSummaryBytes < 0 {

@@ -75,11 +75,16 @@ Three properties are worth knowing before you write one:
 - **A vocabulary you name replaces the shipped one — it is not merged.** That
   is what lets you remove a value rather than only add one, so a partial list
   narrows the vocabulary. A vocabulary you do not name keeps its default.
-- **Unknown keys are an error, and a malformed file stops the daemon
-  starting.** This is deliberately harsher than `config.yaml`, which warns and
-  falls back to defaults. A bad `config.yaml` costs a setting; a bad
-  `types.yaml` would mean enforcing a vocabulary you did not declare. Fix or
-  delete the file and start again.
+- **A malformed file stops the daemon starting.** This is deliberately harsher
+  than `config.yaml`, which warns and falls back to defaults. A bad
+  `config.yaml` costs a setting; a bad `types.yaml` would mean enforcing a
+  vocabulary you did not declare. Fix or delete the file and start again.
+
+  Malformed means more than unparseable. An unknown key is refused, so `close:`
+  for `closed:` is caught rather than quietly leaving a vocabulary open. So is
+  a duplicate `vocabulary_id` or `view_id`, and a `default_ttl` that is not a
+  Go duration — `24hr` would otherwise load clean and silently mean *no
+  expiry*. The load is atomic: one bad entry changes nothing.
 - **Removing a value makes existing rows readable but not rewritable.** Add
   before you migrate, remove after.
 

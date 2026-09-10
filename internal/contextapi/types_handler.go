@@ -164,7 +164,7 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		writeError(w, http.StatusBadRequest, "validation_error", transErr.Error(), nil)
 		return
 	}
 
