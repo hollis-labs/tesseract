@@ -132,9 +132,22 @@ This departs from what the task expected, on three measurements:
    `knowledge/{project}/*`, and the project-major shape's apparent advantage
    does not exist.
 
-The three existing entries stay where they are. Moving them is a cross-namespace
-promotion, which is a corpus edit; filed, not done here, consistent with how
-0067 handled the same shape.
+The three existing entries were re-filed into it on 2026-09-10, in the same
+session. That was not the plan when this section was first written — it said
+they would stay put because moving them was "a cross-namespace promotion," and
+**that was wrong**: no promotion path accepts a knowledge namespace at all.
+`memory.Promote` requires memory's grammar and a session-scoped source, and
+`context_promote` operates on the `records` table rather than
+`memory_revisions`. The only mechanism is rewrite-under-a-new-key plus
+deprecate, which discards the original identity.
+
+It was still the right move, for a reason that had to be measured rather than
+assumed: each entry had exactly **one revision** and **no inbound
+`[[wikilinks]]`**, so there was no lineage to discard and no citation to break.
+Bodies carried across byte-for-byte behind a provenance header; the originals
+are deprecated and stay readable. See [[namespace_move_unsupported_for_knowledge]] —
+and note the general lesson, that a knowledge namespace convention is expensive
+to change once entries exist, in a way a memory `{type}` is not.
 
 ### Key style: snake_case, `a-z 0-9 _`, the memory rule
 
@@ -211,10 +224,11 @@ produced it.
 
 ## Filed, not done
 
-- Move the three existing `handoff` entries to `knowledge/handoff/{project}`
-  (cross-namespace promotion, a corpus edit).
-- `nanite_alignment_handoff_20260910` stays in `memory/notes` permanently; the
-  domain is stamped and rewriting it would discard lineage for a filing fix.
+- ~~Move the three existing `handoff` entries~~ — **done 2026-09-10**, see
+  "Namespace" above. They are now `knowledge/handoff/{nanite,tangent,composition}`.
+- `nanite_alignment_handoff_20260910` stays in `memory/notes` permanently. That
+  one is a *domain* move, not a namespace move, and the domain is stamped at
+  creation — there is genuinely no path, not merely no cheap one.
 - The 301 inbox files — CW-20260910-0022.
 
 ## Related
@@ -223,5 +237,6 @@ produced it.
 `docs/agent-facing-prose-audit.md` (CW-20260910-0047),
 `authority_tesseract_code_chrispian_not_files`, `local_agent_object_model`,
 `feedback_boot_prompt_layout`, `portfolio_shape_emerges_from_usage`,
-`domain_is_immutable_no_migration_path`, `kinds_taxonomy`.
+`domain_is_immutable_no_migration_path`, `namespace_move_unsupported_for_knowledge`,
+`kinds_taxonomy`.
 Skills `capture-handoff` and `boot-prompt` ship from `agent-setup`.
