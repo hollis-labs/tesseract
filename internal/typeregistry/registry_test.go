@@ -84,30 +84,37 @@ func TestMemoryTypeVocabulary(t *testing.T) {
 	}
 }
 
-// TestKnowledgeKindVocabularyIsClosedAndCarriesWikiPage covers both halves of
-// what this slice does to the knowledge kinds: closure survives the move from
-// a Go map to a declaration, and wiki_page is in the set.
+// TestKnowledgeKindVocabularyIsClosedAndCarriesApprovedKinds covers both halves
+// of what this slice does to the knowledge kinds: closure survives the move
+// from a Go map to a declaration, and the two operator-approved kinds are in
+// the set.
 //
-// wiki_page was approved on 2026-09-09 and lands here rather than on Loom's
-// first write, because Loom is built and blocked waiting for it — see
-// [[tesseract_wiki_page_kind_approved]].
-func TestKnowledgeKindVocabularyIsClosedAndCarriesWikiPage(t *testing.T) {
+// Both landed ahead of their first write, which is the documented exception to
+// the "a producer already emits it" bar rather than a lapse in it. wiki_page
+// was approved 2026-09-09 because Loom is built and blocked waiting for it
+// ([[tesseract_wiki_page_kind_approved]]); boot_prompt was approved 2026-09-10
+// on Chrispian's direction, with the skill that writes it shipping in the same
+// change (CW-20260910-0068).
+func TestKnowledgeKindVocabularyIsClosedAndCarriesApprovedKinds(t *testing.T) {
 	r := typeregistry.NewRegistry()
 	if !r.IsClosed(typeregistry.VocabKnowledgeFacetKind) {
 		t.Fatal("knowledge.facet_kind must declare closed: true")
 	}
 	kinds := r.Values(typeregistry.VocabKnowledgeFacetKind)
-	if len(kinds) != 11 {
-		t.Fatalf("knowledge kinds = %d (%v), want 11", len(kinds), kinds)
+	if len(kinds) != 12 {
+		t.Fatalf("knowledge kinds = %d (%v), want 12", len(kinds), kinds)
 	}
 	if !r.Allows(typeregistry.VocabKnowledgeFacetKind, "wiki_page") {
 		t.Error("wiki_page is not in the vocabulary; Loom stays blocked")
+	}
+	if !r.Allows(typeregistry.VocabKnowledgeFacetKind, "boot_prompt") {
+		t.Error("boot_prompt is not in the vocabulary; the boot-prompt skill cannot write")
 	}
 	// The retired and mis-cased spellings stay out.
 	// "learning" was retired by CW-20260910-0067: it duplicated the `learnings`
 	// memory type one letter apart, across a domain boundary a record cannot be
 	// moved back over.
-	for _, gone := range []string{"issue/bug", "learning", "mcp-server", "session-close", "wiki-page"} {
+	for _, gone := range []string{"issue/bug", "learning", "mcp-server", "session-close", "wiki-page", "boot-prompt"} {
 		if r.Allows(typeregistry.VocabKnowledgeFacetKind, gone) {
 			t.Errorf("vocabulary accepts %q", gone)
 		}

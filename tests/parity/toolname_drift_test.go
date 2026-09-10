@@ -127,6 +127,7 @@ var nonToolVocabulary = map[string]string{
 	"status_deprecate":    "audit event_type emitted by the HTTP route POST /v1/context/status/deprecate only; context_status_set with status=deprecated emits nothing",
 	"status_promote":      "audit event_type emitted by context_status_set on the promotion path",
 	"target_revision":     "promotion API response field",
+	"tesseract_boot":      "a tool that was CONSIDERED AND DECLINED, not one that is pending. CW-20260910-0068 specified it, then landed the boot_prompt kind without it: tesseract_get already takes domain + namespace + key across every domain, so this would have been a second way to do a thing that works, and the boot-prompt skill carries the semantic mapping instead. Named in docs/handoff-and-boot-prompt.md as the road not taken. It is deliberately NOT in plannedTools — nothing is scheduled to register it",
 	"tokens_estimate":     "context_pack manifest field under shape=packet",
 	"typed_write":         "audit event_type emitted by context_typed_write",
 }

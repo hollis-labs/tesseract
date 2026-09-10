@@ -59,7 +59,7 @@ A knowledge namespace MUST have shape `{user|app}/{id}/knowledge[/...]`. The thi
 From the `knowledge_write` MCP declaration:
 
 - `namespace` (required; must satisfy the shape above)
-- `kind` (required) - facet, **closed vocabulary**: `doc`, `handoff`, `investigation`, `mcp_server`, `note`, `package`, `playbook`, `pointer`, `project_canonical`, `session_close`, `wiki_page`. Anything else is rejected with an error naming the allowed set — and the tool's own `kind` description is rendered from the enforced vocabulary, so trust that over this list if they ever disagree. See `tesseract_skills facets-and-kinds` for what each means and how to request an addition.
+- `kind` (required) - facet, **closed vocabulary**: `boot_prompt`, `doc`, `handoff`, `investigation`, `mcp_server`, `note`, `package`, `playbook`, `pointer`, `project_canonical`, `session_close`, `wiki_page`. Anything else is rejected with an error naming the allowed set — and the tool's own `kind` description is rendered from the enforced vocabulary, so trust that over this list if they ever disagree. See `tesseract_skills facets-and-kinds` for what each means and how to request an addition.
 - `source` (required) - facet, conventional (not validated): `filesystem`, `obsidian`, `nil`, `web`, `manual`, ...
 - `pointer_scheme` (required) - `file`, `http`, `https`, `obsidian`, `nil`, ...
 - `pointer_locator` (required) - scheme-specific address.

@@ -10,6 +10,29 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
+- **`boot_prompt` is a canonical knowledge kind, the twelfth.** A rendered
+  briefing an agent authored for a human to hand to another agent — prose, not
+  slots, addressed by id and never searched for. Added on Chrispian's direction
+  with the skill that writes it, ahead of a first write, the same exception
+  `wiki_page` landed under.
+
+  **No MCP tool was added with it.** `tesseract_get` already takes `domain` +
+  `namespace` + `key` across every domain; the skill carries the semantic
+  mapping. Note that `tesseract_get` reinforces activation under `memory` but
+  not under `knowledge` — wanted here, since a boot prompt read often should
+  not climb recall rankings.
+
+  It is neither the agent (profile + scope + args) nor its materialized boot
+  directory, both of which are regenerable from config and stay on the
+  filesystem. See `docs/handoff-and-boot-prompt.md`.
+
+- **The `handoff` / `session_close` line is stated where the choice is made.**
+  `session_close` answers *what happened* and is written whether or not anyone
+  continues; `handoff` answers *what you need to know to continue* and is
+  written to a successor. The test: would the record be identical if no one
+  picked the work up? Bounded explicitly, because most session output is a
+  close and not a handoff. In `tesseract_skills facets-and-kinds`.
+
 - **Event is a third revision domain: the append-only narrative log.** An
   agent's reasoning about what it is doing, and a personal log and journal.
   **Not telemetry** — the distinguishing property is that an event carries

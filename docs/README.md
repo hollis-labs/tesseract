@@ -31,6 +31,7 @@ documentation drift.
 ## Maintainers and contributors
 
 - [The knowledge/memory boundary](knowledge-memory-boundary.md) — the rule, and the corpus test behind it
+- [Handoff and boot prompt](handoff-and-boot-prompt.md) — the two authored packets: where they live, and what each is not
 - [Agent-facing prose audit](agent-facing-prose-audit.md)
 - [Development notes](DEV.md)
 - [Release procedure](RELEASE.md)

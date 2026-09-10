@@ -29,8 +29,9 @@ vocabularies:
   - vocabulary_id: knowledge.facet_kind
     closed: true
     types:
+      - type_id: boot_prompt # a rendered briefing, authored to be handed on
       - type_id: doc # a documentation reference
-      - type_id: handoff # agent-to-agent or session-to-session packet
+      - type_id: handoff # what the next session needs to continue this work
       - type_id: investigation # dossier: findings, evidence, root cause
       - type_id: mcp_server # an MCP server: what it is, what it exposes
       - type_id: note # generic agent-authored note (the fallback)
