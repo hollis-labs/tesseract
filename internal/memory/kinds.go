@@ -1,61 +1,48 @@
 package memory
 
 import (
-	"sort"
-	"strings"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 )
 
-// The canonical knowledge `facet_kind` vocabulary.
+// The canonical knowledge `facet_kind` vocabulary — now a lookup, not a list.
 //
-// This is a CLOSED set. `Store.WriteRevision`, the persistence boundary,
-// rejects any knowledge kind outside it. The vocabulary lives in this package
-// rather than in `internal/knowledge` because `internal/knowledge` imports
-// `internal/memory` and not the reverse, and because `facet_kind` is a column
-// this package owns.
+// It used to be a closed Go map right here. CW-20260909-0034 folded it into the
+// type registry (`knowledge.facet_kind`), where the set is DECLARED closed
+// rather than closed because someone reached for a map. See
+// [[tesseract_vocabularies_fold_into_registry]].
 //
-// The set is the taxonomy locked 2026-05-14 (nine kinds) plus two promoted
-// 2026-08-25 because a shipped producer emits each systematically:
-// `mcp_server` and `investigation`. Naming rule: canonical kinds are
-// snake_case — the one hyphenated kind that reached the corpus (`mcp-server`)
-// arrived from guidance that has since been corrected.
+// What did NOT move is enforcement. `Store.WriteRevision` is still the
+// persistence boundary that rejects an off-vocabulary kind, through
+// knowledgePolicy.ValidateFacets in domainpolicy.go, and it still names the
+// allowed set in the error. Under [[config_is_policy_code_is_engine]] the
+// engine keeps enforcing and the operator owns the list: what moved is WHICH
+// VALUES ARE ALLOWED, not whether anything checks.
 //
-// Three kinds are canonical but unpopulated — `playbook`, `learning`, and
-// `handoff` have no entries in the corpus. They are deliberately writable: a
-// vocabulary that named only what already exists could never be written into,
-// and refusing them would recreate, for those kinds, the readable-but-
-// unwritable trap that the taxonomy normalization existed to remove.
+// These three functions stay in this package rather than becoming registry
+// calls at every site for two reasons. `internal/knowledge` imports
+// `internal/memory` and not the reverse, and `facet_kind` is a column this
+// package owns — so this is where knowledge-kind questions have always been
+// asked. And keeping the seam means the next vocabulary move is one file, not
+// a sweep.
 //
-// Adding a kind is a governed change: the vocabulary is revised here and in
-// the taxonomy record together. Code is the enforcement authority; the
-// Tesseract `kinds_taxonomy` memory carries the rationale. On divergence the
-// code wins.
-var canonicalKnowledgeKinds = map[string]struct{}{
-	"doc":               {},
-	"handoff":           {},
-	"investigation":     {},
-	"learning":          {},
-	"mcp_server":        {},
-	"note":              {},
-	"package":           {},
-	"playbook":          {},
-	"pointer":           {},
-	"project_canonical": {},
-	"session_close":     {},
-}
+// Adding a kind is still a governed change: the registry declaration and the
+// [[kinds_taxonomy]] record are revised together, as one change. What changed
+// on 2026-09-09 is the substrate, not the rule — the record is no longer the
+// mere rationale behind an authoritative Go map, because the declaration it
+// governs is now a file an operator can edit.
 
 // KnowledgeKindVocabulary returns the canonical knowledge kinds, sorted.
-func KnowledgeKindVocabulary() []string { return sortedKeys(canonicalKnowledgeKinds) }
+func KnowledgeKindVocabulary() []string {
+	return typeregistry.Default().Values(typeregistry.VocabKnowledgeFacetKind)
+}
 
 // IsCanonicalKnowledgeKind reports whether kind is in the closed vocabulary.
 func IsCanonicalKnowledgeKind(kind string) bool {
-	_, ok := canonicalKnowledgeKinds[kind]
-	return ok
+	return typeregistry.Default().Allows(typeregistry.VocabKnowledgeFacetKind, kind)
 }
 
 // KnowledgeKindList renders the vocabulary for an error message, so a
 // rejection can name the allowed set rather than only refusing.
 func KnowledgeKindList() string {
-	kinds := KnowledgeKindVocabulary()
-	sort.Strings(kinds)
-	return strings.Join(kinds, ", ")
+	return typeregistry.Default().List(typeregistry.VocabKnowledgeFacetKind)
 }

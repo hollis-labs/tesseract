@@ -117,8 +117,8 @@ func TestWrite_UnknownKindRejected(t *testing.T) {
 func TestWrite_EveryCanonicalKindAccepted(t *testing.T) {
 	s := newTestStore(t)
 	vocab := memory.KnowledgeKindVocabulary()
-	if len(vocab) != 11 {
-		t.Fatalf("vocabulary size = %d, want 11; got %v", len(vocab), vocab)
+	if len(vocab) != 12 {
+		t.Fatalf("vocabulary size = %d, want 12; got %v", len(vocab), vocab)
 	}
 	for i, kind := range vocab {
 		in := validInput()

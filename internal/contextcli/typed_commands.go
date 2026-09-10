@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 )
 
 func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
@@ -31,11 +31,11 @@ func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 		return c.fail("namespace, key, and payload are required")
 	}
 
-	reg := contexttypes.NewRegistry()
-	if err := reg.ValidateType(*recordType); err != nil {
+	reg := typeregistry.Default()
+	if err := reg.ValidateContextType(*recordType); err != nil {
 		return c.fail(err.Error())
 	}
-	if err := reg.ValidateStatus(*recordType, *status); err != nil {
+	if err := reg.ValidateContextStatus(*recordType, *status); err != nil {
 		return c.fail(err.Error())
 	}
 
@@ -48,7 +48,7 @@ func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 	}
 	// Apply default TTL from type registry if not specified.
 	if ttlStr == "" && *recordType != "" {
-		ct, ok := reg.GetType(*recordType)
+		ct, ok := reg.ContextType(*recordType)
 		if ok {
 			defaultTTL := ct.ParseDefaultTTL()
 			if defaultTTL > 0 {
@@ -118,7 +118,7 @@ func (c *CLI) runStatusPromote(ctx context.Context, args []string) int {
 		return c.fail(err.Error())
 	}
 
-	reg := contexttypes.NewRegistry()
+	reg := typeregistry.Default()
 	oldStatus := head.Status
 	if oldStatus == "" {
 		oldStatus = "draft"
@@ -126,13 +126,13 @@ func (c *CLI) runStatusPromote(ctx context.Context, args []string) int {
 
 	newStatus := *toStatus
 	if newStatus == "" {
-		newStatus = contexttypes.NextPromotionStatus(oldStatus)
+		newStatus = typeregistry.NextPromotionStatus(oldStatus)
 		if newStatus == "" {
 			return c.fail(fmt.Sprintf("cannot promote from status %q", oldStatus))
 		}
 	}
 
-	if err := reg.ValidateTransition(head.RecordType, oldStatus, newStatus, *actor); err != nil {
+	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
 		return c.fail(err.Error())
 	}
 
@@ -210,7 +210,7 @@ func (c *CLI) runTypedView(ctx context.Context, args []string) int {
 		return c.fail("view ID is required (--view task_exec|strategy)")
 	}
 
-	reg := contexttypes.NewRegistry()
+	reg := typeregistry.Default()
 	viewDef, ok := reg.GetView(*viewID)
 	if !ok {
 		return c.fail(fmt.Sprintf("view %q not found", *viewID))
@@ -276,15 +276,15 @@ func (c *CLI) runTypedView(ctx context.Context, args []string) int {
 }
 
 func (c *CLI) runTypesList(_ context.Context, _ []string) int {
-	reg := contexttypes.NewRegistry()
-	types := reg.ListTypes()
+	reg := typeregistry.Default()
+	types := reg.ListContextTypes()
 	b, _ := json.MarshalIndent(map[string]any{"types": types}, "", "  ")
 	fmt.Fprintln(c.Stdout, string(b))
 	return 0
 }
 
 func (c *CLI) runViewsList(_ context.Context, _ []string) int {
-	reg := contexttypes.NewRegistry()
+	reg := typeregistry.Default()
 	views := reg.ListViews()
 	b, _ := json.MarshalIndent(map[string]any{"views": views}, "", "  ")
 	fmt.Fprintln(c.Stdout, string(b))
@@ -328,7 +328,7 @@ func (c *CLI) runContextPack(ctx context.Context, args []string) int {
 		return c.fail("view ID is required")
 	}
 
-	reg := contexttypes.NewRegistry()
+	reg := typeregistry.Default()
 	viewDef, ok := reg.GetView(*viewID)
 	if !ok {
 		return c.fail(fmt.Sprintf("view %q not found", *viewID))
@@ -358,15 +358,16 @@ func (c *CLI) runContextPack(ctx context.Context, args []string) int {
 	}
 	ranked := make([]ri, len(items))
 	for i, rec := range items {
-		ts := 1.0
-		if ct, ok := reg.GetType(rec.RecordType); ok && ct.RetrievalRankBias > 0 {
-			ts = ct.RetrievalRankBias
-		}
-		ss := 0.5
+		// Status weight alone. The per-type multiplier that used to sit here
+		// left with retrieval_rank_bias (CW-20260909-0034,
+		// [[tesseract_type_declaration_field_set]]): a type carrying its own
+		// thumb on the scale is unfixable from a bad result, because nobody
+		// debugging a ranking complaint thinks to check a type declaration.
+		score := 0.5
 		if w, ok := viewDef.RankWeights[rec.Status]; ok {
-			ss = w
+			score = w
 		}
-		ranked[i] = ri{rec: rec, score: ts * ss}
+		ranked[i] = ri{rec: rec, score: score}
 	}
 	for i := 0; i < len(ranked)-1; i++ {
 		for j := i + 1; j < len(ranked); j++ {

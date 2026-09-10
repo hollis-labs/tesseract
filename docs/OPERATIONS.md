@@ -54,6 +54,40 @@ chmod 600 /path/from/tesseract-path/config.yaml
 Tesseract does not change the ownership policy of an operator-supplied plugin
 directory, backup destination parent, or restore source.
 
+## Type vocabularies (`types.yaml`)
+
+Tesseract validates three vocabularies on write, and an operator owns all
+three. They are declared in the `types-file` reported by `tesseract path`,
+usually `~/.config/tesseract/types.yaml`:
+
+| Vocabulary | Governs | Enforced at |
+|---|---|---|
+| `knowledge.facet_kind` | the `kind` facet on every knowledge write | the persistence boundary |
+| `memory.type` | the `{type}` segment of a memory namespace | the namespace parser |
+| `context.record_type` | context record types | the context write path |
+
+The file is **optional**. With no file, Tesseract runs its shipped
+vocabularies, which is what most installs want. Start from
+[`examples/types.yaml`](../examples/types.yaml).
+
+Three properties are worth knowing before you write one:
+
+- **A vocabulary you name replaces the shipped one — it is not merged.** That
+  is what lets you remove a value rather than only add one, so a partial list
+  narrows the vocabulary. A vocabulary you do not name keeps its default.
+- **Unknown keys are an error, and a malformed file stops the daemon
+  starting.** This is deliberately harsher than `config.yaml`, which warns and
+  falls back to defaults. A bad `config.yaml` costs a setting; a bad
+  `types.yaml` would mean enforcing a vocabulary you did not declare. Fix or
+  delete the file and start again.
+- **Removing a value makes existing rows readable but not rewritable.** Add
+  before you migrate, remove after.
+
+`hot_fields` on a type is a declaration and nothing more. Declaring one does
+not create an index — indexes are materialized by a reviewed migration, so two
+config files can never produce two schemas from one binary and a restore stays
+deterministic.
+
 ## Listener and authentication modes
 
 The default `tesseract serve` listener is `127.0.0.1:8089` without auth. A

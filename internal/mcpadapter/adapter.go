@@ -10,10 +10,10 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/contexttypes"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -30,8 +30,8 @@ import (
 // from the token when present.
 type Adapter struct {
 	Store             *contextstore.Store
-	Token             string // capability token for mutating ops; may be empty
-	TypeRegistry      *contexttypes.Registry
+	Token             string                  // capability token for mutating ops; may be empty
+	TypeRegistry      *typeregistry.Registry  // optional; nil uses the process registry (types.yaml)
 	EmbeddingProvider embedcontracts.Embedder // optional; nil disables context_embed/context_search
 	EmbeddingModel    string                  // model name passed to EmbeddingProvider (default: "")
 	VectorIndex       embedding.VectorIndex   // optional; nil uses brute-force search via Store

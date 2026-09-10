@@ -12,9 +12,12 @@ import (
 
 // runPath implements the `tesseract path` subcommand. It prints Tesseract's
 // resolved on-disk layout — the go-apppaths roots, the active workspace, and
-// the main database — plus the daemon-derived extras (config.yaml, the
-// records/ file tree, and queue.db). It is the introspection surface the
+// the main database — plus the daemon-derived extras (config.yaml, types.yaml,
+// the records/ file tree, and queue.db). It is the introspection surface the
 // go-apppaths cutover uses to confirm where the daemon reads and writes.
+//
+// types.yaml is listed whether or not it exists: it is optional, and an
+// operator who wants to write one needs to be told where it goes.
 //
 // Resolution honors every override the running daemon would see:
 // TESSERACT_DB_PATH, TESSERACT_WORKSPACE, and the $XDG_*_HOME vars. It uses
@@ -31,6 +34,7 @@ func runPath(stdout, stderr *os.File) int {
 		fmt.Fprintf(w, "%s\t%s\n", e.Label, e.Value)
 	}
 	fmt.Fprintf(w, "config-file\t%s\n", filepath.Join(layout.ConfigDir(), "config.yaml"))
+	fmt.Fprintf(w, "types-file\t%s\n", filepath.Join(layout.ConfigDir(), "types.yaml"))
 	fmt.Fprintf(w, "records\t%s\n", filepath.Join(layout.StateDir(), "records"))
 	fmt.Fprintf(w, "queue-db\t%s\n", filepath.Join(layout.StateDir(), "queue.db"))
 	if err := w.Flush(); err != nil {

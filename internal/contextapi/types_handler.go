@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/hollis-labs/tesseract/internal/contexttypes"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 )
 
 // TypedWriteRequest is the body for typed context writes.
@@ -47,11 +47,11 @@ func (s *Server) handleTypedWrite(w http.ResponseWriter, r *http.Request) {
 
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 
 	// Validate type.
-	if err := reg.ValidateType(req.RecordType); err != nil {
+	if err := reg.ValidateContextType(req.RecordType); err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
@@ -61,7 +61,7 @@ func (s *Server) handleTypedWrite(w http.ResponseWriter, r *http.Request) {
 	if status == "" {
 		status = "draft"
 	}
-	if err := reg.ValidateStatus(req.RecordType, status); err != nil {
+	if err := reg.ValidateContextStatus(req.RecordType, status); err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
@@ -69,7 +69,7 @@ func (s *Server) handleTypedWrite(w http.ResponseWriter, r *http.Request) {
 	// Apply default TTL from type registry if not specified.
 	ttl := req.TTL
 	if ttl == "" && req.RecordType != "" {
-		ct, ok := reg.GetType(req.RecordType)
+		ct, ok := reg.ContextType(req.RecordType)
 		if ok {
 			defaultTTL := ct.ParseDefaultTTL()
 			if defaultTTL > 0 {
@@ -145,7 +145,7 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 
 	oldStatus := head.Status
@@ -155,7 +155,7 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 
 	newStatus := req.ToStatus
 	if newStatus == "" {
-		newStatus = contexttypes.NextPromotionStatus(oldStatus)
+		newStatus = typeregistry.NextPromotionStatus(oldStatus)
 		if newStatus == "" {
 			writeError(w, http.StatusBadRequest, "validation_error",
 				fmt.Sprintf("cannot promote from status %q", oldStatus), nil)
@@ -163,7 +163,7 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := reg.ValidateTransition(head.RecordType, oldStatus, newStatus, actor); err != nil {
+	if transErr := reg.ValidateContextTransition(head.RecordType, oldStatus, newStatus); transErr != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
@@ -267,7 +267,7 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 
 	viewDef, ok := reg.GetView(req.ViewID)
@@ -304,24 +304,23 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply rank weights: sort by type rank bias * status weight.
+	// Apply rank weights: sort by status weight.
 	type rankedRecord struct {
 		rec   contextstore.Record
 		score float64
 	}
 	ranked := make([]rankedRecord, len(items))
 	for i, rec := range items {
-		typeScore := 1.0
-		if ct, ok := reg.GetType(rec.RecordType); ok {
-			if ct.RetrievalRankBias > 0 {
-				typeScore = ct.RetrievalRankBias
-			}
-		}
-		statusScore := 0.5
+		// Status weight alone. The per-type multiplier that used to sit here
+		// left with retrieval_rank_bias (CW-20260909-0034,
+		// [[tesseract_type_declaration_field_set]]): a type carrying its own
+		// thumb on the scale is unfixable from a bad result, because nobody
+		// debugging a ranking complaint thinks to check a type declaration.
+		score := 0.5
 		if w, ok := viewDef.RankWeights[rec.Status]; ok {
-			statusScore = w
+			score = w
 		}
-		ranked[i] = rankedRecord{rec: rec, score: typeScore * statusScore}
+		ranked[i] = rankedRecord{rec: rec, score: score}
 	}
 
 	// Sort by score descending (stable sort for determinism).
@@ -374,10 +373,10 @@ func (s *Server) handleTypesList(w http.ResponseWriter, r *http.Request) {
 	_ = r
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"types": reg.ListTypes(),
+		"types": reg.ListContextTypes(),
 	})
 }
 
@@ -386,7 +385,7 @@ func (s *Server) handleViewsList(w http.ResponseWriter, r *http.Request) {
 	_ = r
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"views": reg.ListViews(),
@@ -433,7 +432,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 
 	type itemResult struct {
@@ -485,7 +484,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if err := reg.ValidateType(item.RecordType); err != nil {
+		if err := reg.ValidateContextType(item.RecordType); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			results = append(results, res)
@@ -500,7 +499,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 		if status == "" {
 			status = "draft"
 		}
-		if err := reg.ValidateStatus(item.RecordType, status); err != nil {
+		if err := reg.ValidateContextStatus(item.RecordType, status); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			results = append(results, res)
@@ -515,7 +514,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 		if item.RecordType != "" {
 			var payloadMap map[string]any
 			if err := json.Unmarshal(item.Payload, &payloadMap); err == nil {
-				if err := reg.ValidateRequiredFields(item.RecordType, payloadMap); err != nil {
+				if err := reg.ValidateContextRequiredFields(item.RecordType, payloadMap); err != nil {
 					res.Status = "error"
 					res.Error = err.Error()
 					results = append(results, res)
@@ -530,7 +529,7 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 
 		ttl := item.TTL
 		if ttl == "" && item.RecordType != "" {
-			ct, ok := reg.GetType(item.RecordType)
+			ct, ok := reg.ContextType(item.RecordType)
 			if ok {
 				defaultTTL := ct.ParseDefaultTTL()
 				if defaultTTL > 0 {
@@ -611,7 +610,7 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 
 	reg := s.TypeRegistry
 	if reg == nil {
-		reg = contexttypes.NewRegistry()
+		reg = typeregistry.Default()
 	}
 
 	viewDef, ok := reg.GetView(req.ViewID)
@@ -659,15 +658,16 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 	}
 	ranked := make([]rankedItem, len(items))
 	for i, rec := range items {
-		typeScore := 1.0
-		if ct, ok := reg.GetType(rec.RecordType); ok && ct.RetrievalRankBias > 0 {
-			typeScore = ct.RetrievalRankBias
-		}
-		statusScore := 0.5
+		// Status weight alone. The per-type multiplier that used to sit here
+		// left with retrieval_rank_bias (CW-20260909-0034,
+		// [[tesseract_type_declaration_field_set]]): a type carrying its own
+		// thumb on the scale is unfixable from a bad result, because nobody
+		// debugging a ranking complaint thinks to check a type declaration.
+		score := 0.5
 		if w, ok := viewDef.RankWeights[rec.Status]; ok {
-			statusScore = w
+			score = w
 		}
-		ranked[i] = rankedItem{rec: rec, score: typeScore * statusScore}
+		ranked[i] = rankedItem{rec: rec, score: score}
 	}
 
 	// Sort by score desc.

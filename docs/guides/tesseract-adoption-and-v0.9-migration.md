@@ -69,7 +69,7 @@ Knowledge namespaces have the shape `{user|app}/{id}/knowledge[/...]`. Every kno
 
 ```text
 doc, handoff, investigation, learning, mcp_server, note, package,
-playbook, pointer, project_canonical, session_close
+playbook, pointer, project_canonical, session_close, wiki_page
 ```
 
 These rules are enforced at the shared persistence boundary. Therefore the root Go facade, the memory store, HTTP, MCP, promotion, and the knowledge wrapper cannot bypass them. Memory-domain revisions must carry zero knowledge facets. `memory.ErrInvalidInput` is the canonical Go validation sentinel; HTTP and MCP translate it to their validation error shape.

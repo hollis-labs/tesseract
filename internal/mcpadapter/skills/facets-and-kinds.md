@@ -21,7 +21,7 @@ Memory-domain revisions leave facets zero-valued; memory categorizes by `tags` a
 
 ## The `kind` vocabulary
 
-`knowledge_write` accepts exactly these eleven values and rejects anything else, naming the allowed set in the error. Canonical kinds are **snake_case**.
+`knowledge_write` accepts exactly these twelve values and rejects anything else, naming the allowed set in the error. Canonical kinds are **snake_case**.
 
 | Kind | Use for |
 |---|---|
@@ -36,6 +36,7 @@ Memory-domain revisions leave facets zero-valued; memory categorizes by `tags` a
 | `playbook` | Codified process or runbook. |
 | `learning` | Reusable insight or pattern extracted from work. |
 | `handoff` | Agent-to-agent or session-to-session packet. |
+| `wiki_page` | A compiled wiki page — compiler output with a template, a provenance chain and a link graph. Not `doc` (an external reference) and not `note` (a generic note). |
 
 `playbook`, `learning`, and `handoff` are canonical and writable but currently **unpopulated** — no entries exist yet. They are in the vocabulary so that the first one can be written; treat them as available, not as evidence of an established pattern.
 
@@ -45,7 +46,9 @@ Task-tracking entities — bug, task, todo, plan, sprint, issue, epic — belong
 
 ## Adding a kind
 
-The vocabulary is centrally governed: request an addition rather than introducing one locally. A new kind lands when a producer emits it systematically and the case is written down — that is how `mcp_server` and `investigation` earned theirs. Adding one is a single change to the vocabulary in the code and to the taxonomy record together.
+The vocabulary is centrally governed: request an addition rather than introducing one locally. A new kind lands when a producer emits it systematically and the case is written down — that is how `mcp_server` and `investigation` earned theirs. `wiki_page` is the one exception so far, added while its producer was built but blocked waiting for it; the rule exists to stop a vocabulary filling with entries nothing writes, and a stalled producer is the opposite case.
+
+Adding one is a single change to the vocabulary declaration and to the taxonomy record together. The declaration lives in the type registry (`knowledge.facet_kind`), which ships a default set and reads an operator's `types.yaml` over it — so an addition is a config change rather than a release. What did not change is that the write path enforces it: `knowledge_write` still rejects anything the vocabulary does not name.
 
 Until a kind is in the vocabulary, `knowledge_write` will reject it. File the request; use `note` with descriptive tags meanwhile.
 
