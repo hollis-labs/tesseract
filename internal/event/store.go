@@ -19,6 +19,7 @@ package event
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -78,6 +79,17 @@ type WriteInput struct {
 	Origin     memory.Origin
 	Trigger    memory.Trigger
 	Supersedes string
+
+	// ConsumerState is the writer's operational JSON bag for this entry
+	// (CW-20260909-0036). Optional and usually absent.
+	//
+	// Wired here rather than left to the memory domain because the Event
+	// definition asked for it by name: "an event has consumer-meaningful state
+	// distinct from the epistemic draft|reviewed|canonical|deprecated ladder"
+	// ([[tesseract_event_domain_definition]]). A friction log marking an entry
+	// resolved, a journal page marking a day closed — neither is a claim about
+	// how settled the entry is, which is all `status` can say.
+	ConsumerState json.RawMessage
 }
 
 // Write applies event defaults and forwards to the underlying memory.Store
@@ -128,6 +140,7 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 			Summary: in.Summary,
 			Body:    in.Body,
 		},
+		ConsumerState: in.ConsumerState,
 	}
 	return s.mem.WriteRevision(ctx, memIn)
 }

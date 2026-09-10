@@ -83,7 +83,15 @@ func buildBM25RankExpr() string {
 // fetchCandidates (dense/metadata path) and fetchBM25Candidates (FTS5
 // path). Fragments reference memory_revisions aliased as r; callers
 // provide the FROM/JOIN and final ordering.
-func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
+//
+// It returns an error only for a malformed state filter. Every other filter
+// here is either already vocabulary-checked at the surfaces or rendered
+// verbatim as a bind parameter, but a state filter names a JSON path fragment
+// that is interpolated rather than bound, so its shape has to be proven
+// somewhere that no caller can skip. Returning the error from the shared
+// builder — rather than validating in RecallPaged — is what makes that true of
+// the dense arm and the BM25 arm alike.
+func buildRecallFilters(in RecallInput) ([]string, []interface{}, error) {
 	var where []string
 	var args []interface{}
 
@@ -162,11 +170,20 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}) {
 		args = append(args, in.Filters.Until.UTC().Format(memoryTimeFormat))
 	}
 
+	// Consumer state, last among the filters and first among the things that
+	// must never grow a value opinion. See consumerstate.go.
+	stateWhere, stateArgs, err := buildStateFilterClauses(in.Filters.StateFilters)
+	if err != nil {
+		return nil, nil, err
+	}
+	where = append(where, stateWhere...)
+	args = append(args, stateArgs...)
+
 	now := time.Now().UTC().Format(memoryTimeFormat)
 	where = append(where, "(r.expires_at IS NULL OR r.expires_at > ?)")
 	args = append(args, now)
 
-	return where, args
+	return where, args, nil
 }
 
 // bm25Tokenize extracts the alphanumeric + underscore runs from a user query,
@@ -434,7 +451,10 @@ func (s *Store) fetchBM25Candidates(ctx context.Context, in RecallInput, n int) 
 		n = bm25CandidateDefault
 	}
 
-	where, args := buildRecallFilters(in)
+	where, args, err := buildRecallFilters(in)
+	if err != nil {
+		return nil, err
+	}
 	whereClause := strings.Join(where, " AND ")
 
 	var sqlText string

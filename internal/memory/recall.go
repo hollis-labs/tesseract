@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -178,6 +179,33 @@ type RecallFilters struct {
 	// A query whose whole purpose is to enumerate a suspect population cannot
 	// be sampled by an unrelated ranking.
 	PointerHealth []string
+
+	// StateFilters narrows results to revisions whose consumer_state carries a
+	// listed value at a named field (CW-20260909-0036).
+	//
+	// This is the FILTER half of [[tesseract_consumer_state_separate_from_status]]
+	// — "Tesseract may index declared fields and filter on them" — and the line
+	// the other half of that decision draws sits one layer down, in
+	// consumerstate.go: a value reaches SQL as a bind parameter and never
+	// reaches Go as a branch.
+	//
+	// Applied in SQL rather than after the fetch, for the same reason
+	// PointerHealth is: a post-filter runs after LIMIT, so "the open todos"
+	// would return however many open ones happened to rank in the top N. A
+	// query enumerating a population cannot be sampled by an unrelated ranking.
+	//
+	// Multiple filters AND together across fields; values within one filter OR.
+	// Naming the same field twice is refused rather than intersected — see
+	// buildStateFilterClauses.
+	//
+	// This is the only field in this struct carrying a JSON tag, and the
+	// reason is that POST /v1/memory/recall decodes a request body straight
+	// into RecallFilters. Untagged, encoding/json's case-insensitive matching
+	// accepts `StateFilters` and `statefilters` but not `state_filters`, which
+	// is the spelling every other filter uses on the neighboring lookup route
+	// and the only one a caller would write. Tagging it costs nothing — the
+	// field is new, so no body in the wild names it the other way.
+	StateFilters []StateFilter `json:"state_filters,omitempty"`
 }
 
 // RecallResult pairs a revision with its ranking score and the parent state.
@@ -535,6 +563,15 @@ func (s *Store) recallOrdered(ctx context.Context, in RecallInput) ([]RecallResu
 	// 4. Fetch candidate revisions.
 	candidates, err := s.fetchCandidates(ctx, in)
 	if err != nil {
+		// The `fetchCandidates:` prefix is a debugging aid for a store failure
+		// and noise on a caller's own mistake — a surface maps ErrInvalidInput
+		// straight to validation_error, so the internal function name is the
+		// first thing the caller reads and the only part they cannot act on.
+		// Passed through unwrapped: the error already names the offending
+		// argument and what a legal one looks like.
+		if errors.Is(err, ErrInvalidInput) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("fetchCandidates: %w", err)
 	}
 
@@ -653,7 +690,10 @@ func sortRecallResults(results []RecallResult, ranking Ranking) {
 
 // fetchCandidates builds a dynamic SQL query with parameterized filters.
 func (s *Store) fetchCandidates(ctx context.Context, in RecallInput) ([]Revision, error) {
-	where, args := buildRecallFilters(in)
+	where, args, err := buildRecallFilters(in)
+	if err != nil {
+		return nil, err
+	}
 	whereClause := strings.Join(where, " AND ")
 
 	var query string
@@ -736,7 +776,8 @@ const recallRevisionColumns = `r.revision_id, r.memory_id, r.domain, r.namespace
        COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, ''),
        COALESCE(r.embedding_model, ''), r.embedding_vector,
        r.facet_kind, r.facet_source,
-       r.facet_pointer_scheme, r.facet_pointer_locator, r.facet_pointer_resolved_at`
+       r.facet_pointer_scheme, r.facet_pointer_locator, r.facet_pointer_resolved_at,
+       r.consumer_state`
 
 // fetchStates loads memory_state rows for a set of memory IDs.
 func (s *Store) fetchStates(ctx context.Context, memoryIDs []string) (map[string]State, error) {

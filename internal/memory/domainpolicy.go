@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/typeregistry"
 )
 
 // DomainPolicy is the in-tree behavior contract each domain implements. Impls
@@ -103,6 +104,23 @@ type DomainPolicy interface {
 	// return errors already wrapped in ErrInvalidInput, because this is the
 	// persistence boundary's own check rather than an advisory one.
 	ValidateFacets(f Facets) error
+
+	// TypeRef names the registry vocabulary and the value within it that
+	// classify a revision written under this domain — the pair a caller hands
+	// typeregistry.Lookup to reach the type's declaration.
+	//
+	// Every domain classifies, and each one classifies somewhere different:
+	// memory and event on the namespace's {type} segment, knowledge on
+	// facet_kind. That is exactly the shape this interface exists to hold, and
+	// it is why this is a method rather than a switch at the one call site that
+	// needs it — a domain added later cannot silently inherit memory's answer.
+	//
+	// An empty typeID means the revision names no declared type, which is a
+	// legitimate state: a knowledge write is validated for its facet kind
+	// elsewhere, and a namespace this policy cannot parse has already been
+	// refused by ValidateNamespace before anything asks. Callers treat it as
+	// "no declaration", never as "the default type".
+	TypeRef(namespace string, f Facets) (vocabID, typeID string)
 }
 
 // memoryPolicy carries the D-core rules: the legacy namespace shape and the
@@ -144,6 +162,15 @@ func (memoryPolicy) ValidateFacets(f Facets) error {
 		return fmt.Errorf("%w: memory revisions must not carry knowledge facets", ErrInvalidInput)
 	}
 	return nil
+}
+
+// TypeRef: the {type} segment of the namespace, against memory.type.
+func (memoryPolicy) TypeRef(namespace string, _ Facets) (string, string) {
+	ns, err := ParseNamespace(namespace)
+	if err != nil {
+		return typeregistry.VocabMemoryType, ""
+	}
+	return typeregistry.VocabMemoryType, ns.Type
 }
 
 // knowledgePolicy requires a namespace segment of exactly "knowledge". Shape:
@@ -200,6 +227,13 @@ func (knowledgePolicy) ValidateNamespace(ns string) error {
 // key vocabulary. Returning nil here is the same bypass write.go used to spell
 // as `&& in.Domain == domains.Memory` on the call to ValidateKey.
 func (knowledgePolicy) ValidateKey(string) error { return nil }
+
+// TypeRef: the facet kind, against knowledge.facet_kind. Knowledge namespaces
+// are deep-hierarchical with free depth and carry no {type} segment to read,
+// which is why the classification lives on the facet instead.
+func (knowledgePolicy) TypeRef(_ string, f Facets) (string, string) {
+	return typeregistry.VocabKnowledgeFacetKind, f.Kind
+}
 
 func (knowledgePolicy) ValidateFacets(f Facets) error {
 	if f.Kind == "" {
@@ -274,6 +308,17 @@ func (eventPolicy) ValidateKey(key string) error {
 // ValidateFacets: none. Facets are the knowledge domain's pointer-first
 // provenance; an event's provenance is its author, session and timestamp,
 // which every revision already carries.
+// TypeRef: the {type} segment of the namespace, against event.type — the same
+// position memory uses, because the grammar is memory's with one segment
+// changed.
+func (eventPolicy) TypeRef(namespace string, _ Facets) (string, string) {
+	ns, err := ParseEventNamespace(namespace)
+	if err != nil {
+		return typeregistry.VocabEventType, ""
+	}
+	return typeregistry.VocabEventType, ns.Type
+}
+
 func (eventPolicy) ValidateFacets(f Facets) error {
 	if !f.IsZero() {
 		return fmt.Errorf("%w: event revisions must not carry knowledge facets", ErrInvalidInput)

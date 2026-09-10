@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	schemaVersion = 18
+	schemaVersion = 19
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -948,6 +948,85 @@ END`); err != nil {
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_domain_created ON memory_revisions(domain, created_at, revision_id)`); err != nil {
 				return err
 			}
+		case 19:
+			// Consumer state, and the first indexes over it (CW-20260909-0036).
+			//
+			// NOT memory_state. That table already exists and is something
+			// else entirely: the mutable per-entry row holding
+			// current_revision, activation, access_count and last_decayed_at,
+			// which is Tesseract's own bookkeeping. This column is the
+			// CONSUMER's, it hangs off a revision, and it is immutable with
+			// the revision that carries it. The two share four letters and
+			// nothing else; conflating them produces a change that looks
+			// right and corrupts activation, so the column is named
+			// consumer_state rather than state and the Go field is
+			// Revision.ConsumerState.
+			//
+			// Per [[tesseract_consumer_state_separate_from_status]] rev 2 it
+			// is a JSON OBJECT, validated for well-formedness and nothing
+			// else. It cannot ride on `status`: currentRevisionJoin in
+			// internal/memory/recall.go special-cases `deprecated` to widen
+			// what "current" means, so every value landing in status has to be
+			// taught to that join. A consumer's vocabulary must never reach
+			// recall's semantics.
+			//
+			// Guarded rather than issued blind. SQLite has no
+			// ADD COLUMN IF NOT EXISTS, and every other statement in this list
+			// is re-runnable — several tests roll schema_version back and
+			// reopen to exercise an earlier migration, which replays every
+			// migration after it too. An unguarded ADD COLUMN turns that into
+			// "duplicate column name" and makes this the one rung the ladder
+			// cannot be climbed twice.
+			// Assigned to the enclosing `err`, not a fresh one. This
+			// function's deferred rollback keys on the named return, so a
+			// shadowed err here is the shape that silently leaves a failed
+			// migration's transaction open.
+			var hasConsumerState bool
+			hasConsumerState, err = columnExists(ctx, tx, "memory_revisions", "consumer_state")
+			if err != nil {
+				return err
+			}
+			if !hasConsumerState {
+				if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN consumer_state TEXT NULL`); err != nil {
+					return err
+				}
+			}
+			// The hot-field indexes, materialized here and only here.
+			//
+			// [[tesseract_registry_index_ddl_constrained]], operator gate G2:
+			// the type registry DECLARES hot_fields and must never emit DDL,
+			// because two config files producing two schemas from one binary
+			// breaks the reproducibility this ordered list exists to give.
+			// These four statements are the human-reviewed half of that
+			// bargain, and they are the shipped `todos` declaration's
+			// hot_fields spelled out one index at a time.
+			// TestDeclaredHotFieldsAreMaterializedByMigration binds the two
+			// lists so neither can drift; an operator who declares a fifth hot
+			// field in types.yaml gets no index until a migration ships, which
+			// is G2's accepted trade-off stated as behavior.
+			//
+			// Partial on `consumer_state IS NOT NULL` so each index is
+			// proportional to the structured objects rather than to the whole
+			// corpus — every revision written before this migration carries
+			// NULL and none of them can ever match. buildRecallFilters emits
+			// the same IS NOT NULL predicate ahead of every json_extract
+			// comparison, without which SQLite cannot prove a query is covered
+			// by a partial index and falls back to scanning.
+			//
+			// Not scoped by namespace or by type. A predicate naming `todos`
+			// would have to be revised by every structured type added after
+			// it, and the NULL check already excludes everything that is not
+			// a structured object.
+			for _, stmt := range []string{
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_kind ON memory_revisions(json_extract(consumer_state, '$.kind')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_section ON memory_revisions(json_extract(consumer_state, '$.section')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_completed ON memory_revisions(json_extract(consumer_state, '$.completed')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_external_ref ON memory_revisions(json_extract(consumer_state, '$.external_ref')) WHERE consumer_state IS NOT NULL`,
+			} {
+				if _, err = tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
 		}
 
 		version++
@@ -957,6 +1036,29 @@ END`); err != nil {
 	}
 
 	return tx.Commit()
+}
+
+// columnExists reports whether table already carries column.
+//
+// SQLite offers no ADD COLUMN IF NOT EXISTS, so a migration that adds one has
+// to ask. PRAGMA table_info is the cheapest way and needs no error parsing —
+// matching on the driver's "duplicate column name" text would tie the
+// migration list to a message string the driver is free to change.
+func columnExists(ctx context.Context, tx *sql.Tx, table, column string) (bool, error) {
+	// Both arguments are BOUND, not interpolated: pragma_table_info is a
+	// table-valued function, so it takes a parameter where the bare
+	// `PRAGMA table_info(x)` statement form would not. That is why there is no
+	// #nosec here — G202 is about SQL string concatenation and there is none.
+	rows, err := tx.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	found := rows.Next()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return found, nil
 }
 
 // AppendInput defines a new write.

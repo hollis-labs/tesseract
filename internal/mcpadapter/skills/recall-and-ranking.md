@@ -157,6 +157,32 @@ All rankings accept the same filter set:
 - `facet_kinds` / `facet_sources` (knowledge-aware)
 - `domains` (JSON array; narrow to `["memory"]` or `["knowledge"]` instead of reaching for a different tool)
 - `related_to` / `related_relations` (the link graph — see below)
+- `state_filters` (structured objects — see below)
+
+## `state_filters` — querying a consumer's own state
+
+Revisions can carry `consumer_state`, a JSON object holding the writer's own lifecycle data (see `tesseract_skills memory`). `state_filters` selects on it:
+
+```json
+{
+  "namespaces": "[\"user/chrispian/memory/todos\"]",
+  "ranking": "chronological",
+  "state_filters": "[{\"field\":\"section\",\"values\":[\"now\",\"soon\"]},{\"field\":\"completed\",\"values\":[false]}]"
+}
+```
+
+That is "my open todos in now or soon". Values within one filter OR together; separate filters AND.
+
+Four things to know before you rely on it:
+
+1. **Values are JSON, not strings that look like JSON.** `[false]` matches a bag holding the literal `false`; `["false"]` matches one holding the string. Strings, numbers and booleans only — a `null` is refused, because an absent key and a null are indistinguishable to an index.
+2. **Set membership only.** No ranges, no negation, no comparison operators. `due before tomorrow` is not expressible today, which is why `due_at` is not among the indexed fields.
+3. **Any lowercase-identifier field is accepted**, but a type's declared `hot_fields` are the ones carrying an index — `todos` declares `completed`, `external_ref`, `kind`, `section`. Filtering on anything else is correct and scans.
+4. **It runs in SQL, before `limit`**, so it enumerates a population rather than sampling one — the same property `pointer_health` has.
+
+Naming the same field twice is a `validation_error` rather than an intersection nobody meant: put every value for one field in a single filter.
+
+`consumer_state` itself rides on results under `summary` (the default projection) and `full`, not `keys` — a list view can read lifecycle without dragging every body across the wire. **It is not the `state` block a `full` result carries**, which is Tesseract's activation bookkeeping and is not filterable.
 
 ## `related_to` — the link graph
 

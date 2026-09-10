@@ -173,6 +173,15 @@ nothing but is a corpus edit, filed rather than done here.
 | `outcomes` | 16 | No — dated statements about what was true after some work. | memory | memory | ✓ |
 | `references` | 10 | **Mixed** — about half are reference material you would name (`proxima_routing_rules`, `pm_escalation_rubric`, `weekly_review_templates_user_and_portfolio`); the rest are dated findings. | **split** | memory | ✗ |
 
+`todos` joined the vocabulary after this audit (CW-20260909-0036) and is
+deliberately not in the table. The counts above are a measurement, and it has
+none — but the deeper reason is that the "could you name it before looking?"
+test does not apply to it. That test sorts PROSE by how it is retrieved. A todo
+is a structured object: it is read by asking for a list, filtered on the
+`consumer_state` fields it carries, and it lives under memory because it is
+per-user working state, not because it passed this test. It is a different axis,
+and reading a row for it here would suggest otherwise.
+
 ### `decisions` is the stress test, and it passes
 
 491 records, cited by key throughout this repo's own prose —

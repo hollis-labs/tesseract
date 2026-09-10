@@ -35,7 +35,8 @@ const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(mem
        COALESCE(payload_summary, ''), COALESCE(payload_body, ''),
        COALESCE(embedding_model, ''), embedding_vector,
        facet_kind, facet_source,
-       facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at`
+       facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
+       consumer_state`
 
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
@@ -47,6 +48,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 	var embeddingBlob []byte
 	var facetKind, facetSource sql.NullString
 	var pointerScheme, pointerLocator, pointerResolvedAt sql.NullString
+	var consumerState sql.NullString
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
@@ -56,6 +58,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 		&rev.EmbeddingModel, &embeddingBlob,
 		&facetKind, &facetSource,
 		&pointerScheme, &pointerLocator, &pointerResolvedAt,
+		&consumerState,
 	)
 	if err != nil {
 		return Revision{}, err
@@ -86,6 +89,12 @@ func scanRevision(r rowScanner) (Revision, error) {
 			p.ResolvedAt = &t
 		}
 		rev.Facets.Pointer = p
+	}
+	// Copied out of the scan destination rather than aliased: sql.NullString's
+	// String is reused by the driver across rows on some paths, and a
+	// json.RawMessage is a slice that would still be pointing at it.
+	if consumerState.Valid && consumerState.String != "" {
+		rev.ConsumerState = json.RawMessage(append([]byte(nil), consumerState.String...))
 	}
 	return rev, nil
 }

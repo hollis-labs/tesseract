@@ -41,6 +41,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithNumber("ttl_seconds", mcp.Description("Time-to-live in seconds (0 = no expiry)")),
 		mcp.WithString("payload_summary", mcp.Required(), mcp.Description("Summary text for the memory payload")),
 		mcp.WithString("payload_body", mcp.Description("Optional body text for the memory payload")),
+		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
 		mcp.WithString("dedup", mcp.Description("Dedup mode: none (default) or semantic")),
 		mcp.WithNumber("dedup_threshold", mcp.Description("Similarity threshold override for semantic dedup (0 = use config default 0.85)")),
 		mcp.WithReadOnlyHintAnnotation(false),
@@ -108,6 +109,7 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 		},
 		Dedup:          req.GetString("dedup", ""),
 		DedupThreshold: req.GetFloat("dedup_threshold", 0),
+		ConsumerState:  consumerStateArg(req),
 	}
 
 	rev, err := a.MemoryStore.WriteRevision(ctx, in)
