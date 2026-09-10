@@ -177,7 +177,7 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Fetch one revision by its `revision_id`.**\n"+
 				"• **Kind of content:** a single revision record, including body, facets, and lineage.\n"+
-				"• **Works across domains:** memory and knowledge revisions share one table keyed by `revision_id`, so an ID from either resolves here without saying which it was.\n"+
+				"• **Works across domains:** memory, knowledge and event revisions share one table keyed by `revision_id`, so an ID from any of them resolves here without saying which it was.\n"+
 				"• **Scope:** `memory:read`.\n"+
 				"• **Use this when:** a `tesseract_recall` or `tesseract_history` result referenced a `revision_id` and you want the full content — the hydrate step of recall → choose → hydrate.\n"+
 				"• **Don't use this for:** resolving by `(namespace, key)` — use `tesseract_get`.\n"+
@@ -197,7 +197,7 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 		mcp.WithDescription(
 			"**Soft-remove one revision** by its `revision_id`. The revision stays in history.\n"+
 				"• **Kind of content:** none returned beyond `{status, revision_id}`.\n"+
-				"• **Works across domains:** memory and knowledge revisions share one table keyed by `revision_id`, so an ID from either resolves here.\n"+
+				"• **Works across domains:** memory, knowledge and event revisions share one table keyed by `revision_id`, so an ID from any of them resolves here. Under `event` this IS the retraction path — `event_list` stops showing a deprecated entry, `tesseract_history` still returns it.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				"• **Use this when:** a revision is wrong, outdated, or should stop appearing in current recall.\n"+
 				"• **Don't use this for:** replacing content — write a new revision with `supersedes`. Hard deletes are not supported; history is canonical.\n"+

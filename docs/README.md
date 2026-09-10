@@ -30,6 +30,7 @@ documentation drift.
 
 ## Maintainers and contributors
 
+- [Agent-facing prose audit](agent-facing-prose-audit.md)
 - [Development notes](DEV.md)
 - [Release procedure](RELEASE.md)
 - [Contributing](../CONTRIBUTING.md)

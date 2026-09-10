@@ -18,6 +18,8 @@ Tesseract is a local-first, append-only context and memory service. You reach it
 
 The quickest fork between the first three: a settled conclusion you would want applied later is **memory**; something that lives outside Tesseract is **knowledge**; what happened and what you were thinking at the time is **event**.
 
+**The fork is one-way.** A record's domain is stamped when it is created and never changes, so a write to the wrong domain stays there. The promotion workflow is the obvious escape and it is the wrong shape — it moves records across *namespaces*, not across domains. The only way to reclassify is to write a new record under a new identity, which discards the revision lineage the store exists to keep. This is worth one moment of thought at write time; it is not worth agonizing over, because `notes` and `note` are honest catch-alls and a record in a defensible domain is fine where it is.
+
 `tesseract_recall` is the unified query surface over the curated corpus — memory + knowledge. It does **not** search the event log unless you pass `domains: ["event"]`, so that the log's volume cannot drown the records recall exists to surface.
 
 ## Invariants (don't fight these)
@@ -25,7 +27,7 @@ The quickest fork between the first three: a settled conclusion you would want a
 - **Append-only.** Every write creates a new revision. Nothing is mutated in place.
 - **Namespace-owned.** `user/*` is user-owned (write-protected except via promotion). `app/*` is app-owned. See `tesseract_skills namespaces`.
 - **Deterministic.** Identical selectors against identical state return identical results.
-- **Audited.** Context writes and promotions are logged today; memory and knowledge write audit is in flight (see `tesseract_skills audit`). Use `tesseract_skills audit` to query.
+- **Audited.** Context writes and promotions are logged, and so is every memory, knowledge and event revision write, supersede and deprecation. Use `tesseract_skills audit` to query — it also names where the MCP and HTTP doors emit differently, which is where a reconstruction from the log goes wrong.
 - **Views are selectors, not processors.** Retrieval does not synthesize, merge, or infer.
 
 ## How to use `tesseract_skills`

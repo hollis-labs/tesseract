@@ -86,7 +86,7 @@ The value of `supersedes` is a `revision_id`, which is what `tesseract_recall`, 
 
 ## Deprecation
 
-`tesseract_deprecate` marks a revision as removed from the current head pool. It remains in history (audit emission for memory deprecations is in flight).
+`tesseract_deprecate` marks a revision as removed from the current head pool. It remains in history, and the deprecation emits an audit event — under `memory.deprecate` whatever the revision's own domain is, which `tesseract_skills audit` explains and which matters if you are reconstructing a knowledge or event retraction from the log.
 
 ```json
 {"revision_id": "01HXA..."}
@@ -98,10 +98,11 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/deprecate" \
   -d '{"revision_id": "01HXA..."}'
 ```
 
-One route serves both domains here, the way one tool does: memory and knowledge revisions share a table keyed by `revision_id`, so an ID from either resolves.
+One route serves every revision domain here, the way one tool does: memory, knowledge and event revisions share a table keyed by `revision_id`, so an ID from any of them resolves. Under `event` this is how a log entry is retracted — see `tesseract_skills event`.
 
 ## What NOT to expect
 
 - **No in-place edits.** Every change is a new revision.
 - **No hard deletes.** Deprecation is soft; history remains.
 - **No write-your-own revision IDs.** The store assigns them.
+- **No domain changes.** `domain` is stamped when a memory is created and holds for its whole lineage; writing an existing `(namespace, key)` under a different domain is a `validation_error`, not a migration. There is no supported move, and promotion is not one — it crosses namespaces, not domains. Rewriting the content under a new identity works and costs the supersede chain, the created_at history and the lineage edges, which is a real loss on a store whose claim is that history is canonical. Worth knowing before the first write, not worth unpicking after it: a record in a defensible domain is better left where it is.
