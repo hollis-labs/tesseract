@@ -211,9 +211,32 @@ type TxResolver struct {
 }
 
 // Resolve implements Resolver.
+//
+// Two rows are enough to answer, and the query is written so that the two it
+// returns are always the deciding ones.
+//
+// The ordering does the work. `namespace = ?` sorts an entry in the caller's
+// own namespace to the front, so if rule 1 has an answer it is row 1 — which
+// is what makes LIMIT 2 safe rather than a truncation that could hide the
+// local match behind a page of foreign ones. Past that, rule 2 only needs to
+// know whether there is exactly one claimant or more than one, and a second
+// row settles that; a third would not change it.
+//
+// The bound is the point. Without it a key with many claimants reads every one
+// of them to reach a verdict that two rows already determined, and the number
+// of claimants is not something this code controls.
+//
+// memory_id breaks the remaining tie so the pair is deterministic. Which two
+// foreign rows come back cannot change the ANSWER — more than one claimant and
+// no local match is ambiguous either way — but a stable query is easier to
+// reason about than one whose result depends on the planner.
 func (r TxResolver) Resolve(ctx context.Context, namespace, target string) (string, error) {
-	rows, err := r.Tx.QueryContext(ctx,
-		`SELECT memory_id, namespace FROM memory_state WHERE memory_key = ?`, target)
+	rows, err := r.Tx.QueryContext(ctx, `
+SELECT memory_id, namespace
+FROM memory_state
+WHERE memory_key = ?
+ORDER BY (namespace = ?) DESC, memory_id
+LIMIT 2`, target, namespace)
 	if err != nil {
 		return "", fmt.Errorf("resolve link target: %w", err)
 	}
@@ -226,12 +249,6 @@ func (r TxResolver) Resolve(ctx context.Context, namespace, target string) (stri
 			return "", fmt.Errorf("scan link target: %w", scanErr)
 		}
 		candidates = append(candidates, c)
-		// Rule 1 short-circuits on an in-namespace hit; rule 2 only needs to
-		// know whether there is more than one. Nothing past the second row
-		// changes the answer.
-		if c.namespace == namespace {
-			break
-		}
 	}
 	if err := rows.Err(); err != nil {
 		return "", fmt.Errorf("resolve link target: %w", err)

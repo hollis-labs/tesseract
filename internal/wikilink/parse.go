@@ -73,6 +73,25 @@ type Link struct {
 // document, and an inner `[[` inside an unterminated one restarts the scan, so
 // the worst case for malformed input is a missed link rather than a link whose
 // target is the remainder of the body.
+//
+// # One pass, and why it has to be
+//
+// This is a single left-to-right scan holding one piece of state — where the
+// most recent unclosed `[[` began. It reads like the long way round compared
+// to searching for the delimiters with strings.Index, and the short way is
+// quadratic on input this function has to survive.
+//
+// Searching per opener re-scans the REMAINING SUFFIX for a closer at every
+// opener, so a body of openers costs O(n²): measured at 13ms / 45ms / 145ms /
+// 572ms for 25k / 50k / 100k / 200k openers — the doubling-quadruples shape.
+// Bounding the nested-opener search to the text before the closer fixes the
+// all-openers case and leaves `[[a[[a[[a…]]` quadratic, because each restart
+// still re-scans for the same distant closer. Advancing one index at a time
+// and never looking backwards is what makes both linear.
+//
+// This runs on the write path of every revision, and a memory is a plausible
+// place to paste something malformed, so the pathological cases are ordinary
+// inputs here rather than adversarial ones.
 func Parse(s string) []Link {
 	if !strings.Contains(s, "[[") {
 		return nil
@@ -80,35 +99,29 @@ func Parse(s string) []Link {
 
 	var links []Link
 	pos := 0
+	// Index just past the most recent `[[`, or -1 when no opener is pending.
+	open := -1
 
 	for i := 0; i+1 < len(s); {
-		if s[i] != '[' || s[i+1] != '[' {
-			i++
-			continue
-		}
+		switch {
+		case s[i] == '[' && s[i+1] == '[':
+			// A second opener means the first was never closed. It is
+			// abandoned rather than nested: the new one wins, which is what
+			// keeps an unterminated `[[` from swallowing a later real link.
+			open = i + 2
+			i += 2
 
-		inner := s[i+2:]
-		// A nested `[[` means the outer one was never closed. Restart at the
-		// inner opener rather than letting the outer one consume it.
-		if next := strings.Index(inner, "[["); next >= 0 {
-			if end := strings.Index(inner, "]]"); end < 0 || next < end {
-				i += 2 + next
-				continue
+		case s[i] == ']' && s[i+1] == ']' && open >= 0:
+			if link, ok := parseInner(s[open:i], pos); ok {
+				links = append(links, link)
+				pos++
 			}
-		}
+			open = -1
+			i += 2
 
-		end := strings.Index(inner, "]]")
-		if end < 0 {
-			// Unterminated: nothing after this point can close it either.
-			break
+		default:
+			i++
 		}
-
-		if link, ok := parseInner(inner[:end], pos); ok {
-			links = append(links, link)
-			pos++
-		}
-
-		i += 2 + end + 2
 	}
 
 	return links

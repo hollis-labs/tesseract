@@ -218,6 +218,73 @@ func TestLinkResolution_NamespaceRule(t *testing.T) {
 		}
 	})
 
+	// The resolution query returns only the two rows that decide the answer.
+	// That is safe only because the ordering surfaces a same-namespace claimant
+	// first — if it did not, a local match sitting behind a crowd of foreign
+	// ones would be truncated away and the edge would resolve to nothing, or
+	// worse, to a foreign entry.
+	t.Run("same namespace wins from behind many foreign claimants", func(t *testing.T) {
+		ms, db, cleanup := newLinkStore(t)
+		defer cleanup()
+		ctx := context.Background()
+
+		crowd := []string{
+			"user/chrispian/memory/decisions",
+			"user/chrispian/memory/feedback",
+			"user/chrispian/memory/followups",
+			"user/chrispian/memory/learnings",
+			"user/chrispian/memory/limitations",
+			"user/chrispian/memory/outcomes",
+			"user/chrispian/memory/references",
+		}
+		for _, ns := range crowd {
+			if _, err := ms.WriteRevision(ctx, linkInput(ns, "crowded", "claimant")); err != nil {
+				t.Fatalf("write %s: %v", ns, err)
+			}
+		}
+		local, err := ms.WriteRevision(ctx, linkInput(notesNS, "crowded", "the local one"))
+		if err != nil {
+			t.Fatalf("write local: %v", err)
+		}
+		src, err := ms.WriteRevision(ctx, linkInput(notesNS, "src", "see [[crowded]]"))
+		if err != nil {
+			t.Fatalf("write src: %v", err)
+		}
+
+		if to := edgeTarget(t, db, src.RevisionID); !to.Valid || to.String != local.MemoryID {
+			t.Errorf("resolved to %v, want the same-namespace memory %s among %d claimants",
+				to, local.MemoryID, len(crowd)+1)
+		}
+	})
+
+	// The mirror case: many claimants, none local, stays unresolved rather
+	// than binding to whichever two rows the bounded query happened to see.
+	t.Run("many foreign claimants and no local match stays unresolved", func(t *testing.T) {
+		ms, db, cleanup := newLinkStore(t)
+		defer cleanup()
+		ctx := context.Background()
+
+		for _, ns := range []string{
+			"user/chrispian/memory/decisions",
+			"user/chrispian/memory/feedback",
+			"user/chrispian/memory/followups",
+			"user/chrispian/memory/learnings",
+			"user/chrispian/memory/limitations",
+		} {
+			if _, err := ms.WriteRevision(ctx, linkInput(ns, "crowded", "claimant")); err != nil {
+				t.Fatalf("write %s: %v", ns, err)
+			}
+		}
+		src, err := ms.WriteRevision(ctx, linkInput(notesNS, "src", "see [[crowded]]"))
+		if err != nil {
+			t.Fatalf("write src: %v", err)
+		}
+
+		if to := edgeTarget(t, db, src.RevisionID); to.Valid {
+			t.Errorf("bound to %q despite five equal foreign claimants", to.String)
+		}
+	})
+
 	t.Run("ambiguous across two foreign namespaces stays unresolved", func(t *testing.T) {
 		ms, db, cleanup := newLinkStore(t)
 		defer cleanup()
