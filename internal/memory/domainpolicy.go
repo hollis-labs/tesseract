@@ -16,6 +16,7 @@ package memory
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -26,15 +27,42 @@ import (
 // also why store selection stays at the adapter layer: picking MemoryStore or
 // KnowledgeStore is dependency wiring, not policy, and does not belong here.
 //
-// Every method is a rule that genuinely differs per domain. Rules that are
-// uniform across domains are deliberately absent: activation decay,
-// reinforcement on read and the default status are the same for every domain
-// today, and adding methods for them would be inventing behavior rather than
-// relocating it. See CW-20260910-0021, which settles per-domain activation
-// with a concrete second domain in hand.
+// Every method is a rule that genuinely differs per domain, or is on an axis
+// where domains are known to differ. Rules uniform across every domain with no
+// prospect of divergence stay out: the default status is an unconditional
+// StatusDraft at write.go and gets no method here.
+//
+// The interface carries two kinds of rule, and that is deliberate rather than
+// drift. Three are validation; ParticipatesInActivation is storage policy.
+// CW-20260910-0021 weighed giving activation its own seam and rejected it: a
+// second registry, a second lookup and a second completeness test, all to hold
+// one bool. The failure mode this file exists to prevent — a domain added
+// without an answer, silently taking another domain's — is exactly the failure
+// mode on the activation axis, and one registry a new domain must satisfy
+// completely is a stronger guard than two it must satisfy separately. The file
+// comment above scopes this as "what does this domain do", which is the wider
+// claim; three-validation-methods was what the CW-20260909-0033 measurement
+// happened to find, not a designed boundary.
 type DomainPolicy interface {
 	// Name returns the canonical domain identifier.
 	Name() domains.Domain
+
+	// ParticipatesInActivation reports whether this domain's rows take part in
+	// the activation system: decayed by the sweep AND reinforced by deliberate
+	// reads. It is one predicate rather than two on purpose.
+	//
+	// CW-20260910-0021 is the reason. Knowledge decayed and never reinforced —
+	// a countdown with no input — because the two halves were reachable
+	// independently, decay through a domain-blind SELECT and reinforcement
+	// through a call-site choice. Splitting participation into DecaysActivation
+	// and ReinforcesOnRead would make that incoherent pair a supported
+	// configuration instead of the defect it was. A domain is in or out.
+	//
+	// Callers must not consult this to decide whether to reinforce. Both halves
+	// read it themselves — collectDecayUpdates and reinforceMemoryIDs, in SQL —
+	// so participation cannot be re-decided at a call site. That is the whole
+	// point: the defect was a call site holding this choice.
+	ParticipatesInActivation() bool
 
 	// ValidateNamespace reports whether ns is allowed under this domain.
 	ValidateNamespace(ns string) error
@@ -57,6 +85,9 @@ type DomainPolicy interface {
 type memoryPolicy struct{}
 
 func (memoryPolicy) Name() domains.Domain { return domains.Memory }
+
+// ParticipatesInActivation: memory is the domain activation was built for.
+func (memoryPolicy) ParticipatesInActivation() bool { return true }
 
 // ValidateNamespace applies the user/{id}[/project|session/{id}]/memory shape.
 //
@@ -91,6 +122,18 @@ func (memoryPolicy) ValidateFacets(f Facets) error {
 type knowledgePolicy struct{}
 
 func (knowledgePolicy) Name() domains.Domain { return domains.Knowledge }
+
+// ParticipatesInActivation: yes, per Chrispian 2026-09-09 — "Knowledge should
+// participate in activation… I think knowledge would benefit from it, we can
+// measure how much."
+//
+// Knowledge already decayed; this is what finally makes the other half true.
+// Before CW-20260910-0021 its activation was a pure function of age: of the 39
+// knowledge rows above the floor at the time of measurement, 38 had
+// access_count 0 and no last_accessed_at, so they ranked purely by how recently
+// they were written. Activation-ranked recall over knowledge was a
+// chronological ordering wearing an activation label.
+func (knowledgePolicy) ParticipatesInActivation() bool { return true }
 
 func (knowledgePolicy) ValidateNamespace(ns string) error {
 	if ns == "" {
@@ -162,4 +205,59 @@ func policyFor(d domains.Domain) (DomainPolicy, error) {
 		return nil, fmt.Errorf("unknown domain %q", d)
 	}
 	return p, nil
+}
+
+// activationDomains returns the domains whose policy opts into activation,
+// sorted so the statements built from it are stable across processes.
+//
+// It reads domains.All() rather than ranging over domainPolicies, so a domain
+// registered without a policy is a missing-policy panic here rather than a
+// silent omission from the activation set. Being quietly left out of decay is
+// precisely the failure this axis just spent a ticket recovering from.
+func activationDomains() []domains.Domain {
+	var participating []domains.Domain
+	for _, d := range domains.All() {
+		p, err := policyFor(d)
+		if err != nil {
+			// Unreachable while TestEveryDomainHasAPolicy passes. Skipping
+			// would hide a registry gap; excluding the domain from activation
+			// entirely is the safer of the two wrong answers, and the test is
+			// what keeps it from being reached.
+			continue
+		}
+		if p.ParticipatesInActivation() {
+			participating = append(participating, d)
+		}
+	}
+	sort.Slice(participating, func(i, j int) bool {
+		return participating[i] < participating[j]
+	})
+	return participating
+}
+
+// activationDomainPredicate renders a SQL fragment and its args restricting a
+// memory_state query to domains that participate in activation.
+//
+// Both halves of activation call this — collectDecayUpdates for the sweep,
+// reinforceMemoryIDs for the bump — which is what makes participation a
+// property of the domain rather than of whoever wrote the call site. The
+// column is always memory_state.domain: activation state lives on
+// memory_state, so the domain that owns it is the one stamped there.
+//
+// The zero case returns a false literal rather than `IN ()`, which is a syntax
+// error in SQLite. It cannot happen today and must fail closed if it ever can:
+// a predicate that matched everything would silently decay a domain that had
+// opted out.
+func activationDomainPredicate(column string) (string, []any) {
+	participating := activationDomains()
+	if len(participating) == 0 {
+		return "0", nil
+	}
+	placeholders := make([]string, len(participating))
+	args := make([]any, len(participating))
+	for i, d := range participating {
+		placeholders[i] = "?"
+		args[i] = string(d)
+	}
+	return column + " IN (" + strings.Join(placeholders, ", ") + ")", args
 }

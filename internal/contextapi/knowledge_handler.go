@@ -227,7 +227,13 @@ func (s *Server) knowledgeStoreUnavailable(w http.ResponseWriter) bool {
 //
 // Param name `memory_key` matches the equivalent /v1/memory/current handler so
 // callers can target either store with a single normalized identifier. The
-// underlying KnowledgeStore.GetCurrent call still takes the bare key string.
+// underlying KnowledgeStore.GetCurrentReinforced call still takes the bare key
+// string.
+//
+// This is a deliberate read and reinforces, matching /v1/memory/current. It did
+// not until CW-20260910-0021: this route and tesseract_get's knowledge arm were
+// the two call sites that reached for the plain getter, which is how knowledge
+// came to decay with nothing lifting it.
 func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Request) {
 	if s.knowledgeStoreUnavailable(w) {
 		return
@@ -241,7 +247,7 @@ func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Reques
 	if !requireNamespaceAccess(w, r, namespace) {
 		return
 	}
-	rev, err := s.KnowledgeStore.GetCurrent(r.Context(), namespace, key)
+	rev, err := s.KnowledgeStore.GetCurrentReinforced(r.Context(), namespace, key)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)

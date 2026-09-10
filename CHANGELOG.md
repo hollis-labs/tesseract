@@ -10,6 +10,19 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- **Activation participation is a domain property.**
+  `DomainPolicy.ParticipatesInActivation() bool` gates both halves of activation
+  — the decay sweep and the reinforcement `UPDATE` — in SQL, from one predicate
+  built off the policy registry. Memory and knowledge both participate, so the
+  decay filter selects exactly the rows the unfiltered sweep did (verified: 1694
+  of 1694, 0 excluded); no stored activation value changes as a result of this
+  release.
+
+  It is one predicate rather than a `DecaysActivation`/`ReinforcesOnRead` pair
+  on purpose: splitting it would make the incoherent combination a supported
+  configuration instead of the defect it was. Gating in SQL rather than at the
+  call sites is the other half — the defect was a call site holding this choice.
+
 - **`domains.DomainPolicy` and `domains.Domain.Policy()` moved to
   `internal/memory`.** The `domains` package is now identity alone — the
   `Domain` type, its constants, `Valid()` and `All()` — which is what lets
@@ -33,6 +46,40 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
   fully described.
 
 ### Fixed
+
+- **Knowledge participates in activation. It decayed but never reinforced.**
+  `tesseract_get` under `domain=knowledge` and `GET /v1/knowledge/current` now
+  reinforce activation, `access_count` and `last_accessed_at`, matching their
+  memory twins. Knowledge was swept by the decay job — a domain-blind `SELECT`
+  over `memory_state` — while both of its deliberate-read call sites reached for
+  the non-reinforcing getter. Decay with no reinforcement is a countdown with no
+  input.
+
+  Measured before the fix, across 163 knowledge and 1531 memory `memory_state`
+  rows: 76.1% of knowledge sat at the 0.05 floor. The number that matters is not
+  the floor mass — memory is 83.5% floored, so knowledge was never uniquely
+  damaged — but what held the rest up. Of the 39 knowledge rows above the floor,
+  **38 had `access_count` 0 and no `last_accessed_at`**: they ranked purely by
+  how recently they were written. `ranking=activation` over knowledge, which is
+  recall's default with no query, was a chronological ordering wearing an
+  activation label.
+
+  This is a regression, not an omission. Before `62843dd` (2026-05-18)
+  reinforcement fired from the recall path, which is domain-blind, so knowledge
+  was reinforced — for the wrong reason, since it let the ranker's guesses
+  reinforce themselves. That commit correctly removed it and rewired
+  reinforcement onto the deliberate-read paths, but only memory's. The surviving
+  `access_count` values of 800-1040 across knowledge rows, all frozen at
+  `last_accessed_at` 2026-05-24, are what that era left behind.
+  `tesseract_get_revision` and `tesseract_touch` were already domain-blind and
+  did keep reaching knowledge.
+
+  **Existing rows were deliberately not backfilled.** Reads climb them back at
+  `activation + 0.1*(2.0 - activation)`, so one deliberate read lifts a floored
+  knowledge row to 0.245 — above 127 of the 163 knowledge rows as measured.
+  Recomputing from `access_count` was rejected because those counts were
+  accumulated by the search-reinforcement path `62843dd` deleted on purpose;
+  restoring from them would re-import the echo chamber it removed.
 
 - **Recall across many namespaces no longer fails to parse.** The namespace
   filter rendered one `OR` level per namespace, and SQLite refuses an

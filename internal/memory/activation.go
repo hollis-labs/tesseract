@@ -50,7 +50,19 @@ const (
 
 // reinforceMemoryIDs is the shared activation-reinforcement primitive: it
 // bumps activation, access_count, and last_accessed_at on memory_state for
-// every memory_id in the set. Reinforcement is a "deliberate read" signal —
+// every memory_id in the set whose domain participates in activation.
+//
+// The domain filter is applied in the UPDATE itself (see below), so a
+// memory_id naming a non-participating domain is silently a no-op rather than
+// an error. That is the right shape for the read paths, which reinforce
+// best-effort and must not fail a read over it. It has one consequence worth
+// stating: TouchRevisions counts what it asked to reinforce, not what the
+// statement actually moved, so under a non-participating domain its Touched
+// figure would overcount. No such domain exists yet — the accounting is exact
+// today — and resolving it belongs with the domain that introduces the case
+// (Event, CW-20260909-0035), not here.
+//
+// Reinforcement is a "deliberate read" signal —
 // it must be driven only by the get paths (tesseract_get / tesseract_get_revision)
 // or by an explicit TouchRevisions report, never by search/recall (which would
 // let the system's own guesses self-reinforce).
@@ -103,13 +115,23 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) erro
 	// back to the floor. That is the compounding defect coming back through a
 	// different door, and it would hit precisely the memories the touch loop
 	// exists to rescue.
+	// The domain predicate is part of the statement, not a check some caller
+	// runs first, and that placement is the fix CW-20260910-0021 landed. Every
+	// reinforcement path in the tree funnels through here — the deliberate-read
+	// getters, tesseract_get_revision and tesseract_touch, the last two already
+	// domain-blind — so gating in SQL makes participation a property of the row
+	// rather than of whoever wrote the call site. The defect being repaired was
+	// exactly a call site holding this choice: knowledge's read path called the
+	// plain getter where memory's called the reinforcing one, and nothing in
+	// the type system or the tests noticed for four months.
+	domainFilter, filterArgs := activationDomainPredicate("domain")
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE memory_state
 		SET activation = activation + ? * (? - activation),
 		    access_count = access_count + 1,
 		    last_accessed_at = ?,
 		    last_decayed_at = ?
-		WHERE memory_id = ?
+		WHERE memory_id = ? AND `+domainFilter+`
 	`)
 	if err != nil {
 		return fmt.Errorf("prepare reinforce: %w", err)
@@ -117,7 +139,8 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) erro
 	defer func() { _ = stmt.Close() }()
 
 	for _, id := range memoryIDs {
-		if _, err := stmt.ExecContext(ctx, reinforcementRate, activationCeiling, now, now, id); err != nil {
+		args := append([]any{reinforcementRate, activationCeiling, now, now, id}, filterArgs...)
+		if _, err := stmt.ExecContext(ctx, args...); err != nil {
 			return fmt.Errorf("reinforce %s: %w", id, err)
 		}
 	}
