@@ -2,7 +2,7 @@
 name: namespaces
 description: Canonical namespace patterns, ownership, and the actor/client_id matrix.
 scope_hint: none
-related: [start-here, promotion, memory, knowledge]
+related: [start-here, promotion, memory, knowledge, event]
 ---
 
 # Namespaces
@@ -41,13 +41,33 @@ user/{user_id}/session/{session_id}/memory/{type}  # session scope, 6 seg
 - `outcomes` — what happened / what was true after the work
 - `references` — pointers to where information lives
 
-Adding a type = one-line code change in `internal/memory/namespaces.go`. Unknown types are rejected at write time with a clear error.
+Adding a type is an edit to the `memory.type` vocabulary in the type registry (`types.yaml`, seeded from Go defaults) — config, not a release. Unknown types are rejected at write time with a clear error naming the allowed set.
 
 **Recall prefix matching.** Recall accepts both the typed form (exact match against one sub-namespace) AND the legacy / prefix form `user/{id}/memory` — the prefix form matches every typed sub-namespace under that scope, so "give me all my user memory" still works after the split. Project/session scopes have the same prefix behavior (`user/{id}/project/{pid}/memory`, `user/{id}/session/{sid}/memory`). The explicit wildcard `user/{id}/memory/*` is also accepted.
 
 **Promote preserves type.** Promoting a session memory to user/project scope (`memory_promote`) requires source and target to carry the SAME `{type}` segment. Cross-type promotion is rejected — re-classification is a different operation, not a scope change.
 
 Bare `user/memory/*` from the tier spec is rejected by the memory parser — use the full typed form when writing memory revisions.
+
+## Event domain — the same grammar, one segment over
+
+The event domain (`event_write`, `event_list`) uses **memory's grammar with `event` in the domain-segment position**. That is deliberate rather than economical: an agent that knows where its memories live can guess where its reasoning log lives, and the scope segments are already the partitions a log gets read by.
+
+```
+user/{user_id}/event/{type}                       # user scope — the journal
+user/{user_id}/project/{project_id}/event/{type}  # project scope
+user/{user_id}/session/{session_id}/event/{type}  # session scope — an agent's reasoning
+```
+
+**Allowed types** (`event.type` vocabulary, config-driven): `journal`, `reasoning`. The segment names the *stream*, not a taxonomy of what happened — the axis you read whole or exclude whole. Finer classification goes on tags.
+
+**Prefix matching works the same way.** `user/{id}/event` reads every stream under that scope, as does `user/{id}/event/*`.
+
+**No dates in the path.** `created_at` is indexed and `event_list` filters on it, so `.../event/journal/2026/09` turns every time-range read into a multi-namespace query and buys nothing. Time is an attribute, not a partition.
+
+## Knowledge domain — deep and hierarchical
+
+Knowledge is the exception to the shallow-faceted shape: `{user|app}/{id}/knowledge/...` with free depth and no `{type}` segment. Its classification lives in the `facet.kind` field instead. A `/knowledge`-suffixed namespace is therefore an exact namespace somebody writes to, NOT a prefix request — the prefix shorthand above applies to `memory` and `event` only.
 
 ## Two authority rules
 
@@ -66,3 +86,5 @@ Every write carries an **actor** (logical identity, e.g. `user`, `app:nanite`) a
 - Omitting the `{type}` segment — `user/<who>/memory` parses for *recall* (prefix form) but is REJECTED on *write*. Writes must include a valid type.
 - Assuming cache semantics for `memory/*` — memory is durable. Use `user/cache/*` for disposable data.
 - Trying `app/<name>/memory/*` — apps don't own memory-tier records. Use `app/<id>/draft/*` or promote into user memory.
+- Expecting `user/<who>/event` to work on *write* — like memory, the prefix form is a read affordance. Writes must name a `{type}`.
+- Putting a date, a topic or a ticket id in an event namespace — those are tags. The path carries scope and stream, nothing else.

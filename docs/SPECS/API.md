@@ -42,8 +42,8 @@ Useful server flags:
   body returns `400 validation_error` and names the limit.
 - JSON decoding is strict: an unknown field is rejected with
   `400 validation_error`; it is never silently discarded. This matters because
-  MCP write tools use flat scalar arguments while HTTP memory and knowledge
-  writes use nested `author`, `payload`, and `pointer` objects.
+  MCP write tools use flat scalar arguments while the HTTP memory, knowledge
+  and event writes use nested `author`, `payload`, and `pointer` objects.
 - An unknown route or an unsupported method returns `404 not_found`.
 - Collection operations use deterministic ordering. Selector truncation occurs
   after sorting.
@@ -209,10 +209,12 @@ creation and recovery.
 | `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. |
 | `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `memory_key`. |
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `memory_key`. |
+| `POST /v1/event/write` | namespace | Append one event-log entry. `key` optional; a keyless write appends a new entry. |
+| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `limit`, `cursor`, `payload_mode`. Every namespace named is authorized, not just the first. |
 
 Here, `namespace` means a `namespace_globs` authorization check when managed or
-static authentication is active. HTTP memory and knowledge routes currently do
-not require the MCP-only `memory:read` or `memory:write` scopes.
+static authentication is active. HTTP memory, knowledge and event routes
+currently do not require the MCP-only `memory:read` or `memory:write` scopes.
 
 ### Retrieval and synthesis
 

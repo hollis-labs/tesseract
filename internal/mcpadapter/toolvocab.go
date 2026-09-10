@@ -45,6 +45,7 @@ type ToolPrefix struct {
 // surface itself; `<domain>_` when it is domain-specific.
 var ToolPrefixRule = []ToolPrefix{
 	{"context", "the context domain only — generic revisioned records"},
+	{"event", "the event domain only — the append-only narrative log"},
 	{"knowledge", "the knowledge domain only — pointer-first references"},
 	{"memory", "the memory domain only — agent-authored revisions"},
 	{"tesseract", "spans every domain, or serves the surface itself"},
@@ -71,7 +72,7 @@ var ToolVerbTable = []ToolOperation{
 	{"get_revision", "Fetch one revision by its revision_id.", []string{"tesseract"}},
 	{"history", "Every revision of one entry, newest first.", []string{"tesseract"}},
 	{"ingest", "Write many records, or one document split into many, in a single call.", []string{"context"}},
-	{"list", "Enumerate the entries of a registry or a log.", []string{"context"}},
+	{"list", "Enumerate the entries of a registry or a log.", []string{"context", "event"}},
 	{"pack", "Assemble a budget-bounded bundle of records.", []string{"context"}},
 	{"plan", "Produce a fetch plan for an intent, and optionally run it.", []string{"context"}},
 	{"promote", "Move an entry across scope or ownership.", []string{"context", "memory"}},
@@ -81,7 +82,7 @@ var ToolVerbTable = []ToolOperation{
 	{"set", "Move a record to a named value of a closed field.", []string{"context"}},
 	{"touch", "Report deliberate use, so it counts toward activation.", []string{"tesseract"}},
 	{"view", "Evaluate a view or selector and return what it matches.", []string{"context"}},
-	{"write", "Append a revision or record.", []string{"context", "knowledge", "memory"}},
+	{"write", "Append a revision or record.", []string{"context", "event", "knowledge", "memory"}},
 }
 
 // ToolNameExemptions are registered names that do NOT match the vocabulary,

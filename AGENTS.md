@@ -14,7 +14,9 @@ it never merges or infers.
   HTTP daemon entry point.
 - `internal/contextstore/store.go` owns the append-only log, the `heads` table
   and the schema migrations.
-- `internal/memory/` and `internal/knowledge/` are the two upper domains;
+- `internal/memory/`, `internal/knowledge/` and `internal/event/` are the three
+  upper domains — the last is the append-only narrative log, and the only one
+  that opts out of activation and out of recall's default corpus;
   `internal/contextpolicy/policy.go` owns namespace ownership and write
   authorization.
 - `internal/mcpadapter/` renders the MCP surface: `toolvocab.go` is the naming

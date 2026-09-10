@@ -2,12 +2,22 @@
 name: recall-and-ranking
 description: The four ranking modes — activation, chronological, similarity, relevance — plus search_mode, related_to and the link graph, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
 scope_hint: memory:read
-related: [memory, revisions]
+related: [memory, revisions, event]
 ---
 
 # Recall and ranking
 
 `tesseract_recall` is the ranking surface for memory and knowledge alike. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
+
+## What recall covers by default
+
+**Memory and knowledge — the curated corpus.** A recall that does not name `domains` searches those two and leaves the event log alone.
+
+That default is the Event domain's isolation, not an oversight. A reasoning log runs an order of magnitude or two larger than a corpus of deliberate captures, so including it by default would make every unqualified recall a log search and the curated records would be a rounding error in the candidate set. Pass `domains: ["event"]` — or list it alongside the others — and the log is fully recallable, embeddings and all. See `tesseract_skills event`.
+
+**`ranking=activation` is refused over the event domain.** Event opts out of activation entirely, so its rows hold `memory_state`'s insert default forever — an *absence* of a score, not a low one, and one that happens to sit above almost the whole curated corpus. Answering would rank the log first, everywhere, permanently. Use `chronological` for order or `relevance` with a query. If you omit `ranking` on an event-only recall it resolves to `chronological` rather than erroring: you did not ask for activation, the resolver did.
+
+For reading a log in order — with keyset paging and a time window — use `event_list` rather than `ranking=chronological`. Recall sorts a candidate set it has already materialized; `event_list` pushes the order and the window into SQL.
 
 ## Four modes
 
@@ -202,7 +212,9 @@ Step 2 reinforces once when it is a deliberate `tesseract_get` or `tesseract_get
 
 **Touch only what genuinely shaped the turn. Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.** Little is gained by inflating: reinforcement closes a fixed fraction of the distance to a ceiling rather than adding a fixed amount, so repeated touches approach that ceiling with ever-smaller steps and never pass it. A touch moves two of the five terms `ranking=activation` scores with: it raises the stored `activation`, and it stamps `last_accessed_at`, which lifts the recency weight. Both push the same way, so what you report genuinely moves what surfaces next time — and a report padded with things you did not use spends that leverage on noise.
 
-Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. A recall spanning both domains is reportable in one call: memory and knowledge revision IDs both resolve.
+Each distinct memory named is reinforced once. Repeating a revision ID, or naming two revisions of the same memory, counts once. A recall spanning several domains is reportable in one call — any domain's revision ID resolves.
+
+Not every ID that resolves gets reinforced, though, and the response says which. `touched` counts what the store actually moved; an event revision comes back under `not_reinforced`, because that domain opts out of activation. That is not a failure — it is the call telling you the revision exists and the activation system does not move it. `not_found` stays reserved for IDs that name nothing.
 
 `tesseract_get` under `domain="memory"` and `tesseract_get_revision` reinforce on their own — resolving a known key or pulling a specific revision by ID is already deliberate. `tesseract_touch` covers the rest: the hits whose summary alone was enough, and the distinction between what you read and what you used.
 

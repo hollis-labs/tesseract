@@ -73,9 +73,9 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Vocabulary IDs. These name the three axes a value can be classified on and
-// are the key every lookup takes, so a caller cannot ask "is this a known
-// type" without saying known to what.
+// Vocabulary IDs. These name the axes a value can be classified on and are the
+// key every lookup takes, so a caller cannot ask "is this a known type" without
+// saying known to what.
 const (
 	// VocabContextRecordType is the context store's record_type vocabulary.
 	VocabContextRecordType = "context.record_type"
@@ -85,6 +85,9 @@ const (
 
 	// VocabKnowledgeFacetKind is the knowledge domain's facet_kind.
 	VocabKnowledgeFacetKind = "knowledge.facet_kind"
+
+	// VocabEventType is the {type} segment of an event namespace.
+	VocabEventType = "event.type"
 )
 
 // SchemaRef pins a type's payload schema to a file on disk.

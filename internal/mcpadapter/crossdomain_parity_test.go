@@ -32,6 +32,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -39,12 +40,14 @@ import (
 )
 
 const (
-	xdMemNS   = "user/chrispian/memory/notes"
-	xdKnowNS  = "user/chrispian/knowledge/framework"
-	xdCtxNS   = "app/test/session/xd"
-	xdMemKey  = "xd.mem.key"
-	xdKnowKey = "xd.know.key"
-	xdCtxKey  = "xd.ctx.key"
+	xdMemNS    = "user/chrispian/memory/notes"
+	xdEventNS  = "user/chrispian/event/reasoning"
+	xdEventKey = "xd.event.key"
+	xdKnowNS   = "user/chrispian/knowledge/framework"
+	xdCtxNS    = "app/test/session/xd"
+	xdMemKey   = "xd.mem.key"
+	xdKnowKey  = "xd.know.key"
+	xdCtxKey   = "xd.ctx.key"
 )
 
 // crossDomainSurfaces builds one store and puts both doors on it: the MCP
@@ -59,6 +62,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	cs := newTestStore(t)
 	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	ks := knowledge.New(ms)
+	es := event.New(ms)
 
 	tok, _, err := cs.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{
 		Label:  "crossdomain",
@@ -71,10 +75,12 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	a := New(cs, tok)
 	a.MemoryStore = ms
 	a.KnowledgeStore = ks
+	a.EventStore = es
 
 	srv := contextapi.NewServer(cs, contextpolicy.New())
 	srv.MemoryStore = ms
 	srv.KnowledgeStore = ks
+	srv.EventStore = es
 
 	ctx := context.Background()
 	for i, summary := range []string{"mem first", "mem second", "mem third"} {
@@ -104,6 +110,22 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 			SessionID: "indexer:xd",
 		}); err != nil {
 			t.Fatalf("seed knowledge revision %d: %v", i, err)
+		}
+	}
+	// A KEYED event, which is the minority case in the domain and the only one
+	// tesseract_get and tesseract_history can address at all. The seed is here
+	// rather than in the probe table so the two revisions exercise history's
+	// arm as well as get's.
+	for i, summary := range []string{"event first", "event second"} {
+		if _, err := es.Write(ctx, event.WriteInput{
+			Namespace: xdEventNS,
+			Key:       xdEventKey,
+			Summary:   summary,
+			Body:      "reasoning prose for " + summary,
+			Author:    memory.Author{AgentID: "claude", AgentVersion: "1.0"},
+			SessionID: "sess-xd",
+		}); err != nil {
+			t.Fatalf("seed event revision %d: %v", i, err)
 		}
 	}
 	for i, body := range []string{`{"status":"one"}`, `{"status":"two"}`} {
@@ -679,7 +701,7 @@ func TestContextOnlyDeployment_RevisionOpsAbsent(t *testing.T) {
 // three values here is that changing the vocabulary has to be a deliberate edit
 // in two places.
 func TestReadDomainVocabularyIsExactlyThese(t *testing.T) {
-	want := []string{"context", "memory", "knowledge"}
+	want := []string{"context", "memory", "knowledge", "event"}
 	got := readDomainVocabulary()
 	if len(got) != len(want) {
 		t.Fatalf("vocabulary = %v, want %v", got, want)
@@ -718,6 +740,7 @@ func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 		"context":   {xdCtxNS, xdCtxKey},
 		"memory":    {xdMemNS, xdMemKey},
 		"knowledge": {xdKnowNS, xdKnowKey},
+		"event":     {xdEventNS, xdEventKey},
 	}
 
 	for _, name := range []string{"tesseract_get", "tesseract_history"} {
@@ -730,11 +753,11 @@ func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 		// Non-vacuity, stated as a floor rather than an equality: an equality
 		// against 3 would itself have to be edited when a fourth domain lands,
 		// which is the edit this test exists to force someone to think about.
-		if len(advertised) < 3 {
+		if len(advertised) < 4 {
 			t.Fatalf("%s advertises only %v; the extraction has stopped matching the "+
 				"description, so a clean run here would mean nothing", name, advertised)
 		}
-		for _, want := range []string{"context", "memory", "knowledge"} {
+		for _, want := range []string{"context", "memory", "knowledge", "event"} {
 			if !contains(advertised, want) {
 				t.Errorf("%s no longer advertises domain %q (advertises %v)", name, want, advertised)
 			}
@@ -828,7 +851,7 @@ func TestUnhandledDomainIsRefused(t *testing.T) {
 	a, _, _, _ := crossDomainSurfaces(t)
 
 	vocab := readDomainVocabulary()
-	if len(vocab) < 3 {
+	if len(vocab) < 4 {
 		t.Fatalf("the vocabulary is %v; too small to be the real one, so this test "+
 			"would iterate almost nothing", vocab)
 	}

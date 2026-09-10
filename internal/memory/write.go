@@ -77,7 +77,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 			threshold = 0.85
 		}
 		text := revisionEmbedText(Revision{Payload: in.Payload})
-		matchID, sameKey, matchErr := s.findSemanticMatch(ctx, in.Namespace, in.MemoryKey, text, threshold)
+		matchID, sameKey, matchErr := s.findSemanticMatch(ctx, in.Domain, in.Namespace, in.MemoryKey, text, threshold)
 		if matchErr != nil {
 			return Revision{}, fmt.Errorf("semantic dedup: %w", matchErr)
 		}

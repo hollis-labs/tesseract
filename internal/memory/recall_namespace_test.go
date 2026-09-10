@@ -204,7 +204,7 @@ func parenDepth(s string) int {
 	return deepest
 }
 
-func TestMemoryPrefix(t *testing.T) {
+func TestScopedPrefix(t *testing.T) {
 	cases := []struct {
 		input  string
 		want   string
@@ -215,14 +215,25 @@ func TestMemoryPrefix(t *testing.T) {
 		{"user/x/project/p/memory", "user/x/project/p/memory", true},
 		{"user/x/session/s/memory", "user/x/session/s/memory", true},
 		{"user/x/memory/notes", "", false},
+		// Event shares memory's grammar, so it shares the prefix shorthand
+		// (CW-20260909-0035). "read all my event" is the shape the log read
+		// path leans on hardest.
+		{"user/x/event", "user/x/event", true},
+		{"user/x/event/*", "user/x/event", true},
+		{"user/x/project/p/event", "user/x/project/p/event", true},
+		{"user/x/session/s/event", "user/x/session/s/event", true},
+		{"user/x/event/journal", "", false},
+		// Knowledge is NOT a scoped grammar: a `/knowledge`-suffixed string is
+		// an exact namespace somebody writes to, not a prefix request.
+		{"user/x/knowledge", "", false},
 		{"user/x/knowledge/something", "", false},
 		{"", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
-			got, ok := memoryPrefix(tc.input)
+			got, ok := scopedPrefix(tc.input)
 			if ok != tc.wantOk || got != tc.want {
-				t.Errorf("memoryPrefix(%q) = (%q, %v), want (%q, %v)",
+				t.Errorf("scopedPrefix(%q) = (%q, %v), want (%q, %v)",
 					tc.input, got, ok, tc.want, tc.wantOk)
 			}
 		})

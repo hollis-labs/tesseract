@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	schemaVersion = 17
+	schemaVersion = 18
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -918,6 +918,34 @@ END`); err != nil {
 			// leave `related` answering "no links" for a corpus full of them,
 			// which is the failure mode a caller cannot tell from the truth.
 			if err = memorylinks.Backfill(ctx, tx); err != nil {
+				return err
+			}
+		case 18:
+			// The event log's read path (CW-20260909-0035).
+			//
+			// Reading a log is `WHERE domain = 'event' [AND namespace ...]
+			// ORDER BY created_at DESC, revision_id DESC LIMIT n`, and the
+			// existing indexes serve it badly. idx_..._domain and
+			// idx_..._namespace each narrow the set, and then the ORDER BY has
+			// to materialize and sort every row that survived — work
+			// proportional to the whole log rather than to one page, which is
+			// exactly what the keyset pagination in ReadEventLog exists to
+			// avoid. At a curated corpus of ~2,000 revisions nobody notices; a
+			// reasoning log is projected at 10-100x that and grows without a
+			// natural bound.
+			//
+			// The composite leads with domain so a single log's rows are
+			// contiguous, then carries the sort key itself, so the page is an
+			// indexed range scan that stops after n rows. revision_id is in the
+			// index because it is the tiebreaker in both the ORDER BY and the
+			// keyset predicate; without it a page boundary inside one timestamp
+			// falls back to a sort.
+			//
+			// Not partial (no WHERE domain = 'event'): memory and knowledge
+			// reads order by created_at too, and a domain-led composite serves
+			// them the same way. A predicate naming one domain would also have
+			// to be revised by every domain added after it.
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_memory_revisions_domain_created ON memory_revisions(domain, created_at, revision_id)`); err != nil {
 				return err
 			}
 		}

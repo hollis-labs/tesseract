@@ -110,6 +110,7 @@ var nonToolVocabulary = map[string]string{
 	"auto_embed":          "proposed namespace-policy flag, listed under \"## Future\" in docs/vector-search.md; not a tool and not yet a field anywhere in the code",
 	"bulk_ingest":         "audit event_type emitted by context_ingest under mode=bulk",
 	"chunked_ingest":      "audit event_type emitted by context_ingest under mode=chunked",
+	"event_type":          "audit_events SQL column and API field naming WHICH audit event a row records (memory.write, promotion.apply, ...). It reads as tool-shaped only since CW-20260909-0035 made `event` a registered tool prefix; the token predates that by months and names nothing on the tool surface. The event DOMAIN's tools are event_write and event_list",
 	"current_revision":    "memory_state SQL column (TEXT): revision_id of the memory's current head; surfaces as the state.current_revision field on a full recall result",
 	"get_revision":        "a VERB, not a tool: the operation segment of tesseract_get_revision, listed on its own row in the generated tool-naming table of docs/MCP_TOOLS.md. Any multi-segment verb in that table lands here; single-word verbs carry no underscore and never reach this heuristic",
 	"head_revision":       "API response field: id of the current revision",
@@ -157,7 +158,7 @@ type plannedTool struct {
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:281",
+		Doc:     "docs/MCP_TOOLS.md:291",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +

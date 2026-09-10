@@ -22,6 +22,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -106,6 +107,20 @@ var surfaceCatalog = []parityOp{
 	// ── Knowledge domain ───────────────────────────────────────────────
 	{MCP: "knowledge_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/knowledge/write"},
 
+	// ── Event domain (CW-20260909-0035) ────────────────────────────────
+	// The append-only narrative log. Both ops are paired: unlike the
+	// cross-domain reads, these have no fan-out — one tool, one route each.
+	//
+	// Event has no /v1/event/current or /v1/event/history rows and needs no
+	// waiver for their absence, because the tools that would pair with them —
+	// tesseract_get and tesseract_history — are already paired above and
+	// simply carry an additional domain. See the header comment in
+	// internal/contextapi/event_handler.go for why those two routes are
+	// deliberately not shipped: almost every event is keyless, so a
+	// (namespace, key) route would mostly answer not_found.
+	{MCP: "event_list", HTTPMethod: http.MethodGet, HTTPPath: "/v1/event/log"},
+	{MCP: "event_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/event/write"},
+
 	// ── Cross-domain reads (CW-20260825-0010) ──────────────────────────
 	// One MCP tool per operation, several HTTP routes each. The routes are
 	// unchanged from when a domain-specific tool served each of them, so
@@ -174,6 +189,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/types"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/views"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/auth/tokens/list"},
+	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/event/log"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/health/readiness"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/history"},
@@ -197,6 +213,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/apply"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/approve"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/promote/request"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/event/write"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/deprecate"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/status/promote"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/context/typed-view"},
@@ -339,6 +356,7 @@ func newFullyWiredAdapter(t *testing.T) *mcpadapter.Adapter {
 		Token:          "",
 		MemoryStore:    mem,
 		KnowledgeStore: know,
+		EventStore:     event.New(mem),
 	}
 }
 
@@ -354,5 +372,6 @@ func newFullyWiredHTTPServer(t *testing.T) *contextapi.Server {
 	srv.EnableMetrics = true
 	srv.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	srv.KnowledgeStore = knowledge.New(srv.MemoryStore)
+	srv.EventStore = event.New(srv.MemoryStore)
 	return srv
 }

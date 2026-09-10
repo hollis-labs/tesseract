@@ -28,6 +28,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextcli"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
@@ -772,6 +773,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv := contextapi.NewServer(store, contextpolicy.New())
 	srv.MemoryStore = mem.Store
 	srv.KnowledgeStore = knowledge.New(mem.Store)
+	srv.EventStore = event.New(mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
 	srv.EnableMetrics = cfg.EnableMetrics

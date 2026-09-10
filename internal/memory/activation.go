@@ -53,14 +53,20 @@ const (
 // every memory_id in the set whose domain participates in activation.
 //
 // The domain filter is applied in the UPDATE itself (see below), so a
-// memory_id naming a non-participating domain is silently a no-op rather than
-// an error. That is the right shape for the read paths, which reinforce
-// best-effort and must not fail a read over it. It has one consequence worth
-// stating: TouchRevisions counts what it asked to reinforce, not what the
-// statement actually moved, so under a non-participating domain its Touched
-// figure would overcount. No such domain exists yet — the accounting is exact
-// today — and resolving it belongs with the domain that introduces the case
-// (Event, CW-20260909-0035), not here.
+// memory_id naming a non-participating domain is a no-op rather than an error.
+// That is the right shape for the read paths, which reinforce best-effort and
+// must not fail a read over it.
+//
+// It returns the memory IDs it ACTUALLY moved, in the order they were given.
+// Until CW-20260909-0035 it returned only an error and TouchRevisions counted
+// its own request, which was exact for as long as every domain participated —
+// the ask and the effect were the same set. Event opts out, so from the moment
+// it exists the two diverge, and a count of the ask would report reinforcement
+// of rows the predicate excluded. Deriving the answer from RowsAffected rather
+// than from a second policy lookup at the call site is deliberate: the SQL
+// predicate is the single decider of participation (CW-20260910-0021), and a
+// caller that re-derived the same answer in Go would be a second source free to
+// drift from it.
 //
 // Reinforcement is a "deliberate read" signal —
 // it must be driven only by the get paths (tesseract_get / tesseract_get_revision)
@@ -80,13 +86,13 @@ const (
 // Callers decide whether a failure here is fatal. The get paths swallow it —
 // a reinforcement failure must not fail a read. TouchRevisions does not, because
 // there the reinforcement IS the operation.
-func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) error {
+func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) ([]string, error) {
 	if len(memoryIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin reinforce tx: %w", err)
+		return nil, fmt.Errorf("begin reinforce tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -134,17 +140,33 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) erro
 		WHERE memory_id = ? AND `+domainFilter+`
 	`)
 	if err != nil {
-		return fmt.Errorf("prepare reinforce: %w", err)
+		return nil, fmt.Errorf("prepare reinforce: %w", err)
 	}
 	defer func() { _ = stmt.Close() }()
 
+	var moved []string
 	for _, id := range memoryIDs {
 		args := append([]any{reinforcementRate, activationCeiling, now, now, id}, filterArgs...)
-		if _, err := stmt.ExecContext(ctx, args...); err != nil {
-			return fmt.Errorf("reinforce %s: %w", id, err)
+		res, execErr := stmt.ExecContext(ctx, args...)
+		if execErr != nil {
+			return nil, fmt.Errorf("reinforce %s: %w", id, execErr)
 		}
+		// A driver that cannot report RowsAffected is treated as "did not
+		// move", which under-reports rather than over-reports. That is the
+		// safer direction for a number a caller may trust: the whole reason
+		// this returns a set is that a count of the ask was optimistic.
+		// modernc.org/sqlite reports it, so this is a guard rather than a live
+		// path.
+		n, raErr := res.RowsAffected()
+		if raErr != nil || n == 0 {
+			continue
+		}
+		moved = append(moved, id)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return moved, nil
 }
 
 // reinforceAccess reinforces activation + last_accessed_at + access_count for
@@ -153,16 +175,30 @@ func (s *Store) reinforceAccess(ctx context.Context, memoryID string) error {
 	if memoryID == "" {
 		return nil
 	}
-	return s.reinforceMemoryIDs(ctx, []string{memoryID})
+	_, err := s.reinforceMemoryIDs(ctx, []string{memoryID})
+	return err
 }
 
 // TouchResult reports what a TouchRevisions call did. Touched counts distinct
-// memories reinforced, not revision IDs accepted: two revisions of one memory
-// reinforce it once. NotFound is always a slice, never nil, so a caller reading
-// JSON never has to tell an empty list from a missing key.
+// memories ACTUALLY reinforced, not revision IDs accepted: two revisions of one
+// memory reinforce it once, and a revision whose domain sits outside activation
+// reinforces nothing. Both slices are always slices, never nil, so a caller
+// reading JSON never has to tell an empty list from a missing key.
 type TouchResult struct {
 	Touched  int      `json:"touched"`
 	NotFound []string `json:"not_found"`
+
+	// NotReinforced lists the revision IDs that resolved to a real memory whose
+	// domain does not participate in activation — event revisions, today. They
+	// are neither counted nor an error: touching one is a well-formed request
+	// with no effect, and saying so is the difference between a caller learning
+	// that and a caller believing a number.
+	//
+	// It is a third bucket rather than an entry in NotFound because the two are
+	// different facts. NotFound means the ID names nothing; this means the ID
+	// names something the activation system does not move. Collapsing them
+	// would send a caller looking for a revision that is sitting right there.
+	NotReinforced []string `json:"not_reinforced"`
 }
 
 // TouchRevisions reinforces the memories behind the given revision IDs: the
@@ -187,13 +223,21 @@ type TouchResult struct {
 // a partly-stale set of IDs is a normal thing for a caller to hold, and failing
 // the whole call would cost the reinforcements that were valid.
 //
-// The accounting invariant that makes NotFound usable: every DISTINCT ID in the
-// request is accounted for exactly once, either by contributing to Touched or by
-// appearing in NotFound. Nothing is silently dropped — including the empty
-// string. Touched counts memories rather than IDs, so it is <= the number of
-// distinct IDs that resolved, never a per-ID tally.
+// The accounting invariant that makes the report usable: every DISTINCT ID in
+// the request is accounted for exactly once, by contributing to Touched, by
+// appearing in NotFound, or by appearing in NotReinforced. Nothing is silently
+// dropped — including the empty string. Touched counts memories rather than IDs,
+// so it is <= the number of distinct IDs that resolved, never a per-ID tally.
+//
+// Touched reports what the UPDATE moved, not what this asked it to move. The
+// two were the same set for as long as every domain participated in activation;
+// Event is the first that does not (CW-20260909-0035), and counting the ask
+// from that point on would have reported reinforcement of rows the SQL
+// predicate excluded. The distinction is drawn from RowsAffected rather than
+// from a policy lookup here — see reinforceMemoryIDs for why the statement has
+// to be the one that answers.
 func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (TouchResult, error) {
-	res := TouchResult{NotFound: []string{}}
+	res := TouchResult{NotFound: []string{}, NotReinforced: []string{}}
 	if len(revisionIDs) == 0 {
 		return res, nil
 	}
@@ -205,6 +249,11 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 	seenRevision := make(map[string]struct{}, len(revisionIDs))
 	seenMemory := make(map[string]struct{}, len(revisionIDs))
 	var memoryIDs []string
+	// Every distinct revision ID that resolved, grouped by the memory it
+	// resolved to. Kept for ALL of them, not only the first per memory: if the
+	// memory turns out not to move, a caller diffing NotReinforced against what
+	// it sent must find every ID it sent, not a representative of each.
+	revisionsByMemory := make(map[string][]string, len(revisionIDs))
 
 	// The empty string is deliberately NOT skipped here. Every distinct ID a
 	// caller sends must come back either counted in Touched or listed in
@@ -229,6 +278,7 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 			}
 			return res, fmt.Errorf("resolve revision %s: %w", revID, err)
 		}
+		revisionsByMemory[memoryID] = append(revisionsByMemory[memoryID], revID)
 		if _, dup := seenMemory[memoryID]; dup {
 			continue
 		}
@@ -236,9 +286,22 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 		memoryIDs = append(memoryIDs, memoryID)
 	}
 
-	if err := s.reinforceMemoryIDs(ctx, memoryIDs); err != nil {
+	moved, err := s.reinforceMemoryIDs(ctx, memoryIDs)
+	if err != nil {
 		return res, err
 	}
-	res.Touched = len(memoryIDs)
+	movedSet := make(map[string]struct{}, len(moved))
+	for _, id := range moved {
+		movedSet[id] = struct{}{}
+	}
+	// memoryIDs preserves request order, so NotReinforced comes back in the
+	// order the caller sent rather than in map order.
+	for _, id := range memoryIDs {
+		if _, ok := movedSet[id]; ok {
+			continue
+		}
+		res.NotReinforced = append(res.NotReinforced, revisionsByMemory[id]...)
+	}
+	res.Touched = len(moved)
 	return res, nil
 }

@@ -385,12 +385,16 @@ func TestTouchRevisions_DoesNotReturnContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Touched != 1 || len(res.NotFound) != 0 {
-		t.Errorf("TouchResult = %+v, want {Touched:1 NotFound:[]}", res)
+	if res.Touched != 1 || len(res.NotFound) != 0 || len(res.NotReinforced) != 0 {
+		t.Errorf("TouchResult = %+v, want {Touched:1 NotFound:[] NotReinforced:[]}", res)
 	}
 
-	// Stated here, not derived from the struct.
-	want := []string{"Touched", "NotFound"}
+	// Stated here, not derived from the struct. NotReinforced joined the shape
+	// with the Event domain (CW-20260909-0035): it carries revision IDs, like
+	// NotFound, and completes the accounting the other two leave a hole in once
+	// a domain can opt out of activation. What the guard forbids is a CONTENT
+	// field, not a third bucket.
+	want := []string{"Touched", "NotFound", "NotReinforced"}
 	ty := reflect.TypeOf(memory.TouchResult{})
 	var got []string
 	for i := 0; i < ty.NumField(); i++ {
@@ -399,8 +403,10 @@ func TestTouchRevisions_DoesNotReturnContent(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("TouchResult fields = %v, want exactly %v.\n"+
 			"A new field here is a decision, not an oversight: touch answers what it did, "+
-			"never what it read. A content field would make it a second read path, and "+
-			"callers would hydrate through it — reinforcing on retrieval, which recall refuses.",
+			"never what it read. A field carrying revision CONTENT would make this a second "+
+			"read path, and callers would hydrate through it — reinforcing on retrieval, "+
+			"which recall refuses. An accounting field naming revision IDs is a different "+
+			"thing and is what NotFound and NotReinforced are.",
 			got, want)
 	}
 }

@@ -33,7 +33,9 @@ import (
 // StatusDraft at write.go and gets no method here.
 //
 // The interface carries two kinds of rule, and that is deliberate rather than
-// drift. Three are validation; ParticipatesInActivation is storage policy.
+// drift. Three are validation; ParticipatesInActivation and
+// InDefaultRecallCorpus are storage policy.
+//
 // CW-20260910-0021 weighed giving activation its own seam and rejected it: a
 // second registry, a second lookup and a second completeness test, all to hold
 // one bool. The failure mode this file exists to prevent — a domain added
@@ -42,7 +44,10 @@ import (
 // completely is a stronger guard than two it must satisfy separately. The file
 // comment above scopes this as "what does this domain do", which is the wider
 // claim; three-validation-methods was what the CW-20260909-0033 measurement
-// happened to find, not a designed boundary.
+// happened to find, not a designed boundary. CW-20260909-0035 added the second
+// storage-policy method on that same reasoning, and it is a second QUESTION,
+// not a loosening: an axis earns a method when domains genuinely differ on it,
+// which is a different test from "activation is one predicate, not two".
 type DomainPolicy interface {
 	// Name returns the canonical domain identifier.
 	Name() domains.Domain
@@ -63,6 +68,26 @@ type DomainPolicy interface {
 	// so participation cannot be re-decided at a call site. That is the whole
 	// point: the defect was a call site holding this choice.
 	ParticipatesInActivation() bool
+
+	// InDefaultRecallCorpus reports whether this domain is searched by a recall
+	// that does not name `domains` explicitly. A domain that answers false is
+	// still fully recallable — the caller just has to ask for it by name.
+	//
+	// This is a SECOND axis, not a split of ParticipatesInActivation, and the
+	// distinction matters because splitting that predicate is the one thing
+	// CW-20260910-0021 forbade. That predicate answers "does the activation
+	// system move this domain's numbers"; this one answers "is this domain part
+	// of the corpus an unqualified ranked read covers". Event happens to answer
+	// no to both, and a future domain need not.
+	//
+	// Event answers no because of volume (CW-20260909-0035). A reasoning log
+	// runs 10-100x the size of a curated corpus of deliberate captures, so a
+	// default that silently included it would make every unqualified recall a
+	// log search — the curated records it exists to surface would be a rounding
+	// error in the candidate set. That is the "isolation from memory's ranking"
+	// property in the Event definition, and a default is where it belongs: an
+	// opt-in filter keeps both reads possible and neither one accidental.
+	InDefaultRecallCorpus() bool
 
 	// ValidateNamespace reports whether ns is allowed under this domain.
 	ValidateNamespace(ns string) error
@@ -88,6 +113,10 @@ func (memoryPolicy) Name() domains.Domain { return domains.Memory }
 
 // ParticipatesInActivation: memory is the domain activation was built for.
 func (memoryPolicy) ParticipatesInActivation() bool { return true }
+
+// InDefaultRecallCorpus: yes. Memory is the curated corpus recall was built to
+// rank, and an unqualified recall that skipped it would return nothing useful.
+func (memoryPolicy) InDefaultRecallCorpus() bool { return true }
 
 // ValidateNamespace applies the user/{id}[/project|session/{id}]/memory shape.
 //
@@ -134,6 +163,12 @@ func (knowledgePolicy) Name() domains.Domain { return domains.Knowledge }
 // they were written. Activation-ranked recall over knowledge was a
 // chronological ordering wearing an activation label.
 func (knowledgePolicy) ParticipatesInActivation() bool { return true }
+
+// InDefaultRecallCorpus: yes. Knowledge is curated at the same order of
+// magnitude as memory — 163 knowledge to 1,531 memory memory_state rows at the
+// CW-20260910-0021 measurement — so including it costs the ranking nothing and
+// excluding it would hide half the corpus from every unqualified read.
+func (knowledgePolicy) InDefaultRecallCorpus() bool { return true }
 
 func (knowledgePolicy) ValidateNamespace(ns string) error {
 	if ns == "" {
@@ -184,6 +219,68 @@ func (knowledgePolicy) ValidateFacets(f Facets) error {
 	return nil
 }
 
+// eventPolicy carries the append-only narrative log's rules: memory's scoped
+// namespace grammar with `event` in the domain-segment position, memory's key
+// vocabulary, and no facets.
+//
+// What makes Event a domain rather than a registry type is entirely below this
+// line — the two storage-policy answers. The validation answers are almost
+// memory's, and that is the point: the grammar was reused deliberately so an
+// agent that knows where its memories live can guess where its reasoning log
+// lives. See ParseEventNamespace.
+type eventPolicy struct{}
+
+func (eventPolicy) Name() domains.Domain { return domains.Event }
+
+// ParticipatesInActivation: NO. Event is the first domain to opt out, and the
+// reason is in its definition — "long retention, no activation decay. A journal
+// that fades because nobody touched it is a broken journal."
+//
+// Activation is a use-frequency signal, and it earns its keep on a corpus
+// somebody returns to. A log is written once and read by time, so decaying it
+// would rank a January entry below a September one for no reason except that
+// January is further away — which is what the timestamp already says, more
+// honestly. Opting out leaves every event row at memory_state's 1.0 insert
+// default, permanently, and that is not a high score: it is the absence of one.
+// InDefaultRecallCorpus below and the ranking=activation refusal in
+// resolveRecallDefaults are what keep that non-score from being read as one.
+func (eventPolicy) ParticipatesInActivation() bool { return false }
+
+// InDefaultRecallCorpus: NO. See the interface method for the volume argument;
+// the log has its own linear read path (Store.ReadEventLog), which is the read
+// an unqualified recall would otherwise be a slow, ranked imitation of.
+func (eventPolicy) InDefaultRecallCorpus() bool { return false }
+
+// ValidateNamespace applies the user/{id}[/project|session/{id}]/event/{type}
+// shape. Same parser as memory's, one segment and one vocabulary apart.
+func (eventPolicy) ValidateNamespace(ns string) error {
+	if ns == "" {
+		return fmt.Errorf("namespace is required")
+	}
+	return ValidateEventNamespace(ns)
+}
+
+// ValidateKey applies memory's dot-notation rules.
+//
+// Event keys are authored in-tree by agents and by Chrispian, never sourced
+// from outside, so they are held to the same vocabulary memory is rather than
+// waved through the way knowledge's externally-slugged keys are. Most event
+// writes are KEYLESS — a log entry is not an entry you supersede — and the
+// vocabulary applies to the ones that are not.
+func (eventPolicy) ValidateKey(key string) error {
+	return ValidateKey(key)
+}
+
+// ValidateFacets: none. Facets are the knowledge domain's pointer-first
+// provenance; an event's provenance is its author, session and timestamp,
+// which every revision already carries.
+func (eventPolicy) ValidateFacets(f Facets) error {
+	if !f.IsZero() {
+		return fmt.Errorf("%w: event revisions must not carry knowledge facets", ErrInvalidInput)
+	}
+	return nil
+}
+
 // domainPolicies maps each registered domain to its policy. A domain present
 // in domains.All() but missing here is a test failure, not a runtime default —
 // TestEveryDomainHasAPolicy is the guard, and it is the reason this refactor
@@ -191,6 +288,7 @@ func (knowledgePolicy) ValidateFacets(f Facets) error {
 var domainPolicies = map[domains.Domain]DomainPolicy{
 	domains.Memory:    memoryPolicy{},
 	domains.Knowledge: knowledgePolicy{},
+	domains.Event:     eventPolicy{},
 }
 
 // policyFor returns the DomainPolicy for d, or an error if d has none.
@@ -242,6 +340,59 @@ func activationDomains() []domains.Domain {
 		return participating[i] < participating[j]
 	})
 	return participating
+}
+
+// defaultRecallDomains returns the domains an unqualified recall covers — the
+// ones whose policy answers InDefaultRecallCorpus — sorted for stability.
+//
+// It is resolved into RecallFilters.Domains rather than rendered as a separate
+// SQL fragment, and the difference is what makes it safe. A hidden fragment
+// would sit below the cursor fingerprint, so a corpus that changed shape
+// between pages would silently reshuffle a resumed read; a resolved filter is
+// hashed into the fingerprint like every other filter, and it also means a
+// caller can SEE the default it is overriding by passing `domains` explicitly.
+//
+// The empty case is left empty deliberately, and it means "nothing", not
+// "everything": buildRecallFilters renders no domain clause for an empty slice,
+// so this must never be reached with every domain opted out. That is
+// unreachable today — memory and knowledge both answer true, and
+// TestEveryDomainStatesItsRecallCorpusAnswer forces a new domain to state its
+// answer rather than default in.
+func defaultRecallDomains() []domains.Domain {
+	var included []domains.Domain
+	for _, d := range domains.All() {
+		p, err := policyFor(d)
+		if err != nil {
+			continue
+		}
+		if p.InDefaultRecallCorpus() {
+			included = append(included, d)
+		}
+	}
+	sort.Slice(included, func(i, j int) bool { return included[i] < included[j] })
+	return included
+}
+
+// domainsWithoutActivation returns the subset of ds whose policy opts out of
+// activation. Used to refuse ranking=activation over a domain that has none —
+// see resolveRecallDefaults and RecallPage.
+//
+// A domain with no registered policy is NOT reported here. It cannot have rows
+// (validateWriteInput refuses the write), so ranking it by activation returns
+// an empty page rather than a misleading one, and TestEveryDomainHasAPolicy is
+// where a registry gap is meant to surface.
+func domainsWithoutActivation(ds []domains.Domain) []domains.Domain {
+	var out []domains.Domain
+	for _, d := range ds {
+		p, err := policyFor(d)
+		if err != nil {
+			continue
+		}
+		if !p.ParticipatesInActivation() {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // activationDomainPredicate renders a SQL fragment and its args restricting a

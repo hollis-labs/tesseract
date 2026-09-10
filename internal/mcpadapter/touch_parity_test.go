@@ -87,8 +87,9 @@ func seedTouchable(t *testing.T, ms *memory.Store, key string) memory.Revision {
 
 // touchWire is the response shape both doors must answer with.
 type touchWire struct {
-	Touched  int      `json:"touched"`
-	NotFound []string `json:"not_found"`
+	Touched       int      `json:"touched"`
+	NotFound      []string `json:"not_found"`
+	NotReinforced []string `json:"not_reinforced"`
 }
 
 func touchViaMCP(t *testing.T, a *Adapter, args map[string]any) touchWire {
@@ -156,11 +157,18 @@ func TestTouchParity_SameArgumentSameEffect(t *testing.T) {
 		t.Errorf("not_found: MCP=%v HTTP=%v, want empty from each", mcpRes.NotFound, httpRes.NotFound)
 	}
 
-	// not_found must serialize as [] on both doors, never null: a caller that
+	// Both slices must serialize as [] on both doors, never null: a caller that
 	// has to distinguish an empty list from a missing key on one door and not
 	// the other is exactly the drift this file exists to catch.
 	if !strings.Contains(body, `"not_found":[]`) {
 		t.Errorf("HTTP body does not carry not_found as an empty array: %s", body)
+	}
+	if !strings.Contains(body, `"not_reinforced":[]`) {
+		t.Errorf("HTTP body does not carry not_reinforced as an empty array: %s", body)
+	}
+	if len(mcpRes.NotReinforced) != 0 || len(httpRes.NotReinforced) != 0 {
+		t.Errorf("not_reinforced: MCP=%v HTTP=%v, want empty from each — both revisions are memory-domain",
+			mcpRes.NotReinforced, httpRes.NotReinforced)
 	}
 
 	mcpAct, mcpCount := activationFor(t, ms, viaMCP.MemoryID)

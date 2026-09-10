@@ -28,6 +28,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -202,6 +203,9 @@ type Server struct {
 	// KnowledgeStore backs /v1/knowledge/* routes. Wired by cmd/tesseract to
 	// knowledge.New(MemoryStore).
 	KnowledgeStore *knowledge.Store
+	// EventStore backs /v1/event/* routes. Wired by cmd/tesseract to
+	// event.New(MemoryStore).
+	EventStore *event.Store
 	// SynthesisProvider is the LLM Provider used by /v1/synthesis/ask.
 	// When nil, the synthesis route returns 503 service_unavailable. Wired by
 	// cmd/tesseract from config.Synthesis settings.
@@ -363,6 +367,12 @@ var apiRoutes = []apiRoute{
 	{http.MethodPost, "/v1/knowledge/write", false, authRequired, (*Server).handleKnowledgeWrite},
 	{http.MethodGet, "/v1/knowledge/current", false, authRequired, (*Server).handleKnowledgeGetCurrent},
 	{http.MethodGet, "/v1/knowledge/history", false, authRequired, (*Server).handleKnowledgeGetHistory},
+
+	// --- event ---
+	// Two routes only; see the header comment in event_handler.go for why
+	// there is no /v1/event/current or /v1/event/history.
+	{http.MethodPost, "/v1/event/write", false, authRequired, (*Server).handleEventWrite},
+	{http.MethodGet, "/v1/event/log", false, authRequired, (*Server).handleEventLog},
 
 	// --- retrieval and synthesis ---
 	{http.MethodPost, "/v1/tesseract/lookup", false, authRequired, (*Server).handleTesseractLookup},

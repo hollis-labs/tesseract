@@ -1,21 +1,24 @@
 ---
 name: start-here
-description: Orientation for agents new to Tesseract — the three domains, invariants, and how to use tesseract_skills.
+description: Orientation for agents new to Tesseract — the four domains, invariants, and how to use tesseract_skills.
 scope_hint: none
-related: [namespaces, memory, knowledge]
+related: [namespaces, memory, knowledge, event]
 ---
 
 # Tesseract — start here
 
 Tesseract is a local-first, append-only context and memory service. You reach it through the `mcp__tesseract__*` tool family. Everything you write is revisioned, auditable, and namespace-owned.
 
-## The three domains
+## The four domains
 
 - **Memory** — agent-authored observations, preferences, session notes. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
 - **Knowledge** — pointer-first references to external content (packages, docs, notes). Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
+- **Event** — the append-only narrative log: reasoning about what you are doing, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
 
-Search across memory + knowledge with `tesseract_recall` — the unified query surface.
+The quickest fork between the first three: a settled conclusion you would want applied later is **memory**; something that lives outside Tesseract is **knowledge**; what happened and what you were thinking at the time is **event**.
+
+`tesseract_recall` is the unified query surface over the curated corpus — memory + knowledge. It does **not** search the event log unless you pass `domains: ["event"]`, so that the log's volume cannot drown the records recall exists to surface.
 
 ## Invariants (don't fight these)
 
@@ -40,6 +43,7 @@ Every write tool's description opens by naming the skill that carries its reques
 |---|---|---|
 | An agent observation, preference, or session note | `memory_write` | `tesseract_skills memory` |
 | A reference to content that lives outside Tesseract | `knowledge_write` | `tesseract_skills knowledge` |
+| Your reasoning about what you are doing, or a journal entry | `event_write` | `tesseract_skills event` |
 | A plain revisioned record | `context_write` | below, on this page |
 | A record with a registered type and lifecycle status | `context_typed_write` | below, on this page |
 | Many records at once, or one long document | `context_ingest` | below, on this page |

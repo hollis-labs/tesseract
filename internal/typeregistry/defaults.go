@@ -9,12 +9,44 @@ package typeregistry
 // these without a release — not the requirement to restate them in a file
 // before the service will start.
 
-// DefaultVocabularies returns the three shipped vocabularies.
+// DefaultVocabularies returns the shipped vocabularies.
 func DefaultVocabularies() []Vocabulary {
 	return []Vocabulary{
 		defaultContextRecordTypes(),
 		defaultMemoryTypes(),
 		defaultKnowledgeFacetKinds(),
+		defaultEventTypes(),
+	}
+}
+
+// defaultEventTypes is the {type} segment of an event namespace
+// (CW-20260909-0035).
+//
+// The segment names the STREAM, not a taxonomy of what happened. The test a
+// value has to pass is "do I routinely read this partition whole, or exclude
+// it whole" — and exactly one distinction passes it: the two producers. Asking
+// for the journal must not return agent reasoning, and at the volumes an event
+// log reaches the reasoning stream would drown the journal in any mixed read.
+// Finer classification is what tags and the registry's other axes are for;
+// this is the partition.
+//
+// Deliberately two values, not three. `friction` is the obvious candidate —
+// the 56 process_friction notes in user/chrispian/memory/notes are an early
+// instance of this shape — and it is left out because nothing writes it yet.
+// Shipping a vocabulary entry no producer can fill is the `playbook` mistake
+// recorded in [[tesseract_three_domains_equal_importance]]: an agent reads the
+// vocabulary, believes the partition is populated, queries, and cannot tell
+// "none exists" from "not implemented". The vocabulary is config-driven, so
+// adding it the day the friction skill writes events is an edit to types.yaml
+// rather than a release.
+func defaultEventTypes() Vocabulary {
+	return Vocabulary{
+		VocabularyID: VocabEventType,
+		Closed:       true,
+		Types: []Type{
+			{TypeID: "journal"},
+			{TypeID: "reasoning"},
+		},
 	}
 }
 
