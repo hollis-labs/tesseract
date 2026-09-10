@@ -8,7 +8,65 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Added
+
+- **Event is a third revision domain: the append-only narrative log.** An
+  agent's reasoning about what it is doing, and a personal log and journal.
+  **Not telemetry** — the distinguishing property is that an event carries
+  reasoning in prose, which is exactly what a trace discards.
+
+  New MCP tools: `event_write`, `event_list`. New routes:
+  `POST /v1/event/write`, `GET /v1/event/log`. `tesseract_get`,
+  `tesseract_history`, `tesseract_get_revision`, `tesseract_deprecate` and
+  `tesseract_touch` all accept event revisions. New skill:
+  `tesseract_skills event`.
+
+  Namespaces use memory's grammar with `event` in the domain-segment position
+  — `user/{id}/event/{type}`, plus the project and session scopes — with a new
+  closed `event.type` vocabulary (`journal`, `reasoning`) in the type registry.
+  Dates deliberately do not belong in the path: `created_at` is indexed and the
+  log read filters on it.
+
+- **A linear read path for the log — `event_list` / `GET /v1/event/log`.**
+  Chronological in either direction, with a `since`/`until` window and **keyset
+  pagination**: `next_cursor` names the position a page stopped at, so entries
+  appended while you page do not shift what you have already seen. Recall's
+  offset cursor cannot promise that on a log that grows at the head, and
+  `ranking=chronological` materializes every matching row before windowing —
+  fine for a curated corpus, not for a log.
+
+  The manifest carries no total, deliberately: counting a log means scanning
+  it. `has_more` answers the question a total stands in for.
+
 ### Changed
+
+- **`tesseract_recall` no longer searches every domain by default.** An
+  unqualified recall covers the curated corpus — memory and knowledge — and
+  leaves the event log to be asked for by name via `domains: ["event"]`. A
+  reasoning log runs an order of magnitude or two above a corpus of deliberate
+  captures, so a default that included it would make every unqualified recall a
+  log search. Callers that already pass `domains` are unaffected; a caller that
+  wants everything now lists the domains it wants.
+
+- **`ranking=activation` over a domain that opts out of activation is now a
+  `validation_error`.** Event's rows are never decayed and never reinforced, so
+  their stored activation is the insert default forever — an absence of a
+  score, not a low one, and one that sits above almost the whole curated
+  corpus. Answering would rank the log first, everywhere, permanently. An
+  event-only recall that does not name a ranking resolves to `chronological`
+  rather than erroring.
+
+### Fixed
+
+- **`tesseract_touch` reports what it moved, not what it asked to move.**
+  `touched` counted the reinforcement requests it issued, which was exact for
+  as long as every domain participated in activation. Event is the first that
+  does not, so the count is now derived from what the UPDATE actually affected,
+  and the response carries a third bucket: `not_reinforced` lists revision IDs
+  that resolved to a real entry in a non-participating domain. Every distinct
+  ID sent still lands in exactly one of `touched`, `not_found` or
+  `not_reinforced`. Deferred from CW-20260910-0021, fixed with the domain that
+  introduced the case.
 
 - **The type registry serves all domains, and its vocabularies moved to
   config.** `internal/contexttypes` is now `internal/typeregistry`, and the

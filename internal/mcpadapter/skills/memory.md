@@ -116,7 +116,7 @@ Note what step 3 does **not** contain. Ten revisions came back, two were read, o
 
 **When to call it.** After the work, not after the search. If you touch as soon as results arrive, you are reinforcing the guess at the moment it was made — the thing recall refuses to do, done manually.
 
-**What counts as one touch.** Each distinct memory named is reinforced once: `activation` moves a fixed fraction toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once. A recall spanning both domains is reportable in one call — memory and knowledge revision IDs both resolve.
+**What counts as one touch.** Each distinct memory named is reinforced once: `activation` moves a fixed fraction toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once. A recall spanning several domains is reportable in one call — any domain's revision ID resolves. What comes back distinguishes three outcomes: `touched` counts the memories the store actually moved, `not_reinforced` lists revisions that exist in a domain outside activation (event, today), and `not_found` lists IDs that name nothing.
 
 `tesseract_get` under `domain="memory"` and `tesseract_get_revision` reinforce on their own, because resolving a known key or pulling a specific revision by ID is already a deliberate act. So step 2 above reinforces what you hydrated; step 3 is how you say which of those actually mattered, and how you report a memory whose summary alone was enough.
 

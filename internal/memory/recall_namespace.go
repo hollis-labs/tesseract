@@ -10,11 +10,12 @@ import "strings"
 //   - `user/{id}/memory`                       (legacy flat / "all my user memory")
 //   - `user/{id}/project/{pid}/memory`         (legacy flat / "all my project memory")
 //   - `user/{id}/session/{sid}/memory`         (legacy flat / "all my session memory")
+//   - the same four shapes with `event` in place of `memory` (CW-20260909-0035)
 //   - any of the above with a trailing `/*` (explicit wildcard)
 //
 // Exact forms:
-//   - a fully-typed memory namespace `user/{id}/memory/{type}` etc.
-//   - non-memory namespaces (knowledge, etc.) — passed through unchanged.
+//   - a fully-typed namespace `user/{id}/memory/{type}`, `user/{id}/event/{type}` etc.
+//   - namespaces of the other grammars (knowledge) — passed through unchanged.
 //
 // Returns one parenthesized fragment for `len > 0`. Its shape depends on what
 // the input contained, and callers must not assume an OR chain:
@@ -45,7 +46,7 @@ func buildNamespaceClause(namespaces []string) (string, []interface{}) {
 	exact := make([]string, 0, len(namespaces))
 	prefixes := make([]string, 0, len(namespaces))
 	for _, ns := range namespaces {
-		if pfx, ok := memoryPrefix(ns); ok {
+		if pfx, ok := scopedPrefix(ns); ok {
 			prefixes = append(prefixes, pfx+"/%")
 		} else {
 			exact = append(exact, ns)
@@ -94,21 +95,30 @@ func orTree(conds []string) string {
 	return "(" + orTree(conds[:mid]) + " OR " + orTree(conds[mid:]) + ")"
 }
 
-// memoryPrefix returns (prefix-without-trailing-slash, true) if ns is a
-// memory-shaped prefix request — either ending in `/memory` (legacy flat
-// form, now interpreted as "any type") or ending in `/memory/*` (explicit
-// wildcard). Otherwise returns ("", false).
+// scopedPrefix returns (prefix-without-trailing-slash, true) if ns is a
+// prefix request under one of the scoped shallow-faceted grammars — either
+// ending in the bare domain segment (legacy flat form, now interpreted as "any
+// type") or ending in `/{segment}/*` (explicit wildcard). Otherwise returns
+// ("", false).
 //
-// Intentionally lenient: any namespace ending in `/memory` is treated as a
-// prefix, including non-canonical shapes — the SQL prefix match returns
-// nothing for malformed inputs, which is the right outcome (graceful no-op
-// rather than parser errors at recall time).
-func memoryPrefix(ns string) (string, bool) {
-	if strings.HasSuffix(ns, "/memory/*") {
-		return strings.TrimSuffix(ns, "/*"), true
-	}
-	if strings.HasSuffix(ns, "/memory") {
-		return ns, true
+// It covers `/memory` and `/event`, the two grammars that carry a {type}
+// segment (see scopedNamespaceSegments). Knowledge is excluded on purpose: its
+// namespaces have free depth, so `user/x/knowledge/foo` is an exact namespace
+// somebody writes to, and reading any `/knowledge`-suffixed string as a prefix
+// would reinterpret real namespaces rather than add a shorthand.
+//
+// Intentionally lenient about shape: any namespace ending in one of those
+// segments is treated as a prefix, including non-canonical forms — the SQL
+// prefix match returns nothing for malformed inputs, which is the right
+// outcome (graceful no-op rather than parser errors at recall time).
+func scopedPrefix(ns string) (string, bool) {
+	for _, seg := range scopedNamespaceSegments {
+		if strings.HasSuffix(ns, "/"+seg+"/*") {
+			return strings.TrimSuffix(ns, "/*"), true
+		}
+		if strings.HasSuffix(ns, "/"+seg) {
+			return ns, true
+		}
 	}
 	return "", false
 }

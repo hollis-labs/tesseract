@@ -245,14 +245,39 @@ type RecallPageResult struct {
 // Limit and Offset are deliberately untouched here — they window the sequence
 // rather than determine it, and they are not part of the fingerprint.
 func resolveRecallDefaults(in RecallInput) RecallInput {
+	// The domain filter resolves FIRST, because the ranking default below
+	// consults it. An unqualified recall covers the curated corpus — memory and
+	// knowledge — and leaves the event log to be asked for by name
+	// (CW-20260909-0035). See defaultRecallDomains and InDefaultRecallCorpus.
+	if len(in.Filters.Domains) == 0 {
+		in.Filters.Domains = defaultRecallDomains()
+	}
+
 	// When ranking is unspecified, pick relevance for queries (BM25 + cosine
 	// fusion) and activation otherwise — the activation primitive remains the
 	// sensible default for no-query recall, while agents asking a semantic
 	// question get hybrid recall by default (EPIC-20260414-19124).
+	//
+	// Unless no domain in scope HAS activation, in which case chronological is
+	// what "the sensible default for no-query recall" means here. Every event
+	// row sits at memory_state's 1.0 insert default forever — the domain opts
+	// out of activation — so an activation ranking over the log would order by
+	// a constant and break every tie on revision_id, which is insertion order
+	// wearing a score's name. That is the defect CW-20260910-0021 measured on
+	// knowledge and called "worse than ordering by a constant, because it looks
+	// like it works". Ordering the log by time says the same thing honestly.
+	//
+	// This arm handles the UNSTATED default only. A caller who spells out
+	// ranking=activation over such a domain gets an error from RecallPage
+	// rather than a quiet substitution — asking for a ranking that does not
+	// exist here should be told, not reinterpreted.
 	if in.Ranking == "" {
-		if strings.TrimSpace(in.Query) != "" {
+		switch {
+		case strings.TrimSpace(in.Query) != "":
 			in.Ranking = RankingRelevance
-		} else {
+		case len(domainsWithoutActivation(in.Filters.Domains)) == len(in.Filters.Domains):
+			in.Ranking = RankingChronological
+		default:
 			in.Ranking = RankingActivation
 		}
 	}
@@ -318,8 +343,32 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 			ErrInvalidInput, in.Reranker)
 	}
 
-	// 2. Apply defaults.
+	// 2. Apply defaults. The raw ranking is read first: after resolution an
+	// explicit "activation" and a defaulted one are indistinguishable, and only
+	// the explicit one is an error below.
+	explicitActivation := in.Ranking == RankingActivation
 	in = resolveRecallDefaults(in)
+
+	// 2a. ranking=activation is defined only over domains that participate in
+	// activation. Refusing here rather than answering is the point: a
+	// non-participating domain's rows are never decayed and never reinforced,
+	// so their activation is memory_state's insert default — an absence of a
+	// score, not a low one, and one that happens to sit ABOVE almost the whole
+	// curated corpus (83.5% of memory rows are at the 0.05 floor). Answering
+	// would rank the opted-out domain first, everywhere, forever.
+	if explicitActivation {
+		if without := domainsWithoutActivation(in.Filters.Domains); len(without) > 0 {
+			names := make([]string, len(without))
+			for i, d := range without {
+				names[i] = string(d)
+			}
+			return RecallPageResult{}, fmt.Errorf(
+				"%w: ranking=activation is not defined over domain(s) %s — they do not participate "+
+					"in activation, so every row holds the insert default rather than a score. "+
+					"Use ranking=chronological to read them in order, or ranking=relevance with a query",
+				ErrInvalidInput, strings.Join(names, ", "))
+		}
+	}
 	if in.Limit <= 0 {
 		in.Limit = DefaultRecallLimit
 	}

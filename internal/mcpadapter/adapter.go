@@ -11,6 +11,7 @@ import (
 	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
@@ -37,6 +38,7 @@ type Adapter struct {
 	VectorIndex       embedding.VectorIndex   // optional; nil uses brute-force search via Store
 	MemoryStore       *memory.Store           // optional; nil disables memory_write / memory_promote
 	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_write
+	EventStore        *event.Store            // optional; nil disables event_write / event_list
 	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
 
 	// Version is reported to the client in the MCP initialize handshake. The
@@ -418,6 +420,9 @@ func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	}
 	if a.KnowledgeStore != nil {
 		a.registerKnowledgeTools(s)
+	}
+	if a.EventStore != nil {
+		a.registerEventTools(s)
 	}
 	// The cross-domain reads are gated on what they actually need, not on which
 	// field happens to be set. tesseract_recall needs some revision store;

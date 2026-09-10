@@ -7,6 +7,7 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -24,6 +25,7 @@ func newMCPAdapter(store *contextstore.Store, token string, mem *memorySubsystem
 	if mem != nil {
 		adapter.MemoryStore = mem.Store
 		adapter.KnowledgeStore = knowledge.New(mem.Store)
+		adapter.EventStore = event.New(mem.Store)
 		adapter.EmbeddingProvider = mem.Embedder
 		adapter.EmbeddingModel = mem.EmbeddingModel
 		if mem.Embedder == nil && logWriter != nil {

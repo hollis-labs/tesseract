@@ -15,8 +15,8 @@
 // the namespace parser up here to keep the policy interface company would
 // spend exactly the property that makes this package cheap to depend on.
 //
-// S1 ships two built-ins: Memory and Knowledge. Plugin-extensible domains are
-// deferred until plugin-sdk v2 GA.
+// S1 ships three built-ins: Memory, Knowledge and Event. Plugin-extensible
+// domains are deferred until plugin-sdk v2 GA.
 package domains
 
 // Domain identifies a revision's policy bucket. The zero value is invalid;
@@ -29,6 +29,20 @@ const (
 
 	// Knowledge is the pointer-first external reference domain (S1).
 	Knowledge Domain = "knowledge"
+
+	// Event is the append-only narrative log: an agent's reasoning about what
+	// it is doing, and Chrispian's personal log and journal (CW-20260909-0035).
+	//
+	// Not telemetry. The distinguishing property is that an Event carries
+	// reasoning in PROSE, which is exactly what a span or a metric discards —
+	// so it wants embeddings and a linear read path, not aggregation.
+	//
+	// It is a domain rather than a registry type because every property it
+	// implies is STORAGE policy: no activation decay, out of the default
+	// ranked corpus, long retention, chronological read primary. Expressing
+	// those as a type would hand the type registry authority over the storage
+	// engine. Domain selects storage policy; type classifies within it.
+	Event Domain = "event"
 )
 
 // registered is the single list of built-in domains. Both Valid and All read
@@ -36,7 +50,7 @@ const (
 // internal/memory's policy registry is held to this list by
 // TestEveryDomainHasAPolicy, which is what makes a domain added here fail
 // loudly rather than fall through a switch default.
-var registered = []Domain{Memory, Knowledge}
+var registered = []Domain{Memory, Knowledge, Event}
 
 // Valid reports whether d is a recognized domain.
 func (d Domain) Valid() bool {

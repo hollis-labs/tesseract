@@ -12,14 +12,19 @@ import (
 
 // ---- The three vocabularies ----------------------------------------------
 
-// TestThreeVocabulariesAreRegistered is the anti-regression for the point of
-// this package. A registry that serves only context types is the state
+// TestEveryShippedVocabularyIsRegistered is the anti-regression for the point
+// of this package. A registry that serves only context types is the state
 // CW-20260909-0034 existed to leave: four mechanisms defining what a type can
 // be, with the config-driven one aimed at the least-used store.
-func TestThreeVocabulariesAreRegistered(t *testing.T) {
+//
+// The list is hand-stated rather than read back from DefaultVocabularies, so a
+// vocabulary appearing or vanishing is a deliberate edit in two places.
+// `event.type` joined it with the Event domain (CW-20260909-0035).
+func TestEveryShippedVocabularyIsRegistered(t *testing.T) {
 	r := typeregistry.NewRegistry()
 	want := []string{
 		typeregistry.VocabContextRecordType,
+		typeregistry.VocabEventType,
 		typeregistry.VocabKnowledgeFacetKind,
 		typeregistry.VocabMemoryType,
 	}
@@ -31,6 +36,31 @@ func TestThreeVocabulariesAreRegistered(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("vocabularies = %v, want %v", got, want)
 		}
+	}
+}
+
+// TestEventTypeVocabulary states the event {type} segment's values by hand.
+//
+// Two, not three: `friction` is the obvious third and is deliberately absent
+// until something writes it. See defaultEventTypes for why a vocabulary entry
+// no producer can fill is worse than a gap.
+func TestEventTypeVocabulary(t *testing.T) {
+	r := typeregistry.NewRegistry()
+	want := []string{"journal", "reasoning"}
+	got := r.Values(typeregistry.VocabEventType)
+	if len(got) != len(want) {
+		t.Fatalf("event types = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("event types = %v, want %v", got, want)
+		}
+	}
+	if !r.Allows(typeregistry.VocabEventType, "journal") {
+		t.Error("journal should be allowed")
+	}
+	if r.Allows(typeregistry.VocabEventType, "friction") {
+		t.Error("friction is not in the shipped vocabulary yet")
 	}
 }
 

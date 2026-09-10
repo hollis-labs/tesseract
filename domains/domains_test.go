@@ -9,6 +9,7 @@ func TestDomainValid(t *testing.T) {
 	}{
 		{Memory, true},
 		{Knowledge, true},
+		{Event, true},
 		{"", false},
 		{"unknown", false},
 	}
@@ -21,7 +22,7 @@ func TestDomainValid(t *testing.T) {
 
 func TestAllStableOrder(t *testing.T) {
 	got := All()
-	want := []Domain{Memory, Knowledge}
+	want := []Domain{Memory, Knowledge, Event}
 	if len(got) != len(want) {
 		t.Fatalf("All() length = %d, want %d", len(got), len(want))
 	}

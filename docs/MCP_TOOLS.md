@@ -78,6 +78,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | Prefix | Covers |
 |---|---|
 | `context_` | the context domain only — generic revisioned records |
+| `event_` | the event domain only — the append-only narrative log |
 | `knowledge_` | the knowledge domain only — pointer-first references |
 | `memory_` | the memory domain only — agent-authored revisions |
 | `tesseract_` | spans every domain, or serves the surface itself |
@@ -93,7 +94,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `get_revision` | Fetch one revision by its revision_id. | `tesseract` |
 | `history` | Every revision of one entry, newest first. | `tesseract` |
 | `ingest` | Write many records, or one document split into many, in a single call. | `context` |
-| `list` | Enumerate the entries of a registry or a log. | `context` |
+| `list` | Enumerate the entries of a registry or a log. | `context`, `event` |
 | `pack` | Assemble a budget-bounded bundle of records. | `context` |
 | `plan` | Produce a fetch plan for an intent, and optionally run it. | `context` |
 | `promote` | Move an entry across scope or ownership. | `context`, `memory` |
@@ -103,7 +104,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `set` | Move a record to a named value of a closed field. | `context` |
 | `touch` | Report deliberate use, so it counts toward activation. | `tesseract` |
 | `view` | Evaluate a view or selector and return what it matches. | `context` |
-| `write` | Append a revision or record. | `context`, `knowledge`, `memory` |
+| `write` | Append a revision or record. | `context`, `event`, `knowledge`, `memory` |
 
 **Exemptions.** Registered names that do not match the vocabulary, and why.
 
@@ -151,13 +152,22 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 |---|---|---|---|---|
 | `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with required canonical `kind`, non-empty `source`, and complete `pointer` facets |
 
+### Event
+
+The append-only narrative log — reasoning in prose, not telemetry. Two properties set it apart from every other domain and both are visible on this surface: `tesseract_recall` does **not** search it unless you pass `domains: ["event"]`, and `ranking=activation` over it is an error rather than an answer. See `tesseract_skills event`.
+
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `event_write` | `memory:write` | `POST /v1/event/write` | `tesseract_skills event` | Append one log entry. `key` is optional and usually omitted — a log entry records that something happened, not a current value. Stamped `status=canonical`. |
+| `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`. No total, by design. Deprecated entries excluded. |
+
 ### Cross-domain
 
-`domain` is an argument on the keyed reads: `context`, `memory`, or `knowledge`. It is required — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
+`domain` is an argument on the keyed reads: `context`, `memory`, `knowledge`, or `event`. It is required — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
 
-The revision-level ops take no `domain`. Memory and knowledge revisions share one table keyed by `revision_id`, so an id from either resolves without saying which it was.
+The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was.
 
-`domain` is a **filter**, not a hint. A namespace does not identify a domain — `memory_state` has no domain column and both domains share `memory_revisions` — so a keyed read that named `memory` and found a knowledge revision at that key returns `not_found` rather than the other domain's row. Only a matching read reinforces.
+`domain` is a **filter**, not a hint. A namespace does not identify a domain — `memory_state` has no domain column and the domains share `memory_revisions` — so a keyed read that named `memory` and found a knowledge revision at that key returns `not_found` rather than the other domain's row. Only a matching read reinforces.
 
 Each of these covers several HTTP routes rather than one; the parity catalog carries one row per (tool, route) pair. The routes are unchanged and still wired.
 
@@ -165,12 +175,12 @@ Each of these covers several HTTP routes rather than one; the parity catalog car
 
 | Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_get` | `memory:read` for `memory`/`knowledge`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` and `knowledge`, and only on a match; `context` has no activation state. |
-| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain |
-| `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over memory + knowledge (activation / chronological / similarity / relevance). Narrow with `domains`. |
+| `tesseract_get` | `memory:read` for `memory`/`knowledge`/`event`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` and `knowledge`, and only on a match; `context` has no activation state and `event` opts out of activation. Most events are keyless — read them with `event_list`. |
+| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain. Under `event` this is where a retracted entry stays findable. |
+| `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over the curated corpus — memory + knowledge — (activation / chronological / similarity / relevance). Narrow with `domains`, which is also how you opt `event` in. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
-| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn, especially projected hits not deliberately fetched. Memory and knowledge revision ids both resolve. |
+| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn, especially projected hits not deliberately fetched. Any domain's revision id resolves; an event id comes back under `not_reinforced`, since that domain opts out of activation. |
 
 Under the default `revision_scope=current`, omitted `statuses` continue to hide
 deprecated revisions. When `statuses` explicitly includes `deprecated`, current

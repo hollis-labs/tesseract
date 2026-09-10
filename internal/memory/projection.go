@@ -174,3 +174,55 @@ func ProjectResults(results []RecallResult, mode PayloadMode) any {
 	}
 	return out
 }
+
+// ProjectRevisions renders bare revisions under mode, for read paths that
+// return revisions rather than ranked results — the event log, today.
+//
+// It exists rather than routing the log through ProjectResults because a
+// RecallResult carries a Score and a State, and a log entry has neither. Score
+// would be nil, which is honest; State would be the zero value, which is not.
+// An event's memory_state row exists but never moves — the domain opts out of
+// activation — so serializing an activation of 0 and a nil last_accessed_at
+// would answer a question the caller did not ask with a number that means
+// nothing. Better to have no field than a fabricated one.
+//
+// Under PayloadModeFull it returns revs unchanged. Under keys and summary it
+// returns []ProjectedRevision — the same field set ProjectResults projects,
+// so `revision.payload.summary` is the same path here as there, one nesting
+// level shallower because there is no result envelope to nest inside.
+//
+// An unrecognized mode is treated as DefaultPayloadMode, matching
+// ProjectResults. Surfaces that can report an error should validate with
+// Valid() first.
+func ProjectRevisions(revs []Revision, mode PayloadMode) any {
+	if mode == PayloadModeFull {
+		return revs
+	}
+	if !mode.Valid() {
+		mode = DefaultPayloadMode
+	}
+
+	out := make([]ProjectedRevision, 0, len(revs))
+	for _, r := range revs {
+		pr := ProjectedRevision{
+			RevisionID: r.RevisionID,
+			MemoryID:   r.MemoryID,
+			Domain:     r.Domain,
+			Namespace:  r.Namespace,
+			MemoryKey:  r.MemoryKey,
+			CreatedAt:  r.CreatedAt,
+		}
+		if mode == PayloadModeSummary {
+			confidence := r.Confidence
+			pr.Status = r.Status
+			pr.Tags = r.Tags
+			pr.Confidence = &confidence
+			// Summary only — Body is dropped, never truncated. A caller that
+			// needs the reasoning itself re-reads at full or hydrates by
+			// revision_id.
+			pr.Payload = &Payload{Summary: r.Payload.Summary}
+		}
+		out = append(out, pr)
+	}
+	return out
+}

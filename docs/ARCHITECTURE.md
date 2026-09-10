@@ -21,17 +21,26 @@ differences.
 
 The resolved XDG layout contains:
 
-- a main SQLite database for metadata, context indexes, memory/knowledge
-  revisions, namespace policy, audit, auth-token hashes, embeddings, and
-  derived indexes
+- a main SQLite database for metadata, context indexes, revision rows for every
+  domain (memory, knowledge, event), namespace policy, audit, auth-token
+  hashes, embeddings, and derived indexes
 - a `records/` tree containing append-only context payload files
 - a separate `queue.db` for background embedding jobs
 - `config.yaml` in the config root
 
 Each context write creates a new payload file and database revision, then moves
-the deterministic `(namespace, key)` head. Memory and knowledge bodies are
-immutable revision rows. Supersession/deprecation is represented as lifecycle
-state and new facts rather than editing old content.
+the deterministic `(namespace, key)` head. Memory, knowledge and event bodies
+are immutable revision rows in one shared table discriminated by a `domain`
+column. Supersession/deprecation is represented as lifecycle state and new
+facts rather than editing old content.
+
+The `domain` column selects **storage policy**, not merely a label: namespace
+grammar, whether the rows take part in activation (decay and reinforcement),
+and whether an unqualified `tesseract_recall` covers them. Event answers no to
+the last two — it is a log, read in order through its own path, and its volume
+would otherwise dominate a ranked read over the curated corpus. Classification
+*within* a domain is the type registry's job; that split is deliberate, so a
+type declaration can never reach into the storage engine.
 
 The queue and embeddings are operational/derived state. `queue.db` is separate
 and is deliberately excluded from the authoritative store backup.
@@ -43,7 +52,7 @@ Go library / CLI / HTTP + web UI / MCP stdio
                     |
            validation and policy
                     |
-       context store + memory/knowledge store
+    context store + memory/knowledge/event store
              |                    |
      SQLite + records/       queue.db workers
              |
@@ -53,7 +62,7 @@ Go library / CLI / HTTP + web UI / MCP stdio
 The adapters call shared storage and policy code, with parity tests guarding
 the fields that are promised to match. Authentication is adapter-specific:
 HTTP token modes protect every non-public route. MCP capability tokens gate
-mutations, grant memory/knowledge read capabilities, and supply namespace
+mutations, grant revision-domain read capabilities, and supply namespace
 globs to tools that filter by them, but several context/audit reads remain
 available without a token; MCP is not a complete tenant-isolation boundary.
 
@@ -71,11 +80,19 @@ append-only even when an item changes status or becomes the current head.
 ## Retrieval
 
 Deterministic views and context packets filter and order indexed records without
-calling a model. Memory/knowledge recall can use:
+calling a model. Ranked recall over the curated corpus (memory and knowledge)
+can use:
 
 - local lexical/BM25 ranking
 - OpenAI-backed query embeddings and local cosine ranking
 - a hybrid of the two
+
+The event log has a second, non-ranked read path alongside these: a
+chronological, keyset-paged range read. Ranking a log is the wrong question —
+its selection is a range, not a score — and materializing every matching row to
+sort it does not hold at log volumes. Events are still embedded and still
+recallable by relevance when a caller names the domain; the linear read is what
+recall cannot express, not a replacement for it.
 
 Synthesis is a separate explicit HTTP operation. It selects sources first, then
 sends the question and selected source summaries/bodies to OpenAI or Anthropic.

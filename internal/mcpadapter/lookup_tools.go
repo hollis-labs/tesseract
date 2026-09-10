@@ -15,7 +15,8 @@ import (
 func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("tesseract_recall",
 		mcp.WithDescription(
-			"**Ranked recall across memory + knowledge.** Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
+			"**Ranked recall across the curated corpus — memory + knowledge.** Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
+				"• **The event log is opt-in.** A call that does not pass `domains` covers memory and knowledge only; add `\"event\"` to search the narrative log. That default is deliberate — a reasoning log runs an order of magnitude or two above a curated corpus, so including it by default would make every unqualified recall a log search. To read the log in ORDER rather than by rank, use `event_list`.\n"+
 				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
 				"• **Result shape:** `{results: [{revision, score}], facets: {domains, kinds, sources}, manifest: {...}}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
 				manifestResultShapeDescription+
@@ -34,11 +35,13 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
-		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation)")),
+		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation). "+
+			"`activation` is defined only over domains that take part in activation, so asking for it over `event` is a validation_error rather than an ordering by a constant; an event-only recall that names no ranking resolves to `chronological`.")),
 		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
 		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
-		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]")),
+		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]. "+
+			"Omitting it covers the curated corpus (memory + knowledge) and NOT the event log — name `\"event\"` to include it, alone or alongside the others.")),
 		mcp.WithString("facet_kinds", mcp.Description("JSON array of facet kind filters (knowledge), e.g. [\"package\",\"doc\"]")),
 		mcp.WithString("facet_sources", mcp.Description("JSON array of facet source filters (knowledge), e.g. [\"filesystem\",\"obsidian\"]")),
 		// Rendered from the vocabulary rather than restated, so this cannot

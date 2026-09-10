@@ -52,10 +52,20 @@ func activationFixtures() map[domains.Domain]activationFixture {
 		Pointer: &memory.Pointer{Scheme: "file", Locator: "/tmp/probe.md"},
 	}
 
+	eventIn := base("user/chrispian/event/reasoning", "activation.probe")
+	eventIn.Domain = domains.Event
+
 	return map[domains.Domain]activationFixture{
 		domains.Memory: {input: memIn, wantsIn: true},
 		// Chrispian, 2026-09-09: "Knowledge should participate in activation."
 		domains.Knowledge: {input: knowIn, wantsIn: true},
+		// Event is OUT, and it is the first domain that is. Per
+		// tesseract_event_domain_definition: "long retention, no activation
+		// decay. A journal that fades because nobody touched it is a broken
+		// journal." The coherence test below therefore proves the mirror image
+		// for this row — nothing decays it AND nothing reinforces it — which is
+		// the half of the invariant no domain could exercise until now.
+		domains.Event: {input: eventIn, wantsIn: false},
 	}
 }
 

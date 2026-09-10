@@ -96,8 +96,8 @@ narrowest useful scopes and namespace globs.
   placed in tool arguments, record payloads, or log messages.
 
 HTTP peers share behavior, but their wire shape is not assumed to be identical.
-In particular, MCP memory and knowledge writes use flat scalar arguments while
-HTTP uses nested objects. Follow the examples for the surface being called;
+In particular, the MCP memory, knowledge and event writes use flat scalar
+arguments while HTTP uses nested objects. Follow the examples for the surface being called;
 see [the HTTP API contract](API.md) for HTTP bodies.
 
 ## Compatibility and determinism

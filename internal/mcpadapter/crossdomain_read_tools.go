@@ -16,18 +16,18 @@ import (
 
 // readDomainContext addresses the context record store (the records/heads
 // tables). It is deliberately NOT a domains.Domain: the domains registry covers
-// the two policy buckets that share memory_revisions, and adding a third value
-// there would make the tesseract_recall `domains` filter accept a value that can
-// only ever match zero rows — an empty result that reads exactly like a clean
+// the policy buckets that share memory_revisions, and adding context there
+// would make the tesseract_recall `domains` filter accept a value that can only
+// ever match zero rows — an empty result that reads exactly like a clean
 // corpus.
 const readDomainContext = "context"
 
 // readDomainVocabulary is the closed set of values `domain` accepts on
 // tesseract_get and tesseract_history, in a stable order.
 //
-// The two revision-store values are taken from domains.All() rather than
-// restated, so this vocabulary cannot advertise a domain the registry has
-// dropped or miss one it has gained. `context` is prepended because it names a
+// The revision-store values are taken from domains.All() rather than restated,
+// so this vocabulary cannot advertise a domain the registry has dropped or miss
+// one it has gained. `context` is prepended because it names a
 // different physical store, not a domain policy.
 func readDomainVocabulary() []string {
 	out := []string{readDomainContext}
@@ -96,6 +96,9 @@ func (a *Adapter) revisionStore() *memory.Store {
 	if a.KnowledgeStore != nil {
 		return a.KnowledgeStore.RevisionStore()
 	}
+	if a.EventStore != nil {
+		return a.EventStore.RevisionStore()
+	}
 	return nil
 }
 
@@ -115,22 +118,22 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 
 	a.addTool(s, mcp.NewTool("tesseract_get",
 		mcp.WithDescription(
-			"**Fetch the current entry** at `(domain, namespace, key)` — one tool for all three domains.\n"+
-				"• **Kind of content:** the latest revision for a memory or knowledge entry, or the head record for a context record.\n"+
-				"• **Result shape:** domain-dependent, because the underlying rows are. `memory` and `knowledge` answer a revision object; `context` answers a record object. Read `domain` back off your own call, not off the response.\n"+
-				"• **Scope:** `memory:read` for `memory` and `knowledge`; `context` needs no token, matching the rest of the context read surface.\n"+
-				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state.\n"+
+			"**Fetch the current entry** at `(domain, namespace, key)` — one tool for every domain.\n"+
+				"• **Kind of content:** the latest revision for a memory, knowledge or event entry, or the head record for a context record.\n"+
+				"• **Result shape:** domain-dependent, because the underlying rows are. `memory`, `knowledge` and `event` answer a revision object; `context` answers a record object. Read `domain` back off your own call, not off the response.\n"+
+				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token, matching the rest of the context read surface.\n"+
+				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state, and neither does `event`, which opts out of activation so a journal cannot fade for going unread.\n"+
 				"• **Use this when:** you know exactly which entry you want.\n"+
 				"• **Don't use this for:** revision history (`tesseract_history`), ranked search (`tesseract_recall`), or a specific revision by ID (`tesseract_get_revision`).\n"+
 				"• **Errors:** `validation_error` (bad or missing `domain`, missing `namespace`/`key`), `domain_unavailable` (no store wired for that domain here), `not_found`.\n"+
-				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills knowledge`.",
+				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills knowledge`, `tesseract_skills event`.",
 		),
 		mcp.WithString("domain", mcp.Required(), mcp.Description(
 			"Which store to read: "+domainList+". Required — there is no default, because guessing it from the namespace would answer the wrong question silently.")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description(
-			"Namespace. Memory: user/{id}/memory/{type}. Knowledge: {user|app}/{id}/knowledge/... . Context: any registered namespace path.")),
+			"Namespace. Memory: user/{id}/memory/{type}. Knowledge: {user|app}/{id}/knowledge/... . Event: user/{id}/event/{type}. Context: any registered namespace path.")),
 		mcp.WithString("key", mcp.Required(), mcp.Description(
-			"Entry key within the namespace. This is the field memory and knowledge revisions carry as `memory_key`.")),
+			"Entry key within the namespace. This is the field memory, knowledge and event revisions carry as `memory_key`. Most event entries are keyless and are read through `event_list` instead.")),
 		// The unified tool must advertise the strongest effect of any arm. The
 		// memory arm reinforces activation/access_count, so this is neither
 		// read-only nor idempotent even though the context and knowledge arms are.
@@ -142,11 +145,11 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 
 	a.addTool(s, mcp.NewTool("tesseract_history",
 		mcp.WithDescription(
-			"**Fetch the revision history** at `(domain, namespace, key)`, newest first — one tool for all three domains.\n"+
+			"**Fetch the revision history** at `(domain, namespace, key)`, newest first — one tool for every domain.\n"+
 				"• **Kind of content:** every revision under the key, including superseded and deprecated ones.\n"+
-				"• **Result shape:** domain-dependent. `memory` and `knowledge` answer a bare array; pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and they answer `{results, manifest}` instead. `context` always answers its own budget envelope and honors `limit` only.\n"+
-				"• **Scope:** `memory:read` for `memory` and `knowledge`; `context` needs no token.\n"+
-				"• **Use this when:** you need to trace how an entry evolved, or read superseded content.\n"+
+				"• **Result shape:** domain-dependent. `memory`, `knowledge` and `event` answer a bare array; pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and they answer `{results, manifest}` instead. `context` always answers its own budget envelope and honors `limit` only.\n"+
+				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token.\n"+
+				"• **Use this when:** you need to trace how an entry evolved, or read superseded content. Under `event` this is also where a retracted log entry stays findable — `event_list` excludes deprecated revisions, this does not.\n"+
 				"• **Don't use this for:** just the current value (`tesseract_get`).\n"+
 				"• **Errors:** `validation_error` (bad or missing `domain`, missing `namespace`/`key`, unusable `cursor`), `domain_unavailable`, `not_found`.\n"+
 				"• **Deeper:** `tesseract_skills revisions`.",
@@ -218,13 +221,13 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("tesseract_touch",
 		mcp.WithDescription(
 			"**Report which recalled entries actually informed your work.** The closing step of `tesseract_recall` → use → touch.\n"+
-				"• **Kind of content:** none returned. Answers `{touched, not_found}` — `touched` is how many distinct memories were reinforced, `not_found` lists revision IDs that resolved to nothing.\n"+
+				"• **Kind of content:** none returned. Answers `{touched, not_found, not_reinforced}` — `touched` is how many distinct memories the store actually reinforced, `not_found` lists revision IDs that resolved to nothing, and `not_reinforced` lists IDs that resolved to a real entry in a domain outside activation (event, today). Every distinct ID you send lands in exactly one of the three.\n"+
 				"• **Scope:** `memory:read`. It writes, but what it writes is the deliberate-read signal `tesseract_get` already emits on every memory-domain call; a read-only agent that could not close the loop would leave the loop open.\n"+
 				"• **Use this when:** you have finished reasoning over a recall result and know which hits shaped the turn. **Call it after the work, not after the search.** Recall deliberately does not reinforce a hit merely for returning it. Touch supplies the use signal for projected hits you did not deliberately fetch, and may add an intentional second reinforcement for a hit already fetched through `tesseract_get` or `tesseract_get_revision`.\n"+
 				"• **Touch only what genuinely shaped the turn.** Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.\n"+
 				"• **Don't use this for:** everything you recalled, everything you skimmed, anything you merely saw in a result list, or as a way to pin a memory you want ranked highly. Reinforcement has diminishing returns — each touch closes a fraction of the remaining distance to a ceiling, so the tenth touch moves a memory far less than the first and no amount of touching passes the ceiling. Inflating a report buys very little ranking and costs the ranking its ability to tell signal from noise.\n"+
 				"• **Effect per distinct memory:** `activation` moves a fixed fraction of the way toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once.\n"+
-				"• **Works across domains:** memory and knowledge revision IDs both resolve, so a mixed `tesseract_recall` result can be reported in one call.\n"+
+				"• **Works across domains:** any domain's revision ID resolves, so a mixed `tesseract_recall` result can be reported in one call. An event ID comes back under `not_reinforced` rather than counting — that domain opts out of activation, so touching it is a well-formed request with no effect, and saying so beats returning a number that is not true.\n"+
 				"• **Deeper:** `tesseract_skills memory` for the worked loop; `tesseract_skills recall-and-ranking` for how activation ranks.",
 		),
 		mcp.WithString("revision_ids", mcp.Required(), mcp.Description(
@@ -301,6 +304,21 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 		// reinforces it. The domain check is inside the store call, before the
 		// bump, for the reason spelled out on GetCurrentInDomainReinforced.
 		rev, err = a.KnowledgeStore.GetCurrentReinforced(ctx, namespace, key)
+	case string(domains.Event):
+		if a.EventStore == nil {
+			return domainUnavailable(domain), nil
+		}
+		// The plain getter, not a reinforcing one, and that is the domain
+		// policy showing through rather than an oversight. Event opts out of
+		// activation (CW-20260909-0035), so the reinforcing variant would bump
+		// nothing — reinforceMemoryIDs gates on the domain in SQL — and calling
+		// it here would put a use-signal decision back at a call site, which is
+		// the shape CW-20260910-0021 removed. See event.Store.GetHistory.
+		//
+		// Note also what this arm is NOT the main way to read events. Most
+		// entries are keyless, so they have no (namespace, key) to fetch; the
+		// linear read is event_list.
+		rev, err = a.EventStore.GetCurrent(ctx, namespace, key)
 	default:
 		// resolveReadDomain accepts whatever readDomainVocabulary offers, and
 		// that is derived from domains.All(). A domain added to the registry
@@ -360,6 +378,15 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 			return domainUnavailable(domain), nil
 		}
 		revs, err = a.KnowledgeStore.GetHistory(ctx, namespace, key)
+	case string(domains.Event):
+		if a.EventStore == nil {
+			return domainUnavailable(domain), nil
+		}
+		// History over an event entry is the one read that still shows
+		// deprecated revisions — event_list excludes them because deprecation
+		// is how a log entry is retracted, and this is where the retracted
+		// entry remains findable.
+		revs, err = a.EventStore.GetHistory(ctx, namespace, key)
 	default:
 		// See handleTesseractGet: without this, an accepted-but-unhandled
 		// domain answers a bare `null` instead of saying it has no arm.

@@ -143,6 +143,97 @@ func SetTypeAllowlist(list []string) (restore func()) {
 // registry. Any other shape — including the legacy flat `user/{id}/memory` —
 // returns a wrapped ErrInvalidNamespace.
 func ParseNamespace(s string) (Namespace, error) {
+	return parseScopedNamespace(s, memoryNamespaceSegment, typeregistry.VocabMemoryType)
+}
+
+// ValidateNamespace is a convenience wrapper that returns only the error.
+func ValidateNamespace(s string) error {
+	_, err := ParseNamespace(s)
+	return err
+}
+
+// ── The scoped shallow-faceted grammar ───────────────────────────────────────
+
+// memoryNamespaceSegment and eventNamespaceSegment are the domain segments of
+// the two grammars parseScopedNamespace serves.
+const (
+	memoryNamespaceSegment = "memory"
+	eventNamespaceSegment  = "event"
+)
+
+// scopedNamespaceSegments is the closed set of domain segments that use the
+// scoped shallow-faceted grammar: a fixed depth, an optional project/session
+// scope, and a {type} segment from a closed vocabulary.
+//
+// Knowledge is deliberately NOT here. Its namespaces are deep-hierarchical
+// with free depth ({user|app}/{id}/knowledge/...), so it has no {type} segment
+// to validate and no fixed shape to parse — and treating any namespace ending
+// in `/knowledge` as a prefix request (see scopedPrefix) would reinterpret
+// namespaces that are legal exact knowledge namespaces today.
+var scopedNamespaceSegments = []string{memoryNamespaceSegment, eventNamespaceSegment}
+
+// ParseEventNamespace parses an event namespace string into its components.
+//
+// The grammar is memory's with `event` in the domain-segment position
+// (CW-20260909-0035, settled with Chrispian 2026-09-10):
+//
+//	user/{user_id}/event/{type}
+//	user/{user_id}/project/{project_id}/event/{type}
+//	user/{user_id}/session/{session_id}/event/{type}
+//
+// Reusing memory's shape rather than inventing one is the decision, not an
+// economy. An agent that knows where its memories live can guess where its
+// reasoning log lives, the scope segments are already the partitions a log is
+// read by — a session for an agent's reasoning, the user scope for a journal —
+// and the prefix-match machinery in recall_namespace.go generalizes to it with
+// one list entry rather than a second parser.
+//
+// {type} is validated against the `event.type` vocabulary in the type
+// registry, which ships `journal` and `reasoning`. The segment names the
+// STREAM rather than a taxonomy of what happened; see defaultEventTypes for
+// why that is the axis that earns a path segment.
+//
+// What the grammar deliberately does NOT carry is time. Dates in the path
+// (.../event/journal/2026/09) look like the obvious partition for a log and
+// are a trap: created_at is already indexed and the log read filters on it, so
+// date segments turn every time-range read into a multi-namespace query for
+// no gain. Time is an attribute, not a partition.
+func ParseEventNamespace(s string) (Namespace, error) {
+	return parseScopedNamespace(s, eventNamespaceSegment, typeregistry.VocabEventType)
+}
+
+// EventTypeList renders the current event {type} vocabulary for a tool or
+// error message, so a description cannot advertise a value the parser rejects.
+func EventTypeList() string {
+	return typeregistry.Default().List(typeregistry.VocabEventType)
+}
+
+// EventTypeAllowlist returns the current event {type} vocabulary, sorted.
+func EventTypeAllowlist() []string {
+	return typeregistry.Default().Values(typeregistry.VocabEventType)
+}
+
+// ValidateEventNamespace is a convenience wrapper that returns only the error.
+func ValidateEventNamespace(s string) error {
+	_, err := ParseEventNamespace(s)
+	return err
+}
+
+// parseScopedNamespace parses the scoped shallow-faceted grammar for one
+// domain segment, validating {type} against one registry vocabulary.
+//
+// It is parameterized rather than copied because the two grammars differ in
+// exactly two tokens. A second hand-written parser would be two places for the
+// segment-count rule, the id vocabulary and the scope keywords to drift, and
+// the drift would be invisible: each parser would pass its own tests.
+//
+// The returned Namespace carries no record of WHICH segment it was parsed
+// under, and String()/Prefix() render the memory form. That is a real
+// limitation, held deliberately: nothing consumes a round-tripped event
+// namespace today, and inventing a parallel type or a domain field on this one
+// to serve no caller is how a struct acquires a zero value that renders the
+// wrong domain. See ParseEventNamespace's callers — all of them validate.
+func parseScopedNamespace(s, domainSeg, vocabID string) (Namespace, error) {
 	if s == "" {
 		return Namespace{}, fmt.Errorf("%w: empty", ErrInvalidNamespace)
 	}
@@ -150,7 +241,7 @@ func ParseNamespace(s string) (Namespace, error) {
 		return Namespace{}, fmt.Errorf("%w: trailing slash in %q", ErrInvalidNamespace, s)
 	}
 	parts := strings.Split(s, "/")
-	// 4-seg user/{id}/memory/{type}; 6-seg user/{id}/{project|session}/{id}/memory/{type}.
+	// 4-seg user/{id}/{domain}/{type}; 6-seg user/{id}/{project|session}/{id}/{domain}/{type}.
 	if len(parts) != 4 && len(parts) != 6 {
 		return Namespace{}, fmt.Errorf("%w: wrong segment count in %q (want 4 or 6, got %d)",
 			ErrInvalidNamespace, s, len(parts))
@@ -163,18 +254,18 @@ func ParseNamespace(s string) (Namespace, error) {
 	}
 
 	ns := Namespace{UserID: parts[1]}
-	var memorySeg, typeSeg string
+	var gotDomainSeg, typeSeg string
 	switch len(parts) {
 	case 4:
-		// user/{id}/memory/{type}
-		memorySeg = parts[2]
+		// user/{id}/{domain}/{type}
+		gotDomainSeg = parts[2]
 		typeSeg = parts[3]
 		ns.Scope = ScopeUser
 	case 6:
-		// user/{id}/{project|session}/{id}/memory/{type}
+		// user/{id}/{project|session}/{id}/{domain}/{type}
 		mid := parts[2]
 		id := parts[3]
-		memorySeg = parts[4]
+		gotDomainSeg = parts[4]
 		typeSeg = parts[5]
 		if id == "" || !idSegmentRE.MatchString(id) {
 			return Namespace{}, fmt.Errorf("%w: invalid %s id %q", ErrInvalidNamespace, mid, id)
@@ -192,9 +283,9 @@ func ParseNamespace(s string) (Namespace, error) {
 		}
 	}
 
-	if memorySeg != "memory" {
-		return Namespace{}, fmt.Errorf("%w: penultimate segment must be 'memory', got %q in %q",
-			ErrInvalidNamespace, memorySeg, s)
+	if gotDomainSeg != domainSeg {
+		return Namespace{}, fmt.Errorf("%w: penultimate segment must be %q, got %q in %q",
+			ErrInvalidNamespace, domainSeg, gotDomainSeg, s)
 	}
 	if typeSeg == "" {
 		return Namespace{}, fmt.Errorf("%w: type segment is required in %q", ErrInvalidNamespace, s)
@@ -203,16 +294,10 @@ func ParseNamespace(s string) (Namespace, error) {
 		return Namespace{}, fmt.Errorf("%w: invalid type segment %q (must be lowercase letters/digits/underscore, starting with a letter)",
 			ErrInvalidNamespace, typeSeg)
 	}
-	if !IsValidType(typeSeg) {
+	if !typeregistry.Default().Allows(vocabID, typeSeg) {
 		return Namespace{}, fmt.Errorf("%w: unknown type %q (allowed: %s)",
-			ErrInvalidNamespace, typeSeg, strings.Join(TypeAllowlist(), ", "))
+			ErrInvalidNamespace, typeSeg, strings.Join(typeregistry.Default().Values(vocabID), ", "))
 	}
 	ns.Type = typeSeg
 	return ns, nil
-}
-
-// ValidateNamespace is a convenience wrapper that returns only the error.
-func ValidateNamespace(s string) error {
-	_, err := ParseNamespace(s)
-	return err
 }
