@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/tesseract/internal/wikilink"
 )
@@ -129,13 +130,49 @@ func TestParse_PositionIsDenseAcrossRejectedSpans(t *testing.T) {
 	}
 }
 
-// The scan must not be quadratic on pathological input: a body of unterminated
-// openers is a plausible thing to paste into a memory, and this runs on every
-// write.
-func TestParse_ManyUnterminatedOpenersTerminates(t *testing.T) {
-	got := wikilink.Parse(strings.Repeat("[[", 50_000))
-	if got != nil {
-		t.Errorf("expected no links from unterminated openers, got %d", len(got))
+// The scan must be LINEAR on pathological input, not merely terminating. This
+// runs on the write path of every revision, and a body of unbalanced brackets
+// is a plausible thing to paste into a memory.
+//
+// An earlier version of this test asserted only that Parse returned — which it
+// did, quadratically, at 13ms / 45ms / 145ms / 572ms for 25k / 50k / 100k /
+// 200k openers. Termination is not the property worth guarding; the growth
+// rate is.
+//
+// The bound is wall-clock because the property is asymptotic and the algorithm
+// has no counter to assert on, but it is not a tight timing assertion: at these
+// sizes the single-pass scan runs in a couple of milliseconds, so the margin is
+// ~1000x, while the quadratic version needed roughly a minute and would miss by
+// an order of magnitude. Only a genuine regression to super-linear scanning
+// lands between the two.
+func TestParse_PathologicalInputStaysLinear(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+	}{
+		// Every position opens; nothing ever closes.
+		{"openers only", strings.Repeat("[[", 1_000_000)},
+		// Openers all the way down, with a single closer at the very end. This
+		// is the shape that defeats the obvious fix of bounding the
+		// nested-opener search to the text before the closer: each restart
+		// still re-scans for the same distant closer.
+		{"openers then one distant closer", strings.Repeat("[[a", 1_000_000) + "]]"},
+		// Closers with no openers pending.
+		{"closers only", strings.Repeat("]]", 1_000_000)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			done := make(chan int, 1)
+			go func() { done <- len(wikilink.Parse(tc.in)) }()
+			select {
+			case n := <-done:
+				if n > 1 {
+					t.Errorf("expected at most one link, got %d", n)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Parse did not finish in 5s on pathological input; " +
+					"the scan has regressed to super-linear")
+			}
+		})
 	}
 }
 
