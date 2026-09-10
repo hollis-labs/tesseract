@@ -183,82 +183,48 @@ func (s *Store) EmitMaintenance(ctx context.Context, eventType, actor, namespace
 	})
 }
 
-// EmitMemoryWrite records a "memory.write" audit event for a new memory revision.
-// recordID is the revision ULID; Revision=1 is synthesized because memory uses
-// ULID identity rather than monotonic revision numbers.
-func (s *Store) EmitMemoryWrite(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
-	return s.emit(ctx, AuditEvent{
-		EventType: EventMemoryWrite,
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       key,
-		Revision:  1,
-		RecordID:  recordID,
-		Metadata:  metadata,
-	})
-}
+// Audit operations on a domain revision. The op half of a "{domain}.{op}"
+// event type; see EmitRevision.
+const (
+	AuditOpWrite     = "write"
+	AuditOpSupersede = "supersede"
+	AuditOpDeprecate = "deprecate"
+	AuditOpPromote   = "promote"
+)
 
-// EmitMemorySupersede records a "memory.supersede" audit event for a memory
-// write whose Supersedes field is set.
-func (s *Store) EmitMemorySupersede(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
+// EmitRevision records an audit event for a revision in the shared
+// memory_revisions store, under the event type "{domain}.{op}" — the six
+// constants above spell the products that exist today, and the composition
+// reproduces them exactly.
+//
+// It replaced EmitMemoryWrite, EmitMemorySupersede, EmitMemoryDeprecate,
+// EmitMemoryPromote, EmitKnowledgeWrite and EmitKnowledgeSupersede, which were
+// identical but for that one string (CW-20260909-0033). Six methods named
+// after their domain forced the caller to switch on domain to pick one, and
+// the switch's default filed unknown domains under memory.
+//
+// op is checked against the closed set, matching EmitPromote and
+// EmitMaintenance: a mistyped op is an error rather than a novel event type
+// that no filter will ever match. domain is NOT checked against a list here.
+// That is the point — a domain added to the registry emits correctly through
+// this path without contextstore learning its name, which is what removes this
+// file from the blast radius of adding one. The caller passes a domain already
+// validated by domains.Domain.Valid(); empty is still refused, since ".write"
+// is not an event type.
+//
+// recordID is the revision ULID; Revision=1 is synthesized because these
+// domains use ULID identity rather than monotonic revision numbers.
+func (s *Store) EmitRevision(ctx context.Context, domain, op, actor, namespace, key, recordID string, metadata json.RawMessage) error {
+	switch op {
+	case AuditOpWrite, AuditOpSupersede, AuditOpDeprecate, AuditOpPromote:
+	default:
+		return fmt.Errorf("EmitRevision: unknown op %q", op)
+	}
+	if domain == "" {
+		return fmt.Errorf("EmitRevision: domain is required")
+	}
 	return s.emit(ctx, AuditEvent{
-		EventType: EventMemorySupersede,
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       key,
-		Revision:  1,
-		RecordID:  recordID,
-		Metadata:  metadata,
-	})
-}
-
-// EmitMemoryDeprecate records a "memory.deprecate" audit event.
-func (s *Store) EmitMemoryDeprecate(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
-	return s.emit(ctx, AuditEvent{
-		EventType: EventMemoryDeprecate,
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       key,
-		Revision:  1,
-		RecordID:  recordID,
-		Metadata:  metadata,
-	})
-}
-
-// EmitMemoryPromote records a "memory.promote" umbrella audit event. The nested
-// WriteRevision and Deprecate operations emit their own events; callers see
-// three events per promote (umbrella + write + deprecate).
-func (s *Store) EmitMemoryPromote(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
-	return s.emit(ctx, AuditEvent{
-		EventType: EventMemoryPromote,
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       key,
-		Revision:  1,
-		RecordID:  recordID,
-		Metadata:  metadata,
-	})
-}
-
-// EmitKnowledgeWrite records a "knowledge.write" audit event for a new
-// knowledge revision.
-func (s *Store) EmitKnowledgeWrite(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
-	return s.emit(ctx, AuditEvent{
-		EventType: EventKnowledgeWrite,
-		Actor:     actor,
-		Namespace: namespace,
-		Key:       key,
-		Revision:  1,
-		RecordID:  recordID,
-		Metadata:  metadata,
-	})
-}
-
-// EmitKnowledgeSupersede records a "knowledge.supersede" audit event for a
-// knowledge write whose Supersedes field is set.
-func (s *Store) EmitKnowledgeSupersede(ctx context.Context, actor, namespace, key, recordID string, metadata json.RawMessage) error {
-	return s.emit(ctx, AuditEvent{
-		EventType: EventKnowledgeSupersede,
+		EventType: domain + "." + op,
 		Actor:     actor,
 		Namespace: namespace,
 		Key:       key,

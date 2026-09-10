@@ -214,62 +214,55 @@ func TestEmitFillsCreatedAtWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestEmitMemoryWrite(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.EmitMemoryWrite(context.Background(), "user", "user/alice/memory", "notes.today", "01J...", nil); err != nil {
-		t.Fatalf("emit: %v", err)
+// TestEmitRevisionComposesEventType pins the products of the {domain}.{op}
+// composition against the constants the six replaced methods emitted. These
+// strings are wire vocabulary — the audit API, the web UI filter and the audit
+// skill all name them — so composition must reproduce them exactly, not
+// approximately.
+func TestEmitRevisionComposesEventType(t *testing.T) {
+	cases := []struct {
+		domain string
+		op     string
+		want   string
+	}{
+		{"memory", AuditOpWrite, EventMemoryWrite},
+		{"memory", AuditOpSupersede, EventMemorySupersede},
+		{"memory", AuditOpDeprecate, EventMemoryDeprecate},
+		{"memory", AuditOpPromote, EventMemoryPromote},
+		{"knowledge", AuditOpWrite, EventKnowledgeWrite},
+		{"knowledge", AuditOpSupersede, EventKnowledgeSupersede},
 	}
-	if got := lastEventType(t, s); got != EventMemoryWrite {
-		t.Fatalf("event_type: got %q, want %q", got, EventMemoryWrite)
-	}
-}
-
-func TestEmitMemorySupersede(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.EmitMemorySupersede(context.Background(), "user", "user/alice/memory", "notes.today", "01K...", nil); err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	if got := lastEventType(t, s); got != EventMemorySupersede {
-		t.Fatalf("event_type: got %q, want %q", got, EventMemorySupersede)
-	}
-}
-
-func TestEmitMemoryDeprecate(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.EmitMemoryDeprecate(context.Background(), "user", "user/alice/memory", "notes.today", "01J...", nil); err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	if got := lastEventType(t, s); got != EventMemoryDeprecate {
-		t.Fatalf("event_type: got %q, want %q", got, EventMemoryDeprecate)
-	}
-}
-
-func TestEmitMemoryPromote(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.EmitMemoryPromote(context.Background(), "user", "user/alice/memory", "notes.today", "01L...", nil); err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	if got := lastEventType(t, s); got != EventMemoryPromote {
-		t.Fatalf("event_type: got %q, want %q", got, EventMemoryPromote)
+	for _, c := range cases {
+		s := newTestStore(t)
+		if err := s.EmitRevision(context.Background(), c.domain, c.op, "user", "user/alice/"+c.domain, "notes.today", "01J...", nil); err != nil {
+			t.Fatalf("emit %s.%s: %v", c.domain, c.op, err)
+		}
+		if got := lastEventType(t, s); got != c.want {
+			t.Errorf("event_type: got %q, want %q", got, c.want)
+		}
 	}
 }
 
-func TestEmitKnowledgeWrite(t *testing.T) {
+// TestEmitRevisionAcceptsAnUnknownDomain is the property that takes this file
+// out of the blast radius of adding a domain: contextstore does not hold a
+// list of domain names, so a new one emits correctly without being registered
+// here. The op vocabulary stays closed; the domain half does not.
+func TestEmitRevisionAcceptsAnUnknownDomain(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.EmitKnowledgeWrite(context.Background(), "user", "user/alice/knowledge", "pkg/react", "01M...", nil); err != nil {
+	if err := s.EmitRevision(context.Background(), "event", AuditOpWrite, "user", "user/alice/event", "deploy", "01J...", nil); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	if got := lastEventType(t, s); got != EventKnowledgeWrite {
-		t.Fatalf("event_type: got %q, want %q", got, EventKnowledgeWrite)
+	if got := lastEventType(t, s); got != "event.write" {
+		t.Fatalf("event_type: got %q, want %q", got, "event.write")
 	}
 }
 
-func TestEmitKnowledgeSupersede(t *testing.T) {
+func TestEmitRevisionRejectsBadInput(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.EmitKnowledgeSupersede(context.Background(), "user", "user/alice/knowledge", "pkg/react", "01N...", nil); err != nil {
-		t.Fatalf("emit: %v", err)
+	if err := s.EmitRevision(context.Background(), "memory", "frobnicate", "user", "user/alice/memory", "k", "01J...", nil); err == nil {
+		t.Error("unknown op accepted; want error")
 	}
-	if got := lastEventType(t, s); got != EventKnowledgeSupersede {
-		t.Fatalf("event_type: got %q, want %q", got, EventKnowledgeSupersede)
+	if err := s.EmitRevision(context.Background(), "", AuditOpWrite, "user", "user/alice/memory", "k", "01J...", nil); err == nil {
+		t.Error("empty domain accepted; want error")
 	}
 }

@@ -8,6 +8,30 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Changed
+
+- **`domains.DomainPolicy` and `domains.Domain.Policy()` moved to
+  `internal/memory`.** The `domains` package is now identity alone — the
+  `Domain` type, its constants, `Valid()` and `All()` — which is what lets
+  every layer keep importing it cheaply. The policy interface moved to where
+  the types it validates already live, and grew the per-domain rules that used
+  to sit in `if`/`switch` sites in the memory write and read paths: namespace
+  shape, memory-key vocabulary, and the domain/facet contract.
+
+  This is a library-surface removal for anyone importing the `domains` package
+  directly. Nothing under `memory` or the root facade changes: `memory.Domain`,
+  `memory.DomainMemory` and `memory.DomainKnowledge` are unaffected, and no
+  MCP tool, `/v1` route, CLI command or stored value changes. Validation
+  behavior at the write boundary is unchanged — the rules moved, they were not
+  rewritten.
+
+  The point is the failure mode. A domain added to the registry without its
+  behavior used to fall through a `switch` default and silently take another
+  domain's rules; audit rows were the worst of it, since a domain with no arm
+  emitted `memory.write` and the log recorded a memory write that never
+  happened. Adding a domain now fails loudly in three packages until it is
+  fully described.
+
 ### Fixed
 
 - **Recall across many namespaces no longer fails to parse.** The namespace

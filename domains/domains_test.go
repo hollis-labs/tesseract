@@ -19,52 +19,6 @@ func TestDomainValid(t *testing.T) {
 	}
 }
 
-func TestMemoryPolicyValidateNamespace(t *testing.T) {
-	p, err := Memory.Policy()
-	if err != nil {
-		t.Fatalf("Memory.Policy(): %v", err)
-	}
-	if err := p.ValidateNamespace("user/alice/memory"); err != nil {
-		t.Errorf("memory namespace rejected: %v", err)
-	}
-	if err := p.ValidateNamespace(""); err == nil {
-		t.Error("empty namespace accepted; want error")
-	}
-}
-
-func TestKnowledgePolicyValidateNamespace(t *testing.T) {
-	p, err := Knowledge.Policy()
-	if err != nil {
-		t.Fatalf("Knowledge.Policy(): %v", err)
-	}
-	ok := []string{
-		"user/alice/knowledge",
-		"user/alice/knowledge/framework",
-		"app/ingester/knowledge/obsidian/work",
-	}
-	for _, ns := range ok {
-		if err := p.ValidateNamespace(ns); err != nil {
-			t.Errorf("knowledge namespace %q rejected: %v", ns, err)
-		}
-	}
-	bad := []string{
-		"",
-		"user/alice/memory",
-		"user/alice/notes",
-		"user/alice/memory/knowledge", // knowledge must be 3rd segment
-		"knowledge/user/alice",        // missing user|app prefix
-		"user/alice/knowledge/",       // trailing slash
-		"user//knowledge",             // empty segment
-		"user/alice",                  // too short
-		"org/acme/knowledge",          // wrong prefix
-	}
-	for _, ns := range bad {
-		if err := p.ValidateNamespace(ns); err == nil {
-			t.Errorf("knowledge namespace %q accepted; want error", ns)
-		}
-	}
-}
-
 func TestAllStableOrder(t *testing.T) {
 	got := All()
 	want := []Domain{Memory, Knowledge}
@@ -78,8 +32,30 @@ func TestAllStableOrder(t *testing.T) {
 	}
 }
 
-func TestPolicyUnknown(t *testing.T) {
-	if _, err := Domain("made-up").Policy(); err == nil {
-		t.Error("Policy() on unknown domain returned nil error")
+// TestAllReturnsACopy guards the registry against a caller that sorts or
+// overwrites what All() hands it. All() reads a package-level slice now rather
+// than building a fresh literal per call, so aliasing it would let one caller
+// reorder every later caller's view — including Valid's membership scan.
+func TestAllReturnsACopy(t *testing.T) {
+	first := All()
+	first[0] = Domain("clobbered")
+
+	second := All()
+	if second[0] != Memory {
+		t.Errorf("All()[0] = %q after a caller mutated an earlier result, want %q", second[0], Memory)
+	}
+	if !Memory.Valid() {
+		t.Error("Memory.Valid() = false after a caller mutated an earlier All() result")
+	}
+}
+
+// TestValidAgreesWithAll keeps the two readers of the registry honest: a
+// domain that enumerates must validate, and this package cannot grow a domain
+// that is listed but not recognized.
+func TestValidAgreesWithAll(t *testing.T) {
+	for _, d := range All() {
+		if !d.Valid() {
+			t.Errorf("All() returned %q but Domain(%q).Valid() = false", d, d)
+		}
 	}
 }

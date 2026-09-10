@@ -301,16 +301,18 @@ INSERT INTO memory_revisions (
 		// a committed write must not be lost because the caller hung up. The
 		// errors stay discarded here because contextstore's emit path
 		// structured-logs every failure itself.
-		switch {
-		case in.Domain == domains.Knowledge && in.Supersedes != "":
-			_ = s.auditSink.EmitKnowledgeSupersede(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
-		case in.Domain == domains.Knowledge:
-			_ = s.auditSink.EmitKnowledgeWrite(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
-		case in.Supersedes != "":
-			_ = s.auditSink.EmitMemorySupersede(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
-		default:
-			_ = s.auditSink.EmitMemoryWrite(postCommitCtx, actor, in.Namespace, key, revisionID, nil)
+		//
+		// The domain rides along as an argument rather than selecting a
+		// method name. The four-arm switch this replaced ended in a default
+		// that emitted memory.write, so a domain without an arm produced an
+		// audit row naming the wrong domain — a log that lies is worse than
+		// one that is missing, and it was the last silent default in the
+		// domain-dispatch set (CW-20260909-0033).
+		op := auditOpWrite
+		if in.Supersedes != "" {
+			op = auditOpSupersede
 		}
+		_ = s.auditSink.EmitRevision(postCommitCtx, string(in.Domain), op, actor, in.Namespace, key, revisionID, nil)
 	}
 
 	rev := Revision{
@@ -393,32 +395,25 @@ func validateWriteInput(in WriteInput) error {
 	if !in.Domain.Valid() {
 		return fmt.Errorf("%w: invalid domain %q", ErrInvalidInput, in.Domain)
 	}
-	if err := validateFacets(in.Domain, in.Facets); err != nil {
-		return err
-	}
-	policy, err := in.Domain.Policy()
+	policy, err := policyFor(in.Domain)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
+	if err := policy.ValidateFacets(in.Facets); err != nil {
+		return err
 	}
 	if in.Namespace == "" {
 		return fmt.Errorf("%w: namespace is required", ErrInvalidInput)
 	}
+	// Namespace shape and key vocabulary are both the domain's own rules now.
+	// The legacy user/{id}[/project|session/{id}]/memory parser moved into
+	// memoryPolicy.ValidateNamespace, and the key vocabulary into its
+	// ValidateKey; knowledge accepts externally-sourced keys by returning nil.
 	if err := policy.ValidateNamespace(in.Namespace); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	// Legacy parser enforces the user/{id}[/project|session/{id}]/memory
-	// shape; only the memory domain is required to satisfy it. Knowledge and
-	// future domains have their own shape policy above.
-	if in.Domain == domains.Memory {
-		if err := ValidateNamespace(in.Namespace); err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
-		}
-	}
-	// Memory-domain keys follow dot-notation lowercase rules. Other domains
-	// may carry keys that violate these constraints (e.g. knowledge pointers
-	// using hyphens or slugs from external sources).
-	if in.MemoryKey != "" && in.Domain == domains.Memory {
-		if err := ValidateKey(in.MemoryKey); err != nil {
+	if in.MemoryKey != "" {
+		if err := policy.ValidateKey(in.MemoryKey); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
 		}
 	}
@@ -458,31 +453,8 @@ func validateWriteInput(in WriteInput) error {
 	return nil
 }
 
-// validateFacets is the authoritative persistence-boundary check for the
-// domain/facet contract. Every production writer ultimately reaches
-// WriteRevision, including the root facade, knowledge wrapper, HTTP, MCP, and
-// memory promotion paths, so no outer adapter can bypass these invariants.
-func validateFacets(domain domains.Domain, facets Facets) error {
-	switch domain {
-	case domains.Memory:
-		if !facets.IsZero() {
-			return fmt.Errorf("%w: memory revisions must not carry knowledge facets", ErrInvalidInput)
-		}
-	case domains.Knowledge:
-		if facets.Kind == "" {
-			return fmt.Errorf("%w: facet.kind is required (allowed kinds: %s)",
-				ErrInvalidInput, KnowledgeKindList())
-		}
-		if !IsCanonicalKnowledgeKind(facets.Kind) {
-			return fmt.Errorf("%w: facet.kind %q is not a canonical knowledge kind (allowed kinds: %s)",
-				ErrInvalidInput, facets.Kind, KnowledgeKindList())
-		}
-		if facets.Source == "" {
-			return fmt.Errorf("%w: facet.source is required", ErrInvalidInput)
-		}
-		if facets.Pointer == nil || facets.Pointer.Scheme == "" || facets.Pointer.Locator == "" {
-			return fmt.Errorf("%w: facet.pointer.scheme and facet.pointer.locator are required", ErrInvalidInput)
-		}
-	}
-	return nil
-}
+// DomainPolicy.ValidateFacets is the authoritative persistence-boundary check
+// for the domain/facet contract; see domainpolicy.go. Every production writer
+// ultimately reaches WriteRevision, including the root facade, knowledge
+// wrapper, HTTP, MCP, and memory promotion paths, so no outer adapter can
+// bypass these invariants.
