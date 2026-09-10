@@ -74,6 +74,30 @@ func defaultEventTypes() Vocabulary {
 // memory.Store.WriteRevision), and recall filters namespaces as strings. The
 // ten existing entries stay readable by recall and by tesseract_get; what stops
 // is writing a NEW revision under that namespace.
+//
+// `todos` was added 2026-09-10 (CW-20260909-0036) and is the first type in any
+// vocabulary that declares hot_fields — the first STRUCTURED OBJECT, in other
+// words, rather than a classification of prose. Its lifecycle lives in the
+// revision's consumer_state bag; its content lives where every other type's
+// does, title in payload.summary and notes in payload.body.
+//
+// Todos belong here and tasks do not, per [[task_is_not_todo]]: a Torque task
+// is FSM-governed tracked work with dispatch, budgets and dependencies, and a
+// todo is a flat list item with light state that is often ephemeral. They share
+// an English word and nothing that matters. Tesseract does not mirror Torque's
+// entities or their lifecycle, and nothing here should ever grow a transition
+// rule that starts it.
+//
+// The field set is NIL's store/models.go `Item`, which is a working model
+// rather than a guess ([[nil_personal_task_note_management_direction]]): kind,
+// section, pinned, completed, archived, priority, due_at, threshold_at,
+// recurrence_rule, inbox and external_ref in consumer_state.
+//
+// No required_fields, deliberately. The mechanism works — see
+// memory.validateConsumerStateFor — and declaring one here before NIL has
+// migrated would refuse exactly the rows the migration exists to move.
+// Requiring a field is a decision to take once a consumer is writing, not one
+// to ship ahead of it.
 func defaultMemoryTypes() Vocabulary {
 	return Vocabulary{
 		VocabularyID: VocabMemoryType,
@@ -86,8 +110,47 @@ func defaultMemoryTypes() Vocabulary {
 			{TypeID: "limitations"},
 			{TypeID: "notes"},
 			{TypeID: "outcomes"},
+			{TypeID: "todos", HotFields: todoHotFields()},
 		},
 	}
+}
+
+// todoHotFields is the `todos` type's declared hot fields — the consumer_state
+// keys that carry an index.
+//
+// Four, not eleven. Per [[tesseract_registry_index_ddl_constrained]] the
+// accepted trade-off is that adding a type is free while indexing one costs a
+// release, on the reading that "a type earns an index after it has query load,
+// not on day one." These four are the ones a working list cannot be drawn
+// without:
+//
+//	kind          todo | note | scratch — NIL's list is filtered by it constantly
+//	section       now | soon | anytime — the partition the UI is built around
+//	completed     open vs done, the predicate every view applies
+//	external_ref  the idempotency correlation, looked up by exact value on
+//	              every re-push; unindexed that is a full scan per write
+//
+// `archived`, `inbox`, `pinned` and `priority` are filterable without being
+// indexed — the declaration governs which fields carry an index, not which
+// ones a caller may name.
+//
+// `due_at` is deliberately absent even though it is the obvious fifth. Recall
+// filters consumer_state by SET MEMBERSHIP only; there is no range predicate,
+// so `due before tomorrow` cannot be expressed and an index on it would serve
+// no query anyone can write. That is the `playbook` mistake in
+// [[tesseract_three_domains_equal_importance]] wearing a different hat —
+// shipping a declaration nothing can use reads, to whoever finds it, exactly
+// like a capability. It earns its index the day ranges land.
+//
+// These four names are also the migration's contract:
+// TestDeclaredHotFieldsAreMaterializedByMigration binds this list to the four
+// index statements in internal/contextstore migration 19, so neither can move
+// without the other. This comment does not spell those statements out, and
+// cannot: TestRegistryLoaderContainsNoDDL scans this package for the words of a
+// schema statement, on the reading that a registry which GENERATES DDL has
+// already taken the decision gate G2 refused even if another package runs it.
+func todoHotFields() []string {
+	return []string{"completed", "external_ref", "kind", "section"}
 }
 
 // defaultKnowledgeFacetKinds is the knowledge domain's facet_kind vocabulary.

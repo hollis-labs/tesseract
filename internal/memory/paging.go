@@ -316,8 +316,15 @@ type orderingKey struct {
 	// change to either field.
 	RelatedTo        []string `json:"related_to"`
 	RelatedRelations []string `json:"related_relations"`
-	Reranker         string   `json:"reranker"`
-	RerankerTopK     int      `json:"reranker_topk"`
+	// StateFilters narrows the candidate set in SQL, so a cursor issued under
+	// one and resumed under another offsets into a different sequence. Rendered
+	// to sorted strings by stateFilterFingerprint rather than carried as the
+	// struct, because []any marshals by dynamic type and two callers who sent
+	// the same filter through different decoders would otherwise fingerprint
+	// apart for no visible reason.
+	StateFilters []string `json:"state_filters"`
+	Reranker     string   `json:"reranker"`
+	RerankerTopK int      `json:"reranker_topk"`
 }
 
 // RecallOrderingFingerprint derives the ordering fingerprint for in.
@@ -359,6 +366,7 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		// fingerprint alike or paging restarts for no reason.
 		RelatedTo:        sortedCopy(in.Filters.RelatedTo),
 		RelatedRelations: sortedCopy(in.Filters.RelatedRelations),
+		StateFilters:     stateFilterFingerprint(in.Filters.StateFilters),
 		Reranker:         in.Reranker,
 		RerankerTopK:     in.RerankerTopK,
 	}

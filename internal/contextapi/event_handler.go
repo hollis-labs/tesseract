@@ -1,6 +1,7 @@
 package contextapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -41,6 +42,10 @@ type eventWriteRequest struct {
 	Origin     memory.Origin  `json:"origin,omitempty"`
 	Trigger    memory.Trigger `json:"trigger,omitempty"`
 	Supersedes string         `json:"supersedes,omitempty"`
+
+	// ConsumerState is the writer's operational JSON bag (CW-20260909-0036) —
+	// the state an event carries that the epistemic status ladder cannot say.
+	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
 }
 
 // eventStoreUnavailable writes a 503 when EventStore is not configured.
@@ -67,18 +72,19 @@ func (s *Server) handleEventWrite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rev, err := s.EventStore.Write(r.Context(), event.WriteInput{
-		Namespace:  req.Namespace,
-		Key:        req.Key,
-		Summary:    req.Summary,
-		Body:       req.Body,
-		Author:     req.Author,
-		SessionID:  req.SessionID,
-		Tags:       req.Tags,
-		TTL:        time.Duration(req.TTLSeconds) * time.Second,
-		Confidence: req.Confidence,
-		Origin:     req.Origin,
-		Trigger:    req.Trigger,
-		Supersedes: req.Supersedes,
+		Namespace:     req.Namespace,
+		Key:           req.Key,
+		Summary:       req.Summary,
+		Body:          req.Body,
+		Author:        req.Author,
+		SessionID:     req.SessionID,
+		Tags:          req.Tags,
+		TTL:           time.Duration(req.TTLSeconds) * time.Second,
+		Confidence:    req.Confidence,
+		Origin:        req.Origin,
+		Trigger:       req.Trigger,
+		Supersedes:    req.Supersedes,
+		ConsumerState: req.ConsumerState,
 	})
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {

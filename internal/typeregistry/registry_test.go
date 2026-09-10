@@ -68,7 +68,7 @@ func TestMemoryTypeVocabulary(t *testing.T) {
 	r := typeregistry.NewRegistry()
 	want := []string{
 		"decisions", "feedback", "followups", "learnings",
-		"limitations", "notes", "outcomes",
+		"limitations", "notes", "outcomes", "todos",
 	}
 	got := r.Values(typeregistry.VocabMemoryType)
 	if len(got) != len(want) {
@@ -426,6 +426,23 @@ func TestShippedExampleMatchesTheDefaults(t *testing.T) {
 		}
 		if !loaded.IsClosed(vocab) {
 			t.Errorf("examples/types.yaml leaves %s open; the shipped vocabulary is closed", vocab)
+		}
+		// Hot fields drift the same way the type list does, and worse: a
+		// declaration is what tells an operator which fields carry an index,
+		// so an example that names a different set than the defaults is a
+		// performance claim about a query nobody indexed. Compared per type
+		// rather than as a flat set, because which TYPE declares a field is
+		// half of what the declaration says.
+		for _, typeID := range want {
+			wantType, _ := defaults.Lookup(vocab, typeID)
+			gotType, ok := loaded.Lookup(vocab, typeID)
+			if !ok {
+				continue // the Values comparison above already reported this
+			}
+			if strings.Join(gotType.HotFields, ",") != strings.Join(wantType.HotFields, ",") {
+				t.Errorf("examples/types.yaml %s type %q hot_fields = %v, want the shipped %v",
+					vocab, typeID, gotType.HotFields, wantType.HotFields)
+			}
 		}
 	}
 }

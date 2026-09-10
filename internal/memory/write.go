@@ -22,20 +22,29 @@ var (
 type WriteInput struct {
 	// Domain selects the revision's policy bucket. Empty defaults to
 	// domains.Memory to preserve existing call sites.
-	Domain         domains.Domain
-	Namespace      string
-	MemoryKey      string
-	Supersedes     string
-	Status         Status
-	Author         Author
-	Trigger        Trigger
-	SessionID      string
-	Origin         Origin
-	Confidence     float64
-	Tags           []string
-	TTL            time.Duration
-	Payload        Payload
-	Facets         Facets
+	Domain     domains.Domain
+	Namespace  string
+	MemoryKey  string
+	Supersedes string
+	Status     Status
+	Author     Author
+	Trigger    Trigger
+	SessionID  string
+	Origin     Origin
+	Confidence float64
+	Tags       []string
+	TTL        time.Duration
+	Payload    Payload
+	Facets     Facets
+
+	// ConsumerState is the consumer's operational JSON bag for this revision
+	// (CW-20260909-0036). Empty writes SQL NULL, which is what every revision
+	// predating migration 19 carries and what any writer that has nothing to
+	// say about lifecycle should keep carrying.
+	//
+	// Validated for well-formed JSON, object-ness, and the declaring type's
+	// required_fields. Never read for its values — see consumerstate.go.
+	ConsumerState  json.RawMessage
 	Dedup          string  // "none" (default), "semantic"
 	DedupThreshold float64 // optional per-call override; 0 = use store default
 }
@@ -47,6 +56,14 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		in.Domain = domains.Memory
 	}
 	if err := validateWriteInput(in); err != nil {
+		return Revision{}, err
+	}
+	// Consumer state is validated after validateWriteInput rather than inside
+	// it, because the required-fields half needs a type declaration and
+	// resolving one needs a namespace that has already been proven well-formed.
+	// Handing a malformed namespace to the registry lookup would report a
+	// missing required field for a type nobody named.
+	if err := validateConsumerStateFor(in); err != nil {
 		return Revision{}, err
 	}
 
@@ -158,8 +175,9 @@ INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
     created_at, author_agent_id, author_version, trigger, session_id, origin,
     confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
-    facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
+    consumer_state
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID,
 		memoryID,
 		string(in.Domain),
@@ -184,6 +202,7 @@ INSERT INTO memory_revisions (
 		nullStr(pointerScheme),
 		nullStr(pointerLocator),
 		nullTime(pointerResolvedAt),
+		nullStr(string(in.ConsumerState)),
 	)
 	if err != nil {
 		return Revision{}, fmt.Errorf("insert revision: %w", err)
@@ -316,25 +335,26 @@ INSERT INTO memory_revisions (
 	}
 
 	rev := Revision{
-		RevisionID: revisionID,
-		MemoryID:   memoryID,
-		Domain:     in.Domain,
-		Namespace:  in.Namespace,
-		MemoryKey:  in.MemoryKey,
-		Status:     status,
-		Supersedes: in.Supersedes,
-		CreatedAt:  now,
-		Author:     in.Author,
-		Trigger:    in.Trigger,
-		SessionID:  in.SessionID,
-		Origin:     in.Origin,
-		Confidence: in.Confidence,
-		Tags:       tags,
-		TTLSeconds: ttlSeconds,
-		ExpiresAt:  expiresAt,
-		Payload:    in.Payload,
-		Facets:     in.Facets,
-		DedupMatch: dedupMatch,
+		RevisionID:    revisionID,
+		MemoryID:      memoryID,
+		Domain:        in.Domain,
+		Namespace:     in.Namespace,
+		MemoryKey:     in.MemoryKey,
+		Status:        status,
+		Supersedes:    in.Supersedes,
+		CreatedAt:     now,
+		Author:        in.Author,
+		Trigger:       in.Trigger,
+		SessionID:     in.SessionID,
+		Origin:        in.Origin,
+		Confidence:    in.Confidence,
+		Tags:          tags,
+		TTLSeconds:    ttlSeconds,
+		ExpiresAt:     expiresAt,
+		Payload:       in.Payload,
+		Facets:        in.Facets,
+		ConsumerState: in.ConsumerState,
+		DedupMatch:    dedupMatch,
 	}
 	return rev, nil
 }

@@ -44,6 +44,15 @@ type tesseractLookupRequest struct {
 	RelatedTo        []string `json:"related_to,omitempty"`
 	RelatedRelations []string `json:"related_relations,omitempty"`
 
+	// StateFilters narrows results by consumer_state field values. Peer of the
+	// MCP tesseract_recall argument of the same name — same set-membership
+	// semantics, same SQL-before-limit application, same refusal of a field
+	// name that is not a lowercase identifier.
+	//
+	// Values are JSON scalars, so `{"field":"completed","values":[false]}`
+	// matches a bag holding the JSON literal false, not the string "false".
+	StateFilters []memory.StateFilter `json:"state_filters,omitempty"`
+
 	Origins       []memory.Origin `json:"origins,omitempty"`
 	Statuses      []memory.Status `json:"statuses,omitempty"`
 	Tags          []string        `json:"tags,omitempty"`
@@ -155,6 +164,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			PointerHealth:    req.PointerHealth,
 			RelatedTo:        req.RelatedTo,
 			RelatedRelations: req.RelatedRelations,
+			StateFilters:     req.StateFilters,
 		},
 	}
 	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)

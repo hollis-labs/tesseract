@@ -205,6 +205,7 @@ var codeTokenRE = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
 // stops appearing, so this cannot become a place a real violation hides.
 var nonCodeVocabulary = map[string]string{
 	"revision_scope": "argument on context_view and tesseract_recall (current|timeline); shares the trailing segment of insufficient_scope",
+	"consumer_state": "the writer's operational JSON bag on a revision (CW-20260909-0036); an argument on the write doors and the thing state_filters filters, not a code — it shares the trailing segment of invalid_state",
 }
 
 // suspectedErrorCodes returns tokens in text that look like error codes but are

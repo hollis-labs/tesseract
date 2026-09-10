@@ -30,7 +30,7 @@ The thread through those: a later session should **meet** it while working nearb
 
 From the `memory_write` MCP declaration:
 
-- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`. Use `notes` as the default catch-all when no stronger type fits. (`references` was retired 2026-09-10 — a pointer to where information lives is content you go to, so it is knowledge.) See `tesseract_skills namespaces` for the per-type meaning.
+- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `todos`. Use `notes` as the default catch-all when no stronger type fits. (`references` was retired 2026-09-10 — a pointer to where information lives is content you go to, so it is knowledge.) See `tesseract_skills namespaces` for the per-type meaning.
 - `author_agent_id` (required)
 - `trigger` (required) - one of `explicit`, `post_compact`, `per_turn`, `promotion`, `manual`.
 - `session_id` (required)
@@ -38,7 +38,7 @@ From the `memory_write` MCP declaration:
 - `confidence` (required) - float in `[0, 1.0]`.
 - `payload_summary` (required)
 
-Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; default `draft`), `author_version`, `tags` (JSON array), `ttl_seconds`, `payload_body`, `dedup` (`none`|`semantic`), `dedup_threshold`.
+Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; default `draft`), `author_version`, `tags` (JSON array), `ttl_seconds`, `payload_body`, `consumer_state` (JSON object; see below), `dedup` (`none`|`semantic`), `dedup_threshold`.
 
 ## A complete write, on both surfaces
 
@@ -91,9 +91,49 @@ The field-by-field mapping, for the fields that do not simply carry across:
 | `author_agent_id`, `author_version` | `author: {agent_id, agent_version}` |
 | `payload_summary`, `payload_body` | `payload: {summary, body}` |
 | `tags` (JSON-encoded string) | `tags` (JSON array) |
+| `consumer_state` (JSON-encoded string) | `consumer_state` (JSON object) |
 | — | `domain` (optional; defaults to `memory`, and `/v1/memory/write` refuses any other value) |
 
 `facets` exists on the HTTP body but is a knowledge-domain field: a memory write carrying a non-zero facet is rejected. Facets go to `POST /v1/knowledge/write` — see `tesseract_skills knowledge`.
+
+## `consumer_state` — the bag that is yours, not Tesseract's
+
+A revision can carry `consumer_state`: a JSON **object** holding your own operational state for that entry. Tesseract checks that it is well-formed JSON and an object, plus any `required_fields` the type declares, and **never reads a value out of it**. No vocabulary, no transition checking, ever. Nothing decays, ranks or expires differently because of what is in it.
+
+**It is not the `state` block on a recall result.** That one is Tesseract's own activation bookkeeping — `activation`, `access_count`, `current_revision` — scoped to the entry and not writable from any surface. `consumer_state` is scoped to one revision, is written by you, and is immutable with the revision that carries it: changing state means writing a new revision, which is what makes an item's history readable.
+
+Three bags, three jobs, and collapsing them is the mistake to avoid:
+
+| Bag | Holds | Example |
+|---|---|---|
+| `consumer_state` | lifecycle | `{"completed": false, "section": "now"}` |
+| `payload` | content | the title and the notes |
+| `tags` | cross-cutting labels | `["errand", "q3"]` |
+
+Filter on it with `state_filters` — see `tesseract_skills recall-and-ranking`.
+
+### `todos`, the first structured type
+
+`user/{id}/memory/todos` holds flat list items with light state. **A todo is not a task**: a Torque task is FSM-governed tracked work with dispatch, budgets and dependencies, and it stays in Torque. A todo is a note with a checkbox, often ephemeral.
+
+The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag:
+
+```json
+{
+  "namespace": "user/chrispian/memory/todos",
+  "author_agent_id": "claude",
+  "trigger": "explicit",
+  "session_id": "2026-09-10:inbox",
+  "origin": "user",
+  "confidence": 0.9,
+  "payload_summary": "renew the domain registration",
+  "consumer_state": "{\"kind\":\"todo\",\"section\":\"now\",\"completed\":false,\"pinned\":true,\"priority\":\"high\",\"due_at\":\"2026-09-30\",\"external_ref\":\"fe-doc-991\"}"
+}
+```
+
+Fields NIL uses: `kind` (todo|note|scratch), `section` (now|soon|anytime), `pinned`, `completed`, `archived`, `priority`, `due_at`, `threshold_at`, `recurrence_rule`, `inbox`, `external_ref`. None of them means anything to Tesseract — they are listed so consumers agree with each other, not because the store checks them. `external_ref` is the one worth carrying deliberately: a writer-supplied idempotency key for correlating to an external system.
+
+Four of those carry an index (`completed`, `external_ref`, `kind`, `section`); the rest are filterable and scan.
 
 ## The read loop: recall → use → touch
 

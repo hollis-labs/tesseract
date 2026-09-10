@@ -39,8 +39,11 @@ user/{user_id}/session/{session_id}/memory/{type}  # session scope, 6 seg
 - `limitations` — known constraints or preserved tech debt
 - `notes` — catch-all default bucket for everything else
 - `outcomes` — what happened / what was true after the work
+- `todos` — flat list items with light state, often ephemeral
 
-Every one of those is content a later session should **meet** while working nearby rather than go looking for — which is what makes them memory. See `tesseract_skills start-here` for the boundary and where it stops.
+The first seven are content a later session should **meet** while working nearby rather than go looking for — which is what makes them memory. See `tesseract_skills start-here` for the boundary and where it stops.
+
+**`todos` is the odd one out and is the exception on purpose** (CW-20260909-0036). It is not a distilled understanding you meet by recall; it is a working list you read by asking for it. It is here because it is the first STRUCTURED type: its lifecycle lives in each revision's `consumer_state` bag rather than in prose, and four of those fields carry an index. **A todo is not a Torque task** — a task is FSM-governed tracked work with dispatch, budgets and dependencies and stays in Torque; a todo is a note with a checkbox. See `tesseract_skills memory` for the shape.
 
 **`references` was retired 2026-09-10** (CW-20260910-0067). It meant "pointers to where information lives", and a pointer is content you go *to* — the knowledge kinds `pointer` and `doc` already carry it. Write those to `knowledge_write` instead. The ten entries filed under the old type stay readable: the vocabulary is enforced on the write path only, so recall and `tesseract_get` still return them; what stops is writing a new revision there.
 

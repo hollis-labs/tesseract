@@ -1,6 +1,7 @@
 package contextapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
@@ -171,6 +172,9 @@ type knowledgeWriteRequest struct {
 	TTLSeconds int64          `json:"ttl_seconds,omitempty"`
 	Confidence float64        `json:"confidence,omitempty"`
 	Supersedes string         `json:"supersedes,omitempty"`
+
+	// ConsumerState is the caller's operational JSON bag (CW-20260909-0036).
+	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
 }
 
 func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
@@ -188,19 +192,20 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rev, err := s.KnowledgeStore.Write(r.Context(), knowledge.WriteInput{
-		Namespace:  req.Namespace,
-		Key:        req.Key,
-		Kind:       req.Kind,
-		Source:     req.Source,
-		Pointer:    req.Pointer,
-		Summary:    req.Summary,
-		Body:       req.Body,
-		Author:     req.Author,
-		SessionID:  req.SessionID,
-		Tags:       req.Tags,
-		TTL:        time.Duration(req.TTLSeconds) * time.Second,
-		Confidence: req.Confidence,
-		Supersedes: req.Supersedes,
+		Namespace:     req.Namespace,
+		Key:           req.Key,
+		Kind:          req.Kind,
+		Source:        req.Source,
+		Pointer:       req.Pointer,
+		Summary:       req.Summary,
+		Body:          req.Body,
+		Author:        req.Author,
+		SessionID:     req.SessionID,
+		Tags:          req.Tags,
+		TTL:           time.Duration(req.TTLSeconds) * time.Second,
+		Confidence:    req.Confidence,
+		Supersedes:    req.Supersedes,
+		ConsumerState: req.ConsumerState,
 	})
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {

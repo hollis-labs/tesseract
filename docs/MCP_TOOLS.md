@@ -143,7 +143,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup); memory revisions cannot carry knowledge facets |
+| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup); memory revisions cannot carry knowledge facets; optional `consumer_state` JSON bag |
 | `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `tesseract_skills promotion` | Promote session → user / project |
 
 ### Knowledge
@@ -217,6 +217,8 @@ mcp__tesseract__memory_write {
 ```
 
 Returns the created `memory.Revision`. Semantic dedup: same-key matches auto-supersede; cross-key matches surface as `DedupMatch`.
+
+**`consumer_state`** is an optional JSON object on any write door, holding the caller's own lifecycle data for that revision (CW-20260909-0036). Tesseract validates well-formed JSON, object-ness and the type's declared `required_fields`, and never reads a value out of it — no vocabulary, no transition checking. It is **not** the `state` block on a full-mode recall result, which is Tesseract's activation bookkeeping and is not writable. Filter on it with `state_filters` on `tesseract_recall` (HTTP: `POST /v1/tesseract/lookup`). `user/{id}/memory/todos` is the first type built on it; see `tesseract_skills memory`.
 
 ### 2. Write a knowledge entry
 

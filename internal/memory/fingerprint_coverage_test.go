@@ -31,6 +31,16 @@ func nonZero(t *testing.T, f reflect.Value, name string) reflect.Value {
 	ty := f.Type()
 	switch ty.Kind() {
 	case reflect.Slice:
+		// StateFilter is the one non-string element in this struct, and it is
+		// built explicitly rather than by reflection because a probe with an
+		// empty Values slice would fingerprint identically to the baseline —
+		// stateFilterFingerprint renders it as `field=` either way — and the
+		// guard would pass while proving nothing.
+		if ty.Elem() == reflect.TypeOf(memory.StateFilter{}) {
+			return reflect.ValueOf([]memory.StateFilter{
+				{Field: "fingerprint_probe", Values: []any{"probe"}},
+			}).Convert(ty)
+		}
 		elem := reflect.New(ty.Elem()).Elem()
 		switch elem.Kind() {
 		case reflect.String:

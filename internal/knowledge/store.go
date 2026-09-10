@@ -16,6 +16,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -63,6 +64,12 @@ type WriteInput struct {
 	TTL        time.Duration
 	Confidence float64
 	Supersedes string
+
+	// ConsumerState is the writer's operational JSON bag for this entry
+	// (CW-20260909-0036). Optional and usually absent — a knowledge entry is a
+	// thing you come back for by name, and most of them have no lifecycle
+	// beyond the epistemic one `status` already carries.
+	ConsumerState json.RawMessage
 }
 
 // Write applies knowledge-specific defaults and forwards to the underlying
@@ -107,6 +114,7 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 			Source:  in.Source,
 			Pointer: &pointer,
 		},
+		ConsumerState: in.ConsumerState,
 	}
 	return s.mem.WriteRevision(ctx, memIn)
 }

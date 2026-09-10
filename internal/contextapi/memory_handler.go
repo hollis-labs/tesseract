@@ -1,6 +1,7 @@
 package contextapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -46,6 +47,16 @@ type memoryWriteRequest struct {
 	Facets         memory.Facets  `json:"facets,omitempty"`
 	Dedup          string         `json:"dedup,omitempty"`
 	DedupThreshold float64        `json:"dedup_threshold,omitempty"`
+
+	// ConsumerState is the caller's own operational JSON bag for this revision
+	// (CW-20260909-0036). Nested as an object here, matching the rest of this
+	// surface; the MCP peer takes the same fact as a JSON-encoded string
+	// because MCP tool schemas favor flat scalar parameters, the way `tags`
+	// already differs between the two.
+	//
+	// NOT memory_state, which is the mutable activation row and is not
+	// writable from any surface.
+	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
 }
 
 func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +98,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		Facets:         req.Facets,
 		Dedup:          req.Dedup,
 		DedupThreshold: req.DedupThreshold,
+		ConsumerState:  req.ConsumerState,
 	}
 
 	rev, err := s.MemoryStore.WriteRevision(r.Context(), in)

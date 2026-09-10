@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -14,9 +15,11 @@ import (
 //
 //	keys     identity only: revision_id, memory_id, domain, namespace,
 //	         memory_key, created_at (+ score). The browse/enumerate shape.
-//	summary  keys + status, tags, confidence, and payload.summary. The
-//	         working default: enough to triage without carrying bodies.
-//	full     the complete RecallResult, including payload.body and state.
+//	summary  keys + status, tags, confidence, payload.summary and
+//	         consumer_state. The working default: enough to triage without
+//	         carrying bodies.
+//	full     the complete RecallResult, including payload.body and the
+//	         memory_state block.
 //
 // Field paths are stable across modes: a caller reads
 // `revision.payload.summary` in both summary and full mode. Only presence
@@ -83,6 +86,24 @@ type ProjectedRevision struct {
 	Tags       []string `json:"tags,omitempty"`
 	Confidence *float64 `json:"confidence,omitempty"`
 	Payload    *Payload `json:"payload,omitempty"`
+
+	// ConsumerState rides on summary and not on keys, by the same argument
+	// PointerHealth does (CW-20260909-0036).
+	//
+	// Carrying it under summary is what makes structured objects usable at the
+	// DEFAULT projection: a consumer listing its todos wants section, completed
+	// and due_at, and if the only way to see them is payload_mode=full then
+	// every list view drags every body through the wire to read four scalars.
+	// That is the opposite of what the projection ladder is for.
+	//
+	// Withholding it under keys keeps that rung identity-only. A caller
+	// enumerating IDs who then wants lifecycle re-requests at summary — the
+	// same recall → choose → hydrate step the modes already ask for.
+	//
+	// omitempty is correct here where it would be wrong for Confidence: a
+	// json.RawMessage is absent or it is a JSON object, and there is no
+	// zero-valued bag that means something different from no bag at all.
+	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
 }
 
 // ProjectedResult is the wire shape of one recall hit under keys or summary
@@ -168,6 +189,7 @@ func ProjectResults(results []RecallResult, mode PayloadMode) any {
 			// Summary only — Body is dropped, never truncated. A caller
 			// that needs it hydrates by revision_id.
 			pr.Revision.Payload = &Payload{Summary: r.Revision.Payload.Summary}
+			pr.Revision.ConsumerState = r.Revision.ConsumerState
 			pr.PointerHealth = r.PointerHealth
 		}
 		out = append(out, pr)
@@ -221,6 +243,7 @@ func ProjectRevisions(revs []Revision, mode PayloadMode) any {
 			// needs the reasoning itself re-reads at full or hydrates by
 			// revision_id.
 			pr.Payload = &Payload{Summary: r.Payload.Summary}
+			pr.ConsumerState = r.ConsumerState
 		}
 		out = append(out, pr)
 	}

@@ -52,6 +52,13 @@ vocabularies:
   # `references` was retired 2026-09-10 (CW-20260910-0067) — a pointer to where
   # information lives is content you go to, so it is knowledge (`pointer`,
   # `doc`). Ten rows still carry it and stay readable.
+  #
+  # `todos` (CW-20260909-0036) is the first STRUCTURED OBJECT: its lifecycle
+  # lives in each revision's `consumer_state` JSON bag, and `hot_fields` names
+  # the keys of that bag which carry an index. Declaring a hot field here does
+  # NOT create the index — a migration does, reviewed by a human, per
+  # [[tesseract_registry_index_ddl_constrained]]. Add one to this list and it
+  # is filterable (every field is) but unindexed until a release ships.
   # ---------------------------------------------------------------------
   - vocabulary_id: memory.type
     closed: true
@@ -63,6 +70,8 @@ vocabularies:
       - type_id: limitations
       - type_id: notes # the catch-all when nothing stronger fits
       - type_id: outcomes
+      - type_id: todos # a flat list item with light state — NOT a Torque task
+        hot_fields: [completed, external_ref, kind, section]
 
   # ---------------------------------------------------------------------
   # context.record_type — the context store's record types.

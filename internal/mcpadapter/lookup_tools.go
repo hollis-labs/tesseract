@@ -79,6 +79,7 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"and nothing else. That is the lineage query: pair it with `revision_scope: \"timeline\"` to "+
 				"get the entry's revision history through the graph. "+
 				"No effect without `related_to`.")),
+		mcp.WithString("state_filters", mcp.Description(stateFiltersArgDescription)),
 		mcp.WithString("origins", mcp.Description("JSON array of origin filters")),
 		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
@@ -169,6 +170,13 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	// this door, both HTTP peers and the nested-filters route cannot drift on
 	// what a relation is.
 
+	stateFilters, errRes := parseStateFiltersArg(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	// Field shape and value types are validated by the store, not here, so
+	// this door and both HTTP peers cannot drift on what a state filter is.
+
 	originStrs, errRes := unmarshalStrings("origins")
 	if errRes != nil {
 		return errRes, nil
@@ -238,6 +246,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 			PointerHealth:    pointerHealth,
 			RelatedTo:        relatedTo,
 			RelatedRelations: relatedRelations,
+			StateFilters:     stateFilters,
 		},
 	}
 

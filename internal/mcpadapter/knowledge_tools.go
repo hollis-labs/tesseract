@@ -59,6 +59,7 @@ func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the writer")),
 		mcp.WithString("author_version", mcp.Description("Agent version string")),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
+		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
 		mcp.WithString("tags", mcp.Description("Optional JSON array of string tags")),
 		mcp.WithNumber("ttl_seconds", mcp.Description("Optional TTL in seconds (0 = no expiry)")),
 		mcp.WithNumber("confidence", mcp.Description("Confidence score in [0, 1.0] (default 0.9)")),
@@ -106,11 +107,12 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),
 		},
-		SessionID:  req.GetString("session_id", ""),
-		Tags:       tags,
-		TTL:        time.Duration(ttlSeconds) * time.Second,
-		Confidence: req.GetFloat("confidence", 0),
-		Supersedes: req.GetString("supersedes", ""),
+		SessionID:     req.GetString("session_id", ""),
+		Tags:          tags,
+		TTL:           time.Duration(ttlSeconds) * time.Second,
+		Confidence:    req.GetFloat("confidence", 0),
+		Supersedes:    req.GetString("supersedes", ""),
+		ConsumerState: consumerStateArg(req),
 	}
 
 	rev, err := a.KnowledgeStore.Write(ctx, in)
