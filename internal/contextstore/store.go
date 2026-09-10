@@ -1045,8 +1045,10 @@ END`); err != nil {
 // matching on the driver's "duplicate column name" text would tie the
 // migration list to a message string the driver is free to change.
 func columnExists(ctx context.Context, tx *sql.Tx, table, column string) (bool, error) {
-	// #nosec G202 -- table is a compile-time literal from the migration list,
-	// never caller input; PRAGMA does not accept a bind parameter here.
+	// Both arguments are BOUND, not interpolated: pragma_table_info is a
+	// table-valued function, so it takes a parameter where the bare
+	// `PRAGMA table_info(x)` statement form would not. That is why there is no
+	// #nosec here — G202 is about SQL string concatenation and there is none.
 	rows, err := tx.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
 	if err != nil {
 		return false, err

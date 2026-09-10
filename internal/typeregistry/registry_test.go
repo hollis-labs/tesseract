@@ -3,6 +3,7 @@ package typeregistry_test
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -433,14 +434,23 @@ func TestShippedExampleMatchesTheDefaults(t *testing.T) {
 		// performance claim about a query nobody indexed. Compared per type
 		// rather than as a flat set, because which TYPE declares a field is
 		// half of what the declaration says.
+		//
+		// Order is NOT compared. Nothing reads hot_fields positionally — the
+		// migration materializes one index per name and
+		// TestDeclaredHotFieldsAreMaterializedByMigration matches them through
+		// a map — so a reordering in the example is not drift, and failing on
+		// one would train the next reader to treat this test as noise. Sorted
+		// copies rather than set membership, so a name DUPLICATED in the
+		// example still fails: that is a config mistake, not a reordering.
 		for _, typeID := range want {
 			wantType, _ := defaults.Lookup(vocab, typeID)
 			gotType, ok := loaded.Lookup(vocab, typeID)
 			if !ok {
 				continue // the Values comparison above already reported this
 			}
-			if strings.Join(gotType.HotFields, ",") != strings.Join(wantType.HotFields, ",") {
-				t.Errorf("examples/types.yaml %s type %q hot_fields = %v, want the shipped %v",
+			if sortedCopy(gotType.HotFields) != sortedCopy(wantType.HotFields) {
+				t.Errorf("examples/types.yaml %s type %q hot_fields = %v, want the shipped %v "+
+					"(compared without regard to order)",
 					vocab, typeID, gotType.HotFields, wantType.HotFields)
 			}
 		}
@@ -520,4 +530,13 @@ func TestShippedDefaultsParse(t *testing.T) {
 			}
 		}
 	}
+}
+
+// sortedCopy renders a declaration list to a canonical, order-insensitive
+// string for comparison. It copies before sorting: sort.Strings mutates, and
+// these slices belong to a live registry that other assertions still read.
+func sortedCopy(in []string) string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return strings.Join(out, ",")
 }
