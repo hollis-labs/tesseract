@@ -73,10 +73,21 @@ human approval/apply stages.
 
 ### Recall discipline
 
-Prefer summary projection, hydrate only selected revision IDs, and call
-`tesseract_touch` only for summary-only results that actually affected the work.
-Do not turn Tesseract into a task tracker; persist durable context and reasoning,
-while the project's task system remains authoritative for work state.
+Recall at the default projection, hydrate only the revision IDs worth reading,
+then call `tesseract_touch` after the reasoning for the hits that actually shaped
+it. Recall deliberately does not reinforce a result for merely returning it — a
+search result is the ranker's guess, and a guess that reinforces itself turns
+popular-because-returned into actually-useful within a few cycles. Under-reporting
+is fine; over-reporting teaches the ranking that noise is signal.
+
+A recalled record is evidence of reasoning that held at the time, not a ruling on
+the current instruction. If it surfaces a consequence that is live now, raise the
+consequence; a record disagreeing with a current direction is not by itself
+grounds to push back.
+
+Tesseract holds durable context and reasoning; the project's task system stays
+authoritative for work state. Keeping work state out of here is what stops recall
+from being dominated by rows that were only ever true for an afternoon.
 
 ### Security and privacy
 

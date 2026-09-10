@@ -57,7 +57,7 @@ Naming rules for a proposed kind:
 - **snake_case.** Multi-word kinds join with `_` — `mcp_server`, `session_close`, `project_canonical`. This is what the vocabulary validates against, so a hyphenated or spaced value is rejected.
 - **Stay short**, and singular unless the thing is inherently plural.
 - **Stay stable.** The value is a public API once adopted; changing it is a migration, not an edit.
-- **Earn it.** A kind is worth adding when something emits it systematically and filing those records under an existing kind would discard information.
+- **Earn it — and know what the bar is for.** A kind is worth adding when something emits it systematically and filing those records under an existing kind would discard information. The bar exists to stop the vocabulary filling with values nothing writes; it is not a waiting period, and it is not a reason to withhold a value a shipped producer is blocked on. A producer that is built and stalled waiting for the kind is the opposite of the case the bar was aimed at — that is how `wiki_page` landed. When you hit that case, say so and ask; do not read the bar as a refusal you have to enforce.
 
 ## Filtering by facet
 

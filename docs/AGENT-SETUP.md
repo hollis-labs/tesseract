@@ -73,6 +73,7 @@ The main groups are:
 - `context_*` for context records, views, packets, plans, promotion, and audit
 - `memory_*` for memory writes and domain workflows
 - `knowledge_*` for pointer-backed knowledge writes
+- `event_*` for the append-only narrative log — an agent's reasoning in prose, and its linear read
 - `tesseract_*` for cross-domain reads, history, recall, revision access, and touch
 
 The full inventory is in [MCP tools](MCP_TOOLS.md).
