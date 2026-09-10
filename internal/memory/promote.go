@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/hollis-labs/tesseract/domains"
 )
 
 // PromoteInput carries parameters for promoting a session-scoped memory
@@ -112,7 +114,7 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		if key == "" {
 			key = promoted.MemoryID
 		}
-		_ = s.auditSink.EmitMemoryPromote(ctx, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
+		_ = s.auditSink.EmitRevision(ctx, string(domains.Memory), auditOpPromote, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
 	}
 
 	return promoted, nil
@@ -191,7 +193,7 @@ LIMIT 1`,
 			if key == "" {
 				key = memoryID
 			}
-			_ = s.auditSink.EmitMemoryDeprecate(ctx, "system", state.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitRevision(ctx, string(domains.Memory), auditOpDeprecate, "system", state.Namespace, key, revisionID, nil)
 		}
 	}
 

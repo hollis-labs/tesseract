@@ -158,14 +158,38 @@ func (s *Store) GetRevisionByID(ctx context.Context, revisionID string) (Revisio
 //     now holds for callers that want to tell "no such memory" apart from
 //     "that could never have been a memory key".
 func explainMemoryKeyMiss(memoryKey string, err error) error {
+	return explainKeyMiss(memoryPolicy{}, memoryKey, err)
+}
+
+// explainKeyMiss is explainMemoryKeyMiss for an arbitrary domain: the same
+// diagnosis, asking that domain's own key policy what is wrong with the key.
+// A domain whose keys carry external slugs answers nil and the miss is
+// returned unexplained, which is what the domain-scoped readers used to spell
+// as `if domain == domains.Memory`.
+func explainKeyMiss(policy DomainPolicy, memoryKey string, err error) error {
 	if err == nil || memoryKey == "" || !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	keyErr := ValidateKey(memoryKey)
+	keyErr := policy.ValidateKey(memoryKey)
 	if keyErr == nil {
 		return err
 	}
 	return fmt.Errorf("%w (%w)", err, keyErr)
+}
+
+// explainDomainKeyMiss routes a caller-supplied domain to its key policy.
+//
+// An unregistered domain yields no policy and the error is returned untouched.
+// That is the same outcome the old `domain == domains.Memory` guard produced
+// for a junk domain, and it is the right one: these readers take the domain
+// from the caller, and a read that found nothing should report that rather
+// than be replaced by a complaint about the domain argument.
+func explainDomainKeyMiss(domain domains.Domain, memoryKey string, err error) error {
+	policy, perr := policyFor(domain)
+	if perr != nil {
+		return err
+	}
+	return explainKeyMiss(policy, memoryKey, err)
 }
 
 // GetCurrent returns the current (latest) revision for a logical memory
@@ -256,9 +280,7 @@ func (s *Store) GetCurrentInDomain(ctx context.Context, domain domains.Domain, n
 			ErrNotFound, namespace, memoryKey, domain)
 	}
 	if err != nil {
-		if domain == domains.Memory {
-			err = explainMemoryKeyMiss(memoryKey, err)
-		}
+		err = explainDomainKeyMiss(domain, memoryKey, err)
 		return Revision{}, err
 	}
 	return rev, nil
@@ -304,9 +326,7 @@ func (s *Store) GetHistoryInDomain(ctx context.Context, domain domains.Domain, n
 		err = fmt.Errorf("%w: no %s revisions for %s/%s", ErrNotFound, domain, namespace, memoryKey)
 	}
 	if err != nil {
-		if domain == domains.Memory {
-			err = explainMemoryKeyMiss(memoryKey, err)
-		}
+		err = explainDomainKeyMiss(domain, memoryKey, err)
 		return nil, err
 	}
 	return out, nil
