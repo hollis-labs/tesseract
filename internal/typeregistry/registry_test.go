@@ -68,7 +68,7 @@ func TestMemoryTypeVocabulary(t *testing.T) {
 	r := typeregistry.NewRegistry()
 	want := []string{
 		"decisions", "feedback", "followups", "learnings",
-		"limitations", "notes", "outcomes", "references",
+		"limitations", "notes", "outcomes",
 	}
 	got := r.Values(typeregistry.VocabMemoryType)
 	if len(got) != len(want) {
@@ -86,7 +86,7 @@ func TestMemoryTypeVocabulary(t *testing.T) {
 
 // TestKnowledgeKindVocabularyIsClosedAndCarriesWikiPage covers both halves of
 // what this slice does to the knowledge kinds: closure survives the move from
-// a Go map to a declaration, and wiki_page becomes the 12th kind.
+// a Go map to a declaration, and wiki_page is in the set.
 //
 // wiki_page was approved on 2026-09-09 and lands here rather than on Loom's
 // first write, because Loom is built and blocked waiting for it — see
@@ -97,14 +97,17 @@ func TestKnowledgeKindVocabularyIsClosedAndCarriesWikiPage(t *testing.T) {
 		t.Fatal("knowledge.facet_kind must declare closed: true")
 	}
 	kinds := r.Values(typeregistry.VocabKnowledgeFacetKind)
-	if len(kinds) != 12 {
-		t.Fatalf("knowledge kinds = %d (%v), want 12", len(kinds), kinds)
+	if len(kinds) != 11 {
+		t.Fatalf("knowledge kinds = %d (%v), want 11", len(kinds), kinds)
 	}
 	if !r.Allows(typeregistry.VocabKnowledgeFacetKind, "wiki_page") {
 		t.Error("wiki_page is not in the vocabulary; Loom stays blocked")
 	}
 	// The retired and mis-cased spellings stay out.
-	for _, gone := range []string{"issue/bug", "mcp-server", "session-close", "wiki-page"} {
+	// "learning" was retired by CW-20260910-0067: it duplicated the `learnings`
+	// memory type one letter apart, across a domain boundary a record cannot be
+	// moved back over.
+	for _, gone := range []string{"issue/bug", "learning", "mcp-server", "session-close", "wiki-page"} {
 		if r.Allows(typeregistry.VocabKnowledgeFacetKind, gone) {
 			t.Errorf("vocabulary accepts %q", gone)
 		}

@@ -14,6 +14,14 @@ import (
 // in the new {type} allowlist. Anything not in this map and not directly a
 // member of the allowlist is treated as "no type prefix" and the row lands
 // in the default `notes` bucket with the residual key preserved.
+//
+// This map must only ever name types the vocabulary still holds. The apply
+// path writes namespaces with raw UPDATE statements rather than through
+// WriteRevision, so it does not inherit the write path's vocabulary check: a
+// stale entry here would land rows in a namespace nobody can write a second
+// revision to — readable but unwritable, the trap the 2026-08-25 kind
+// normalization existed to remove. `reference`/`references` point at `notes`
+// for that reason, since CW-20260910-0067 retired the `references` type.
 var typeNormalize = map[string]string{
 	"decision":    "decisions",
 	"decisions":   "decisions",
@@ -24,8 +32,8 @@ var typeNormalize = map[string]string{
 	"feedback":    "feedback",
 	"outcome":     "outcomes",
 	"outcomes":    "outcomes",
-	"reference":   "references",
-	"references":  "references",
+	"reference":   "notes",
+	"references":  "notes",
 	"learning":    "learnings",
 	"learnings":   "learnings",
 	"note":        "notes",

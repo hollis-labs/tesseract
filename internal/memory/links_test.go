@@ -235,7 +235,6 @@ func TestLinkResolution_NamespaceRule(t *testing.T) {
 			"user/chrispian/memory/learnings",
 			"user/chrispian/memory/limitations",
 			"user/chrispian/memory/outcomes",
-			"user/chrispian/memory/references",
 		}
 		for _, ns := range crowd {
 			if _, err := ms.WriteRevision(ctx, linkInput(ns, "crowded", "claimant")); err != nil {

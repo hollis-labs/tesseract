@@ -124,7 +124,7 @@ func TestValidateNamespace(t *testing.T) {
 
 func TestTypeAllowlist(t *testing.T) {
 	// Default allowlist contains all 8 locked types.
-	expect := []string{"decisions", "feedback", "followups", "learnings", "limitations", "notes", "outcomes", "references"}
+	expect := []string{"decisions", "feedback", "followups", "learnings", "limitations", "notes", "outcomes"}
 	got := memory.TypeAllowlist()
 	if strings.Join(got, ",") != strings.Join(expect, ",") {
 		t.Errorf("TypeAllowlist() = %v, want %v", got, expect)

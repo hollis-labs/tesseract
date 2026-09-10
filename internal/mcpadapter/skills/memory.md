@@ -7,18 +7,22 @@ related: [namespaces, revisions, recall-and-ranking, promotion]
 
 # Memory domain
 
-The memory domain is for **agent-authored content you'll want to recall later**: observations, preferences, session notes, distilled understanding. Every write is append-only and revisioned; recall is multi-knob.
+**Memory is content that comes *to you*** — recall surfaces it while you are working on something nearby, and a later revision supersedes it rather than editing it. Knowledge is the other half: content you go *to*, because you already knew it was there. **The full statement, including where the rule stops applying, is in `tesseract_skills start-here`; it is stated once, there.**
+
+Every write is append-only and revisioned; recall is multi-knob.
 
 ## When to use memory
 
-- Something the agent noticed and should remember.
-- A user preference stated explicitly.
-- A session summary worth carrying forward.
-- Anything you might want to find later by activation, similarity, or hybrid relevance.
+- A design call and the reasoning behind it.
+- A constraint or preserved tech debt someone will otherwise rediscover.
+- Work deliberately deferred, with enough context to pick it up.
+- Guidance about how to approach work; what was true after the work; what a session distilled.
+
+The thread through those: a later session should **meet** it while working nearby, without having known to ask.
 
 ## When NOT to use memory
 
-- **External content you're referencing.** Use knowledge (`knowledge_write`) - the pointer-first model preserves provenance.
+- **Content someone will come back for by name.** A project's canonical, a handoff, a playbook, a doc or package reference — `knowledge_write`, whether or not it points at anything outside Tesseract.
 - **Generic state records.** Use `context_write` - memory has specific lifecycle semantics (activation, promotion, dedup) you don't need for plain records.
 - **Ephemeral session scratch.** Write to session-scoped memory (`user/{id}/session/{sid}/memory/{type}`) when you want promotion later; use app context records (`app/{id}/session/*`) when you just want ephemeral scratch.
 
@@ -26,7 +30,7 @@ The memory domain is for **agent-authored content you'll want to recall later**:
 
 From the `memory_write` MCP declaration:
 
-- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `references`. Use `notes` as the default catch-all when no stronger type fits. See `tesseract_skills namespaces` for the per-type meaning.
+- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`. Use `notes` as the default catch-all when no stronger type fits. (`references` was retired 2026-09-10 — a pointer to where information lives is content you go to, so it is knowledge.) See `tesseract_skills namespaces` for the per-type meaning.
 - `author_agent_id` (required)
 - `trigger` (required) - one of `explicit`, `post_compact`, `per_turn`, `promotion`, `manual`.
 - `session_id` (required)

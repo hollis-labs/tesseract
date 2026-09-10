@@ -29,7 +29,7 @@ All three are prose. They differ in what the prose *is*.
 | | holds | shape |
 |---|---|---|
 | **memory** | a settled conclusion worth recalling on its own | keyed, revised, curated |
-| **knowledge** | a reference to something that lives outside Tesseract | pointer-first, facets |
+| **knowledge** | content someone will come back for by name — a canonical, a handoff, a playbook, a doc | addressed by key, facets |
 | **event** | what happened and what you were thinking at the time | keyless, appended, read in order |
 
 The practical fork: a decision you would want a future session to *apply* is memory. The reasoning that produced it — including the paths you rejected — is event. Writing the second does not excuse skipping the first; a log nobody distills is a log nobody reads.

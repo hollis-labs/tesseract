@@ -11,12 +11,29 @@ Tesseract is a local-first, append-only context and memory service. You reach it
 
 ## The four domains
 
-- **Memory** — agent-authored observations, preferences, session notes. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
-- **Knowledge** — pointer-first references to external content (packages, docs, notes). Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
+- **Memory** — decisions, limitations, follow-ups, feedback, outcomes, what a session learned. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
+- **Knowledge** — a project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference. Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
 - **Event** — the append-only narrative log: reasoning about what you are doing, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
 
-The quickest fork between the first three: a settled conclusion you would want applied later is **memory**; something that lives outside Tesseract is **knowledge**; what happened and what you were thinking at the time is **event**.
+### Memory or knowledge — the canonical statement
+
+**This is the one place this boundary is stated.** The domain skills and the write tools carry the short form and point back here; nothing else restates it, because a rule restated in five places drifts in four of them.
+
+> **Knowledge is content you go *to*.** Addressed by key, read whole, expected to stay true.
+>
+> **Memory is content that comes *to you*.** Surfaced by recall when you are working nearby, dated, superseded rather than edited.
+
+**Origin does not decide this, and used to be claimed to.** Until 2026-09-10 the guidance said knowledge was for external content and that agent-authored content with no external source belonged in memory. That was false for every populated knowledge kind an agent writes — `investigation`, `session_close` and `project_canonical` are all agent-authored with nothing outside Tesseract to point at, and `pointer_scheme: "nil"` exists to say so. Both domains are mostly agent-authored. What separates them is **how the content gets found again**.
+
+**Where this stops.** *"I might look this up later"* is not the test, and reading it that way sends everything to knowledge — nearly all memory is looked up eventually. The question that actually separates them is whether you could **name it before you went looking**:
+
+- You go to a project's handoff, its canonical, its playbook because you already knew it existed and roughly what it was called. That is knowledge.
+- You did not know that decision record existed. Recall put it in front of you while you were working on something else. That is memory — however often it ends up being read, and however precisely you can cite it *afterwards*. A `[[wikilink]]` to a decision is downstream of a recall that surfaced it once; it is not evidence you would have gone looking.
+
+Neither half is about how the content was authored, how long it lasts, or how good it is.
+
+The third domain is a different axis and rarely ambiguous: what happened and what you were thinking at the time is **event**.
 
 **The fork is one-way.** A record's domain is stamped when it is created and never changes, so a write to the wrong domain stays there. The promotion workflow is the obvious escape and it is the wrong shape — it moves records across *namespaces*, not across domains. The only way to reclassify is to write a new record under a new identity, which discards the revision lineage the store exists to keep. This is worth one moment of thought at write time; it is not worth agonizing over, because `notes` and `note` are honest catch-alls and a record in a defensible domain is fine where it is.
 
@@ -43,8 +60,8 @@ Every write tool's description opens by naming the skill that carries its reques
 
 | What you want to write | Tool | Shape lives in |
 |---|---|---|
-| An agent observation, preference, or session note | `memory_write` | `tesseract_skills memory` |
-| A reference to content that lives outside Tesseract | `knowledge_write` | `tesseract_skills knowledge` |
+| A decision, limitation, follow-up, or what a session learned | `memory_write` | `tesseract_skills memory` |
+| A canonical, handoff, playbook, dossier, doc or package reference | `knowledge_write` | `tesseract_skills knowledge` |
 | Your reasoning about what you are doing, or a journal entry | `event_write` | `tesseract_skills event` |
 | A plain revisioned record | `context_write` | below, on this page |
 | A record with a registered type and lifecycle status | `context_typed_write` | below, on this page |
@@ -150,7 +167,7 @@ Note the nesting: `items` is a string holding an array whose elements carry `pay
 ## Common next steps
 
 - Writing an agent memory? → `tesseract_skills memory`
-- Recording a reference to external content? → `tesseract_skills knowledge`
+- Writing something a later session will come back for by name? → `tesseract_skills knowledge`
 - Looking something up? → use `tesseract_recall` directly, then **close the loop**: hydrate chosen hits with `tesseract_get_revision`, and after reasoning pass projected hits that shaped the turn to `tesseract_touch`. Recall itself does not reinforce; deliberate gets reinforce once, while touch reports use that happened without a fetch (or adds an intentional second signal). `tesseract_skills recall-and-ranking` for ranking modes.
 - Working across user/app namespace boundaries? → `tesseract_skills promotion`.
 - Booting into a project? → `tesseract_skills context-packet`.

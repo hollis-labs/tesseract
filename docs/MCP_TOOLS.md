@@ -53,7 +53,7 @@ Shipped skills (11):
 | `promotion` | primitive | App→user workflow: request → approve → apply. |
 | `views` | primitive | Selectors-not-processors; namespace globs. |
 | `memory` | domain | When to use memory, common patterns. |
-| `knowledge` | domain | Pointer-first model, `kind`/`source`/`pointer` facets. |
+| `knowledge` | domain | Content addressed by key, with `kind`/`source`/`pointer` facets. |
 | `context-packet` | feature | Boot workflows, plan and fetch, budget tuning. |
 | `audit` | feature | Querying the audit log. |
 
@@ -63,7 +63,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 
 - **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `full_evaluation`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity/relevance rankings).
-- **Knowledge** — pointer-first references to external content (package, doc, note) with structured facets. Backed by the memory revision store with `domain=knowledge`.
+- **Knowledge** — content a later session will go looking for by name (a project canonical, handoff, playbook, doc, package) with structured facets. Backed by the memory revision store with `domain=knowledge`. The boundary against memory, with its limits, is stated once in `tesseract_skills start-here`.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
 
 ## Tool naming
@@ -79,7 +79,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 |---|---|
 | `context_` | the context domain only — generic revisioned records |
 | `event_` | the event domain only — the append-only narrative log |
-| `knowledge_` | the knowledge domain only — pointer-first references |
+| `knowledge_` | the knowledge domain only — content addressed by key |
 | `memory_` | the memory domain only — agent-authored revisions |
 | `tesseract_` | spans every domain, or serves the surface itself |
 
@@ -150,7 +150,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Pointer-first write with required canonical `kind`, non-empty `source`, and complete `pointer` facets |
+| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Write with required canonical `kind`, non-empty `source`, and complete `pointer` facets (scheme `nil` when there is no external source) |
 
 ### Event
 

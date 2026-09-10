@@ -11,15 +11,34 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// domainBoundaryLine is the memory/knowledge fork, in the shortest form that
+// decides a write. It is ONE string used by both write tools on purpose: the
+// full statement lives in skills/start-here.md, and this is the only place the
+// short form exists, so the two tools cannot drift apart from each other or
+// from the skill.
+//
+// It replaces "agent-authored content with no external source — use
+// memory_write", which was false for every populated knowledge kind that has an
+// agent as its author: `investigation`, `session_close` and `project_canonical`
+// are all agent-written with nothing outside Tesseract to point at. Origin
+// never decided this; how the content gets found again does. See
+// docs/knowledge-memory-boundary.md for the corpus test behind that.
+const domainBoundaryLine = "• **Which domain:** **knowledge is content you go TO** — addressed by key, read whole, expected to stay true. " +
+	"**Memory is content that comes TO you** — recall surfaces it while you are working on something nearby, dated, superseded rather than edited. " +
+	"Origin does not decide this: both domains are mostly agent-authored, and a knowledge entry with no external source is normal (`pointer_scheme: \"nil\"`). " +
+	"**\"I might look this up later\" is not the test** — nearly all memory is looked up eventually. The test is whether you could NAME it before you went looking. " +
+	"Full statement, with what it does not cover: `tesseract_skills start-here`.\n"
+
 func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("knowledge_write",
 		mcp.WithDescription(
-			"**Write a knowledge revision** — a pointer-first reference to external content.\n"+
+			"**Write a knowledge revision** — reference content a later session will go looking for by name.\n"+
 				"• **Read this first:** call `tesseract_skills knowledge` before composing a body. It carries the canonical request shape as a copy-pasteable payload on both this surface and HTTP (which nests `pointer` and `author` where this one takes them flat), and states what belongs in `body` versus `pointer_locator` — the single decision that determines whether the entry still carries anything once the pointer rots.\n"+
-				"• **Kind of content:** pointer-first reference records with `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
+				"• **Kind of content:** records carrying `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
 				"• **Scope:** `memory:write`.\n"+
-				"• **Use this when:** you are cataloging something that lives outside Tesseract (a file, URL, library, doc).\n"+
-				"• **Don't use this for:** agent-authored content with no external source — use `memory_write`. Generic records — use `context_write`.\n"+
+				domainBoundaryLine+
+				"• **Use this when:** a project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference — something someone will come back for deliberately. Whether it points at anything outside Tesseract is a separate question: `pointer_scheme: \"nil\"` is a first-class answer.\n"+
+				"• **Don't use this for:** content nobody would know to ask for — a decision and its rationale, a limitation, a deferred follow-up, what a session learned. Recall is how those get found, so they are `memory_write`. Generic records — use `context_write`.\n"+
 				"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),

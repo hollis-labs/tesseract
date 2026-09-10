@@ -58,6 +58,22 @@ func defaultEventTypes() Vocabulary {
 // "Memory namespace shallow + faceted"); `notes` is the deliberate catch-all
 // for memories that carry no stronger type. Revise it here or in types.yaml,
 // not by widening the parser.
+//
+// `references` was retired 2026-09-10 (CW-20260910-0067). It meant "pointers to
+// where information lives", which is content you go TO and therefore knowledge —
+// the `pointer` and `doc` kinds already carry it. The corpus agreed: of the ten
+// entries filed under it, roughly half were reference material that belongs in
+// knowledge and the rest were dated findings that belong under `outcomes`,
+// `limitations` or `learnings`. Not one of them needed the type to exist. The
+// name also collided with the `references` link relation, so retiring it leaves
+// exactly one meaning of the word in Tesseract. See
+// docs/knowledge-memory-boundary.md for the corpus test.
+//
+// Retiring a type does NOT make its rows unreadable: the vocabulary is checked
+// on the write path only (memory.ParseNamespace, reached from
+// memory.Store.WriteRevision), and recall filters namespaces as strings. The
+// ten existing entries stay readable by recall and by tesseract_get; what stops
+// is writing a NEW revision under that namespace.
 func defaultMemoryTypes() Vocabulary {
 	return Vocabulary{
 		VocabularyID: VocabMemoryType,
@@ -70,7 +86,6 @@ func defaultMemoryTypes() Vocabulary {
 			{TypeID: "limitations"},
 			{TypeID: "notes"},
 			{TypeID: "outcomes"},
-			{TypeID: "references"},
 		},
 	}
 }
@@ -85,7 +100,8 @@ func defaultMemoryTypes() Vocabulary {
 //
 // The set is the taxonomy locked 2026-05-14 (nine kinds), plus `mcp_server` and
 // `investigation` promoted 2026-08-25 because a shipped producer emits each
-// systematically, plus `wiki_page` added here.
+// systematically, plus `wiki_page` added here, minus `learning` retired
+// 2026-09-10.
 //
 // `wiki_page` is a compiled OKF page — a compiler, a template, a provenance
 // chain and a link graph. Not `doc` (an external documentation reference) and
@@ -96,10 +112,29 @@ func defaultMemoryTypes() Vocabulary {
 // to stop a vocabulary filling with entries nothing writes, and a stalled
 // compiler is the opposite case. See [[tesseract_wiki_page_kind_approved]].
 //
-// Three kinds are canonical but unpopulated — `playbook`, `learning` and
-// `handoff`. They stay writable on purpose: a vocabulary naming only what
+// `learning` was retired by CW-20260910-0067. It duplicated the `learnings`
+// memory type across a domain boundary that cannot be crossed afterwards — one
+// letter apart, and an agent that guessed wrong could never move the record.
+// Under the boundary in docs/knowledge-memory-boundary.md a distilled lesson is
+// memory: you do not know it exists until recall surfaces it while you are
+// working nearby. `learnings` is live (38 revisions, still being written);
+// `learning` held two, both written the same hour of 2026-09-05 and both in
+// substance investigation dossiers.
+//
+// Removing it leaves those two carrying a value the vocabulary no longer names.
+// That is a read-side cost only — the vocabulary is checked on the write path
+// (knowledgePolicy.ValidateFacets) and recall's facet_kinds filter is plain
+// SQL, so `facet_kinds: ["learning"]` still returns them. Re-filing them as
+// `investigation` is a corpus edit, filed rather than done here.
+//
+// One kind is canonical and unpopulated: `wiki_page`, waiting on its first Loom
+// emission. It stays writable on purpose — a vocabulary naming only what
 // already exists could never be written into, which is the readable-but-
-// unwritable trap the 2026-08-25 normalization existed to remove.
+// unwritable trap the 2026-08-25 normalization existed to remove. The other ten
+// all have corpus entries as of 2026-09-10; `playbook`, `learning` and
+// `handoff` were described as unpopulated here and in facets-and-kinds.md long
+// after they had been seeded, which is what made three healthy kinds look
+// mis-filed.
 //
 // Naming rule: snake_case. Adding a kind is a governed change — the vocabulary
 // and the [[kinds_taxonomy]] record are revised as one change.
@@ -111,7 +146,6 @@ func defaultKnowledgeFacetKinds() Vocabulary {
 			{TypeID: "doc"},
 			{TypeID: "handoff"},
 			{TypeID: "investigation"},
-			{TypeID: "learning"},
 			{TypeID: "mcp_server"},
 			{TypeID: "note"},
 			{TypeID: "package"},

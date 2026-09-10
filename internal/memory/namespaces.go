@@ -97,6 +97,18 @@ func IsValidType(t string) bool {
 	return typeregistry.Default().Allows(typeregistry.VocabMemoryType, t)
 }
 
+// TypeList renders the current memory {type} vocabulary for a tool or error
+// message, so a description cannot advertise a value the parser rejects.
+//
+// memory_write's `namespace` description restated the eight types as a literal
+// until CW-20260910-0067, and went on advertising `references` after the
+// vocabulary dropped it. `knowledge_write`'s `kind` had been rendered from the
+// vocabulary since the registry move for exactly this reason; this is the peer
+// that was missed.
+func TypeList() string {
+	return typeregistry.Default().List(typeregistry.VocabMemoryType)
+}
+
 // TypeAllowlist returns the current type vocabulary, sorted.
 func TypeAllowlist() []string {
 	return typeregistry.Default().Values(typeregistry.VocabMemoryType)

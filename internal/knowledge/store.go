@@ -1,8 +1,17 @@
 // Package knowledge implements the Knowledge domain on top of the shared
-// memory revision store. Knowledge entries are pointer-first references to
-// external content (packages, docs, notes) — the original source remains
-// authoritative; Tesseract holds a summary + optional body and structured
-// facets for search.
+// memory revision store.
+//
+// A knowledge entry is content addressed by key, written to be gone back to: a
+// project's canonical, a handoff, a playbook, an investigation dossier, a doc
+// or package reference. It carries a summary, an optional body and structured
+// kind/source/pointer facets for search.
+//
+// The pointer names an external source WHERE THERE IS ONE, and scheme `nil`
+// declares there is none — the common case, since most of the corpus is
+// agent-authored. The domain was described as "pointer-first references to
+// external content" until 2026-09-10, which was false for `investigation`,
+// `session_close` and `project_canonical`. See
+// docs/knowledge-memory-boundary.md.
 package knowledge
 
 import (

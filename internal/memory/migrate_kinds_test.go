@@ -74,11 +74,11 @@ func kindOf(t *testing.T, db *sql.DB, revisionID string) string {
 
 func TestKnowledgeKindVocabulary_ContainsPromotedKinds(t *testing.T) {
 	vocab := memory.KnowledgeKindVocabulary()
-	if len(vocab) != 12 {
-		t.Fatalf("vocabulary size = %d, want 12; got %v", len(vocab), vocab)
+	if len(vocab) != 11 {
+		t.Fatalf("vocabulary size = %d, want 11; got %v", len(vocab), vocab)
 	}
 	want := []string{
-		"doc", "handoff", "investigation", "learning", "mcp_server", "note",
+		"doc", "handoff", "investigation", "mcp_server", "note",
 		"package", "playbook", "pointer", "project_canonical", "session_close",
 		"wiki_page",
 	}
