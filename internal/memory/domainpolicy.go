@@ -210,19 +210,28 @@ func policyFor(d domains.Domain) (DomainPolicy, error) {
 // activationDomains returns the domains whose policy opts into activation,
 // sorted so the statements built from it are stable across processes.
 //
-// It reads domains.All() rather than ranging over domainPolicies, so a domain
-// registered without a policy is a missing-policy panic here rather than a
-// silent omission from the activation set. Being quietly left out of decay is
-// precisely the failure this axis just spent a ticket recovering from.
+// A domain in domains.All() with no registered policy is skipped, and that is
+// safe rather than a quiet exclusion of the kind this ticket was about, for
+// three reasons worth stating together:
+//
+//   - It cannot have rows. validateWriteInput calls policyFor on every write
+//     and returns ErrInvalidInput when it misses, so a policy-less domain never
+//     reaches memory_state. The predicate omits a domain with nothing in it.
+//   - Both halves skip it identically, because both build their filter here.
+//     The result is a domain coherently OUT of activation, not decayed-but-not-
+//     reinforced — the incoherent state is unreachable through this path.
+//   - TestEveryDomainHasAPolicy fails first anyway, which is where a registry
+//     gap is meant to be caught.
+//
+// The alternatives are worse where it counts. Panicking runs inside DecayJob's
+// background loop and would take the daemon down. Propagating an error halts
+// the entire sweep, so a gap in one domain would stop decay for every other —
+// a larger outage than the one it reports.
 func activationDomains() []domains.Domain {
 	var participating []domains.Domain
 	for _, d := range domains.All() {
 		p, err := policyFor(d)
 		if err != nil {
-			// Unreachable while TestEveryDomainHasAPolicy passes. Skipping
-			// would hide a registry gap; excluding the domain from activation
-			// entirely is the safer of the two wrong answers, and the test is
-			// what keeps it from being reached.
 			continue
 		}
 		if p.ParticipatesInActivation() {
