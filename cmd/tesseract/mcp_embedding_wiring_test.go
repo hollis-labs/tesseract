@@ -35,7 +35,7 @@ func TestProductionMCPAdapterSharesConfiguredSubsystemEmbedder(t *testing.T) {
 	cfg.Embedding.Model = "configured-contract-model"
 	var logs bytes.Buffer
 
-	mem, err := setupMemorySubsystem(context.Background(), store, nil, layout, cfg)
+	mem, err := setupDaemonMemorySubsystem(context.Background(), store, nil, layout, cfg)
 	if err != nil {
 		t.Fatalf("setup memory subsystem: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestProductionMCPEmbeddingToolsEndToEnd(t *testing.T) {
 	cfg.Embedding.Model = "semantic-contract-model"
 	provider := &mcpContractEmbedder{}
 	lifecycleCtx, cancel := context.WithCancel(context.Background())
-	mem, err := setupMemorySubsystemWithEmbedder(lifecycleCtx, store, nil, layout, cfg, provider)
+	mem, err := setupDaemonMemorySubsystemWithEmbedder(lifecycleCtx, store, nil, layout, cfg, provider)
 	if err != nil {
 		cancel()
 		t.Fatalf("setup memory subsystem: %v", err)
@@ -216,7 +216,7 @@ func TestProductionMCPEmbeddingToolsReportDisabledRuntime(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	cfg := config.Defaults()
-	mem, err := setupMemorySubsystemWithEmbedder(context.Background(), store, nil, layout, cfg, nil)
+	mem, err := setupDaemonMemorySubsystemWithEmbedder(context.Background(), store, nil, layout, cfg, nil)
 	if err != nil {
 		t.Fatalf("setup memory subsystem: %v", err)
 	}

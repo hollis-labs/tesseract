@@ -74,14 +74,72 @@ func (m *memorySubsystem) Close() error {
 // Returns nil subsystem when tesseract configuration cannot produce an
 // embedder AND no queue is strictly required — but we always wire the
 // queue so the embed path is consistent.
-func setupMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
-	return setupMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+// There is deliberately NO "which role am I" parameter, and that is a fix for a
+// mistake this file already invited once. The daemon PUBLISHES a claim; a child
+// READS one and stands down. Those are not one operation with a flag — they are
+// two different operations, and forcing them through one symmetric hole is
+// precisely what let an early version of this wire `runMCP` as the daemon and
+// `runServe` as the child. That inversion compiled, passed every role-level
+// test, and would have had every MCP child advertising ownership while the real
+// daemon stood down, so nothing embedded anything at all.
+//
+// With two constructors the inversion is not a bug to be caught by a test; it
+// is a program nobody would write, because neither call site takes a value the
+// other could be given.
+func setupDaemonMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
+	return setupDaemonMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+}
+
+// setupChildMemorySubsystem wires a `tesseract mcp` adapter: it reads the
+// daemon's claim and runs its embed worker only while no live daemon holds one.
+func setupChildMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
+	return setupChildMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+}
+
+// setupDaemonMemorySubsystemWithEmbedder is the daemon seam used by tests.
+func setupDaemonMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config, embedder embedcontracts.Embedder) (*memorySubsystem, error) {
+	return setupMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, embedder, ownsEmbedQueue)
+}
+
+// setupChildMemorySubsystemWithEmbedder is the child seam used by tests.
+func setupChildMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config, embedder embedcontracts.Embedder) (*memorySubsystem, error) {
+	return setupMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, embedder, defersToEmbedQueueOwner)
+}
+
+// queueParticipation is what a process contributes to the shared embed queue.
+//
+// Not an enum. The daemon supplies a publisher and no gate; a child supplies a
+// gate and no publisher. Neither field can be set to the other's behavior by
+// changing a constant, and the two constructors above are the only things that
+// build one.
+type queueParticipation struct {
+	// publish advertises ownership. Daemon only; nil for a child.
+	publish func(ctx context.Context, db *sql.DB) error
+
+	// gate is consulted before each reservation. Child only; nil for the
+	// daemon, which is what makes the daemon structurally incapable of
+	// deferring to its own claim.
+	gate func(db *sql.DB) func(context.Context) bool
+}
+
+func ownsEmbedQueue() queueParticipation {
+	return queueParticipation{
+		publish: func(ctx context.Context, db *sql.DB) error { return ensureDaemonClaim(ctx, db) },
+	}
+}
+
+func defersToEmbedQueueOwner() queueParticipation {
+	return queueParticipation{
+		gate: func(db *sql.DB) func(context.Context) bool {
+			return childCanReserve(db, daemonClaimFreshness, log.Printf)
+		},
+	}
 }
 
 // setupMemorySubsystemWithEmbedder is the single assembly path for the memory
 // runtime. Production passes createEmbedder's configured instance; tests can
 // pass a deterministic implementation without changing process credentials.
-func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config, embedder embedcontracts.Embedder) (*memorySubsystem, error) {
+func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config, embedder embedcontracts.Embedder, participate func() queueParticipation) (*memorySubsystem, error) {
 	// queue.db is STATE (the embed-job queue), so it lands under the
 	// go-apppaths StateDir alongside records/ — not under DataDir with the
 	// main DB. CW-20260517-0066.
@@ -149,13 +207,41 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 		log.Printf("namespace reconcile: registered %d previously-unregistered namespaces", registered)
 	}
 
-	worker := queue.NewWorker(q, queue.WorkerOpts{
+	// Who runs the embed worker, and on whose terms (CW-20260911-0039).
+	//
+	// Both roles build the SAME worker against the SAME queue. What differs is
+	// what each brought with it: the daemon a publisher, a child a gate. A
+	// daemon has no gate to consult, so it cannot find its own claim, conclude
+	// a daemon owns the queue and stand down — which would stop the system
+	// embedding anything at all, silently.
+	part := participate()
+	opts := queue.WorkerOpts{
 		Queues:     []string{"tesseract"},
 		MaxTries:   3,
 		RetryAfter: 30 * time.Second,
 		OnError:    func(err error) { log.Printf("queue worker error: %v", err) },
-	})
+	}
+	if part.gate != nil {
+		// CanReserve (go-queue v0.2.0) is asked once per poll cycle, before a
+		// reservation is attempted. It gates only NEW work: a job already held
+		// runs to completion, which is why this replaced an earlier supervisor
+		// that canceled the worker's context and could abandon a paid
+		// embedding mid-flight.
+		opts.CanReserve = part.gate(queueDB)
+	}
+
+	worker := queue.NewWorker(q, opts)
 	worker.Register(memory.EmbedJobKind, tesseract.NewEmbedHandler(memStore, tesseractCfg.Embedding.Model, log.Printf))
+
+	if part.publish != nil {
+		if err = part.publish(ctx, queueDB); err != nil {
+			_ = queueDB.Close()
+			return nil, err
+		}
+		subsystem.startWorker(func(ctx context.Context) {
+			runDaemonClaim(ctx, queueDB, log.Printf)
+		})
+	}
 	subsystem.startWorker(func(ctx context.Context) {
 		if err := worker.Start(ctx); err != nil {
 			log.Printf("queue worker stopped with error: %v", err)

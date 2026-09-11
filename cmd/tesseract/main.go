@@ -706,7 +706,7 @@ func createEmbedder(cfg config.Config) embedcontracts.Embedder {
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, tesseractCfg config.Config) int {
 	_, _ = stderr.WriteString("Tesseract MCP adapter starting (stdio)\n")
 
-	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
+	mem, err := setupChildMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -787,7 +787,7 @@ func newHTTPServer(addr string, handler http.Handler, t httpServerTimeouts) *htt
 }
 
 func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, cfg serveConfig, layout paths.Layout, tesseractCfg config.Config) int {
-	mem, err := setupMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
+	mem, err := setupDaemonMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
