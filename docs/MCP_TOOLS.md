@@ -167,7 +167,7 @@ The append-only narrative log — reasoning in prose, not telemetry. Two propert
 
 The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was.
 
-`domain` is a **filter**, not a hint. A namespace does not identify a domain — `memory_state` has no domain column and the domains share `memory_revisions` — so a keyed read that named `memory` and found a knowledge revision at that key returns `not_found` rather than the other domain's row. Only a matching read reinforces.
+`domain` is a **filter**, not a hint. A namespace does not identify a domain: `memory_state` *does* carry a `domain` column, but it is stamped once at creation and the head pointer it holds addresses `memory_revisions`, which memory and knowledge share — so resolving `(namespace, key)` returns whatever was written at that key, whichever domain wrote it. The `not_found` is therefore an explicit check on the **resolved revision's** domain (`GetCurrentInDomain`), not a property of the schema. Only a matching read reinforces, and the check runs *before* the reinforcement write — bumping a row that is then withheld would teach the ranking that a memory mattered on the strength of a read that never returned it.
 
 Each of these covers several HTTP routes rather than one; the parity catalog carries one row per (tool, route) pair. The routes are unchanged and still wired.
 
