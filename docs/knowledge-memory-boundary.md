@@ -320,14 +320,106 @@ vocabulary through `memory.TypeList()`, which is what `knowledge_write`'s `kind`
 has done since the registry move. A description can no longer name a value the
 write path rejects.
 
+## What moved, 2026-09-11 (CW-20260910-0078)
+
+The first two bullets under "Filed, not done" are done. Twelve entries were
+re-filed and every original is deprecated rather than deleted. This section
+records what the move cost, because the rule above is unchanged by it — the
+corpus was brought to the rule, not the reverse.
+
+All writes landed between 14:05:09Z and 14:27:59Z on 2026-09-11.
+
+**A count in the task description was loose, and is corrected here.** The
+stranded `references` set is **12 rows across 10 distinct entries**, not 12
+entries: `portfolio_go_library_ci_setup_gotchas` carried three revisions. Twelve
+*entries* is right only when the two `learning` records are included, which is
+how the original framing reached the number.
+
+### The cheap half: same domain, nothing lost
+
+`tangent.test-blindspots-2026-09` and `tangent.unverified-strengths-claims-2026-09`
+now carry `kind: investigation` — same namespace, same key, each superseding its
+own previous revision. The supersede chain and the original `created_at` both
+survive; the old revisions are the previous link in a chain rather than orphans.
+Canonical `learning` entries in the corpus: **0**.
+
+### The ten `references` entries
+
+| Entry | Re-filed to | Crossed a domain |
+|---|---|---|
+| `proxima_routing_rules` | `knowledge/agent-ops`, `doc` | yes |
+| `proxima_pattern_library` | `knowledge/agent-ops`, `doc` | yes |
+| `proxima_operator_working_style` | `knowledge/agent-ops`, `doc` | yes |
+| `pm_escalation_rubric` | `knowledge/agent-ops`, `doc` | yes |
+| `weekly_review_templates_user_and_portfolio` | `knowledge/portfolio`, `doc` | yes |
+| `critical_services_rollout_complete` | `memory/outcomes` | no |
+| `legacy_adoption_dotdir_gap` | `memory/limitations` | no |
+| `portfolio_go_library_ci_setup_gotchas` | `memory/learnings` | no |
+| `harness_hook_capabilities_measured` | `memory/learnings` | no |
+| `pm_project_pm_contacts` | `memory/notes`, still `draft` | no |
+
+Canonical entries left in `user/chrispian/memory/references`: **0**. All twelve
+rows there are deprecated and every one is still readable.
+
+### One classification changed on contact with the record
+
+The task listed `pm_project_pm_contacts` as knowledge. Reading it, that does not
+hold: it is a target shape for a PM-of-PMs ritual that never materialized — "You
+are the ONLY project PM on the substrate. No peers yet", five of six URNs `TBD`.
+It is a plan for a directory, not a directory, so there is nothing in it to look
+up and nobody could name it in advance. It stays in memory as `notes`, the
+catch-all for a parked intention, and keeps `status: draft`.
+
+Three things fell out of that call, and they generalize:
+
+- **Crossing into knowledge silently promotes a draft.** `knowledgeWriteRequest`
+  has no status field; `memoryWriteRequest` does. A `draft` that crosses comes
+  out `canonical`, which is a change of meaning nobody asked for.
+- **Mis-filing is not symmetric**, per `fallback_belongs_to_memory`. A record
+  mis-filed into memory still reaches someone through recall; one mis-filed into
+  knowledge is write-only, because retrieval there needs a name nobody has.
+- So a record that is genuinely ambiguous belongs in memory, and a never-
+  materialized stub is not ambiguous at all.
+
+Chrispian approved the *method* — re-create and deprecate — not each
+classification line by line, so this refinement is recorded rather than silent.
+
+### What the crossing cost, and what the old revisions cost to reach
+
+For the five that crossed into knowledge, and for the four that changed memory
+type, the new entry is a **new record with today's `created_at`**. Lost: the
+supersede chain, the original `created_at`, and any lineage edges. This is not
+avoidable — `WriteRevision` rejects a `supersedes` whose revision belongs to a
+different memory (`internal/memory/write.go:212-227`), and a record's domain is
+stamped at creation (`domain_is_immutable_no_migration_path`).
+
+Every re-filed entry therefore carries a **provenance line** in its body naming
+the old namespace, the original `created_at`, and the deprecated revision id.
+
+Nothing was destroyed. The originals are readable at
+
+```
+GET /v1/memory/history?namespace=user/chrispian/memory/references&memory_key=<key>
+```
+
+or `tesseract_history` on the same namespace and key.
+
+### The `[[wikilink]]` mitigation does not work for a same-key re-file
+
+Worth recording, because it is the obvious thing to reach for and it fails
+silently. `TxResolver.Resolve` (`internal/memorylinks/links.go:233-239`) resolves
+a link target by `memory_key`, ordering `(namespace = ?) DESC` so a local match
+wins. A re-file that keeps its key and links back to that key therefore resolves
+to **itself** — a self-edge, not a trail to the deprecated original.
+
+The bound matters: this breaks only for **same-key** re-files, which is all ten
+of these. A re-file that genuinely changes its key can still link back, because
+the old key remains a distinct `memory_state` row and is the only claimant. The
+provenance line above is the substitute used here, and it has the side benefit of
+being greppable, which an edge is not.
+
 ## Filed, not done
 
-- Re-file the two `learning` knowledge entries as `investigation` (same domain,
-  so a re-write, not a migration).
-- Re-file the ten `references` memory entries: the pointer half to knowledge, the
-  dated half to `outcomes` / `limitations` / `learnings` / `notes`. The knowledge
-  half crosses a domain boundary, so it is a rewrite under a new identity that
-  discards lineage — a judgment call, not a mechanical move.
 - Decide `note` / `notes`.
 
 ## Related
