@@ -2368,3 +2368,70 @@ func TestNamespacesList(t *testing.T) {
 		t.Errorf("bad limit: got %d want 400", bad.Code)
 	}
 }
+
+// TestPromoteApplyReservedTargetIs400 pins the classification of a reserved
+// promotion target at the apply surface.
+//
+// The guard lives at the write, so a request naming a curated namespace is
+// accepted and approved and only fails at apply. That made it land in the
+// generic AppendRecord error branch, which answers 500 apply_failed — telling
+// the caller the server broke and inviting a retry that can never succeed. It is
+// a deterministic consequence of what the client named. CW-20260909-0013.
+func TestPromoteApplyReservedTargetIs400(t *testing.T) {
+	s := newTestServer(t)
+
+	writeRes := performJSON(t, s, "POST", "/v1/context/write", map[string]any{
+		"actor":     "app:myapp",
+		"client_id": "myapp",
+		"namespace": "app/myapp/draft",
+		"key":       "note",
+		"payload":   map[string]any{"v": 1},
+	})
+	if writeRes.Code != http.StatusOK {
+		t.Fatalf("write: %s", writeRes.Body)
+	}
+	var writeResp map[string]any
+	json.NewDecoder(writeRes.Body).Decode(&writeResp)
+
+	reqRes := performJSON(t, s, "POST", "/v1/context/promote/request", map[string]any{
+		"actor":              "app:myapp",
+		"client_id":          "myapp",
+		"source_namespace":   "app/myapp/draft",
+		"source_key":         "note",
+		"source_revision_id": writeResp["record_id"].(string),
+		"target_namespace":   "user/chrispian/memory/decisions",
+		"target_key":         "a_new_decision",
+		"reason":             "reviewed",
+	})
+	if reqRes.Code != http.StatusOK {
+		t.Fatalf("promote/request: %s", reqRes.Body)
+	}
+	var reqResp map[string]any
+	json.NewDecoder(reqRes.Body).Decode(&reqResp)
+	requestID := reqResp["request_id"].(string)
+
+	apprRes := performJSON(t, s, "POST", "/v1/context/promote/approve", map[string]any{
+		"actor": "user", "request_id": requestID, "notes": "ok",
+	})
+	if apprRes.Code != http.StatusOK {
+		t.Fatalf("promote/approve: %s", apprRes.Body)
+	}
+
+	applyRes := performJSON(t, s, "POST", "/v1/context/promote/apply", map[string]any{
+		"actor": "user", "request_id": requestID,
+	})
+	if applyRes.Code != http.StatusBadRequest {
+		t.Fatalf("promote/apply into a reserved namespace: status %d, want 400. body: %s",
+			applyRes.Code, applyRes.Body)
+	}
+	var applyResp map[string]any
+	json.NewDecoder(applyRes.Body).Decode(&applyResp)
+	if applyResp["code"] != "reserved_namespace" {
+		t.Errorf("apply error code = %v, want reserved_namespace", applyResp["code"])
+	}
+	// The message has to carry the redirect, not just the refusal — this is the
+	// surface a promotion caller actually reads.
+	if msg, _ := applyResp["message"].(string); !strings.Contains(msg, "memory_write") {
+		t.Errorf("apply error message = %q, want it to name memory_write", msg)
+	}
+}

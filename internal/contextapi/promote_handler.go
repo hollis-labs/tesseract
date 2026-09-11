@@ -2,6 +2,7 @@ package contextapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -282,6 +283,14 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 		Payload:   srcRec.Payload,
 	})
 	if err != nil {
+		// A reserved target is a deterministic consequence of what the client
+		// named, not a server fault, and 500 invites a retry that can never
+		// succeed. Classified here by sentinel rather than by re-deriving the
+		// namespace rule, so the two cannot disagree.
+		if errors.Is(err, contextstore.ErrReservedNamespace) {
+			writeError(w, http.StatusBadRequest, "reserved_namespace", err.Error(), nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "apply_failed", err.Error(), nil)
 		return
 	}
