@@ -318,32 +318,84 @@ func TestNoveltyScopeIsNamespaceAndDomainBounded(t *testing.T) {
 	}
 }
 
-// TestNoveltyDegenerateScopeIsNotScored covers the scope every fixed-vector
-// test embedder in this repository produces, and that a namespace holding one
-// repeated payload would produce in production.
+// TestNoveltyScoresWhenConcentrationIsUndefined covers the two scopes on which
+// κ̂ does not exist, and asserts they are SCORED rather than skipped.
 //
-// When every stored vector points the same way, R̄ = 1 and the concentration
-// estimator's denominator vanishes. Recording NULL is the honest outcome;
-// recording a score derived from an infinity is not, and an unguarded
-// implementation returns +Inf here rather than failing.
-func TestNoveltyDegenerateScopeIsNotScored(t *testing.T) {
-	ms, cleanup := newTestStoreWithEmbedder(t) // fixed vector for every text
-	defer cleanup()
+// This is a regression test for a defect that shipped and was caught on live
+// data within the hour. The original guard declined to score whenever kappaHat
+// reported failure — which sounded conservative and was not, because a scope of
+// exactly ONE vector always drives R̄ to 1 and the estimator's denominator to
+// zero. The practical effect was that every namespace's SECOND write recorded
+// "not scored", and it landed hardest on new event streams, which start empty
+// and are the corpus this gate exists for.
+//
+// Both cases have an exact κ-free answer: log-mean-exp over identical values is
+// that value for every κ. So the score is present and correct, and only
+// novelty_kappa is NULL.
+func TestNoveltyScoresWhenConcentrationIsUndefined(t *testing.T) {
+	t.Run("single vector in scope", func(t *testing.T) {
+		ms := newAxisEmbedderStore(t)
+		writeAndEmbed(t, ms, "note.first", "alpha one")
+		second := writeAndEmbed(t, ms, "note.second", "gamma one")
 
-	writeAndEmbedWith(t, ms, "note.d1", "one")
-	second := writeAndEmbedWith(t, ms, "note.d2", "two")
+		c := readNovelty(t, ms, second.RevisionID)
+		if c.ScopeN.Int64 != 1 {
+			t.Fatalf("scope_n = %d, want 1 — the fixture is not exercising a one-vector scope", c.ScopeN.Int64)
+		}
+		if !c.Score.Valid {
+			t.Error("the second write into a namespace was not scored. A one-vector scope has " +
+				"R̄ = 1, so κ̂ is undefined — but the log-mean-exp over a single cosine IS that " +
+				"cosine, for every κ, so there is nothing to decline. Skipping here loses the " +
+				"earliest entry of every new stream.")
+		}
+		if !c.Top1Cosine.Valid {
+			t.Error("novelty_top1_cosine must be present even when κ̂ is not")
+		}
+		if c.Kappa.Valid {
+			t.Errorf("novelty_kappa = %v on a one-vector scope; it must be NULL, because R̄ = 1 "+
+				"makes the estimate undefined and a stored number would imply otherwise", c.Kappa.Float64)
+		}
+		if c.Route.String == "" {
+			t.Error("a scored revision must carry a route")
+		}
+		// With one vector in scope the score is exactly (1 - cos)/2.
+		want := (1 - c.Top1Cosine.Float64) / 2
+		if math.Abs(c.Score.Float64-want) > 1e-9 {
+			t.Errorf("novelty_score = %v, want exactly (1-cos)/2 = %v; with a single vector in "+
+				"scope this is a closed form, not an approximation", c.Score.Float64, want)
+		}
+	})
 
-	c := readNovelty(t, ms, second.RevisionID)
-	if c.Score.Valid && (math.IsInf(c.Score.Float64, 0) || math.IsNaN(c.Score.Float64)) {
-		t.Fatalf("novelty_score = %v on a degenerate scope; a non-finite score in the column is "+
-			"worse than no score, because every downstream reader has to learn about it",
-			c.Score.Float64)
-	}
-	if c.Score.Valid {
-		t.Errorf("novelty_score = %v on a scope whose vectors are all identical; R̄ = 1 makes the "+
-			"concentration estimate undefined and the revision must read as not scored",
-			c.Score.Float64)
-	}
+	t.Run("identical vectors in scope", func(t *testing.T) {
+		ms, cleanup := newTestStoreWithEmbedder(t) // fixed vector for every text
+		defer cleanup()
+
+		writeAndEmbedWith(t, ms, "note.d1", "one")
+		writeAndEmbedWith(t, ms, "note.d2", "two")
+		third := writeAndEmbedWith(t, ms, "note.d3", "three")
+
+		c := readNovelty(t, ms, third.RevisionID)
+		if c.ScopeN.Int64 != 2 {
+			t.Fatalf("scope_n = %d, want 2", c.ScopeN.Int64)
+		}
+		if !c.Score.Valid {
+			t.Fatal("a scope of identical vectors was not scored; log-mean-exp over N copies of " +
+				"one value is that value, so the answer is exact rather than unavailable")
+		}
+		if c.Kappa.Valid {
+			t.Errorf("novelty_kappa = %v on a uniform scope; must be NULL", c.Kappa.Float64)
+		}
+		if math.IsInf(c.Score.Float64, 0) || math.IsNaN(c.Score.Float64) {
+			t.Fatalf("novelty_score = %v; a non-finite score in the column is worse than none, "+
+				"because every downstream reader has to learn about it", c.Score.Float64)
+		}
+		// Every vector is identical, so the candidate is a perfect duplicate.
+		if math.Abs(c.Score.Float64) > 1e-9 {
+			t.Errorf("novelty_score = %v, want 0 — an exact duplicate of its whole scope is "+
+				"maximally redundant, and 0 is the meaningful value here (NOT the same claim "+
+				"as the NULL an unscored revision carries)", c.Score.Float64)
+		}
+	})
 }
 
 func writeAndEmbedWith(t *testing.T, ms *memory.Store, key, summary string) memory.Revision {

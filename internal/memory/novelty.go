@@ -184,9 +184,16 @@ const (
 //	novelty_scope_n IS NULL      → not scored (no vector, no embedder, pre-migration)
 //	novelty_scope_n = 0          → scored; scope was empty; trivially novel
 //	novelty_scope_n > 0          → scored against that many vectors
+//
+// novelty_kappa carries its own NULL, independent of the above: it is absent
+// when the scope was a single vector, or N identical ones, because R̄ = 1 makes
+// the concentration estimate undefined there. A NULL κ does NOT mean the score
+// is missing or degraded — in exactly those scopes the log-mean-exp has a
+// closed form that κ never enters. See measureNovelty.
 type noveltyMeasurement struct {
 	Scored     bool
 	HasScore   bool // false for the empty-scope case, where ν is undefined
+	HasKappa   bool // false when the scope is too small or too uniform to estimate κ̂
 	Score      float64
 	Top1Cosine float64
 	ScopeN     int64
@@ -308,14 +315,6 @@ SELECT embedding_vector FROM memory_revisions
 		return noveltyMeasurement{Scored: true, ScopeN: 0, Route: noveltyRouteWrite}, nil
 	}
 
-	kappa, ok := kappaHat(sum, n, d)
-	if !ok {
-		// A degenerate scope: every vector identical, so R̄ = 1 and the
-		// estimator's denominator vanishes. Recording NULL is better than
-		// recording a score derived from an infinity.
-		return noveltyMeasurement{}, nil
-	}
-
 	top1 := cosines[0]
 	for _, c := range cosines[1:] {
 		if c > top1 {
@@ -323,15 +322,40 @@ SELECT embedding_vector FROM memory_revisions
 		}
 	}
 
-	// log-mean-exp with the maximum factored out. Mathematically identical to
-	// (1/κ)·log((1/N)·Σ exp(κ·cosᵢ)) and the only form that survives κ in the
-	// thousands: exp(3300 × 0.7) overflows float64 by hundreds of orders of
-	// magnitude, while exp(3300 × (cosᵢ − max)) is bounded above by 1.
-	var acc float64
-	for _, c := range cosines {
-		acc += math.Exp(kappa * (c - top1))
+	// κ̂ is only needed when the cosines DIFFER.
+	//
+	// log-mean-exp over a set of identical values is that value, for every κ:
+	// (1/κ)·log((1/N)·Σ exp(κ·x)) = x. So a scope of ONE vector, or of N
+	// identical ones, has an exact answer that κ never enters — and both are
+	// exactly the scopes on which κ̂ is undefined, because a single unit vector
+	// (or N copies of one) has mean resultant length R̄ = 1 and the estimator's
+	// denominator 1 − R̄² vanishes.
+	//
+	// This was shipped wrong the first time and caught on live data within the
+	// hour: declining to score when κ̂ was unavailable meant EVERY namespace's
+	// SECOND write was recorded as "not scored", since a one-vector scope
+	// always drives R̄ to 1. Three rows in the first half hour. The failure
+	// landed hardest exactly where this gate is justified — a new event stream
+	// starts empty, so its earliest entries are all small-N.
+	//
+	// Falling back to top1 is not an approximation here. It is the closed form
+	// in the only cases that reach it. novelty_kappa is left NULL to say the
+	// concentration estimate was undefined, and novelty_top1_cosine is stored
+	// beside the score either way, so the two are always comparable.
+	kappa, haveKappa := kappaHat(sum, n, d)
+
+	sVMF := top1
+	if haveKappa && n > 1 {
+		// log-mean-exp with the maximum factored out. Mathematically identical
+		// to (1/κ)·log((1/N)·Σ exp(κ·cosᵢ)) and the only form that survives κ
+		// in the thousands: exp(3300 × 0.7) overflows float64 by hundreds of
+		// orders of magnitude, while exp(3300 × (cosᵢ − max)) is bounded by 1.
+		var acc float64
+		for _, c := range cosines {
+			acc += math.Exp(kappa * (c - top1))
+		}
+		sVMF = top1 + (math.Log(acc)-math.Log(float64(n)))/kappa
 	}
-	sVMF := top1 + (math.Log(acc)-math.Log(float64(n)))/kappa
 
 	// The paper's Proposition (§E) bounds s_vMF to [−1, 1] for N ≥ 1; the clamp
 	// is against float error at the edges, not against the mathematics.
@@ -342,15 +366,19 @@ SELECT embedding_vector FROM memory_revisions
 	}
 	score := (1 - sVMF) / 2
 
-	return noveltyMeasurement{
+	m := noveltyMeasurement{
 		Scored:     true,
 		HasScore:   true,
+		HasKappa:   haveKappa && n > 1,
 		Score:      score,
 		Top1Cosine: top1,
 		ScopeN:     int64(n),
-		Kappa:      kappa,
 		Route:      shadowRoute(score),
-	}, nil
+	}
+	if m.HasKappa {
+		m.Kappa = kappa
+	}
+	return m, nil
 }
 
 // shadowRoute maps a novelty score onto what the gate WOULD have decided.
@@ -458,7 +486,7 @@ UPDATE memory_revisions
 		nullF(m.Score, m.HasScore),
 		nullF(m.Top1Cosine, m.HasScore),
 		m.ScopeN,
-		nullF(m.Kappa, m.HasScore),
+		nullF(m.Kappa, m.HasKappa),
 		m.Route,
 		noveltyGateVersion,
 		revisionID,
