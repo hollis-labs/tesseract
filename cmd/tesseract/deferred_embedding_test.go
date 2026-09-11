@@ -29,7 +29,7 @@ func TestMemorySubsystemWiresLiveDeferredEmbedding(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	mem, err := setupMemorySubsystem(context.Background(), store, nil, layout, config.Defaults())
+	mem, err := setupDaemonMemorySubsystem(context.Background(), store, nil, layout, config.Defaults())
 	if err != nil {
 		t.Fatalf("setup memory subsystem: %v", err)
 	}

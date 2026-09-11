@@ -12,7 +12,7 @@ require (
 	github.com/hollis-labs/go-mcp-sanitize v0.1.1
 	github.com/hollis-labs/go-modelsdev v0.2.0
 	github.com/hollis-labs/go-otel v0.6.1
-	github.com/hollis-labs/go-queue v0.1.0
+	github.com/hollis-labs/go-queue v0.2.0
 	github.com/hollis-labs/go-webui v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.3.1
 	github.com/mark3labs/mcp-go v1.0.0

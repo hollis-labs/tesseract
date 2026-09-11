@@ -55,6 +55,8 @@ github.com/hollis-labs/go-otel v0.6.1 h1:bPqO0xFkTNIrcgW7J4YM/yt3yn1/2Hy9dKxX6/E
 github.com/hollis-labs/go-otel v0.6.1/go.mod h1:aju/sgq+E9fdnsxzvCMdcOxcFOryEPHEFHxQEEhRbjU=
 github.com/hollis-labs/go-queue v0.1.0 h1:d+hbeoVAWBkeO+Ebvo6tVbFKOkMSGaTDC62q2PhFPUA=
 github.com/hollis-labs/go-queue v0.1.0/go.mod h1:wAP95gDz9kxAhcCWaR4e07Jz54OvFpiNEq+5ERgt2/E=
+github.com/hollis-labs/go-queue v0.2.0 h1:hQ6dKEJVdHrH+j/cqLr+ywu0eD/SD7Hspnn5sUV+JsE=
+github.com/hollis-labs/go-queue v0.2.0/go.mod h1:wAP95gDz9kxAhcCWaR4e07Jz54OvFpiNEq+5ERgt2/E=
 github.com/hollis-labs/go-webui v0.1.0 h1:j+seGHO3FBehZvUhiJWIS3/aLeEETlJ0G23qpx8gFRE=
 github.com/hollis-labs/go-webui v0.1.0/go.mod h1:AxZNBuBPpMv6SmS7xaQm2emmSikL8pa8mjNamCzaUz8=
 github.com/hollis-labs/plugin-sdk v0.3.1 h1:gLj3CWyRfYWgvMfTwOInuiGovFaQ0zNkSoQB+I3WuWg=

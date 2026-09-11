@@ -36,6 +36,14 @@ make build         # Go only; compiles the committed UI bundle
 `make smoke` curls a daemon you already have listening; `make e2e-local` starts
 and tears down its own. Run one when a change touches HTTP, CLI or MCP shape.
 
+**`make deploy-check` after every deploy.** `cerberus sync → apply → reload`
+deploys the API service and NOT the work the embed queue performs, and a green
+return proves nothing — `apply` has been seen succeeding both by writing a plist
+and by doing nothing at all ("already current"), each time leaving the old
+process serving. The check compares the deployed artifact against the build by
+hash, asserts the running process started after that artifact was written, and
+names any queue holder that predates its own binary.
+
 ## Boundaries
 
 Run `make test`, not a bare `go test ./...`. The Makefile's `HERMETIC_ENV`
@@ -58,3 +66,11 @@ the same commit.
 Writes never mutate: `AppendRecord` allocates the next revision and advances
 `heads` in one transaction. Cross-namespace movement goes through the
 request → approve → apply promotion workflow, which apps cannot bypass.
+
+The embed queue is shared, and the daemon owns it. `serve` publishes a claim in
+`queue.db` and runs its worker unconditionally; `mcp` reads that claim and runs
+its worker only while no live daemon holds one. The two roles are disjoint
+branches in `setupMemorySubsystem` — the daemon writes a claim and never reads
+one — because a daemon that consulted its own claim would stand down and nothing
+would embed at all. A child must never create the claim table: an absent table
+is what tells a standalone install (no daemon, ever) that the work is its own.

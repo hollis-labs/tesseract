@@ -77,7 +77,7 @@ func TestRuntimeStateIsOwnerOnly(t *testing.T) {
 	assertPerm(t, filepath.Dir(layout.MainDB()), fsperm.DirMode)
 	assertPerm(t, layout.MainDB(), fsperm.FileMode)
 
-	mem, err := setupMemorySubsystem(context.Background(), store, nil, layout, config.Defaults())
+	mem, err := setupDaemonMemorySubsystem(context.Background(), store, nil, layout, config.Defaults())
 	if err != nil {
 		t.Fatalf("setup memory subsystem: %v", err)
 	}

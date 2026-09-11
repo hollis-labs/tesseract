@@ -1,4 +1,4 @@
-.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all
+.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all deploy-check
 
 BASE_URL ?= http://127.0.0.1:8089
 TOKEN ?=
@@ -100,6 +100,13 @@ smoke-invalid-token:
 
 validate: contract-cli-run
 	@echo "validate complete: all contract suites passed"
+
+# Run after every deploy. `cerberus sync -> apply -> reload` deploys the API
+# service and NOT the work the queue performs, and a green return from `apply`
+# is not evidence of anything — it has been seen succeeding both by writing a
+# plist and by doing nothing at all, each time leaving the old process serving.
+deploy-check:
+	@scripts/deploy-check.sh
 
 e2e-local:
 	scripts/tesseract-e2e-local.sh
