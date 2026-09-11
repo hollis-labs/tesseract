@@ -1,3 +1,18 @@
+//go:build drift
+
+// REPORT-ONLY (CW-20260911-0050): asserts hand-typed phrases appear inside
+// `tesseract_recall`'s MCP tool description and two shipped skill bodies.
+//
+// This file's own header already reached the right diagnosis and stopped one step
+// short: it explains that the phrases are written out as literals rather than
+// compared against the constant the tools render, because asserting the constant
+// contains itself would pass no matter what it said. That is correct -- and the
+// conclusion it does not draw is that there was no third option that was a test.
+// The phrases cannot distinguish "the guidance was removed" from "the guidance was
+// reworded", which is the only distinction anyone wanted.
+//
+// What the touch-loop docs actually need is a human reading the description before
+// a release, which is now a step in the release skill.
 package parity
 
 // CW-20260825-0008 ships in two halves, and the docs half is the one that
