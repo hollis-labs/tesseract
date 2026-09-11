@@ -284,10 +284,28 @@ func (s *Store) noveltyBasisFor(ctx context.Context, embeddingModel string) *nov
 	}
 	b, err := loadNoveltyBasis(ctx, s.db, embeddingModel)
 	if err != nil {
-		s.log().WarnContext(ctx, "novelty basis load failed; projected series will record not-scored",
+		// NOT cached. loadNoveltyBasis already distinguishes absent (nil, nil)
+		// from failed (nil, err), and collapsing the two here would throw that
+		// distinction away at the only place it matters: caching a failure
+		// disables the projected series for the LIFE OF THE PROCESS, which on
+		// the daemon is indefinite, silently, recording NULL on every write.
+		//
+		// That is the same shape as the bug this package already carries a
+		// warning about — declining to score when κ̂ was undefined recorded
+		// "not scored" for every namespace's second write — and it is worse
+		// here, because NULL is exactly the value a reader would trust as
+		// "nobody looked" rather than "something broke once". A transient read
+		// error must cost one write, not all of them.
+		s.log().WarnContext(ctx, "novelty basis load failed; this write records not-scored and the next will retry",
 			"embedding_model", embeddingModel, "err", err)
-		b = nil
+		return nil
 	}
+	// Absent IS cached, and should be: it is the correct steady state for a
+	// store nobody has fitted, the lookup is an indexed miss on a one-row
+	// table, and repeating it on every write forever buys nothing. The cost is
+	// that a basis fitted while a daemon runs needs a restart, which is stated
+	// in the fit command's own output and is the behavior a frozen basis
+	// wants anyway.
 	s.noveltyBasisCache = b
 	s.noveltyBasisLoaded = embeddingModel
 	return b
@@ -362,6 +380,7 @@ SELECT embedding_vector FROM memory_revisions
 	cosines := make([]float64, 0, 256)
 	psum := make([]float64, pd)
 	pcosines := make([]float64, 0, 256)
+	pbuf := make([]float64, pd)
 	for rows.Next() {
 		var blob []byte
 		if err := rows.Scan(&blob); err != nil {
@@ -390,12 +409,17 @@ SELECT embedding_vector FROM memory_revisions
 		if projCandidate == nil {
 			continue
 		}
-		p := basis.project(v)
-		if p == nil {
+		// projectInto rather than project: one buffer reused across the scan.
+		// project allocates a fresh slice per call, and this call is per SCOPE
+		// ROW — 200k allocations per write at the volumes the file comment
+		// above reasons about. Peak retained memory is unaffected, so the
+		// O(d + N) claim was never false; what this removes is allocation
+		// churn in the one loop that runs per scope vector.
+		if !basis.projectInto(pbuf, v) {
 			continue
 		}
 		var pdot float64
-		for i, f := range p {
+		for i, f := range pbuf {
 			psum[i] += f
 			pdot += f * projCandidate[i]
 		}
@@ -692,7 +716,22 @@ func measureProjected(basis *noveltyBasis, candidate, sum []float64, cosines []f
 	return pm
 }
 
-// persist writes the projected measurement, or leaves every column NULL.
+// persist writes the projected measurement.
+//
+// The three states it can leave behind, spelled out because NULL is
+// load-bearing in this file and a comment that misdescribes it is worse than
+// no comment:
+//
+//   - NOT SCORED (!Scored) — no statement runs at all and every projected
+//     column keeps its NULL. No basis, a model the basis was not fitted for,
+//     or a candidate that projects onto the origin.
+//   - SCORED, EMPTY SCOPE (Scored, !HasScore) — novelty_pca16_scope_n = 0 and
+//     novelty_pca16_basis_version are written; score, top1 and kappa stay
+//     NULL. This mirrors the full-dimension series exactly, where scope_n = 0
+//     is the distinct "scored against nothing" case rather than a missing one.
+//   - SCORED (Scored, HasScore) — everything except kappa, which keeps its own
+//     independent NULL when the scope was too small or too uniform to estimate
+//     κ̂.
 //
 // A separate UPDATE from the full-dimension one, on the same already-durable
 // row. Separate rather than merged into a single statement so that the shipped

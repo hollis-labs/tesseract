@@ -183,3 +183,56 @@ func TestProjectedCosinesAreRotationInvariant(t *testing.T) {
 		}
 	}
 }
+
+// TestProjectIntoEqualsProject asserts the buffered and allocating projections
+// agree exactly — not approximately.
+//
+// They are the same arithmetic written twice, so anything other than bit
+// equality means one of them has drifted. The buffered form is the one the
+// scope scan actually uses, so a divergence would silently change every
+// projected ν while the allocating form the tests read stays correct.
+func TestProjectIntoEqualsProject(t *testing.T) {
+	const dim, target = 40, 8
+	// #nosec G404 -- fixed seed keeps this test repeatable
+	rng := rand.New(rand.NewPCG(31, 37))
+
+	comps := make([]float64, dim*target)
+	for i := range comps {
+		comps[i] = rng.NormFloat64()
+	}
+	orthonormalize(comps, dim, target)
+	mean := make([]float64, dim)
+	for i := range mean {
+		mean[i] = rng.NormFloat64() * 0.1
+	}
+	b := &noveltyBasis{SourceDim: dim, TargetDim: target, Mean: mean, Components: comps}
+
+	buf := make([]float64, target)
+	for trial := 0; trial < 50; trial++ {
+		v := make([]float64, dim)
+		for i := range v {
+			v[i] = rng.NormFloat64()
+		}
+		want := b.project(v)
+		ok := b.projectInto(buf, v)
+		if (want == nil) != !ok {
+			t.Fatalf("trial %d: project returned nil=%v but projectInto returned ok=%v",
+				trial, want == nil, ok)
+		}
+		if want == nil {
+			continue
+		}
+		for i := range want {
+			if want[i] != buf[i] {
+				t.Fatalf("trial %d component %d: project %.17g, projectInto %.17g — the buffered "+
+					"path the scope scan uses has drifted from the one the tests read",
+					trial, i, want[i], buf[i])
+			}
+		}
+	}
+
+	// A wrong-sized buffer must be refused, not written past.
+	if b.projectInto(make([]float64, target-1), make([]float64, dim)) {
+		t.Error("projectInto accepted an undersized destination")
+	}
+}
