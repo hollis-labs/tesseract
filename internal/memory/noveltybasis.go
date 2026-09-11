@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -178,30 +179,46 @@ func (b *noveltyBasis) explainedVarianceRatio() float64 {
 // the corpus mean, and scoring it as if it sat somewhere definite would invent
 // a position it does not have.
 func (b *noveltyBasis) project(v []float64) []float64 {
-	if len(v) != b.SourceDim {
+	out := make([]float64, b.TargetDim)
+	if !b.projectInto(out, v) {
 		return nil
 	}
-	out := make([]float64, b.TargetDim)
+	return out
+}
+
+// projectInto is project writing through a caller-owned buffer, so a caller in
+// a loop can reuse one allocation instead of making a new one per iteration.
+// Reports false in exactly the cases project returns nil, and leaves dst in an
+// unspecified state when it does.
+//
+// This exists because the scope scan in measureNovelty calls it once per scope
+// ROW. The allocating form is kept for the candidate — projected once per
+// write, where a 16-element allocation is beneath notice — and for tests, so
+// the common reading stays the simple one.
+func (b *noveltyBasis) projectInto(dst, v []float64) bool {
+	if len(v) != b.SourceDim || len(dst) != b.TargetDim {
+		return false
+	}
 	for k := 0; k < b.TargetDim; k++ {
 		row := b.Components[k*b.SourceDim : (k+1)*b.SourceDim]
 		var acc float64
 		for i, c := range row {
 			acc += c * (v[i] - b.Mean[i])
 		}
-		out[k] = acc
+		dst[k] = acc
 	}
 	var norm float64
-	for _, f := range out {
+	for _, f := range dst {
 		norm += f * f
 	}
 	norm = math.Sqrt(norm)
 	if norm == 0 || math.IsInf(norm, 0) || math.IsNaN(norm) {
-		return nil
+		return false
 	}
-	for i := range out {
-		out[i] /= norm
+	for i := range dst {
+		dst[i] /= norm
 	}
-	return out
+	return true
 }
 
 // fitNoveltyBasis fits a frozen basis over every embedded revision of one
@@ -750,7 +767,7 @@ SELECT basis_version, created_at, embedding_model, source_dim, target_dim,
 		&b.SnapshotAt, &b.SnapshotN, &b.SnapshotHash, &b.Seed, &b.Iterations,
 		&b.Algorithm, &mean, &comps, &vals, &b.TotalVariance)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("load novelty basis: %w", err)
@@ -799,12 +816,23 @@ type NoveltyBasisReport struct {
 
 // NoveltyBasisExists reports the newest basis version for an embedding model,
 // or "" when there is none.
+//
+// Queries the one column it returns. It used to call loadNoveltyBasis, which
+// JSON-decodes the mean (3,072 floats), the components (49,152) and the
+// eigenvalues in order to read a string off the end — a name that promises a
+// cheap check and delivers the most expensive read in the file.
 func NoveltyBasisExists(ctx context.Context, db *sql.DB, embeddingModel string) (string, error) {
-	b, err := loadNoveltyBasis(ctx, db, embeddingModel)
-	if err != nil || b == nil {
-		return "", err
+	var version string
+	err := db.QueryRowContext(ctx,
+		`SELECT basis_version FROM novelty_basis WHERE embedding_model = ?
+		  ORDER BY created_at DESC LIMIT 1`, embeddingModel).Scan(&version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
 	}
-	return b.Version, nil
+	if err != nil {
+		return "", fmt.Errorf("check novelty basis: %w", err)
+	}
+	return version, nil
 }
 
 // FitNoveltyBasis fits a frozen PCA-16 basis over a snapshot and persists it.
