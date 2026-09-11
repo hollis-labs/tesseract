@@ -78,3 +78,18 @@ const (
 	EventNamespaceRegister = "namespace.register"
 	EventNamespaceUpdate   = "namespace.update"
 )
+
+// DefaultPromoteActor is the actor a promote stage records when the caller
+// names none, on every surface (CW-20260910-0046).
+//
+// It is `agent` rather than `user` because an omitted field must never produce
+// the MORE authoritative attribution. 494 of 516 decision records are not
+// `origin: user`, so the old default fabricated the rarer answer -- and it
+// failed open on provenance, which is the wrong direction for a field whose
+// whole job is recording who decided. Making `user` something a caller asserts
+// deliberately is the only way the assertion carries information.
+//
+// It lives here because the HTTP, MCP and CLI promote paths all import this
+// package and all three have to agree; three copies of a default is three
+// places for it to drift.
+const DefaultPromoteActor = "agent"

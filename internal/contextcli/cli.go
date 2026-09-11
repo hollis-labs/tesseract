@@ -936,7 +936,7 @@ func (c *CLI) runPromoteList(ctx context.Context, args []string) int {
 func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("promote approve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	actor := fs.String("actor", "user", "actor approving the request")
+	actor := fs.String("actor", contextstore.DefaultPromoteActor, "actor approving the request")
 	notes := fs.String("notes", "", "optional approval notes")
 	if code, done := c.parseFlags(fs, args); done {
 		return code
@@ -1003,7 +1003,7 @@ func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("promote apply", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	actor := fs.String("actor", "user", "actor applying the promotion")
+	actor := fs.String("actor", contextstore.DefaultPromoteActor, "actor applying the promotion")
 	if code, done := c.parseFlags(fs, args); done {
 		return code
 	}
@@ -1066,7 +1066,7 @@ func (c *CLI) runPromoteAccept(ctx context.Context, args []string) int {
 	// accept = approve + apply in sequence
 	fs := flag.NewFlagSet("promote accept", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	actor := fs.String("actor", "user", "actor")
+	actor := fs.String("actor", contextstore.DefaultPromoteActor, "actor")
 	notes := fs.String("notes", "", "approval notes")
 	if code, done := c.parseFlags(fs, args); done {
 		return code
