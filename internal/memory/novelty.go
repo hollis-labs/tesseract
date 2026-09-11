@@ -104,11 +104,25 @@ import (
 // The scope a write faced is a historical fact, and two of its three inputs are
 // mutated in place afterwards: promotion rewrites memory_revisions.namespace
 // (internal/memory/migrate.go), and EmbedRevision rewrites embedding_vector.
-// Row membership itself IS reconstructible — no production path deletes from
-// memory_revisions, so `created_at < T` recovers the scope as of T — but the
-// namespace a revision was written into, and the vectors it was scored against,
-// are not. A recomputed ν would therefore drift for reasons that have nothing
-// to do with the write it describes.
+// A recomputed ν would therefore drift for reasons that have nothing to do with
+// the write it describes.
+//
+// Row membership is reconstructible — no production path deletes from
+// memory_revisions, so `created_at < T` recovers the ROWS as of T. But that is
+// not the same set the scope selects, and the difference is not theoretical.
+// The scope query also requires `embedding_vector IS NOT NULL`, and embedding
+// is asynchronous: a revision created BEFORE the candidate but EMBEDDED AFTER
+// it joins a reconstructed scope without ever having been in the original. So
+// a replay can find a scope one or more rows larger than the `novelty_scope_n`
+// that was stored, and compute a different ν from it.
+//
+// Measured on 2026-09-11 (CW-20260911-0043): an offline replay reproduced the
+// stored ν exactly for 33 of 37 scored revisions. All four misses had a scope
+// exactly one row larger than the stored count, every one of them written while
+// an embedding backlog was draining. The stored value is the correct record of
+// what the write faced; what is NOT guaranteed is that a later replay
+// reproduces it. Anything that depends on exact replayability has to check
+// novelty_scope_n against the scope it reconstructed, rather than assume.
 //
 // # When it is computed
 //
