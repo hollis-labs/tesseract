@@ -224,7 +224,7 @@ func topLevelCommands() []topLevelCommand {
 		{
 			Name:        "context",
 			Summary:     "read, write and maintain records (see below)",
-			Description: "Every record, memory and maintenance operation is a subcommand of `context`.",
+			Description: "Every record and maintenance operation is a subcommand of `context`. Memory,\n  knowledge and event are NOT reachable from the CLI — they are written over MCP\n  (memory_write, knowledge_write, event_write) or HTTP (POST /v1/memory/write).",
 		},
 		{
 			Name:        "path",
@@ -340,8 +340,13 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintf(tw, "  help\tprint this help\n")
 	_, _ = fmt.Fprintf(tw, "  version\tprint the version\n")
 	_ = tw.Flush()
-	_, _ = fmt.Fprint(w, "\nEvery record, memory and maintenance operation is a `context` subcommand —\n"+
-		"`tesseract put ...` is not a command, `tesseract context put ...` is.\n\ncontext subcommands:\n")
+	_, _ = fmt.Fprint(w, "\nEvery record and maintenance operation is a `context` subcommand —\n"+
+		"`tesseract put ...` is not a command, `tesseract context put ...` is.\n\n"+
+		"Memory, knowledge and event are NOT reachable from this CLI. They live in a\n"+
+		"different store than `context` records, and `context put` refuses their\n"+
+		"namespaces rather than writing somewhere recall cannot see. Write them over\n"+
+		"MCP (memory_write, knowledge_write, event_write) or HTTP (POST /v1/memory/write).\n"+
+		"\ncontext subcommands:\n")
 	contextcli.WriteCommands(w)
 	_, _ = fmt.Fprint(w, "\nrun `tesseract <command> --help` for that command's flags.\n")
 }

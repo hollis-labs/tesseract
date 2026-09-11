@@ -101,6 +101,44 @@ tesseract context view \
   --output json
 ```
 
+### Reserved namespaces
+
+The records store and the curated domains share one address space, and nothing
+in a namespace string says which store owns it. `user/alex/memory/notes` names a
+valid location in both. A record written to it would commit successfully and be
+invisible to `tesseract_recall`, which reads the curated corpus rather than the
+records table — the write reports success and the read reports nothing, with no
+error on either side.
+
+So the curated grammars are reserved. A write that would open a **new** entry
+under one is refused:
+
+```
+$ tesseract context put --namespace user/chrispian/memory/decisions \
+    --key my_decision --json '{"body":"..."}'
+error: namespace reserved by a curated domain: "user/chrispian/memory/decisions"
+  belongs to the memory domain, which the context store cannot write. ...
+  Write it with memory_write (MCP) or POST /v1/memory/write (HTTP)
+```
+
+Reserved are the positions a domain name occupies in the curated grammars — the
+third segment (`user/{id}/memory/{type}`, `{user|app}/{id}/knowledge/...`) and
+the fifth (`user/{id}/project/{pid}/memory/{type}`). A namespace that merely
+contains the word elsewhere (`app/memory-tools/config`) is unaffected.
+
+This holds on every surface, not just the CLI: the guard sits in the shared
+append path, so `context_write`, `context_typed_write`, `context_ingest`, the
+`POST /v1/context/*` routes and `promote apply` all refuse alike.
+
+**The CLI cannot write the curated domains.** There is no `tesseract memory
+write`; memory, knowledge and event are reachable over MCP (`memory_write`,
+`knowledge_write`, `event_write`) and HTTP (`POST /v1/memory/write` and peers)
+only. The refusal names the surface that would have worked.
+
+Entries that already exist under a reserved namespace keep accepting revisions,
+so records written before the guard can still be deprecated and superseded.
+Restore is unaffected: it inserts directly and never goes through the guard.
+
 ## Promotion commands
 
 The old one-shot promotion flow is not a CLI command. Promotion is a stored,
@@ -117,13 +155,19 @@ audited request → approve → apply workflow:
 `request` always captures the current source head. It prints the generated
 request ID for the later commands.
 
+The target must be under `user/`, and it may not fall inside a curated domain's
+address space — `user/{id}/memory/...`, `.../knowledge/...` and `.../event/...`
+belong to the memory, knowledge and event stores, not to records. A request
+naming one is accepted and approved but fails at `apply`, because the guard sits
+at the write itself; see "Reserved namespaces" below.
+
 ```bash
 tesseract context promote request \
   --client-id editor \
   --actor app:editor \
   --source-namespace app/editor/session \
   --source-key summary \
-  --target-namespace user/alex/memory/notes \
+  --target-namespace user/alex/notes/reviewed \
   --target-key summary \
   --reason 'reviewed session result'
 

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/memorylinks"
 	"github.com/hollis-labs/tesseract/internal/memorytime"
@@ -49,6 +50,18 @@ var (
 	ErrAuthTokenRevoked = errors.New("auth token revoked")
 	// ErrAuthTokenExpired indicates token has expired.
 	ErrAuthTokenExpired = errors.New("auth token expired")
+	// ErrReservedNamespace indicates a write addressed to a namespace the
+	// curated domains own. The context store shares its address space with
+	// memory, knowledge and event — user/{id}/memory/{type} names a valid
+	// location in BOTH records and memory_revisions — and nothing in the
+	// address disambiguates them. A record written there commits successfully
+	// and is invisible to tesseract_recall, which reads memory_revisions only,
+	// so the failure is silent in both directions.
+	//
+	// AppendRecord refuses to open a NEW entry under a claimed namespace.
+	// Existing entries stay writable; see the guard in AppendRecord for why.
+	// CW-20260909-0013.
+	ErrReservedNamespace = errors.New("namespace reserved by a curated domain")
 )
 
 // Config defines on-disk layout.
@@ -1102,6 +1115,39 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	}
 	if !json.Valid(in.Payload) {
 		return Record{}, errors.New("payload must be valid JSON")
+	}
+
+	// Reserved-grammar guard (CW-20260909-0013). The curated domains own their
+	// address space; the context store may not open new entries inside it.
+	//
+	// This runs BEFORE ensureNamespaceRegistered so a refused write leaves
+	// nothing behind — registering the namespace we are about to reject would
+	// seed the policy registry with locations no record will ever occupy.
+	//
+	// The guard fires only when the entry is NEW. An existing (namespace, key)
+	// keeps accepting revisions, for two reasons. Nineteen rows already sit in
+	// claimed namespaces, and freezing them would strand them harder than the
+	// silence did — their re-filing (CW-20260910-0078) has to deprecate the
+	// records it copies, and status changes append a revision through
+	// UpdateRecordStatus, i.e. through here. And the address is already claimed
+	// in this store, so a further revision adds no new ambiguity; only a new
+	// entry does. Restore is unaffected either way: restore.go INSERTs directly
+	// and never calls AppendRecord, so a backup carrying these rows still
+	// replays.
+	if claim, claimed := domains.ClaimedBy(ns); claimed {
+		var priorRevisions int64
+		if scanErr := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM records WHERE namespace = ? AND key_name = ?`, ns, key,
+		).Scan(&priorRevisions); scanErr != nil {
+			return Record{}, fmt.Errorf("check reserved namespace: %w", scanErr)
+		}
+		if priorRevisions == 0 {
+			return Record{}, fmt.Errorf(
+				"%w: %q belongs to the %s domain, which the context store cannot write. "+
+					"A record written here would be invisible to tesseract_recall, which reads the "+
+					"curated corpus and not the records table. Write it with %s (MCP) or POST %s (HTTP)",
+				ErrReservedNamespace, ns, claim.Domain, claim.MCPTool, claim.HTTPPath)
+		}
 	}
 
 	// Make sure the namespace is in the policy registry before we persist
