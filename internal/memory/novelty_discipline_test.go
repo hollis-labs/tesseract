@@ -77,7 +77,30 @@ var noveltyCarrierSites = map[string]map[string]string{
 		"EmbedRevision": "the single call site; scores after the vector lands and discards the error",
 	},
 	"internal/contextstore/store.go": {
-		"migrate": "migration 20's ADD COLUMN statements; DDL, not behavior",
+		"migrate": "migrations 20 and 21's DDL — six columns, five more, and the novelty_basis table; DDL, not behavior",
+	},
+	"internal/memory/noveltybasis.go": {
+		"*": "the frozen PCA-16 basis: fits it offline, validates orthonormality, persists it and " +
+			"projects vectors into it. Computes and stores; the basis is an input to a measurement " +
+			"and never reaches a decision about a revision. Nothing here is called from the write " +
+			"path, and nothing fits implicitly — a store without a basis records NULL.",
+	},
+	"internal/memory/store.go": {
+		// File scope in this file is the Store struct declaration and nothing
+		// else, so this authorizes the three cached-basis fields and would not
+		// hide a package-level helper: any such helper would be inside a func
+		// and reported under its name.
+		"": "Store's cached-basis fields (noveltyBasisMu/Cache/Loaded): storage for a frozen " +
+			"projection, read only by noveltyBasisFor in novelty.go. Declaration, not behavior.",
+	},
+	"cmd/tesseract/noveltybasis.go": {
+		"*": "the offline one-shot fit command. Reads vectors, fits, persists, prints a report. " +
+			"It is the only way a basis ever comes into existence, and it is deliberately manual " +
+			"so that no serving path can fit one as a side effect.",
+	},
+	"cmd/tesseract/main.go": {
+		"topLevelCommands": "the help entry for novelty-fit-basis; a description string",
+		"run":              "the subcommand dispatch arm for novelty-fit-basis",
 	},
 }
 
@@ -249,8 +272,14 @@ func TestNoveltyConfinementGuardFires(t *testing.T) {
 			t.Fatalf("write clean file: %v", err)
 		}
 	}
+	// Three shapes, not two. The third is the SECOND series' column name
+	// (CW-20260911-0043): the guard matches on the `novelty_` prefix, so it
+	// covers novelty_pca16_* for free — and "for free" is exactly the kind of
+	// claim that is true until someone narrows the matcher. Planting it here
+	// means the day that happens, this test says so.
 	planted := "package planted\n\n" +
 		"const rankSQL = `SELECT revision_id FROM memory_revisions ORDER BY novelty_score DESC`\n\n" +
+		"const projectedRankSQL = `SELECT revision_id FROM memory_revisions ORDER BY novelty_pca16_score DESC`\n\n" +
 		"func shouldWrite(noveltyRoute string) bool {\n" +
 		"\treturn noveltyRoute != \"skip\"\n" +
 		"}\n"
@@ -285,6 +314,27 @@ func TestNoveltyConfinementGuardFires(t *testing.T) {
 	if !sawIdent {
 		t.Error("the guard missed a Go identifier carrying a novelty route; only the SQL half is " +
 			"being checked")
+	}
+
+	// And specifically that the projected series' columns are covered. The
+	// second series is the one a future reader is most likely to assume is
+	// exempt, because it deliberately emits no route and so looks inert.
+	// Counted, not merely seen: the file plants TWO ranking literals and the
+	// first one alone would satisfy an any-string-literal check, which would
+	// make this assertion pass whether or not novelty_pca16_score is matched at
+	// all. A fault-injection test that cannot fail is the thing this whole
+	// pattern exists to prevent.
+	literals := 0
+	for _, v := range violations {
+		if strings.Contains(v.what, "string literal") {
+			literals++
+		}
+	}
+	if literals < 2 {
+		t.Errorf("the guard reported %d string-literal violations, want 2: one for "+
+			"`ORDER BY novelty_score` and one for `ORDER BY novelty_pca16_score`. The second "+
+			"novelty series is outside the confinement guard, so ranking by it would pass review "+
+			"and pass this suite", literals)
 	}
 }
 

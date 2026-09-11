@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 20
+	schemaVersion = 21
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1090,6 +1090,107 @@ END`); err != nil {
 				{"novelty_kappa", "ALTER TABLE memory_revisions ADD COLUMN novelty_kappa REAL NULL"},
 				{"novelty_route", "ALTER TABLE memory_revisions ADD COLUMN novelty_route TEXT NULL"},
 				{"novelty_gate_version", "ALTER TABLE memory_revisions ADD COLUMN novelty_gate_version TEXT NULL"},
+			} {
+				var present bool
+				present, err = columnExists(ctx, tx, "memory_revisions", col.name)
+				if err != nil {
+					return err
+				}
+				if present {
+					continue
+				}
+				if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
+					return err
+				}
+			}
+		case 21:
+			// A SECOND novelty series, measured in a frozen PCA-16 space
+			// (CW-20260911-0043). Additive: migration 20's six columns do not
+			// change and both series are computed on every write.
+			//
+			// WHY a second series rather than a better one. At d=3072 the vMF
+			// KDE of migration 20 is numerically top-1 cosine — max
+			// |nu_KDE - nu_top1| = 9.05e-04 over 583 replayed writes, 28x below
+			// the paper's own delta = 0.025 — because kappa_hat carries the
+			// embedding dimension and pins log-mean-exp to its maximum. At 16
+			// dimensions kappa_hat falls to ~15.6 and the KDE genuinely
+			// aggregates (median |dnu| = 0.123). The projected space is the only
+			// regime on this corpus where the aggregation SAGE argues for is
+			// observable at all, and the full-dim series stays because it is the
+			// one that is comparable to the shipped dedup gate.
+			//
+			// THIS IS TESSERACT'S EXTENSION, NOT THE PAPER'S METHOD. Appendix C
+			// says d' = 16 "only affects the density proxy (Appendix D)" — the
+			// paper's KDE runs at full dimension. Every row here is stamped with
+			// a basis version beginning `sage-ext/` so the distinction survives
+			// on the row rather than only in this comment.
+			//
+			// FIVE columns, not six: there is deliberately NO route for this
+			// series. The published tau/delta were tuned at a different
+			// dimension on a different embedding, and nu's distribution moves by
+			// 0.12 at the median here, so a route emitted under those constants
+			// would be a decision rule nobody has validated — and worse, it
+			// would sit beside novelty_route and read as comparable to it. The
+			// score and its sufficient statistics are stored so any (tau, delta)
+			// can be chosen and evaluated offline later; naming one now would be
+			// inventing the answer this series exists to make answerable.
+			//
+			// NULL keeps its existing meaning and gains no new one. A store with
+			// no fitted basis scores NULL in every column here, which reads as
+			// "not scored" exactly like migration 20's NULLs — see the three-way
+			// semantics documented on noveltyMeasurement. novelty_pca16_scope_n
+			// is separate from novelty_scope_n rather than shared because a
+			// vector that projects to the origin is skipped in the reduced space
+			// and not in the full one, so the two counts can legitimately
+			// differ and a shared column would hide it.
+			//
+			// novelty_basis holds the frozen projection AND the definition of
+			// the snapshot it was fitted over: the instant, the row count, the
+			// model, and a SHA-256 over every (revision_id, vector) pair in
+			// order. Freezing the output alone would not be enough — a basis
+			// refitted as the corpus grows makes nu incomparable across time,
+			// which is exactly the replayability embed-time scoring exists to
+			// protect, and the hash is what makes "this basis came from that
+			// snapshot" checkable rather than asserted. basis_version is the
+			// primary key and is derived from the snapshot, so re-fitting the
+			// same snapshot collides and is refused by the schema.
+			//
+			// The basis is per-store and is NOT shipped in the binary. A basis
+			// is fitted from the corpus it will score, so embedding one in a
+			// released artifact would bake a single private corpus's
+			// distribution into every install. A fresh store simply has none and
+			// scores NULL until `tesseract novelty-fit-basis` is run.
+			//
+			// No index, for migration 20's reason: the query these columns exist
+			// to answer is an offline analytical scan, and declaring an index
+			// for a query shape nobody has written yet is the mistake migration
+			// 19 names. One ships when a query does.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS novelty_basis (
+	basis_version   TEXT PRIMARY KEY,
+	created_at      TEXT NOT NULL,
+	embedding_model TEXT NOT NULL,
+	source_dim      INTEGER NOT NULL,
+	target_dim      INTEGER NOT NULL,
+	snapshot_at     TEXT NOT NULL,
+	snapshot_n      INTEGER NOT NULL,
+	snapshot_hash   TEXT NOT NULL,
+	seed            INTEGER NOT NULL,
+	iterations      INTEGER NOT NULL,
+	algorithm       TEXT NOT NULL,
+	mean_vector     TEXT NOT NULL,
+	components      TEXT NOT NULL,
+	eigenvalues     TEXT NOT NULL,
+	total_variance  REAL NOT NULL
+)`); err != nil {
+				return err
+			}
+			for _, col := range []struct{ name, ddl string }{
+				{"novelty_pca16_score", "ALTER TABLE memory_revisions ADD COLUMN novelty_pca16_score REAL NULL"},
+				{"novelty_pca16_top1_cosine", "ALTER TABLE memory_revisions ADD COLUMN novelty_pca16_top1_cosine REAL NULL"},
+				{"novelty_pca16_scope_n", "ALTER TABLE memory_revisions ADD COLUMN novelty_pca16_scope_n INTEGER NULL"},
+				{"novelty_pca16_kappa", "ALTER TABLE memory_revisions ADD COLUMN novelty_pca16_kappa REAL NULL"},
+				{"novelty_pca16_basis_version", "ALTER TABLE memory_revisions ADD COLUMN novelty_pca16_basis_version TEXT NULL"},
 			} {
 				var present bool
 				present, err = columnExists(ctx, tx, "memory_revisions", col.name)

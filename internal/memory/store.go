@@ -35,6 +35,15 @@ type Store struct {
 	// rerankers dynamically (e.g., a hot-reload config path).
 	rerankersMu sync.RWMutex
 	rerankers   map[string]Reranker
+
+	// The frozen PCA-16 novelty basis, cached for the life of the Store
+	// including the absent case. See noveltyBasisFor: a store with no basis
+	// would otherwise repeat a failed lookup on every write forever, and a
+	// basis that started applying mid-process would make ν incomparable across
+	// writes in the same run. Guarded because EmbedRevision runs concurrently.
+	noveltyBasisMu     sync.Mutex
+	noveltyBasisCache  *noveltyBasis
+	noveltyBasisLoaded string
 }
 
 // NewStore constructs a memory.Store bound to the given database. embedder may

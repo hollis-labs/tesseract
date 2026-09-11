@@ -211,12 +211,13 @@ type noveltyMeasurement struct {
 func (s *Store) scoreNovelty(ctx context.Context, revisionID string) error {
 	var (
 		domain, namespace, createdAt string
+		model                        sql.NullString
 		blob                         []byte
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT domain, namespace, created_at, embedding_vector
+		`SELECT domain, namespace, created_at, embedding_model, embedding_vector
 		   FROM memory_revisions WHERE revision_id = ?`, revisionID,
-	).Scan(&domain, &namespace, &createdAt, &blob)
+	).Scan(&domain, &namespace, &createdAt, &model, &blob)
 	if err != nil {
 		return fmt.Errorf("load revision for novelty: %w", err)
 	}
@@ -228,11 +229,54 @@ func (s *Store) scoreNovelty(ctx context.Context, revisionID string) error {
 		return nil
 	}
 
-	m, err := s.measureNovelty(ctx, domain, namespace, createdAt, revisionID, candidate)
+	// The frozen PCA-16 basis, or nil when this store has never been fitted.
+	// nil is not a failure: the projected columns stay NULL, which reads as
+	// "not scored" exactly like every other novelty NULL. A basis is never
+	// fitted implicitly here — see noveltybasis.go.
+	basis := s.noveltyBasisFor(ctx, model.String)
+
+	m, pm, err := s.measureNovelty(ctx, domain, namespace, createdAt, revisionID, candidate, basis)
 	if err != nil {
 		return err
 	}
-	return m.persist(ctx, s.db, revisionID)
+	if err := m.persist(ctx, s.db, revisionID); err != nil {
+		return err
+	}
+	return pm.persist(ctx, s.db, revisionID)
+}
+
+// noveltyBasisFor returns the cached frozen basis for an embedding model, or
+// nil when the store has none.
+//
+// Cached for the life of the Store, including the ABSENT case: without that, a
+// store with no basis would issue a failed lookup on every single write,
+// forever. The consequence, which is why the fit command says so in its output:
+// a basis fitted while a daemon is running is not picked up until that daemon
+// restarts. That is the right trade for a value defined to be frozen — a basis
+// that could start applying mid-process would make ν incomparable across writes
+// in the same run, which is the exact failure freezing exists to prevent.
+//
+// A load error is logged and treated as absent rather than propagated. Scoring
+// is best-effort by contract (see EmbedRevision) and a store that cannot read
+// its basis should record "not scored", not fail an already-paid-for embedding.
+func (s *Store) noveltyBasisFor(ctx context.Context, embeddingModel string) *noveltyBasis {
+	if embeddingModel == "" {
+		return nil
+	}
+	s.noveltyBasisMu.Lock()
+	defer s.noveltyBasisMu.Unlock()
+	if s.noveltyBasisLoaded == embeddingModel {
+		return s.noveltyBasisCache
+	}
+	b, err := loadNoveltyBasis(ctx, s.db, embeddingModel)
+	if err != nil {
+		s.log().WarnContext(ctx, "novelty basis load failed; projected series will record not-scored",
+			"embedding_model", embeddingModel, "err", err)
+		b = nil
+	}
+	s.noveltyBasisCache = b
+	s.noveltyBasisLoaded = embeddingModel
+	return b
 }
 
 // measureNovelty computes the measurement for candidate against every embedded
@@ -263,8 +307,27 @@ func (s *Store) scoreNovelty(ctx context.Context, revisionID string) error {
 // rather than the ~2.4 GB a materialized scope would cost. The CPU term is
 // genuinely O(N·d) and is the real ceiling — measured at 1.67 ms per write
 // against a 633-vector scope.
-func (s *Store) measureNovelty(ctx context.Context, domain, namespace, createdAt, revisionID string, candidate []float64) (noveltyMeasurement, error) {
+func (s *Store) measureNovelty(ctx context.Context, domain, namespace, createdAt, revisionID string, candidate []float64, basis *noveltyBasis) (noveltyMeasurement, noveltyProjectedMeasurement, error) {
 	d := len(candidate)
+
+	// The projected candidate, or nil when there is no basis, the basis does
+	// not match this vector's model or width, or the candidate lands exactly on
+	// the projected origin. Computed once, outside the scope loop.
+	//
+	// ONE scan serves both series deliberately. Scanning twice would be simpler
+	// to read but would let a concurrent backfill embed an older revision
+	// between the passes, so the two series would describe different scopes —
+	// and comparing them on "the same writes" is the entire point of collecting
+	// the second one. Sharing the scan makes the scopes identical by
+	// construction rather than by assumption.
+	var projCandidate []float64
+	if basis != nil && basis.SourceDim == d {
+		projCandidate = basis.project(candidate)
+	}
+	pd := 0
+	if projCandidate != nil {
+		pd = len(projCandidate)
+	}
 
 	// The keyset predicate is written out rather than as an SQLite row-value
 	// comparison, matching ReadEventLog: timestamps are fixed-width
@@ -277,16 +340,18 @@ SELECT embedding_vector FROM memory_revisions
    AND (created_at < ? OR (created_at = ? AND revision_id < ?))`,
 		domain, namespace, createdAt, createdAt, revisionID)
 	if err != nil {
-		return noveltyMeasurement{}, fmt.Errorf("scan novelty scope: %w", err)
+		return noveltyMeasurement{}, noveltyProjectedMeasurement{}, fmt.Errorf("scan novelty scope: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	sum := make([]float64, d)
 	cosines := make([]float64, 0, 256)
+	psum := make([]float64, pd)
+	pcosines := make([]float64, 0, 256)
 	for rows.Next() {
 		var blob []byte
 		if err := rows.Scan(&blob); err != nil {
-			return noveltyMeasurement{}, fmt.Errorf("scan novelty scope row: %w", err)
+			return noveltyMeasurement{}, noveltyProjectedMeasurement{}, fmt.Errorf("scan novelty scope row: %w", err)
 		}
 		v := unitVector(blobToFloat32(blob))
 		// A scope vector from a different embedding model has a different
@@ -302,17 +367,38 @@ SELECT embedding_vector FROM memory_revisions
 			dot += f * candidate[i]
 		}
 		cosines = append(cosines, dot)
+
+		// The projected series accumulates from the SAME row, and separately: a
+		// scope vector that projects onto the origin carries no direction in the
+		// reduced space and is skipped there while still counting at full
+		// dimension. That is why novelty_pca16_scope_n is its own column rather
+		// than a copy of novelty_scope_n.
+		if projCandidate == nil {
+			continue
+		}
+		p := basis.project(v)
+		if p == nil {
+			continue
+		}
+		var pdot float64
+		for i, f := range p {
+			psum[i] += f
+			pdot += f * projCandidate[i]
+		}
+		pcosines = append(pcosines, pdot)
 	}
 	if err := rows.Err(); err != nil {
-		return noveltyMeasurement{}, fmt.Errorf("novelty scope rows: %w", err)
+		return noveltyMeasurement{}, noveltyProjectedMeasurement{}, fmt.Errorf("novelty scope rows: %w", err)
 	}
+
+	pm := measureProjected(basis, projCandidate, psum, pcosines, pd)
 
 	n := len(cosines)
 	if n == 0 {
 		// §3.3: with an empty scope the controller emits ADD without computing
 		// a score. There is no density to be explained by, so ν is undefined
 		// rather than maximal.
-		return noveltyMeasurement{Scored: true, ScopeN: 0, Route: noveltyRouteWrite}, nil
+		return noveltyMeasurement{Scored: true, ScopeN: 0, Route: noveltyRouteWrite}, pm, nil
 	}
 
 	top1 := cosines[0]
@@ -378,7 +464,7 @@ SELECT embedding_vector FROM memory_revisions
 	if m.HasKappa {
 		m.Kappa = kappa
 	}
-	return m, nil
+	return m, pm, nil
 }
 
 // shadowRoute maps a novelty score onto what the gate WOULD have decided.
@@ -493,6 +579,137 @@ UPDATE memory_revisions
 	)
 	if err != nil {
 		return fmt.Errorf("persist novelty: %w", err)
+	}
+	return nil
+}
+
+// noveltyProjectedMeasurement is one revision's ν measured in the frozen
+// PCA-16 space, or the explicit absence of one.
+//
+// # Why this carries no Route, deliberately
+//
+// The shipped full-dim series stamps novelty_route with what the gate WOULD
+// have decided. This one does not, and the omission is the design rather than
+// an oversight.
+//
+// τ_min = 0.025 and δ = 0.025 were grid-searched by the paper on a 20% LoCoMo
+// subsample, at a different embedding dimension on a different model. ν's
+// distribution in this space is measurably not the one they were tuned against
+// — median |Δν| between the two spaces is 0.123, five times δ itself. A route
+// emitted under those constants would be a decision rule nobody has validated,
+// and it would sit in a column beside novelty_route where it would read as
+// comparable to a number that was computed a different way. Storing the score
+// and the statistics it derives from leaves every (τ, δ) choosable and
+// evaluable offline; naming one now would be inventing the answer this series
+// exists to make answerable.
+//
+// So there are five columns here against the full-dim series' six, and the
+// missing one is the only one that expresses an opinion.
+//
+// # NULL means the same thing it means everywhere else
+//
+// No new NULL semantics are introduced. A store with no fitted basis, a
+// revision whose embedding model the basis was not fitted for, and a candidate
+// that projects onto the origin all record NULL in every column here — "nobody
+// looked", exactly as documented on noveltyMeasurement. ScopeN = 0 remains
+// "scored against an empty scope", distinguishable from both.
+type noveltyProjectedMeasurement struct {
+	Scored       bool
+	HasScore     bool
+	HasKappa     bool
+	Score        float64
+	Top1Cosine   float64
+	ScopeN       int64
+	Kappa        float64
+	BasisVersion string
+}
+
+// measureProjected runs the same vMF estimator as the full-dimension path over
+// the projected cosines.
+//
+// The arithmetic is deliberately identical — same κ̂ estimator, same
+// max-factored log-mean-exp, same ν = (1 − s_vMF)/2, same closed-form fallback
+// when κ̂ is undefined. That is what makes the two series comparable: any
+// difference between them is a difference of SPACE, not of method. The only
+// thing that changes is d, and d is the whole point — it is what drops κ̂ from
+// the thousands to ~15.6 and lets the kernel actually aggregate.
+func measureProjected(basis *noveltyBasis, candidate, sum []float64, cosines []float64, d int) noveltyProjectedMeasurement {
+	if basis == nil || candidate == nil {
+		return noveltyProjectedMeasurement{}
+	}
+	pm := noveltyProjectedMeasurement{Scored: true, BasisVersion: basis.Version}
+	n := len(cosines)
+	if n == 0 {
+		// Empty scope: ν is undefined rather than maximal, matching §3.3 and
+		// the full-dimension path.
+		return pm
+	}
+
+	top1 := cosines[0]
+	for _, c := range cosines[1:] {
+		if c > top1 {
+			top1 = c
+		}
+	}
+
+	kappa, haveKappa := kappaHat(sum, n, d)
+	sVMF := top1
+	if haveKappa && n > 1 {
+		var acc float64
+		for _, c := range cosines {
+			acc += math.Exp(kappa * (c - top1))
+		}
+		sVMF = top1 + (math.Log(acc)-math.Log(float64(n)))/kappa
+	}
+	if sVMF > 1 {
+		sVMF = 1
+	} else if sVMF < -1 {
+		sVMF = -1
+	}
+
+	pm.HasScore = true
+	pm.Score = (1 - sVMF) / 2
+	pm.Top1Cosine = top1
+	pm.ScopeN = int64(n)
+	pm.HasKappa = haveKappa && n > 1
+	if pm.HasKappa {
+		pm.Kappa = kappa
+	}
+	return pm
+}
+
+// persist writes the projected measurement, or leaves every column NULL.
+//
+// A separate UPDATE from the full-dimension one, on the same already-durable
+// row. Separate rather than merged into a single statement so that the shipped
+// series is written by exactly the statement that has always written it: a
+// failure to store the projected columns cannot corrupt or roll back the six
+// that were already correct.
+func (m noveltyProjectedMeasurement) persist(ctx context.Context, db *sql.DB, revisionID string) error {
+	if !m.Scored {
+		return nil
+	}
+	nullF := func(v float64, ok bool) sql.NullFloat64 {
+		if !ok {
+			return sql.NullFloat64{}
+		}
+		return sql.NullFloat64{Float64: v, Valid: true}
+	}
+	_, err := db.ExecContext(ctx, `
+UPDATE memory_revisions
+   SET novelty_pca16_score = ?, novelty_pca16_top1_cosine = ?,
+       novelty_pca16_scope_n = ?, novelty_pca16_kappa = ?,
+       novelty_pca16_basis_version = ?
+ WHERE revision_id = ?`,
+		nullF(m.Score, m.HasScore),
+		nullF(m.Top1Cosine, m.HasScore),
+		m.ScopeN,
+		nullF(m.Kappa, m.HasKappa),
+		m.BasisVersion,
+		revisionID,
+	)
+	if err != nil {
+		return fmt.Errorf("persist projected novelty: %w", err)
 	}
 	return nil
 }
