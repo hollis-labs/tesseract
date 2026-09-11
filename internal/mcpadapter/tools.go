@@ -840,7 +840,7 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req mcp.CallToolRequ
 		return toolError(codeValidationError, "request_id is required"), nil
 	}
 	notes := req.GetString("notes", "")
-	actor := req.GetString("actor", "user")
+	actor := req.GetString("actor", contextstore.DefaultPromoteActor)
 
 	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
 	if err != nil {
@@ -919,7 +919,7 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 	if requestID == "" {
 		return toolError(codeValidationError, "request_id is required"), nil
 	}
-	actor := req.GetString("actor", "user")
+	actor := req.GetString("actor", contextstore.DefaultPromoteActor)
 
 	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
 	if err != nil {

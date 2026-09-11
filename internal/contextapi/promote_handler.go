@@ -146,7 +146,9 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor := req.Actor
 	if actor == "" {
-		actor = "user"
+		// Agent, not user (CW-20260910-0046): an omitted field must never produce
+		// the more authoritative attribution. See contextstore.DefaultPromoteActor.
+		actor = contextstore.DefaultPromoteActor
 	}
 
 	pr, reqNamespace, err := s.Store.GetPromoteRequest(ctx, req.RequestID)
@@ -234,7 +236,9 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor := req.Actor
 	if actor == "" {
-		actor = "user"
+		// Agent, not user (CW-20260910-0046): an omitted field must never produce
+		// the more authoritative attribution. See contextstore.DefaultPromoteActor.
+		actor = contextstore.DefaultPromoteActor
 	}
 
 	pr, reqNamespace, err := s.Store.GetPromoteRequest(ctx, req.RequestID)

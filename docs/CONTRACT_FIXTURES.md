@@ -196,7 +196,7 @@ See also: `docs/DEV.md#contract-quick-run-pack`.
 - Ownership:
   - API/runtime fixture changes: reviewers for `internal/contextapi/` and `internal/contextstore/`.
   - CLI fixture changes: reviewers for `internal/contextcli/`.
-  - Smoke/workflow fixture changes: reviewers for `scripts/` and `.agentrc/` workflow docs.
+  - Smoke/workflow fixture changes: reviewers for `scripts/`.
 - Update policy:
   - Any fixture change must be paired with the corresponding test change and rationale in the same commit.
   - If output/shape changes are intentional, update fixture first, then tests, then docs references.

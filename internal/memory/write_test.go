@@ -355,6 +355,66 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 	}
 }
 
+// TestDeprecateEmitsTheEntrysOwnDomain is the regression guard for
+// CW-20260910-0069: Store.Deprecate passed the constant domains.Memory to
+// EmitRevision while state.Domain sat loaded five lines above, so every
+// knowledge and event deprecation logged as `memory.deprecate` and
+// `knowledge.deprecate` had never existed.
+//
+// The sibling above uses a MEMORY entry, which is why it passed with the bug in
+// place — the constant happened to be right for that one domain. Asserting that
+// a row was emitted proves nothing here; the domain is the whole claim, and it
+// reaches the audit log as the event_type's prefix.
+//
+// Anyone filtering the audit table by domain=knowledge got zero rows and would
+// reasonably have concluded no knowledge entry had ever been deprecated — a
+// false negative in exactly the surface built to answer that question.
+func TestDeprecateEmitsTheEntrysOwnDomain(t *testing.T) {
+	cs := newTestStoreWithAudit(t)
+	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	ms.SetAuditSink(cs)
+
+	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Knowledge,
+		Namespace:  "user/alice/knowledge/docs",
+		MemoryKey:  "the.doc",
+		Author:     memory.Author{AgentID: "test-agent"},
+		Trigger:    memory.TriggerManual,
+		SessionID:  "sess-1",
+		Origin:     memory.OriginUser,
+		Confidence: 0.9,
+		Payload:    memory.Payload{Summary: "a knowledge entry"},
+		Facets: memory.Facets{
+			Kind:    "doc",
+			Source:  "manual",
+			Pointer: &memory.Pointer{Scheme: "nil", Locator: "docs/the.doc"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision(knowledge): %v", err)
+	}
+
+	if err = ms.Deprecate(context.Background(), rev.RevisionID); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+
+	events, err := cs.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 audit events (write + deprecate), got %d", len(events))
+	}
+	if got := events[0].EventType; got != "knowledge.deprecate" {
+		t.Errorf("deprecating a knowledge entry logged %q, want %q. The entry's own domain is "+
+			"loaded in Deprecate and must be what reaches the audit log — a constant there makes "+
+			"every non-memory deprecation invisible to a domain filter", got, "knowledge.deprecate")
+	}
+	if events[0].RecordID != rev.RevisionID {
+		t.Errorf("record_id: got %q, want %q", events[0].RecordID, rev.RevisionID)
+	}
+}
+
 func TestPromoteEmitsThreeEvents(t *testing.T) {
 	cs := newTestStoreWithAudit(t)
 	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})

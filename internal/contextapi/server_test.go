@@ -1792,6 +1792,109 @@ func TestGatedPromotionApplyWithoutApprovalFails(t *testing.T) {
 	}
 }
 
+// TestPromoteDefaultsActorToAgent pins CW-20260910-0046: a promote stage that
+// is not told who is acting records `agent`, never `user`.
+//
+// The direction is the point. An omitted field must not produce the MORE
+// authoritative attribution — 494 of 516 decision records are not origin: user,
+// so defaulting to `user` fabricated the rarer answer and failed open on
+// provenance. After this, `user` is something a caller asserts, which is the
+// only way the assertion carries information.
+//
+// The second half is the consequence that is easy to miss. `promote/apply`
+// refuses a `user/*` target unless actor is `user`, and the old default
+// satisfied that gate by itself — an agent that simply named no actor walked
+// through it. That is the same shape CW-20260909-0034 found in decision/adr's
+// promotion rule: it gated honesty rather than authority. With the default
+// flipped the gate starts doing what it reads as doing.
+func TestPromoteDefaultsActorToAgent(t *testing.T) {
+	s := newTestServer(t)
+
+	writeRes := performJSON(t, s, "POST", "/v1/context/write", map[string]any{
+		"actor":     "app:myapp",
+		"client_id": "myapp",
+		"namespace": "app/myapp/draft",
+		"key":       "defaulted",
+		"payload":   map[string]any{"v": 1},
+	})
+	if writeRes.Code != http.StatusOK {
+		t.Fatalf("write: %s", writeRes.Body)
+	}
+	var writeResp map[string]any
+	json.NewDecoder(writeRes.Body).Decode(&writeResp)
+	srcRecordID := writeResp["record_id"].(string)
+
+	newRequest := func(target, key string) string {
+		t.Helper()
+		res := performJSON(t, s, "POST", "/v1/context/promote/request", map[string]any{
+			"actor":              "app:myapp",
+			"client_id":          "myapp",
+			"source_namespace":   "app/myapp/draft",
+			"source_key":         "defaulted",
+			"source_revision_id": srcRecordID,
+			"target_namespace":   target,
+			"target_key":         key,
+			"reason":             "test",
+		})
+		if res.Code != http.StatusOK {
+			t.Fatalf("promote/request: %s", res.Body)
+		}
+		var resp map[string]any
+		json.NewDecoder(res.Body).Decode(&resp)
+		return resp["request_id"].(string)
+	}
+
+	// An app-namespace target, so the user/* gate is not what is under test.
+	appReq := newRequest("app/myapp/published", "defaulted")
+	// No `actor` on either stage — that is the whole point.
+	if res := performJSON(t, s, "POST", "/v1/context/promote/approve", map[string]any{
+		"request_id": appReq,
+	}); res.Code != http.StatusOK {
+		t.Fatalf("promote/approve without actor: %s", res.Body)
+	}
+	if res := performJSON(t, s, "POST", "/v1/context/promote/apply", map[string]any{
+		"request_id": appReq,
+	}); res.Code != http.StatusOK {
+		t.Fatalf("promote/apply without actor: %s", res.Body)
+	}
+
+	headRes := performJSON(t, s, "GET", "/v1/context/head?namespace=app/myapp/published&key=defaulted", nil)
+	if headRes.Code != http.StatusOK {
+		t.Fatalf("head: %s", headRes.Body)
+	}
+	var head struct {
+		Record map[string]any `json:"record"`
+	}
+	json.NewDecoder(headRes.Body).Decode(&head)
+	if head.Record == nil {
+		t.Fatal("promoted record not found in target namespace")
+	}
+	got, _ := head.Record["actor"].(string)
+	if got == "user" {
+		t.Fatalf("an omitted actor recorded %q — the default still fails open on provenance, which "+
+			"is the defect this pins", got)
+	}
+	if got != contextstore.DefaultPromoteActor {
+		t.Fatalf("actor: got %q, want %q", got, contextstore.DefaultPromoteActor)
+	}
+
+	// And the user/* gate now refuses a caller who did not say they are the user.
+	userReq := newRequest("user/memory/preferences", "defaulted")
+	if res := performJSON(t, s, "POST", "/v1/context/promote/approve", map[string]any{
+		"request_id": userReq,
+	}); res.Code != http.StatusOK {
+		t.Fatalf("promote/approve without actor: %s", res.Body)
+	}
+	res := performJSON(t, s, "POST", "/v1/context/promote/apply", map[string]any{
+		"request_id": userReq,
+	})
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("promote/apply into user/* with no actor returned %d, want 403 — the gate requires "+
+			"actor=user and the default must no longer satisfy it on the caller's behalf: %s",
+			res.Code, res.Body)
+	}
+}
+
 func TestOldPromoteEndpointReturnsGone(t *testing.T) {
 	s := newTestServer(t)
 	res := performJSON(t, s, "POST", "/v1/context/promote", map[string]any{})

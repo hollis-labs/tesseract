@@ -74,22 +74,21 @@ Event types actually emitted by the MCP surface:
 - `bulk_ingest` / `chunked_ingest` — `context_ingest` under `mode: "bulk"` / `mode: "chunked"`.
 - `memory.write` — a memory revision was written. Emitted by `memory_write` and internal memory paths.
 - `memory.supersede` — a memory write whose `Supersedes` field is set (the write replaces a prior revision).
-- `memory.deprecate` — **any** revision in the shared revision store was deprecated (also fires on the source side of a promote). Read that literally: `Store.Deprecate` stamps the domain as `memory` regardless of what the revision actually is, so a deprecated knowledge or event revision lands here too and there is no `knowledge.deprecate` or `event.deprecate` to filter on. Filter this type and read `namespace` to tell them apart.
+- `memory.deprecate` — a **memory** revision was deprecated (also fires on the source side of a promote). Knowledge and event deprecations carry their own domain, so filter `knowledge.deprecate` or `event.deprecate` for those.
+
+  **One boundary worth knowing when reading old rows.** Until CW-20260910-0069, `Store.Deprecate` stamped every domain as `memory`, so deprecations of knowledge and event revisions written before that fix are recorded as `memory.deprecate` and no `knowledge.deprecate` row exists earlier than it. Those rows were left alone deliberately — an audit log rewritten to look better is not an audit log — so a query reaching back past the fix should read `namespace` to tell the domains apart.
 - `memory.promote` — umbrella event for a session → user/project memory promotion. A promote also emits the nested `memory.write` (target) and `memory.deprecate` (source).
-- `knowledge.write` / `knowledge.supersede` — the knowledge-domain equivalents. `event.write` / `event.supersede` likewise, composed the same way.
+- `knowledge.write` / `knowledge.supersede` / `knowledge.deprecate` — the knowledge-domain equivalents. `event.write` / `event.supersede` / `event.deprecate` likewise, composed the same way.
 - `namespace.register` / `namespace.update` — a `namespace_policies` row was created or changed. You will see `namespace.register` without having asked for it: the first memory, knowledge or event write into a namespace with no policy row auto-registers it and emits this with `source: "inferred"` in the metadata.
 
 ### Where the two doors disagree
 
-Three places, and they share one shape: **"not in the log" does not mean "did not happen."** Reconstructing history from the audit stream is only as good as your knowledge of these.
+Two places, and they share one shape: **"not in the log" does not mean "did not happen."** Reconstructing history from the audit stream is only as good as your knowledge of these.
 
 | What happened | Over HTTP | Over MCP |
 |---|---|---|
 | A context record was deprecated | `status_deprecate` | **nothing** |
 | A namespace was explicitly registered | `namespace.register` | **nothing** — only the auto-register path emits |
-| A knowledge or event revision was deprecated | `memory.deprecate` | `memory.deprecate` |
-
-The third is not a door asymmetry but a domain one, and it bites the same way: there is no `knowledge.deprecate` or `event.deprecate` to filter on.
 
 The three promote-stage names are surface-independent: `POST /v1/context/promote/*`,
 `context_promote` and `tesseract context promote ...` all write the same

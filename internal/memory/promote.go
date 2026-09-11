@@ -109,6 +109,17 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 
 	// Umbrella promote event. Nested WriteRevision (for target) and Deprecate
 	// (for source) emit their own events — callers see three events per promote.
+	//
+	// The constant here is correct, unlike the one Deprecate used to carry
+	// (CW-20260910-0069), and it is worth saying why because the two look
+	// identical: `writeIn` above never sets Domain, and WriteRevision defaults
+	// an empty Domain to domains.Memory (write.go:55), so `promoted` is always
+	// a memory revision and `memory.promote` always names it accurately.
+	//
+	// That makes it true by a two-step inference through a default rather than
+	// by construction. Anyone who later sets writeIn.Domain from the source
+	// revision must change this line in the same edit, or promote starts
+	// mis-stamping the way Deprecate did.
 	if s.auditSink != nil {
 		key := promoted.MemoryKey
 		if key == "" {
@@ -193,7 +204,7 @@ LIMIT 1`,
 			if key == "" {
 				key = memoryID
 			}
-			_ = s.auditSink.EmitRevision(ctx, string(domains.Memory), auditOpDeprecate, "system", state.Namespace, key, revisionID, nil)
+			_ = s.auditSink.EmitRevision(ctx, string(state.Domain), auditOpDeprecate, "system", state.Namespace, key, revisionID, nil)
 		}
 	}
 
