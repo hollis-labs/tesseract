@@ -94,7 +94,7 @@ fixed first.
 | F2 | "memory and knowledge write audit is in flight" — it is live | `start-here.md` | **Fixed** | **High** |
 | F3 | "audit emission for memory deprecations is in flight" — it is live | `revisions.md` | **Fixed** | **High** |
 | F4 | "memory and knowledge revisions share one table" — Event is a third | `crossdomain_read_tools.go` ×2, `revisions.md` | **Fixed** | **High** |
-| F5 | `memory.deprecate` fires for knowledge and event revisions too | `audit.md` | **Fixed in prose; code defect open** | **High** |
+| F5 | `memory.deprecate` fires for knowledge and event revisions too | `audit.md` | **Closed** — code fixed under CW-20260910-0069 | **High** |
 | F6 | Audit helper list and event-type list both incomplete | `audit.md` | **Fixed** | **High** |
 | F7 | `event_*` missing from the tool inventory; touch guidance narrower than the tool | `docs/AGENT-SETUP.md`, `docs/CONTEXT-FOR-PROJECTS.md` | **Fixed** | **High** |
 
@@ -119,6 +119,14 @@ posture is one moment of thought at write time, not paralysis. `notes` and
 where it is than migrated at the cost of its lineage.
 
 ### F5 — `memory.deprecate` is domain-blind, and this one is a code defect
+
+> **CLOSED 2026-09-11 under CW-20260910-0069.** The code fix this section
+> proposes was applied — `Store.Deprecate` now passes `state.Domain`, and
+> `TestDeprecateEmitsTheEntrysOwnDomain` fails if it regresses to a constant.
+> `audit.md` was reverted in the same commit to describe the contract again.
+> Rows written before the fix keep their `memory.deprecate` stamp and were
+> deliberately not backfilled; `audit.md` records that boundary. The analysis
+> below stands as the record of what was found.
 
 `Store.Deprecate` (`internal/memory/promote.go:196`) emits its audit event with
 `string(domains.Memory)` hard-coded, whatever domain the revision actually
