@@ -1127,7 +1127,7 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	// The guard fires only when the entry is NEW. An existing (namespace, key)
 	// keeps accepting revisions, for two reasons. Nineteen rows already sit in
 	// claimed namespaces, and freezing them would strand them harder than the
-	// silence did — their re-filing (CW-20260910-0078) has to deprecate the
+	// silence did — their re-filing (CW-20260911-0005) has to deprecate the
 	// records it copies, and status changes append a revision through
 	// UpdateRecordStatus, i.e. through here. And the address is already claimed
 	// in this store, so a further revision adds no new ambiguity; only a new

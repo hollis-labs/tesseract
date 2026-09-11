@@ -75,7 +75,7 @@ func TestRefusedWriteLeavesNothingBehind(t *testing.T) {
 
 // TestExistingClaimedEntriesStayWritable is the constraint the prompt set:
 // whatever this task decides must not strand the nineteen rows already sitting
-// in claimed namespaces. Their re-filing (CW-20260910-0078) has to deprecate
+// in claimed namespaces. Their re-filing (CW-20260911-0005) has to deprecate
 // each record it copies, and a status change appends a revision through this
 // same path — so freezing them would have made the cleanup impossible.
 func TestExistingClaimedEntriesStayWritable(t *testing.T) {
