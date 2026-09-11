@@ -155,11 +155,18 @@ audited request → approve → apply workflow:
 `request` always captures the current source head. It prints the generated
 request ID for the later commands.
 
-The target must be under `user/`, and it may not fall inside a curated domain's
-address space — `user/{id}/memory/...`, `.../knowledge/...` and `.../event/...`
-belong to the memory, knowledge and event stores, not to records. A request
-naming one is accepted and approved but fails at `apply`, because the guard sits
-at the write itself; see "Reserved namespaces" below.
+Two constraints apply to the target, and neither is checked at `request` time:
+
+- A target under `user/` requires `--actor user` at `apply`; the HTTP apply
+  handler returns `403 policy_denied` otherwise. Targets outside `user/` carry no
+  actor constraint. (`contextpolicy.CanPromote` looks like it requires a `user/`
+  root, but nothing calls it — see CW-20260911-0006.)
+- A target may not **open a new entry** inside a curated domain's address space.
+  `user/{id}/memory/...`, `.../knowledge/...` and `.../event/...` belong to the
+  memory, knowledge and event stores; see "Reserved namespaces" above. A request
+  naming one is accepted and approved, then fails at `apply`, because the guard
+  sits at the write itself. If the target entry already exists, `apply` succeeds
+  and appends a revision to it, the same as any other write.
 
 ```bash
 tesseract context promote request \

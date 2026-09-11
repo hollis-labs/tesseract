@@ -1074,6 +1074,29 @@ func columnExists(ctx context.Context, tx *sql.Tx, table, column string) (bool, 
 	return found, nil
 }
 
+// afterAdvisoryReservedCheck is a test seam, nil in production. It fires inside
+// AppendRecord between the reserved-grammar guard's advisory read and the
+// transaction that re-checks the verdict, which is the only point from which
+// the interleaving the second check defends against can be reproduced.
+//
+// It earns its place in production code because without it the authoritative
+// check is untestable: a test that deletes the rows before calling AppendRecord
+// is stopped by the advisory read, so the assertion passes whether or not the
+// in-transaction check exists. A guard whose test cannot fail when the guard is
+// removed is not a tested guard.
+var afterAdvisoryReservedCheck func()
+
+// reservedNamespaceError builds the refusal both halves of the reserved-grammar
+// guard return. Single-sourced so the advisory and authoritative checks cannot
+// drift into telling a caller two different things about the same namespace.
+func reservedNamespaceError(ns string, claim domains.Claim) error {
+	return fmt.Errorf(
+		"%w: %q belongs to the %s domain, which the context store cannot write. "+
+			"A record written here would be invisible to tesseract_recall, which reads the "+
+			"curated corpus and not the records table. Write it with %s (MCP) or POST %s (HTTP)",
+		ErrReservedNamespace, ns, claim.Domain, claim.MCPTool, claim.HTTPPath)
+}
+
 // AppendInput defines a new write.
 type AppendInput struct {
 	Namespace string
@@ -1120,10 +1143,6 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	// Reserved-grammar guard (CW-20260909-0013). The curated domains own their
 	// address space; the context store may not open new entries inside it.
 	//
-	// This runs BEFORE ensureNamespaceRegistered so a refused write leaves
-	// nothing behind — registering the namespace we are about to reject would
-	// seed the policy registry with locations no record will ever occupy.
-	//
 	// The guard fires only when the entry is NEW. An existing (namespace, key)
 	// keeps accepting revisions, for two reasons. Nineteen rows already sit in
 	// claimed namespaces, and freezing them would strand them harder than the
@@ -1134,7 +1153,25 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	// entry does. Restore is unaffected either way: restore.go INSERTs directly
 	// and never calls AppendRecord, so a backup carrying these rows still
 	// replays.
-	if claim, claimed := domains.ClaimedBy(ns); claimed {
+	//
+	// The check is made TWICE, and the two are not redundant:
+	//
+	//   1. Here, before ensureNamespaceRegistered, so a refused write leaves
+	//      nothing behind. Registering the namespace we are about to reject
+	//      would seed the policy registry with locations no record will ever
+	//      occupy. This one is advisory — it reads outside the transaction.
+	//   2. Inside the transaction below, off the revision number the INSERT
+	//      actually uses. That one is authoritative.
+	//
+	// The second exists because this one races the deleters. CleanupExpiredTTL,
+	// TrimRecords, CompactRevisions and CompactNamespace all remove rows: a
+	// caller that reads a non-zero count here, and whose rows are then deleted
+	// before its own transaction opens, would compute revision 1 and open a new
+	// entry in a claimed namespace — the exact thing the guard forbids. Reading
+	// the count inside the transaction closes it, because there `rev` and the
+	// INSERT come from one snapshot.
+	claim, claimed := domains.ClaimedBy(ns)
+	if claimed {
 		var priorRevisions int64
 		if scanErr := s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM records WHERE namespace = ? AND key_name = ?`, ns, key,
@@ -1142,11 +1179,14 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 			return Record{}, fmt.Errorf("check reserved namespace: %w", scanErr)
 		}
 		if priorRevisions == 0 {
-			return Record{}, fmt.Errorf(
-				"%w: %q belongs to the %s domain, which the context store cannot write. "+
-					"A record written here would be invisible to tesseract_recall, which reads the "+
-					"curated corpus and not the records table. Write it with %s (MCP) or POST %s (HTTP)",
-				ErrReservedNamespace, ns, claim.Domain, claim.MCPTool, claim.HTTPPath)
+			return Record{}, reservedNamespaceError(ns, claim)
+		}
+		// The window the authoritative check exists to close. Production leaves
+		// this nil; the race is otherwise untestable, because any delete a test
+		// issues before calling AppendRecord is caught by the advisory read
+		// above and never reaches the transaction at all.
+		if afterAdvisoryReservedCheck != nil {
+			afterAdvisoryReservedCheck()
 		}
 	}
 
@@ -1171,6 +1211,15 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 
 	var rev int64
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(revision), 0) + 1 FROM records WHERE namespace = ? AND key_name = ?`, ns, key).Scan(&rev); err != nil {
+		return Record{}, err
+	}
+
+	// The authoritative half of the reserved-grammar guard. rev == 1 means this
+	// INSERT opens a new entry, and it is read from the same snapshot the INSERT
+	// commits under, so nothing can delete the prior revisions out from under it
+	// between the test and the write. See the note above the advisory check.
+	if claimed && rev == 1 {
+		err = reservedNamespaceError(ns, claim)
 		return Record{}, err
 	}
 

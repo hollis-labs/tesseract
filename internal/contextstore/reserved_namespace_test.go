@@ -144,3 +144,57 @@ VALUES (?, ?, ?, 1, 'user', '2026-09-04T21:41:22Z', '', ?)`,
 		t.Fatalf("seed legacy record: %v", err)
 	}
 }
+
+// TestReservedGuardSurvivesRowsDeletedAfterTheAdvisoryCheck exercises the race
+// the in-transaction half of the guard exists for.
+//
+// The advisory check reads outside the transaction. A caller whose claimed entry
+// has rows at that moment passes it — and CleanupExpiredTTL, TrimRecords,
+// CompactRevisions and CompactNamespace can all delete those rows before the
+// caller's own transaction opens. Without the second check the revision number
+// comes back as 1 and the write opens a new entry in a reserved namespace, which
+// is exactly what the guard forbids.
+//
+// The delete has to land INSIDE that window, so it runs from the test seam
+// rather than before the call. A delete issued before AppendRecord is caught by
+// the advisory read and never reaches the transaction, which is why the obvious
+// version of this test passes with the in-transaction check deleted.
+func TestReservedGuardSurvivesRowsDeletedAfterTheAdvisoryCheck(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	const ns = "user/chrispian/memory/decisions"
+	const key = "an_entry_about_to_be_compacted"
+
+	seedLegacyRecord(t, s, ns, key)
+
+	// Stand in for a compaction that commits inside the window.
+	fired := false
+	afterAdvisoryReservedCheck = func() {
+		fired = true
+		if _, err := s.db.ExecContext(ctx,
+			`DELETE FROM records WHERE namespace = ? AND key_name = ?`, ns, key); err != nil {
+			t.Errorf("delete inside the window: %v", err)
+		}
+	}
+	t.Cleanup(func() { afterAdvisoryReservedCheck = nil })
+
+	_, err := s.AppendRecord(ctx, AppendInput{
+		Namespace: ns, Key: key, Actor: "user", Payload: json.RawMessage(`{"body":"x"}`),
+	})
+
+	if !fired {
+		t.Fatal("the seam never fired — the advisory check refused before the window, so this test proves nothing")
+	}
+	if !errors.Is(err, ErrReservedNamespace) {
+		t.Fatalf("AppendRecord with the rows deleted mid-flight = %v, want ErrReservedNamespace", err)
+	}
+
+	var after int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM records WHERE namespace = ? AND key_name = ?`, ns, key).Scan(&after); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if after != 0 {
+		t.Errorf("refused write left %d rows behind; want 0", after)
+	}
+}

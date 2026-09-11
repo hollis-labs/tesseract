@@ -941,6 +941,14 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req mcp.CallToolReques
 		Payload:   srcRec.Payload,
 	})
 	if err != nil {
+		// codeApplyFailed means "accepted, and the work did not complete". A
+		// reserved target never had a chance to complete — the namespace the
+		// caller named is not writable by this store at all — so it is an
+		// argument failure, and the HTTP peer answers 400 for the same reason.
+		// Matched by sentinel so neither surface re-derives the namespace rule.
+		if errors.Is(err, contextstore.ErrReservedNamespace) {
+			return toolError(codeValidationError, err.Error()), nil
+		}
 		return toolError(codeApplyFailed, err.Error()), nil
 	}
 

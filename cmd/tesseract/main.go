@@ -224,7 +224,7 @@ func topLevelCommands() []topLevelCommand {
 		{
 			Name:        "context",
 			Summary:     "read, write and maintain records (see below)",
-			Description: "Every record and maintenance operation is a subcommand of `context`. Memory,\n  knowledge and event are NOT reachable from the CLI — they are written over MCP\n  (memory_write, knowledge_write, event_write) or HTTP (POST /v1/memory/write).",
+			Description: "Every record and maintenance operation is a subcommand of `context`. Memory,\n  knowledge and event are NOT reachable from the CLI — they are written over MCP\n  (memory_write, knowledge_write, event_write) or over their matching HTTP routes\n  (POST /v1/memory/write, /v1/knowledge/write, /v1/event/write).",
 		},
 		{
 			Name:        "path",
@@ -343,9 +343,11 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprint(w, "\nEvery record and maintenance operation is a `context` subcommand —\n"+
 		"`tesseract put ...` is not a command, `tesseract context put ...` is.\n\n"+
 		"Memory, knowledge and event are NOT reachable from this CLI. They live in a\n"+
-		"different store than `context` records, and `context put` refuses their\n"+
-		"namespaces rather than writing somewhere recall cannot see. Write them over\n"+
-		"MCP (memory_write, knowledge_write, event_write) or HTTP (POST /v1/memory/write).\n"+
+		"different store than `context` records, so `context put` refuses to open a NEW\n"+
+		"entry in their namespaces rather than writing somewhere recall cannot see.\n"+
+		"(Records already there keep taking revisions, so they can still be deprecated.)\n"+
+		"Write them over MCP (memory_write, knowledge_write, event_write) or over their\n"+
+		"matching HTTP routes (POST /v1/memory/write and peers).\n"+
 		"\ncontext subcommands:\n")
 	contextcli.WriteCommands(w)
 	_, _ = fmt.Fprint(w, "\nrun `tesseract <command> --help` for that command's flags.\n")
