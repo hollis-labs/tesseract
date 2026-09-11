@@ -249,6 +249,21 @@ func topLevelCommands() []topLevelCommand {
 			FlagsSource: "backfill.go",
 		},
 		{
+			Name:    "novelty-fit-basis",
+			Summary: "fit the frozen PCA-16 basis the second novelty series is measured in",
+			Description: "One-shot, offline fit of a frozen projection over a stated snapshot of the\n" +
+				"  embedded corpus. Scoring in the reduced space is Tesseract's extension, not the\n" +
+				"  paper's method. A store without a basis records NULL in the projected columns;\n" +
+				"  nothing fits one implicitly, and a running daemon picks a new one up only on\n" +
+				"  restart.",
+			Flags: []string{
+				"  -model m\tembedding model to fit for (default: the configured model)",
+				"  -snapshot-at t\tRFC3339 instant bounding the snapshot (default: now)",
+				"  -replace\tfit a new basis even though one already exists",
+			},
+			FlagsSource: "noveltybasis.go",
+		},
+		{
 			Name:        "migrate-namespaces",
 			Summary:     "one-shot rewrite of legacy namespaces",
 			Description: "Rewrites legacy namespaces into the current scheme, lifting repeated path\n  segments into project: tags. Plans only unless -apply is given.",
@@ -518,6 +533,8 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMCP(ctx, store, stderr, token, layout, tesseractCfg)
 	case "backfill-embeddings":
 		return runBackfill(ctx, store, tesseractCfg, rest, stdout, stderr)
+	case "novelty-fit-basis":
+		return runNoveltyFitBasis(ctx, store, tesseractCfg, rest, stdout, stderr)
 	}
 
 	cli := &contextcli.CLI{
