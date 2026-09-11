@@ -40,7 +40,37 @@ func (s *Store) EmbedRevision(ctx context.Context, revisionID, model string) err
 		`UPDATE memory_revisions SET embedding_model = ?, embedding_vector = ? WHERE revision_id = ?`,
 		model, blob, revisionID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Shadow-mode novelty scoring (CW-20260825-0018). This is the ONLY call
+	// site outside internal/memory/novelty.go, and the confinement guard in
+	// novelty_discipline_test.go names this function as the single allowed
+	// carrier — see that file before adding a second one.
+	//
+	// Here rather than in WriteRevision because embedding is asynchronous and
+	// post-commit: at INSERT time the revision has no vector to score, and
+	// scoring inline would put a synchronous embedding API call on every write
+	// when today only an opt-in `dedup: "semantic"` write pays for one. Here
+	// also means all three production embed paths — the queue handler, the
+	// library facade, and the CLI backfill — get it without knowing about it.
+	//
+	// Best-effort by contract, and that is not laziness about errors. The
+	// embedding above is committed and was paid for; returning an error here
+	// would make the queue retry the whole job and buy a second embedding for
+	// the same revision. A failure leaves the novelty columns NULL, which reads
+	// as "not scored" — the honest answer, and one the schema distinguishes
+	// from a score of zero.
+	if noveltyErr := s.scoreNovelty(ctx, revisionID); noveltyErr != nil {
+		// Identity only. This line may name the revision that failed to score;
+		// it must never carry the memory's contents.
+		s.log().WarnContext(ctx, "novelty scoring failed",
+			"revision_id", revisionID,
+			"err", noveltyErr,
+		)
+	}
+	return nil
 }
 
 // revisionEmbedText concatenates the revision's summary and body into a single

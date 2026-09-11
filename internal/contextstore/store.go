@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 19
+	schemaVersion = 20
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1037,6 +1037,69 @@ END`); err != nil {
 				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_external_ref ON memory_revisions(json_extract(consumer_state, '$.external_ref')) WHERE consumer_state IS NOT NULL`,
 			} {
 				if _, err = tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+		case 20:
+			// Novelty, in shadow mode (CW-20260825-0018).
+			//
+			// A THIRD bag, and the reason none of these is called `state`.
+			// memory_state is Tesseract's mutable per-ENTRY bookkeeping;
+			// consumer_state, added one migration ago, is the CONSUMER's
+			// immutable per-revision JSON bag that Tesseract never reads a
+			// value out of. These are Tesseract's OWN derived measurement of
+			// one revision, immutable with it, computed by
+			// internal/memory/novelty.go and read by nothing. The `novelty_`
+			// prefix appears nowhere else in the schema, which is what lets
+			// the confinement guard in novelty_discipline_test.go enforce that
+			// by grep rather than by convention.
+			//
+			// SIX columns rather than one, because the published gate's
+			// parameters were measured NOT to transfer to a 3072-dimensional
+			// corpus before this landed. Storing only the score would collect
+			// evidence for a parameterisation already known to be wrong;
+			// storing the statistics it was derived from — the scope size, the
+			// estimated concentration, and the top-1 cosine the shipped dedup
+			// gate thresholds at 0.85 — lets any (tau, delta) be re-evaluated
+			// offline without re-embedding the corpus. novelty_gate_version
+			// stamps which parameterisation produced novelty_route, so rows
+			// scored under different rules stay distinguishable.
+			//
+			// NULL is load-bearing and is not zero. A novelty_score of 0 means
+			// "perfectly explained by the scope"; NULL means nobody looked.
+			// Every revision predating this migration carries NULL, as do the
+			// unembedded ones, and collapsing the two would make the least
+			// examined content in the store read as the most redundant.
+			//
+			// No index. The question these columns exist to answer — "would
+			// the gate have been right" — is an offline analytical scan over a
+			// table this size, and migration 19's own comment names the mistake
+			// of declaring an index for a query shape nobody has written yet.
+			// One ships when a query does.
+			//
+			// Guarded rather than issued blind, for the reason migration 19
+			// gives: SQLite has no ADD COLUMN IF NOT EXISTS, several tests roll
+			// schema_version back and replay every migration above it, and an
+			// unguarded ADD COLUMN is the one rung the ladder cannot be climbed
+			// twice. Assigned to the enclosing `err`, not a fresh one, so the
+			// deferred rollback keys on the named return.
+			for _, col := range []struct{ name, ddl string }{
+				{"novelty_score", "ALTER TABLE memory_revisions ADD COLUMN novelty_score REAL NULL"},
+				{"novelty_top1_cosine", "ALTER TABLE memory_revisions ADD COLUMN novelty_top1_cosine REAL NULL"},
+				{"novelty_scope_n", "ALTER TABLE memory_revisions ADD COLUMN novelty_scope_n INTEGER NULL"},
+				{"novelty_kappa", "ALTER TABLE memory_revisions ADD COLUMN novelty_kappa REAL NULL"},
+				{"novelty_route", "ALTER TABLE memory_revisions ADD COLUMN novelty_route TEXT NULL"},
+				{"novelty_gate_version", "ALTER TABLE memory_revisions ADD COLUMN novelty_gate_version TEXT NULL"},
+			} {
+				var present bool
+				present, err = columnExists(ctx, tx, "memory_revisions", col.name)
+				if err != nil {
+					return err
+				}
+				if present {
+					continue
+				}
+				if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
 					return err
 				}
 			}
