@@ -1,3 +1,16 @@
+//go:build drift
+
+// REPORT-ONLY (CW-20260911-0050): greps every shipped doc and skill for
+// tool-shaped tokens. It asserts the content of mutable artifacts, so it runs at
+// the release gate rather than on every commit -- `make drift-report`.
+//
+// It caused two documented interruptions in the two weeks before demotion, both
+// the predicted failure of this shape: a memory key beginning `knowledge_` turned
+// the build red because any registered-tool prefix reads as a tool name, and
+// `make frontend` turned it red with a confusing "no such file" until the rebuilt
+// dist was git-added, because the corpus is enumerated via `git ls-files`. Neither
+// was a defect, and in both cases it fired at whoever happened to be working
+// nearby.
 // Tool-name drift guard.
 //
 // v0.8.0 shipped a skill body that told agents to call `vanta_skills` — a tool
@@ -581,24 +594,6 @@ func TestPlannedToolsAreTracked(t *testing.T) {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-// registeredToolNames introspects the live tool surface the same way
-// TestMCPRegistrationMatchesCatalog does.
-func registeredToolNames(t *testing.T) map[string]struct{} {
-	t.Helper()
-	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("toolname-drift-test", "0.0.0", server.WithToolCapabilities(true))
-	adapter.RegisterAllTools(srv)
-
-	names := map[string]struct{}{}
-	for name := range srv.ListTools() {
-		names[name] = struct{}{}
-	}
-	if len(names) == 0 {
-		t.Fatal("registered zero tools — the adapter is not wired, so any clean result here is meaningless")
-	}
-	return names
-}
-
 // scanShippedProse walks scannedRoots for markdown, adds scannedFiles, and
 // returns every candidate token found.
 func scanShippedProse(t *testing.T) []tokenHit {
@@ -647,15 +642,4 @@ func scanShippedProse(t *testing.T) []tokenHit {
 		hits = append(hits, extractCandidates(rel, string(body))...)
 	}
 	return hits
-}
-
-// repoRoot resolves the module root from this package's working directory and
-// verifies it, so a moved test file fails loudly instead of scanning nothing.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	root := filepath.Join("..", "..")
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("repo root %q has no go.mod (%v) — this test's relative path is stale", root, err)
-	}
-	return root
 }

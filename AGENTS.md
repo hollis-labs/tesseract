@@ -36,6 +36,14 @@ make build         # Go only; compiles the committed UI bundle
 `make smoke` curls a daemon you already have listening; `make e2e-local` starts
 and tears down its own. Run one when a change touches HTTP, CLI or MCP shape.
 
+**`make drift-report` at release, not at commit.** `go test ./...` deliberately
+skips the doc/prose-drift checks (`//go:build drift`), because they assert the
+content of mutable artifacts and firing on every commit taxes the edits you most
+want cheap. Their obligation moves to the release gate: reconcile the shipped
+agent-facing prose — the MCP tool descriptions and `internal/mcpadapter/skills/`
+— and run `make drift-report`. Report-only means nothing invokes it
+automatically, not that a failure is invisible; the exit code stands.
+
 **`make deploy-check` after every deploy.** `cerberus sync → apply → reload`
 deploys the API service and NOT the work the embed queue performs, and a green
 return proves nothing — `apply` has been seen succeeding both by writing a plist

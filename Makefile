@@ -1,4 +1,4 @@
-.PHONY: test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all deploy-check
+.PHONY: drift-report test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all deploy-check
 
 BASE_URL ?= http://127.0.0.1:8089
 TOKEN ?=
@@ -100,6 +100,24 @@ smoke-invalid-token:
 
 validate: contract-cli-run
 	@echo "validate complete: all contract suites passed"
+
+# The doc/prose-drift checks, which `go test ./...` deliberately skips
+# (CW-20260911-0050). They assert the content of mutable artifacts -- shipped
+# skills, tool descriptions, docs/MCP_TOOLS.md -- so their obligation lives at
+# the release gate rather than on every commit.
+#
+# The exit code is NOT swallowed. Report-only means nothing invokes this
+# automatically, not that failure is invisible: a target that always exits 0
+# would report a real finding and a skipped run identically, which is the one
+# shape worse than having no check.
+#
+# It runs the whole package under the tag rather than naming the demoted tests
+# with -run. A hand-maintained list of test names is the same failure one level
+# up: add a drift check later, forget the list, and it never runs while the
+# target still reports success.
+drift-report:
+	@echo "doc/prose drift — report-only; reconcile at release, not here"
+	$(HERMETIC_ENV) go test -tags drift ./tests/parity/ -v
 
 # Run after every deploy. `cerberus sync -> apply -> reload` deploys the API
 # service and NOT the work the queue performs, and a green return from `apply`
