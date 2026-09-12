@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -26,6 +28,7 @@ func seedLinkedCorpus(t *testing.T, srv *Server) {
 	write := func(key, body string) {
 		t.Helper()
 		if _, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  relatedNS,
 			MemoryKey:  key,
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},

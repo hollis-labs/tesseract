@@ -85,6 +85,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	ctx := context.Background()
 	for i, summary := range []string{"mem first", "mem second", "mem third"} {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  xdMemNS,
 			MemoryKey:  xdMemKey,
 			Author:     memory.Author{AgentID: "claude"},
@@ -614,6 +615,7 @@ func TestMemoryOnlyDeployment_RevisionOpsWork(t *testing.T) {
 	}
 
 	rev, err := a.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  xdMemNS,
 		MemoryKey:  xdMemKey,
 		Author:     memory.Author{AgentID: "claude"},

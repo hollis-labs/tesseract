@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
@@ -23,6 +25,7 @@ func newRecallServer(t *testing.T) *Server {
 func seedMemoryWithTags(t *testing.T, srv *Server, ns, key, summary string, tags []string) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  ns,
 		MemoryKey:  key,
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},

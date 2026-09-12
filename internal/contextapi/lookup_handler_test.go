@@ -25,6 +25,7 @@ func newLookupServer(t *testing.T) *Server {
 func seedMemory(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  "prefs.terse",
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -180,6 +181,7 @@ const lookupBodySentinel = "BODY-SENTINEL rest body that projection must drop"
 func seedMemoryWithBody(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  "prefs.body",
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -399,6 +401,7 @@ func TestTesseractLookup_FacetsCountReturnedRowsOnly(t *testing.T) {
 	srv := newLookupServer(t)
 	for i := 0; i < 5; i++ {
 		_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			MemoryKey:  "facet.probe." + string(rune('a'+i)),
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},

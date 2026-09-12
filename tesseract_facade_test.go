@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/memory"
 )
@@ -25,6 +27,7 @@ func TestTesseract_WriteAndRecall(t *testing.T) {
 	defer c.Close()
 
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/test/memory/notes",
 		MemoryKey:  "facade_test",
 		Status:     memory.StatusDraft,
@@ -65,6 +68,7 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 	defer c.Close()
 
 	_, err := c.WriteMemory(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/test/memory/notes",
 		MemoryKey:  "history_test",
 		Status:     memory.StatusDraft,

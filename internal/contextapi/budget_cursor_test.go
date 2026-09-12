@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -63,6 +65,7 @@ func seedBudgetRows(t *testing.T, srv *Server, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
 		if _, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
 			Trigger:    memory.TriggerExplicit,
@@ -258,6 +261,7 @@ func seedHistory(t *testing.T, srv *Server, n int) {
 	var last string
 	for i := 0; i < n; i++ {
 		rev, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			MemoryKey:  "hist.key",
 			Supersedes: last,

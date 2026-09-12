@@ -28,6 +28,7 @@ func newTestStore(t *testing.T) (*memory.Store, func()) {
 
 func sampleInput(key string) memory.WriteInput {
 	return memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  key,
 		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
@@ -466,6 +467,57 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 	for _, want := range []string{contextstore.EventMemoryPromote, contextstore.EventMemoryDeprecate, contextstore.EventMemoryWrite} {
 		if !gotTypes[want] {
 			t.Errorf("missing event type in newest 3: %q (got: %v)", want, gotTypes)
+		}
+	}
+}
+
+// TestWriteRevision_DomainIsRequired is the fault injection for the guard that
+// replaced the `Domain == "" -> domains.Memory` default (CW-20260910-0046
+// follow-on). A guard nobody has watched fail is a guard nobody knows works,
+// and this one replaced a line that silently succeeded.
+func TestWriteRevision_DomainIsRequired(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	in := sampleInput("prefs.output_style")
+	in.Domain = ""
+
+	_, err := ms.WriteRevision(context.Background(), in)
+	if err == nil {
+		t.Fatal("an empty Domain was accepted; the default is back")
+	}
+	if !errors.Is(err, memory.ErrInvalidInput) {
+		t.Fatalf("error is not ErrInvalidInput: %v", err)
+	}
+}
+
+// TestWriteRevision_DomainErrorNamesTheValues asserts what the denial has to
+// CARRY, not how it is worded.
+//
+// The distinction matters, because the reason this error exists at all is that
+// `domain is required` would have been useless to its recipient — usually an
+// agent with one shot at repairing the call. An assertion on the exact prose
+// would fail the next time someone improves that prose, which is the shape
+// `what-a-check-may-assert.md` says to stop writing. An assertion that the
+// message still names every value the caller is allowed to pick survives
+// rewording and fails the regression that actually costs something: a message
+// that shrinks back to naming the field it was already given.
+func TestWriteRevision_DomainErrorNamesTheValues(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	in := sampleInput("prefs.output_style")
+	in.Domain = ""
+	_, err := ms.WriteRevision(context.Background(), in)
+	if err == nil {
+		t.Fatal("an empty Domain was accepted; the default is back")
+	}
+
+	msg := err.Error()
+	for _, d := range domains.All() {
+		if !strings.Contains(msg, string(d)) {
+			t.Errorf("the domain-required error does not name the domain %q, "+
+				"so a caller reading it still cannot pick a value:\n%s", d, msg)
 		}
 	}
 }

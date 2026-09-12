@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -89,6 +90,11 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
 
 	in := memory.WriteInput{
+		// `memory_write` is the memory surface and declares no `domain`
+		// argument, so the caller has nothing to fill in. The domain is a
+		// property of the TOOL, and it is set here rather than defaulted in
+		// the store — see errDomainRequired in internal/memory/write.go.
+		Domain:     domains.Memory,
 		Namespace:  req.GetString("namespace", ""),
 		MemoryKey:  req.GetString("memory_key", ""),
 		Supersedes: req.GetString("supersedes", ""),

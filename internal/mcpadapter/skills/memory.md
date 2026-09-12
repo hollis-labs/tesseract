@@ -139,7 +139,7 @@ The field-by-field mapping, for the fields that do not simply carry across:
 | `payload_summary`, `payload_body` | `payload: {summary, body}` |
 | `tags` (JSON-encoded string) | `tags` (JSON array) |
 | `consumer_state` (JSON-encoded string) | `consumer_state` (JSON object) |
-| — | `domain` (optional; defaults to `memory`, and `/v1/memory/write` refuses any other value) |
+| — | `domain` (HTTP only, and optional there: `/v1/memory/write` sets `memory` for you and refuses any other value) |
 
 `facets` exists on the HTTP body but is a knowledge-domain field: a memory write carrying a non-zero facet is rejected. Facets go to `POST /v1/knowledge/write` — see `tesseract_skills knowledge`.
 

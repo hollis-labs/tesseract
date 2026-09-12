@@ -24,6 +24,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -58,6 +60,7 @@ func bothSurfaces(t *testing.T, rows int) (*Adapter, *contextapi.Server) {
 
 	for i := 0; i < rows; i++ {
 		if _, err := ms.WriteRevision(context.Background(), memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
 			Trigger:    memory.TriggerExplicit,
@@ -245,6 +248,7 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 	var last string
 	for i := 0; i < 5; i++ {
 		rev, err := a.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			MemoryKey:  "hist.key",
 			Supersedes: last,

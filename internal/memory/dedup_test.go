@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -15,6 +17,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 
 	// Write and embed a revision.
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: ns, MemoryKey: "dedup_test",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -31,6 +34,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 
 	// Write similar revision with dedup enabled.
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: ns, MemoryKey: "dedup_test",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -59,6 +63,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 	ns := "user/chrispian/memory/notes"
 
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: ns, MemoryKey: "alpha",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -74,6 +79,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 	}
 
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: ns, MemoryKey: "beta",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -101,6 +107,7 @@ func TestWriteRevision_SemanticDedup_NoMatch(t *testing.T) {
 	ctx := context.Background()
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: "user/chrispian/memory/notes", MemoryKey: "unique",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -123,6 +130,7 @@ func TestWriteRevision_NoDedup_Default(t *testing.T) {
 	ctx := context.Background()
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: "user/chrispian/memory/notes", MemoryKey: "no_dedup",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},

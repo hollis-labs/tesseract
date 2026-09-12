@@ -75,6 +75,13 @@ Writes never mutate: `AppendRecord` allocates the next revision and advances
 `heads` in one transaction. Cross-namespace movement goes through the
 request → approve → apply promotion workflow, which apps cannot bypass.
 
+`memory.WriteInput.Domain` is required and has no default. The surfaces set it
+for their own domain — `memory_write` and `/v1/memory/write` stamp `memory`,
+`knowledge.Store.Write` and `event.Store.Write` stamp theirs — so a caller
+never fills it in; a direct store caller must. It stopped defaulting because a
+default is indistinguishable from a choice in the audit log, which is how
+`Deprecate` stamped every domain as `memory` until CW-20260910-0069.
+
 The embed queue is shared, and the daemon owns it. `serve` publishes a claim in
 `queue.db` and runs its worker unconditionally; `mcp` reads that claim and runs
 its worker only while no live daemon holds one. The two roles are disjoint

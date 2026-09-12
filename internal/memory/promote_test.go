@@ -5,12 +5,15 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // sessionInput returns a WriteInput rooted in a session-scoped namespace.
 func sessionInput(key string) memory.WriteInput {
 	return memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/session/sess123/memory/notes",
 		MemoryKey:  key,
 		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},

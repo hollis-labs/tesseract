@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/hollis-labs/tesseract/domains"
 )
 
 // PromoteInput carries parameters for promoting a session-scoped memory
@@ -73,6 +71,10 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 
 	// Build the WriteInput for the target namespace.
 	writeIn := WriteInput{
+		// Carried from the source revision rather than set to a constant.
+		// Promote is a SCOPE change, so the domain is a property of what is
+		// being moved, not of the operation doing the moving.
+		Domain:     srcRev.Domain,
 		Namespace:  in.TargetNamespace,
 		MemoryKey:  srcRev.MemoryKey,
 		Author:     Author{AgentID: in.ActorAgentID, AgentVersion: in.ActorVersion},
@@ -109,23 +111,12 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 
 	// Umbrella promote event. Nested WriteRevision (for target) and Deprecate
 	// (for source) emit their own events — callers see three events per promote.
-	//
-	// The constant here is correct, unlike the one Deprecate used to carry
-	// (CW-20260910-0069), and it is worth saying why because the two look
-	// identical: `writeIn` above never sets Domain, and WriteRevision defaults
-	// an empty Domain to domains.Memory (write.go:55), so `promoted` is always
-	// a memory revision and `memory.promote` always names it accurately.
-	//
-	// That makes it true by a two-step inference through a default rather than
-	// by construction. Anyone who later sets writeIn.Domain from the source
-	// revision must change this line in the same edit, or promote starts
-	// mis-stamping the way Deprecate did.
 	if s.auditSink != nil {
 		key := promoted.MemoryKey
 		if key == "" {
 			key = promoted.MemoryID
 		}
-		_ = s.auditSink.EmitRevision(ctx, string(domains.Memory), auditOpPromote, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
+		_ = s.auditSink.EmitRevision(ctx, string(promoted.Domain), auditOpPromote, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
 	}
 
 	return promoted, nil
