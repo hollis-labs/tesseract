@@ -189,8 +189,10 @@ weight it might deserve, and `user` borrows weight it might not.
 **`payload_summary` and `payload_body` are prose. `payload_data` is everything
 else**: an ADR's decision and alternatives, a contact's email and phone, a bug
 report's steps and severity. You send an object shaped for you, and you get it
-back. Tesseract checks two things — that it parses, and that it is an object —
-and nothing else. No typing, no schema enforcement, no required keys.
+back. Tesseract checks that it parses, that it is an object, and that it is
+under a **1 MiB** ceiling — and nothing about what is inside it. No typing, no
+schema enforcement, no required keys. The ceiling is one global sanity limit,
+not a per-type knob, so a valid object can still be refused for size alone.
 
 **It is not indexed, not embedded and not searched.** No value inside it changes
 anything Tesseract does: not ranking, not activation, not retention, not
@@ -213,17 +215,25 @@ not.
 | `payload_summary` / `payload_body` | prose, and the only thing search reads | via `query` |
 | `tags` | cross-cutting labels | yes, `tags` |
 
-### The shape differs by door, and a wrong shape is a `400`
+### The shape differs by door, and the two surfaces fail differently
 
-Every write route runs strict decoding, so an unknown field is **rejected, not
-ignored**. Sending the wrong shape fails the whole write rather than dropping
-the field quietly.
+| door | where `payload_data` goes | a wrong name |
+|---|---|---|
+| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three | **silently ignored** |
+| `POST /v1/memory/write` | **nested**: `payload.data` | `400` |
+| `POST /v1/knowledge/write`, `POST /v1/event/write` | **flat**: top-level `data` | `400` |
 
-| door | where `payload_data` goes |
-|---|---|
-| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three |
-| `POST /v1/memory/write` | **nested**: `payload.data` |
-| `POST /v1/knowledge/write`, `POST /v1/event/write` | **flat**: top-level `data` |
+**Get the MCP name right, because nothing will tell you if you do not.** The
+HTTP routes decode strictly, so a field they do not recognize fails the whole
+write and you find out immediately. The MCP tools do not: `mcp-go` does not set
+`additionalProperties: false`, so an argument name the tool never declared
+still arrives and is simply not read. Sending `data` instead of `payload_data`
+over MCP returns a **successful write with your object missing** — no error, and
+the revision looks fine until someone goes looking for the field.
+
+That is the one failure here worth being careful about. A `400` costs you a
+retry; a silent drop costs you the data and you learn about it later, from a
+record that was never written the way you thought.
 
 That asymmetry is not new to this field — it is exactly how `summary` and `body`
 already differ between those routes, because memory nests them under `payload`

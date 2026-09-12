@@ -43,7 +43,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -156,24 +155,47 @@ var nonToolVocabulary = map[string]string{
 // What keeps this bucket from becoming an overflow bin for anything
 // inconvenient is that membership has to prove itself at both ends:
 //
-//   - Front end: Doc must resolve — the named file and line must exist and must
-//     actually contain the token (TestPlannedToolsAreTracked). An entry cannot
-//     claim a forward declaration that isn't there.
+//   - Front end: DocFile must exist and must still contain the token somewhere
+//     (TestPlannedToolsAreTracked). An entry cannot claim a forward declaration
+//     that isn't there. Anywhere in the file counts, because WHERE it sits is
+//     not what the entry is asserting.
 //   - Back end: the entry expires. When the tool registers, or the doc stops
 //     naming it, TestToolNameAllowlistIsCurrent fails and the entry comes out.
 //
 // If a token is not a tool at all, it belongs in nonToolVocabulary. If a doc
 // names a tool that should already exist, that is the defect this guard is for
 // — fix the doc, do not add it here.
+// plannedTool carries WHAT the forward declaration is and HOW to find it —
+// never where it sits.
+//
+// It used to hold "path:line". That coupled the guard to a mutable document:
+// inserting an unrelated paragraph above the declaration failed
+// TestPlannedToolsAreTracked, and the fix was always to re-pin the number,
+// which taught nobody anything and would break again on the next insertion.
+//
+// Chrispian's ruling, 2026-09-12, when that was raised: "pinning a string
+// search is the same problem with a different type that's just slightly less
+// likely to change. Instead, explain WHAT to look for and how to look for it."
+//
+// So the only coordinate left is the FILE, because the guard needs something to
+// read. What replaces the line number is prose a human acts on: Declaration
+// says what the reader is looking for, and the failure message hands over the
+// search rather than a number to copy back into this file.
 type plannedTool struct {
-	Doc     string // "path:line" of the forward declaration, relative to repo root
-	Tracked string // tracking ID for the work that registers the tool
-	Why     string
+	DocFile string // repo-relative file whose prose names the tool; no line, deliberately
+	// Declaration describes what the forward declaration says, so a reader who
+	// cannot find the token knows whether it was reworded or removed.
+	Declaration string
+	Tracked     string // tracking ID for the work that registers the tool
+	Why         string
 }
 
 var plannedTools = map[string]plannedTool{
 	"context_consistency_repair": {
-		Doc:     "docs/MCP_TOOLS.md:295",
+		DocFile: "docs/MCP_TOOLS.md",
+		Declaration: "a sentence in the capability-scopes section saying the planned " +
+			"`context_consistency_repair` tool is not registered and that consistency repair " +
+			"remains HTTP/CLI-only",
 		Tracked: "TASK-20260415-010",
 		Why: "MCP peer of the HTTP-only /v1/context/consistency/repair. The doc names it " +
 			"while stating it is batch 2; surfaceCatalog waives the same route as " +
@@ -561,33 +583,30 @@ func TestPlannedToolsAreTracked(t *testing.T) {
 			continue
 		}
 
-		path, lineNo, ok := strings.Cut(p.Doc, ":")
-		if !ok {
-			t.Errorf("plannedTools[%q]: Doc = %q is not \"path:line\"", token, p.Doc)
+		if strings.TrimSpace(p.Declaration) == "" {
+			t.Errorf("plannedTools[%q]: Declaration is empty — describe what the doc actually says, "+
+				"so a reader who cannot find the token can tell a rewording from a removal", token)
+		}
+		if p.DocFile == "" {
+			t.Errorf("plannedTools[%q]: DocFile is empty", token)
 			continue
 		}
-		n, err := strconv.Atoi(lineNo)
-		if err != nil || n < 1 {
-			t.Errorf("plannedTools[%q]: Doc = %q has no valid line number", token, p.Doc)
-			continue
-		}
-		// #nosec G304 -- path comes from plannedTools, a compile-time constant in this file.
-		body, err := os.ReadFile(filepath.Join(root, path))
+		// #nosec G304 -- DocFile comes from plannedTools, a compile-time constant in this file.
+		body, err := os.ReadFile(filepath.Join(root, p.DocFile))
 		if err != nil {
-			t.Errorf("plannedTools[%q]: Doc names %s, which cannot be read: %v", token, path, err)
+			t.Errorf("plannedTools[%q]: DocFile names %s, which cannot be read: %v", token, p.DocFile, err)
 			continue
 		}
-		lines := strings.Split(string(body), "\n")
-		if n > len(lines) {
-			t.Errorf("plannedTools[%q]: Doc points at %s:%d but the file has %d lines", token, path, n, len(lines))
-			continue
-		}
-		if !strings.Contains(lines[n-1], token) {
-			t.Errorf("plannedTools[%q]: Doc points at %s:%d, but that line does not mention %q.\n"+
-				"    line reads: %s\n"+
-				"    Re-read the doc: either the forward declaration moved (update Doc) or it is gone "+
-				"(drop the entry, and the guard will flag any remaining reference).",
-				token, path, n, token, strings.TrimSpace(lines[n-1]))
+		// Anywhere in the file. The entry asserts that the declaration EXISTS,
+		// not where it sits, so an edit that moves it is not a finding.
+		if !strings.Contains(string(body), token) {
+			t.Errorf("plannedTools[%q]: %s no longer mentions %q anywhere.\n"+
+				"    The entry says it should contain: %s\n"+
+				"    Find out which happened:  grep -n %q %s\n"+
+				"    If the declaration was REWORDED, update Declaration here to match.\n"+
+				"    If it was REMOVED, delete this entry — the guard will then flag any reference\n"+
+				"    left elsewhere, which is the defect this bucket exists to keep visible.",
+				token, p.DocFile, token, p.Declaration, token, p.DocFile)
 		}
 	}
 }

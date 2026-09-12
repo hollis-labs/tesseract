@@ -308,8 +308,8 @@ HTTP uses nested objects:
 interpreted, with an optional `payload.data_schema_hash` recording an unvalidated schema claim.
 **On this route it nests inside `payload`; on `/v1/knowledge/write` and `/v1/event/write` the same two
 fields are top-level `data` and `data_schema_hash`**, matching how those routes already take `summary`
-and `body` flat. Every route decodes strictly, so the wrong shape is a `400` rather than a silently
-dropped field. Responses are uniform: `payload.data` on all three.
+and `body` flat. Every HTTP route decodes strictly, so the wrong shape is a `400` rather than a silently
+dropped field. (The MCP tools do not: an undeclared argument name is ignored there.) Responses are uniform: `payload.data` on all three.
 
 Memory keys are validated as written, not normalized: at most six dot-separated
 segments, each using lowercase letters, digits, and underscore, with 64

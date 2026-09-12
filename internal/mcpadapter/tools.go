@@ -61,7 +61,7 @@ func (a *Adapter) registerTools(s *server.MCPServer) {
 		mcp.WithString("reason", mcp.Description("stage=request: human-readable reason for the promotion")),
 		mcp.WithString("request_id", mcp.Description("stage=approve, stage=apply: the promotion request ID to act on")),
 		mcp.WithString("notes", mcp.Description("stage=approve: optional approval notes")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent under stage=request, user under approve/apply)")),
+		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent under stage=request, agent under approve/apply — CW-20260910-0046 flipped approve/apply from user, so claiming a human ruling takes a deliberate act)")),
 	), a.handlePromote)
 
 	a.addTool(s, mcp.NewTool("context_promotion_list",
