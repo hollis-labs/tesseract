@@ -544,6 +544,8 @@ export interface MemoryAuthor {
 export interface MemoryPayload {
   summary: string;
   body?: string;
+  data?: { [key: string]: unknown };
+  data_schema_hash?: string;
 }
 
 export interface MemoryFacets {
@@ -614,7 +616,10 @@ export interface MemoryWriteRequest {
   confidence?: number;
   tags?: string[];
   ttl_seconds?: number;
-  payload: MemoryPayload;
+  summary: string;
+  body?: string;
+  data?: { [key: string]: unknown };
+  data_schema_hash?: string;
   facets?: MemoryFacets;
   dedup?: string;
   dedup_threshold?: number;

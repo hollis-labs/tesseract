@@ -117,7 +117,7 @@ function WriteForm({
       const req: MemoryWriteRequest = {
         namespace: namespace.trim(),
         author: { agent_id: authorAgentId.trim() },
-        payload: { summary: summary.trim() },
+        summary: summary.trim(),
       };
       if (memoryKey.trim()) req.memory_key = memoryKey.trim();
       if (supersedes.trim()) req.supersedes = supersedes.trim();
@@ -131,7 +131,7 @@ function WriteForm({
           .map((s) => s.trim())
           .filter(Boolean);
       }
-      if (body.trim()) req.payload.body = body.trim();
+      if (body.trim()) req.body = body.trim();
       const res = await memoryWrite(req);
       setResult(res);
       toast.success(`Wrote memory revision ${res.revision_id}`);

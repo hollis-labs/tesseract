@@ -632,7 +632,7 @@ export async function getMemoryCurrent(
   memoryKey: string,
 ): Promise<MemoryRevision> {
   if (isDemoMode()) return demo.getMemoryCurrent(namespace, memoryKey);
-  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  const q = new URLSearchParams({ namespace, key: memoryKey });
   return apiFetch<MemoryRevision>(`/v1/memory/current?${q.toString()}`);
 }
 
@@ -641,7 +641,7 @@ export async function getMemoryHistory(
   memoryKey: string,
 ): Promise<MemoryRevision[]> {
   if (isDemoMode()) return demo.getMemoryHistory(namespace, memoryKey);
-  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  const q = new URLSearchParams({ namespace, key: memoryKey });
   return apiFetch<MemoryRevision[]>(`/v1/memory/history?${q.toString()}`);
 }
 
@@ -652,7 +652,7 @@ export async function getKnowledgeCurrent(
   memoryKey: string,
 ): Promise<KnowledgeRevision> {
   if (isDemoMode()) return demo.getKnowledgeCurrent(namespace, memoryKey);
-  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  const q = new URLSearchParams({ namespace, key: memoryKey });
   return apiFetch<KnowledgeRevision>(`/v1/knowledge/current?${q.toString()}`);
 }
 
@@ -661,7 +661,7 @@ export async function getKnowledgeHistory(
   memoryKey: string,
 ): Promise<KnowledgeRevision[]> {
   if (isDemoMode()) return demo.getKnowledgeHistory(namespace, memoryKey);
-  const q = new URLSearchParams({ namespace, memory_key: memoryKey });
+  const q = new URLSearchParams({ namespace, key: memoryKey });
   return apiFetch<KnowledgeRevision[]>(`/v1/knowledge/history?${q.toString()}`);
 }
 

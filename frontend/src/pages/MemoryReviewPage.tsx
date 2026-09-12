@@ -558,15 +558,13 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
           ? parsedConfidence
           : focusedItem.revision.confidence,
         tags: focusedItem.revision.tags,
-        payload: {
-          summary,
-        },
+        summary,
       };
       if (focusedItem.revision.memory_key) req.memory_key = focusedItem.revision.memory_key;
       if (focusedItem.revision.derived_from) req.derived_from = focusedItem.revision.derived_from;
       if (focusedItem.revision.facets) req.facets = focusedItem.revision.facets;
       if (clarifyVersion.trim()) req.author.agent_version = clarifyVersion.trim();
-      if (clarifyBody.trim()) req.payload.body = clarifyBody.trim();
+      if (clarifyBody.trim()) req.body = clarifyBody.trim();
       await memoryWrite(req);
       toast.success("Clarification written as a new revision");
       await loadQueue();

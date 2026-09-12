@@ -807,7 +807,12 @@ export const demo = {
       author: req.author,
       confidence: req.confidence ?? 0.9,
       tags: req.tags ?? [],
-      payload: req.payload,
+      payload: {
+        summary: req.summary,
+        ...(req.body ? { body: req.body } : {}),
+        ...(req.data ? { data: req.data } : {}),
+        ...(req.data_schema_hash ? { data_schema_hash: req.data_schema_hash } : {}),
+      },
     };
   },
 
