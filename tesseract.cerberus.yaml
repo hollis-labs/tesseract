@@ -1,0 +1,64 @@
+kind: cerberus-project/v1
+owner: tesseract
+namespace: local
+project:
+  id: tesseract
+  name: Tesseract
+resources:
+  - id: tesseract-api-service
+    name: Tesseract API Service
+    type: process
+    project: tesseract
+    connector: local
+    config:
+      build_strategy:
+        kind: make_standard
+      command:
+        - ./tesseract
+        - serve
+        - --addr
+        # Loopback-only: the hardened build (CW-20260904-0076) refuses to bind
+        # all interfaces without auth. Every consumer reaches it via 127.0.0.1.
+        - 127.0.0.1:8089
+      dir: /Users/chrispian/dev/hollis-labs/apps/tesseract
+      # No root env override is set, and there is no longer one to set:
+      # CONTEXTD_ROOT's deprecation shim was removed in CW-20260825-0013,
+      # so the variable is inert. tesseract resolves every path via
+      # go-apppaths XDG defaults.
+      # The embedding provider key is a keychain reference, not a literal.
+      # Cerberus fronts this service with `cerberus run-secrets`, which
+      # resolves it in the service's own process — see CW-20260518-0087.
+      env:
+        OPENAI_API_KEY: keychain://openai/embed
+      env_file: .env
+      mode: os_service
+      port: 8089
+      run_from: artifact
+      supervisor: launchd
+      url: http://127.0.0.1:8089
+    tags:
+      - api
+      - go
+      - launchd
+      - v2
+  - id: tesseract-frontend
+    name: Tesseract Frontend
+    type: process
+    project: tesseract
+    connector: local
+    config:
+      command:
+        - npm
+        - run
+        - dev
+      dir: /Users/chrispian/dev/hollis-labs/apps/tesseract/frontend
+      mode: dev_session
+      port: 5173
+      run_from: workspace
+      url: http://localhost:5173
+    tags:
+      - gui
+      - frontend
+      - vite
+      - v2
+registry_urn: msg://agent/agent-mux/prj_4sj839lwz0
