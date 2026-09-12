@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -46,6 +48,7 @@ func TestMemorySubsystemWiresLiveDeferredEmbedding(t *testing.T) {
 
 	// A write through the production store must actually reach the queue.
 	rev, err := mem.Store.WriteRevision(context.Background(), memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  "wiring.deferred_embedding",
 		Author:     memory.Author{AgentID: "wiring-test", AgentVersion: "1.0"},

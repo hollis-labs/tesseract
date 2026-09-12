@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
@@ -130,6 +132,7 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 		{"est.opposed", "beta beta " + strings.Repeat("u", 100)},
 	} {
 		rev, err := ms.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  estNS,
 			MemoryKey:  row.key,
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},

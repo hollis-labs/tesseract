@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -48,6 +50,7 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 	ctx := context.Background()
 
 	target := memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  searchModeNS,
 		MemoryKey:  "target.ticket",
 		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
@@ -76,6 +79,7 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 	}
 	for _, d := range decoys {
 		in := memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  searchModeNS,
 			MemoryKey:  d.key,
 			Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
@@ -219,6 +223,7 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 	// Both rows carry the same term, so bm25 alone orders them by length:
 	// weak (short) first. Every modifier points the other way.
 	weak := memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: searchModeNS, MemoryKey: "mod.weak",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
@@ -226,6 +231,7 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 		Payload: memory.Payload{Summary: "xylophone", Body: ""},
 	}
 	strong := memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: searchModeNS, MemoryKey: "mod.strong",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
@@ -360,6 +366,7 @@ func TestSearchModeSemantic_ReturnsCosineOrderingWithScores(t *testing.T) {
 	}
 	for _, r := range rows {
 		in := memory.WriteInput{
+			Domain:    domains.Memory,
 			Namespace: searchModeNS, MemoryKey: r.key,
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
@@ -421,6 +428,7 @@ func TestSearchModeSemantic_SkipsUnembeddedThatLexicalFinds(t *testing.T) {
 	ctx := context.Background()
 
 	in := memory.WriteInput{
+		Domain:    domains.Memory,
 		Namespace: searchModeNS, MemoryKey: "fresh.unembedded",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
@@ -576,6 +584,7 @@ func TestSearchMode_OperatorsAreOperatorsUnderHybridAndLiteralUnderLexical(t *te
 	}
 	for _, r := range rows {
 		in := memory.WriteInput{
+			Domain:    domains.Memory,
 			Namespace: searchModeNS, MemoryKey: r.key,
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:op",

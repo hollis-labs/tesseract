@@ -63,6 +63,24 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- **`memory.WriteInput.Domain` is required and no longer defaults to `memory`.**
+  Breaking for the Go library surface only: `Tesseract.WriteMemory` and
+  `memory.Store.WriteRevision` now reject an empty `Domain` with a
+  `validation_error` instead of silently filling it in. Set
+  `Domain: memory.DomainMemory` — that is exactly what empty used to mean.
+
+  **No other surface changes.** `memory_write`, `/v1/memory/write`,
+  `knowledge_write` and `event_write` all set the domain themselves, so an MCP
+  or HTTP caller has nothing to update and no request shape moved.
+
+  The default was removed because a default is indistinguishable from a choice
+  at the point where the difference matters — the audit log. `Store.Deprecate`
+  stamped every knowledge and event revision as `memory` until CW-20260910-0069,
+  and `Promote`'s audit line was accurate only by inference through this
+  default; both now derive the domain from the revision in hand. The rejection
+  carries what the field selects, which value restores the old behaviour, and
+  where knowledge and event writes should go instead.
+
 - **`tesseract_recall` no longer searches every domain by default.** An
   unqualified recall covers the curated corpus — memory and knowledge — and
   leaves the event log to be asked for by name via `domains: ["event"]`. A

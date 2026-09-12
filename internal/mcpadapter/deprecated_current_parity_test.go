@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -18,6 +20,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 	write := func(key string) memory.Revision {
 		t.Helper()
 		rev, err := store.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			MemoryKey:  key,
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -41,6 +44,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 
 	supersededRev := write("deprecated.parity.superseded")
 	replacementIn := memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  "deprecated.parity.superseded",
 		Supersedes: supersededRev.RevisionID,

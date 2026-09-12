@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -52,6 +54,7 @@ func seedSearchModeCorpus(t *testing.T, ms *memory.Store) {
 	}
 	for _, r := range rows {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  "user/chrispian/memory/notes",
 			MemoryKey:  r.key,
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},

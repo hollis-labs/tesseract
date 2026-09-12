@@ -11,6 +11,7 @@ import (
 	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
 
 	tesseract "github.com/hollis-labs/tesseract"
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/config"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -55,6 +56,7 @@ func main() {
 	ns := "user/chrispian/project/tesseract/memory"
 	key := fmt.Sprintf("smoke_%d", time.Now().UnixNano())
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  ns,
 		MemoryKey:  key,
 		Status:     memory.StatusCanonical,

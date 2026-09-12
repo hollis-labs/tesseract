@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
@@ -36,6 +38,7 @@ func relatedAdapter(t *testing.T) *Adapter {
 	write := func(key, body string) {
 		t.Helper()
 		if _, wErr := ms.WriteRevision(ctx, memory.WriteInput{
+			Domain:     domains.Memory,
 			Namespace:  relNamespace,
 			MemoryKey:  key,
 			Author:     memory.Author{AgentID: "test", AgentVersion: "1"},

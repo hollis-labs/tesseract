@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -147,6 +149,7 @@ func TestPointerHealth_AbsentFieldMeansNoPointer(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/tester/memory/notes",
 		MemoryKey:  "plain.note",
 		Author:     memory.Author{AgentID: "test", AgentVersion: "1"},

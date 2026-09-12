@@ -93,6 +93,7 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 
 	ms := memory.NewStore(s.DB(), nil, "", 0, memory.NoopQueue{})
 	if _, err := ms.WriteRevision(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  backupMemNS,
 		MemoryKey:  backupMemKey,
 		Author:     memory.Author{AgentID: "seed", AgentVersion: "1.0"},
@@ -188,6 +189,7 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 	}
 	dstMem := memory.NewStore(dst.DB(), nil, "", 0, memory.NoopQueue{})
 	if _, err := dstMem.WriteRevision(ctx, memory.WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/other/memory/notes",
 		MemoryKey:  "stale.key",
 		Author:     memory.Author{AgentID: "dst", AgentVersion: "1.0"},

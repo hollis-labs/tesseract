@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
+
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
@@ -21,6 +23,7 @@ func newBM25TestStore(t *testing.T) (*Store, func()) {
 
 func bm25SampleInput(key, summary, body string) WriteInput {
 	return WriteInput{
+		Domain:     domains.Memory,
 		Namespace:  "user/chrispian/memory/notes",
 		MemoryKey:  key,
 		Author:     Author{AgentID: "test-agent", AgentVersion: "1.0"},

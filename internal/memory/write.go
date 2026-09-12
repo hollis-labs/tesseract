@@ -20,8 +20,9 @@ var (
 
 // WriteInput carries all fields for a new revision write.
 type WriteInput struct {
-	// Domain selects the revision's policy bucket. Empty defaults to
-	// domains.Memory to preserve existing call sites.
+	// Domain selects the revision's policy bucket. REQUIRED — there is no
+	// default, and an empty value is a validation error carrying
+	// errDomainRequired. See that message for why the default was removed.
 	Domain     domains.Domain
 	Namespace  string
 	MemoryKey  string
@@ -52,9 +53,6 @@ type WriteInput struct {
 // WriteRevision creates a new revision in the memory store, handling keyed,
 // keyless, and supersedes cases within a single transaction.
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
-	if in.Domain == "" {
-		in.Domain = domains.Memory
-	}
 	if err := validateWriteInput(in); err != nil {
 		return Revision{}, err
 	}
@@ -411,9 +409,39 @@ func deprecateRevisionTx(ctx context.Context, tx *sql.Tx, revisionID string) err
 }
 
 // validateWriteInput checks all required fields before a revision is written.
+// errDomainRequired is what a caller sees when Domain is empty.
+//
+// It is long deliberately. Its recipient is usually an autonomous agent that
+// has one shot at fixing the call, and `domain is required` would tell it the
+// field name it already has while withholding every fact it needs: what the
+// field selects, why it stopped having a default, and which value is the one it
+// almost certainly wants. A denial that costs the caller another turn to
+// interpret is a denial that was not finished.
+const errDomainRequired = `domain is required and has no default.
+
+domain selects the revision's POLICY BUCKET: which namespace shapes and key ` +
+	`rules apply, which facets are allowed, and which domain name the audit log ` +
+	`stamps on every event this revision produces. Valid values are "memory", ` +
+	`"knowledge" and "event".
+
+If you are writing agent memory, set domain="memory" — that is exactly what an ` +
+	`empty value used to mean, so this is a one-field change. If you are writing ` +
+	`knowledge or event revisions, prefer their own entry points ` +
+	`(knowledge.Store.Write, event.Store.Write): they set the domain for you and ` +
+	`apply the rest of their domain's shape, which this path does not.
+
+It is required rather than defaulted because a default is indistinguishable ` +
+	`from a deliberate choice at the point where the difference matters — the ` +
+	`audit log. Deprecate stamped every knowledge and event revision as "memory" ` +
+	`until CW-20260910-0069, and promote's audit line was accurate only by ` +
+	`inference through this default rather than by construction.`
+
 func validateWriteInput(in WriteInput) error {
+	if in.Domain == "" {
+		return fmt.Errorf("%w: %s", ErrInvalidInput, errDomainRequired)
+	}
 	if !in.Domain.Valid() {
-		return fmt.Errorf("%w: invalid domain %q", ErrInvalidInput, in.Domain)
+		return fmt.Errorf("%w: invalid domain %q (valid: memory, knowledge, event)", ErrInvalidInput, in.Domain)
 	}
 	policy, err := policyFor(in.Domain)
 	if err != nil {
