@@ -8,10 +8,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerRAGTools(s *server.MCPServer) {
+func (a *Adapter) registerRAGTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_rag_query",
 		mcp.WithDescription("RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural language query")),

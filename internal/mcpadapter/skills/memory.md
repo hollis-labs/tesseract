@@ -215,36 +215,42 @@ not.
 | `payload_summary` / `payload_body` | prose, and the only thing search reads | via `query` |
 | `tags` | cross-cutting labels | yes, `tags` |
 
-### The shape differs by door, and the two surfaces fail differently
+### The shape differs by door; the failure no longer does
 
 | door | where `payload_data` goes | a wrong name |
 |---|---|---|
-| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three | **silently ignored** |
+| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three | `validation_error` |
 | `POST /v1/memory/write` | **nested**: `payload.data` | `400` |
 | `POST /v1/knowledge/write`, `POST /v1/event/write` | **flat**: top-level `data` | `400` |
 
-**Get the MCP name right, because nothing will tell you if you do not.** The
-HTTP routes decode strictly, so a field they do not recognize fails the whole
-write and you find out immediately. The MCP tools do not: `mcp-go` does not set
-`additionalProperties: false`, so an argument name the tool never declared
-still arrives and is simply not read. Sending `data` instead of `payload_data`
-over MCP returns a **successful write with your object missing** — no error, and
-the revision looks fine until someone goes looking for the field.
+**A wrong name fails on every door now, and says what the right one is.**
+Until 2026-09-12 the MCP tools accepted an argument name they did not declare
+and simply never read it, so `data` instead of `payload_data` returned a
+**successful write with your object missing** — no error, and the revision
+looked fine until someone went looking for the field. The HTTP routes always
+decoded strictly. That gap is closed: an argument no tool declares is now a
+`validation_error` naming the key, the near-miss it probably meant, and the
+tool's full accepted set.
 
-That is the one failure here worth being careful about. A `400` costs you a
-retry; a silent drop costs you the data and you learn about it later, from a
-record that was never written the way you thought.
+```
+`data` is not an argument of memory_write. Did you mean `payload_data`?
+This tool accepts: author_agent_id, confidence, consumer_state, derived_from, …
+```
 
-**This does not contradict what the `derived_from` section says** about the
-retired `origin` name being refused on every surface. Retired names are refused
-on MCP because each one is named in an explicit check, added when it was
-retired. That is per-name, not a property of the door: a name that was never a
-retired spelling — a typo, a guess, an argument from the wrong tool — is still
-ignored.
+**Underscore-prefixed names are not an exception.** `_traceparent` and
+`_tracestate` are accepted and stripped, because the mux gateway writes its
+trace context into the arguments map; every other `_name` is refused exactly
+like any other undeclared name.
 
-That asymmetry is not new to this field — it is exactly how `summary` and `body`
-already differ between those routes, because memory nests them under `payload`
-and knowledge and event take them flat.
+**The `derived_from` section is the same rule, not a different one.** A retired
+spelling such as `origin` is refused because it is undeclared — the same check
+refuses a typo, a guess, or an argument borrowed from the wrong tool. What a
+retired name gets in addition is the migration sentence: `origin` is not merely
+refused, it is refused with "this field is now named `derived_from`".
+
+The SHAPE difference is still real, and is not new to this field — it is exactly
+how `summary` and `body` already differ between those routes, because memory
+nests them under `payload` and knowledge and event take them flat.
 
 **On read it is uniform**: every domain returns it at `payload.data`.
 

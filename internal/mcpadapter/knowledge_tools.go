@@ -8,7 +8,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // domainBoundaryLine is the memory/knowledge fork, in the shortest form that
@@ -29,7 +28,7 @@ const domainBoundaryLine = "• **Which domain:** **knowledge is content you go 
 	"**\"I might look this up later\" is not the test** — nearly all memory is looked up eventually. The test is whether you could NAME it before you went looking. " +
 	"Full statement, with what it does not cover: `tesseract_skills start-here`.\n"
 
-func (a *Adapter) registerKnowledgeTools(s *server.MCPServer) {
+func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("knowledge_write",
 		mcp.WithDescription(
 			"**Write a knowledge revision** — reference content a later session will go looking for by name.\n"+

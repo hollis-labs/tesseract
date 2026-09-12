@@ -9,7 +9,6 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // ── The read domain vocabulary ───────────────────────────────────────────────
@@ -113,7 +112,7 @@ func (a *Adapter) revisionStore() *memory.Store {
 //
 // tesseract_get_revision and tesseract_deprecate register whenever ANY backing
 // store is wired — see revisionStore.
-func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
+func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 	domainList := strings.Join(readDomainVocabulary(), " | ")
 
 	a.addTool(s, mcp.NewTool("tesseract_get",

@@ -8,10 +8,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerEventTools(s *server.MCPServer) {
+func (a *Adapter) registerEventTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("event_write",
 		mcp.WithDescription(
 			"**Append one entry to the event log** — an agent's reasoning about what it is doing, or a personal log/journal entry.\n"+

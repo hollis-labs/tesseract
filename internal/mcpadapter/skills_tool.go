@@ -6,13 +6,12 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/mcpadapter/skills"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // registerSkillsTool registers the tesseract_skills progressive-discovery
 // meta-tool. No capability token required — this is read-only orientation
 // served from an embedded filesystem.
-func (a *Adapter) registerSkillsTool(s *server.MCPServer) {
+func (a *Adapter) registerSkillsTool(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_skills",
 		mcp.WithDescription(
 			"Tesseract's self-documenting skill index. Call with no args for the catalog; "+

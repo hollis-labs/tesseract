@@ -11,10 +11,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerTypedTools(s *server.MCPServer) {
+func (a *Adapter) registerTypedTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_typed_write",
 		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for a worked `context_typed_write` payload on this surface and on its HTTP peer POST /v1/context/typed-write, "+
 			"then `context_registry_list` with kind=types for the `record_type` vocabulary this deployment accepts. "+
@@ -92,17 +91,10 @@ const (
 func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	shape := req.GetString("shape", "list")
 
-	// The list arm used to spell the token budget `max_tokens`. Both arms now
-	// take `max_tokens_estimate` — the name the packet arm, context_plan and
-	// the HTTP peers already use — so the old spelling names nothing. Ignoring
-	// it would silently restore the 8000 default under a caller who asked for
-	// less, which is the failure this merge exists to remove.
-	if errResult := rejectRetiredArg(req, "max_tokens",
-		"the token budget is named `max_tokens_estimate` on both shapes."); errResult != nil {
-		return errResult, nil
-	}
-
-	// Reject the other shape's knobs rather than accept and ignore them.
+	// Reject the OTHER shape's knobs. These are declared arguments of this
+	// tool, so strictArgsMiddleware has already accepted them by name — only
+	// the handler knows that `view_id` means nothing under shape=packet.
+	// That is why this check cannot be folded into the generic one.
 	reject := func(shapeName string, knobs ...string) *mcp.CallToolResult {
 		for _, knob := range knobs {
 			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
@@ -114,7 +106,11 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 
 	switch shape {
 	case "list":
-		if errResult := reject("list", "include_pins", "payload_max_bytes", "payload_mode"); errResult != nil {
+		// payload_mode is absent from this list on purpose: context_pack does
+		// not declare it, so strictArgsMiddleware refuses it for both shapes
+		// before this arm is chosen. Naming it here would be dead code that
+		// reads like coverage.
+		if errResult := reject("list", "include_pins", "payload_max_bytes"); errResult != nil {
 			return errResult, nil
 		}
 		return a.handleContextPack(ctx, req)
@@ -141,16 +137,9 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 // path instead. See TestMerge_StatusSet_DeprecatedTargetTakesTheDeprecationPath.
 //
 // The retired context_status_promote spelled the target `to_status`. That name
-// is refused outright rather than ignored: an ignored `to_status` leaves
-// `status` empty, which means "advance one step" — so the caller would silently
-// get `reviewed` where they asked for `canonical`, and a success envelope
-// saying so. The check runs before the scope check because it is a fact about
-// the arguments, not about the caller.
+// is refused by strictArgsMiddleware, which names `status` in the refusal —
+// see retiredArgGuidance.
 func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if errResult := rejectRetiredArg(req, "to_status",
-		"the target status is now named `status`; omit it to advance one step."); errResult != nil {
-		return errResult, nil
-	}
 	if req.GetString("status", "") == "deprecated" {
 		return a.handleStatusDeprecate(ctx, req)
 	}
@@ -159,7 +148,7 @@ func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) 
 
 // ── Session Snapshot ──────────────────────────────────────────────────────────
 
-func (a *Adapter) registerSessionTools(s *server.MCPServer) {
+func (a *Adapter) registerSessionTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_session_write",
 		mcp.WithDescription("Read this first: call `tesseract_skills context-packet` for how a snapshot is read back at the next boot — the fields below are only worth filling in as well as the thing that will consume them. "+
 			"Writes a structured session snapshot to Tesseract and auto-embeds it for semantic search. Combines `context_typed_write` + `context_embed` into one call with an enforced session schema."),
