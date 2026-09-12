@@ -73,7 +73,30 @@ user/{user_id}/session/{session_id}/event/{type}  # session scope — an agent's
 
 ## Knowledge domain — deep and hierarchical
 
-Knowledge is the exception to the shallow-faceted shape: `{user|app}/{id}/knowledge/...` with free depth and no `{type}` segment. Its classification lives in the `facet.kind` field instead. A `/knowledge`-suffixed namespace is therefore an exact namespace somebody writes to, NOT a prefix request — the prefix shorthand above applies to `memory` and `event` only.
+Knowledge is the exception to the shallow-faceted shape: `{scope}/{id}/knowledge/...` with a fixed-depth head and **free depth after it**, and no `{type}` segment. Its classification lives in the `facet.kind` field instead.
+
+A `/knowledge`-suffixed namespace is an exact namespace somebody writes to, **NOT a prefix request** — the bare-form shorthand above applies to `memory` and `event` only. This is deliberate and it is not an oversight to tidy up: `user/chrispian/knowledge` holds a record right now, and reading it as a prefix would silently return the 74 namespaces beneath it instead of the one record in it.
+
+**To sweep knowledge, use the explicit form:** `project/tether/knowledge/*`.
+
+## Scope types — the first segment
+
+The first segment names the **scope type** and the second its id (CW-20260912-0078). Ownership is not in the path; it lives in the namespace registry.
+
+| Scope | Means |
+|---|---|
+| `user/{id}/` | content the human authors or explicitly directs — and nothing else |
+| `project/{slug}/` | work *about* a thing we are building |
+| `app/{id}/` | an application using Tesseract as its own datastore |
+| `org/{slug}/` | organisation-level |
+| `session/{sid}/` | session-scoped |
+| `system/` | the agent OS's own content. **Singleton — no id segment** |
+
+`app/` is never used for writing *about* an application: `app/tether` is Tether storing Tether's data, while our work on Tether is `project/tether`.
+
+**`{anything}/*` sweeps, at any tier and any depth** — `project/*`, `project/tether/*`, `project/tether/knowledge/*`. That is the one rule that always works. The bare `/memory` and `/event` shorthands are a grandfathered convenience on top of it.
+
+Pre-migration shapes (`user/{id}/project/{pid}/memory/{type}`) still parse while the migration runs.
 
 ## Two authority rules
 

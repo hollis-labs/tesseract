@@ -49,7 +49,7 @@ Note what is *not* on that list: authorship. "Agent-authored content with no ext
 
 ## Namespace rule
 
-A knowledge namespace MUST have shape `{user|app}/{id}/knowledge[/...]`. The third segment must literally be the word `knowledge`. Examples:
+A knowledge namespace MUST have shape `{scope}/{id}/knowledge[/...]`, where `{scope}` is one of `user`, `project`, `app`, `org`, `session` or `system` (CW-20260912-0078). The segment after the scope head must literally be the word `knowledge` — that head is `{scope}/{id}`, except for `system`, which is a singleton and takes no id, so its shape is `system/knowledge/...`. Examples:
 
 - Valid: `user/chrispian/knowledge`, `user/chrispian/knowledge/framework`, `app/ingester/knowledge/obsidian/work`.
 - Invalid: `user/alice/memory/knowledge` (`knowledge` not 3rd segment), `knowledge/user/alice` (missing `user/` or `app/` prefix), `org/acme/knowledge` (wrong first segment).

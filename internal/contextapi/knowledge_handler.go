@@ -12,6 +12,7 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/surfacefields"
 )
 
 // --- Strict request-body decoding ------------------------------------------
@@ -41,26 +42,59 @@ func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-// mcpFlatFieldHints maps the flat argument spellings of the MCP tool surface
-// onto the nested location an HTTP body carries the same fact in.
+// requestDoors names the surfacefields door each strict request struct belongs
+// to, so a decode failure can ask the shared table what this route calls a fact
+// the caller named the MCP way.
 //
-// These are exactly the pairs a caller reaches for after reading an MCP tool
-// schema — or docs/MCP_TOOLS.md, which pairs the tools with these routes
-// without restating the body shape — and assuming both doors take the same
-// parameters. Note author_version: the MCP argument is NOT spelled
-// author_agent_version, so both plausible flattenings are mapped.
+// This replaces a literal map of flat-to-nested pairs. That map was correct
+// when written and went stale on 2026-09-12, when `payload_data` landed on all
+// three write tools and nothing updated it — leaving the one field
+// CW-20260912-0048 was filed about as the one field the translation could not
+// translate. Nothing tied the table to the surfaces it described; a door name
+// does, and TestDoorsMatchTheSurfaces fails when either surface moves.
 //
-// A hint is only offered when the target struct actually declares the parent
-// object, so a route with no `author` never advises a caller to nest one.
-var mcpFlatFieldHints = map[string]string{
-	"pointer_scheme":       "pointer.scheme",
-	"pointer_locator":      "pointer.locator",
-	"pointer_resolved_at":  "pointer.resolved_at",
-	"author_agent_id":      "author.agent_id",
-	"author_version":       "author.agent_version",
-	"author_agent_version": "author.agent_version",
-	"payload_summary":      "payload.summary",
-	"payload_body":         "payload.body",
+// It also removes a limit the literal had by construction. Its values were
+// dotted paths, so it could only ever say "nest it" — it had no way to tell a
+// caller that /v1/knowledge/write takes the same fact flat, under `data`.
+var requestDoors = map[reflect.Type]string{
+	reflect.TypeOf(memoryWriteRequest{}):    "memory.write",
+	reflect.TypeOf(knowledgeWriteRequest{}): "knowledge.write",
+	reflect.TypeOf(eventWriteRequest{}):     "event.write",
+}
+
+// doorFor resolves the door a decode target belongs to, or false for a request
+// struct no door covers — every route that does not take the record's own
+// fields, which is most of them.
+func doorFor(dst any) (surfacefields.Door, bool) {
+	t := reflect.TypeOf(dst)
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil {
+		return surfacefields.Door{}, false
+	}
+	name, ok := requestDoors[t]
+	if !ok {
+		return surfacefields.Door{}, false
+	}
+	return surfacefields.DoorByName(name)
+}
+
+// crossSurfaceHint renders the sentence an unknown field earns when the shared
+// table knows what this door calls the same fact, plus the spelling itself for
+// the details bag.
+//
+// The phrasing follows the answer rather than assuming it: a dotted path is
+// something to nest, a bare name is something to spell differently. The old
+// message said "nests it as" unconditionally, which would have been wrong for
+// every flat answer it could not produce anyway.
+func crossSurfaceHint(spelling string) string {
+	if strings.Contains(spelling, ".") {
+		return "; this endpoint nests it as " + spelling +
+			" — the flat spelling is an MCP tool argument, not an HTTP body field"
+	}
+	return "; this endpoint takes it flat as " + spelling +
+		" — the prefixed spelling is an MCP tool argument, not an HTTP body field"
 }
 
 // unknownFieldPrefix opens the error encoding/json returns under
@@ -113,11 +147,18 @@ func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 	if retired, hinted := retiredFieldHints[field]; hinted {
 		details["renamed_to"] = "derived_from"
 		message += "; " + retired
-	} else if nested, hinted := mcpFlatFieldHints[field]; hinted {
-		if parent, _, _ := strings.Cut(nested, "."); slices.Contains(accepted, parent) {
-			details["expected_field"] = nested
-			message += "; this endpoint nests it as " + nested +
-				" — the flat spelling is an MCP tool argument, not an HTTP body field"
+	} else if door, known := doorFor(dst); known {
+		if spelling, hinted := door.HTTPSpellingFor(field); hinted {
+			// The table says what this door calls the fact; `accepted` says what
+			// the struct in hand actually declares. They agree unless one has
+			// drifted, and the check that would have caught that runs in CI, not
+			// here — so stay silent rather than advise a field the body cannot
+			// take. Top-level, because that is the granularity `accepted` has.
+			top, _, _ := strings.Cut(spelling, ".")
+			if slices.Contains(accepted, top) {
+				details["expected_field"] = spelling
+				message += crossSurfaceHint(spelling)
+			}
 		}
 	}
 	// Top-level, deliberately: encoding/json reports an unknown field nested

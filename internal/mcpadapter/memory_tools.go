@@ -23,7 +23,9 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 				"• **Don't use this for:** content someone will come back for by name — a project's canonical, a handoff, a playbook, a doc or package reference. That is `knowledge_write`, whether or not it points at anything outside Tesseract. Generic revisioned records — `context_write`.\n"+
 				"• **Deeper:** `tesseract_skills namespaces` for namespace rules.",
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace user/{id}/memory/{type} (e.g. user/chrispian/memory/decisions). Allowed types: "+memory.TypeList()+". `notes` is the deliberate catch-all when no stronger type fits.")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace {scope}/{id}/memory/{type} — e.g. project/tesseract/memory/decisions. "+
+			"Scope is one of: "+memory.ScopeList()+"; `system` is a singleton and takes no id (system/memory/{type}). "+
+			"Allowed types: "+memory.TypeList()+". `notes` is the deliberate catch-all when no stronger type fits.")),
 		mcp.WithString("memory_key", mcp.Description("Optional logical key for keyed memories (e.g. user.prefs.style). "+
 			"Dot-separated segments, each matching ^[a-z0-9_]+$ — lowercase letters, digits and underscore only. "+
 			"At most 6 segments, 64 characters per segment, 256 characters total. "+
