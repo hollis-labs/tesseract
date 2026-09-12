@@ -22,10 +22,8 @@ func sessionInput(key string) memory.WriteInput {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload: memory.Payload{
-			Summary: "User prefers terse output",
-			Body:    "**Why:** repeated feedback. **How to apply:** no trailing summaries.",
-		},
+		Summary:     "User prefers terse output",
+		Body:        "**Why:** repeated feedback. **How to apply:** no trailing summaries.",
 	}
 }
 

@@ -182,7 +182,7 @@ func TestNoCodePathBranchesOnConsumerStateValue(t *testing.T) {
 }
 
 // namesPayloadDataSelector reports whether e reads `.Data` off something that
-// names a payload — `rev.Payload.Data`, `in.Payload.Data`, `payload.Data`.
+// names a payload — `rev.Payload.Data`, `payload.Data`.
 //
 // Separate from the substring list because `Data` alone is far too common a
 // field name to implicate, and `Payload` alone is read legitimately everywhere
@@ -300,7 +300,10 @@ func TestConsumerStateValuesDoNotChangeBehavior(t *testing.T) {
 		t.Helper()
 		in := sampleInput(key)
 		in.Namespace = "user/chrispian/memory/todos"
-		in.Payload = memory.Payload{Summary: "a todo item", Body: "same body for both"}
+		in.Summary = "a todo item"
+		in.Body = "same body for both"
+		in.Data = nil
+		in.DataSchemaHash = ""
 		in.ConsumerState = json.RawMessage(state)
 		rev, err := ms.WriteRevision(ctx, in)
 		if err != nil {

@@ -23,7 +23,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "original memory about Go testing"},
+		Summary: "original memory about Go testing",
 	})
 	if err != nil {
 		t.Fatalf("write rev1: %v", err)
@@ -40,7 +40,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "updated memory about Go testing"},
+		Summary: "updated memory about Go testing",
 		Dedup:   "semantic",
 	})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "some content"},
+		Summary: "some content",
 	})
 	if err != nil {
 		t.Fatalf("write rev1: %v", err)
@@ -85,7 +85,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "similar content"},
+		Summary: "similar content",
 		Dedup:   "semantic",
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestWriteRevision_SemanticDedup_NoMatch(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "totally unique"},
+		Summary: "totally unique",
 		Dedup:   "semantic",
 	})
 	if err != nil {
@@ -136,7 +136,7 @@ func TestWriteRevision_NoDedup_Default(t *testing.T) {
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
 		Trigger: memory.TriggerManual, SessionID: "s1",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Tags: []string{},
-		Payload: memory.Payload{Summary: "no dedup"},
+		Summary: "no dedup",
 	})
 	if err != nil {
 		t.Fatalf("write: %v", err)

@@ -76,7 +76,8 @@ func seedTouchable(t *testing.T, ms *memory.Store, key string) memory.Revision {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "touchable " + key, Body: "body " + key},
+		Summary:     "touchable " + key,
+		Body:        "body " + key,
 	})
 	if err != nil {
 		t.Fatalf("seed %s: %v", key, err)

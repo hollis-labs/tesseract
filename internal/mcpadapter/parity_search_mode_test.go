@@ -63,7 +63,8 @@ func seedSearchModeCorpus(t *testing.T, ms *memory.Store) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  r.confidence,
 			Status:      r.status,
-			Payload:     memory.Payload{Summary: r.summary, Body: r.body},
+			Summary:     r.summary,
+			Body:        r.body,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", r.key, err)
 		}

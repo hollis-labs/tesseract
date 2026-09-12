@@ -201,14 +201,14 @@ creation and recovery.
 | `POST /v1/memory/write` | namespace | Append a memory-domain revision. |
 | `POST /v1/memory/recall` | each namespace | Ranked memory/knowledge recall with cursor and response budgets. |
 | `GET /v1/memory/revisions/{id}` | — | Read one revision by ID. |
-| `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `memory_key`. |
-| `GET /v1/memory/history` | namespace | Memory history for `namespace` + `memory_key`. |
+| `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `key`. |
+| `GET /v1/memory/history` | namespace | Memory history for `namespace` + `key`. |
 | `POST /v1/memory/touch` | — | Reinforce deliberately used revision IDs. |
 | `POST /v1/memory/deprecate` | — | Deprecate one revision by ID. |
 | `POST /v1/memory/promote` | source + target namespaces | Promote session-scoped memory to user/project scope. |
 | `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. |
-| `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `memory_key`. |
-| `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `memory_key`. |
+| `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `key`. |
+| `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
 | `POST /v1/event/write` | namespace | Append one event-log entry. `key` optional; a keyless write appends a new entry. |
 | `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `limit`, `cursor`, `payload_mode`. Every namespace named is authorized, not just the first. |
 
@@ -288,7 +288,7 @@ The target write requires `actor=user` when its namespace starts with
 
 ### Memory write shape
 
-HTTP uses nested objects:
+HTTP mirrors the flat library content input; `author` remains an object:
 
 ```json
 {
@@ -300,18 +300,28 @@ HTTP uses nested objects:
   "derived_from": "user",
   "confidence": 0.9,
   "tags": ["preference"],
-  "payload": {"summary": "Prefer concise diffs.", "body": "Keep reviews focused."}
+  "summary": "Prefer concise diffs.",
+  "body": "Keep reviews focused."
 }
 ```
 
-`payload.data` is an optional JSON object carrying the record's own fields, stored verbatim and never
-interpreted, with an optional `payload.data_schema_hash` recording an unvalidated schema claim.
-**On this route it nests inside `payload`; on `/v1/knowledge/write` and `/v1/event/write` the same two
-fields are top-level `data` and `data_schema_hash`**, matching how those routes already take `summary`
-and `body` flat. Every HTTP route decodes strictly, so the wrong shape is a `400` rather than a silently
-dropped field. (The MCP tools refuse an undeclared argument name too, as a
-`validation_error` naming the declared alternatives — CW-20260912-0055.)
-Responses are uniform: `payload.data` on all three.
+`data` is an optional JSON object carrying the record's own fields, stored verbatim and never
+interpreted, with optional `data_schema_hash` recording an unvalidated schema claim.
+All three HTTP write routes take top-level `summary`, `body`, `data` and `data_schema_hash`,
+matching their library inputs. Author and pointer objects stay structured. Responses still
+carry content under `payload`, including `payload.summary`, `payload.body` and `payload.data`.
+
+The old memory write `payload` object is refused with a `400 validation_error` explaining
+which fields to move to the top level. Sending both shapes is also refused. MCP's three write
+tools now use `data` and `data_schema_hash`; retired `payload_data` and
+`payload_data_schema_hash` are refused with migration guidance, including when both names
+are present. MCP continues to accept JSON-encoded data strings to preserve exact bytes through
+its sanitized and checked arguments path.
+
+Memory write keys still use `MemoryKey` in the library and `memory_key` in HTTP, and memory MCP still uses
+`memory_key`, `payload_summary` and `payload_body`. These retained names are outside this
+slice's normalization. Keyed reads use `key` on HTTP and MCP. On HTTP get/history routes,
+`memory_key` is refused even when empty or accompanied by `key`; response `memory_key` is unchanged.
 
 Memory keys are validated as written, not normalized: at most six dot-separated
 segments, each using lowercase letters, digits, and underscore, with 64

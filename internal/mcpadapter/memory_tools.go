@@ -15,7 +15,7 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("memory_write",
 		mcp.WithDescription(
 			"**Append an agent memory revision** under `(namespace, memory_key)`.\n"+
-				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which nests the same fields differently. Seven arguments are required, and `trigger`, `derived_from` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
+				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which takes content flat and keeps author structured. Seven arguments are required, and `trigger`, `derived_from` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
 				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				domainBoundaryLine+
@@ -44,8 +44,8 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 		mcp.WithString("payload_summary", mcp.Required(), mcp.Description("Summary text for the memory payload")),
 		mcp.WithString("payload_body", mcp.Description("Optional body text for the memory payload")),
 		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
-		mcp.WithString("payload_data", mcp.Description(payloadDataArgDescription)),
-		mcp.WithString("payload_data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
+		mcp.WithString("data", mcp.Description(payloadDataArgDescription)),
+		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
 		mcp.WithString("dedup", mcp.Description("Dedup mode: none (default) or semantic")),
 		mcp.WithNumber("dedup_threshold", mcp.Description("Similarity threshold override for semantic dedup (0 = use config default 0.85)")),
 		mcp.WithReadOnlyHintAnnotation(false),
@@ -106,18 +106,16 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),
 		},
-		Trigger:     memory.Trigger(req.GetString("trigger", "")),
-		SessionID:   req.GetString("session_id", ""),
-		DerivedFrom: memory.DerivedFrom(req.GetString("derived_from", "")),
-		Confidence:  req.GetFloat("confidence", 0),
-		Tags:        tags,
-		TTL:         time.Duration(ttlSeconds) * time.Second,
-		Payload: memory.Payload{
-			Summary:        req.GetString("payload_summary", ""),
-			Body:           req.GetString("payload_body", ""),
-			Data:           payloadDataArg(req),
-			DataSchemaHash: req.GetString("payload_data_schema_hash", ""),
-		},
+		Trigger:        memory.Trigger(req.GetString("trigger", "")),
+		SessionID:      req.GetString("session_id", ""),
+		DerivedFrom:    memory.DerivedFrom(req.GetString("derived_from", "")),
+		Confidence:     req.GetFloat("confidence", 0),
+		Tags:           tags,
+		TTL:            time.Duration(ttlSeconds) * time.Second,
+		Summary:        req.GetString("payload_summary", ""),
+		Body:           req.GetString("payload_body", ""),
+		Data:           payloadDataArg(req),
+		DataSchemaHash: req.GetString("data_schema_hash", ""),
 		Dedup:          req.GetString("dedup", ""),
 		DedupThreshold: req.GetFloat("dedup_threshold", 0),
 		ConsumerState:  consumerStateArg(req),

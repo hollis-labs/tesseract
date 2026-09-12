@@ -67,11 +67,11 @@ From the `knowledge_write` MCP declaration:
 - `author_agent_id` (required)
 - `session_id` (required)
 
-Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `payload_data`, `payload_data_schema_hash`, `consumer_state`.
+Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `data`, `data_schema_hash`, `consumer_state`.
 
-**`payload_data`** carries the entry's own fields as a JSON object — stored verbatim, never interpreted, not indexed and not searched. The contract, the `consumer_state` distinction and the limits of "verbatim" are stated once in `tesseract_skills memory`; they are identical here and are not repeated.
+**`data`** carries the entry's own fields as a JSON object — stored verbatim, never interpreted, not indexed and not searched. The contract, the `consumer_state` distinction and the limits of "verbatim" are stated once in `tesseract_skills memory`; they are identical here and are not repeated.
 
-**One difference that matters, because a wrong shape is a `400` rather than an ignored field.** `POST /v1/knowledge/write` takes it **flat at the top level** as `data` and `data_schema_hash` — not nested under `payload`, which is where `/v1/memory/write` puts it. That is the same split this route already has for `summary` and `body`, which memory nests and knowledge takes flat. Over MCP the name is the same on all three write tools — `payload_data` — and since 2026-09-12 a name no tool declares is a `validation_error` there too, naming the near-miss it probably meant. Both doors refuse a wrong name; only the SHAPE differs. On READ it is uniform — every domain returns it at `payload.data`.
+All three HTTP write routes take top-level `summary`, `body`, `data` and `data_schema_hash`, while keeping `author` and `pointer` structured. All three MCP tools use `data` and `data_schema_hash`. The retired MCP `payload_data` and `payload_data_schema_hash` names are refused with migration guidance, even alongside the new fields. HTTP memory writes now refuse the old `payload` object. Read responses remain nested under `payload` in every domain.
 
 `pointer_resolved_at` is **your assertion at write time**, not a verification — nothing checks the pointer on the write path, by design, because a pointer that is unreachable now may be reachable in an hour. Whether a pointer actually resolves is answered by pointer health, below.
 
@@ -100,7 +100,7 @@ The body carries what you learned; the entry stays useful with no external sourc
 
 ### The same entry over HTTP
 
-`POST /v1/knowledge/write` writes the same revision, but **it does not take the shape above.** `pointer` and `author` are nested objects there, and `tags` is a real array. Copying the flat MCP body into this route writes an entry with no pointer facet at all. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
+`POST /v1/knowledge/write` writes the same revision, but **it does not take the shape above.** `pointer` and `author` are nested objects there, and `tags` is a real array. Copying MCP-only argument names into this route is a `400` naming the expected HTTP fields. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
 
 ```bash
 curl -sS -X POST "$TESSERACT_URL/v1/knowledge/write" \
@@ -127,7 +127,7 @@ The mapping, for every field whose name or shape changes between the two:
 | `pointer_scheme`, `pointer_locator`, `pointer_resolved_at` | `pointer: {scheme, locator, resolved_at}` |
 | `author_agent_id`, `author_version` | `author: {agent_id, agent_version}` |
 | `tags` (JSON-encoded string) | `tags` (JSON array) |
-| `summary`, `body` | unchanged — top-level on both, unlike memory, where they nest under `payload` |
+| `summary`, `body` | top-level on both; all HTTP write routes use this flat content shape |
 
 Everything else — `namespace`, `key`, `kind`, `source`, `session_id`, `ttl_seconds`, `confidence`, `supersedes` — carries across unchanged.
 

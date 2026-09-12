@@ -26,13 +26,13 @@ To bound a history read, pass `limit`, `cursor`, `budget_bytes`, or `budget_toke
 {"domain": "memory", "namespace": "user/chrispian/memory/decisions", "key": "sqlite.pragma.journal_mode", "limit": 20}
 ```
 
-The HTTP peer is per-domain rather than one route with a `domain` argument, and **it spells the key differently**: `GET /v1/memory/history` takes `memory_key`, not `key`. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
+The HTTP peer is per-domain rather than one route with a `domain` argument, and uses the same `key` query name. The old `memory_key` query parameter is refused with migration guidance, including when both names are present. Read responses still carry `memory_key`. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
 
 ```bash
 curl -sS -G "$TESSERACT_URL/v1/memory/history" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
   --data-urlencode "namespace=user/chrispian/memory/decisions" \
-  --data-urlencode "memory_key=sqlite.pragma.journal_mode" \
+  --data-urlencode "key=sqlite.pragma.journal_mode" \
   --data-urlencode "limit=20"
 ```
 
@@ -71,7 +71,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
     "session_id": "2026-05-02:backend",
     "derived_from": "observation",
     "confidence": 0.95,
-    "payload": {"summary": "Journal mode stays WAL, now confirmed under the networked-filesystem case too."}
+    "summary": "Journal mode stays WAL, now confirmed under the networked-filesystem case too."
   }'
 ```
 

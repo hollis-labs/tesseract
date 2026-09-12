@@ -33,7 +33,7 @@ func TestPayloadDataRoundTripsOverHTTP(t *testing.T) {
 		"session_id":"manual:01HX",
 		"derived_from":"observation",
 		"confidence":0.9,
-		"payload":{"summary":"an ADR","data":` + data + `}
+		"summary":"an ADR","data":` + data + `
 	}`
 	rr, _ := postJSON(t, srv, "/v1/memory/write", body)
 	if rr.Code != http.StatusOK {
@@ -68,7 +68,7 @@ func TestPayloadDataRefusedOverHTTPWhenNotAnObject(t *testing.T) {
 		"session_id":"manual:01HX",
 		"derived_from":"observation",
 		"confidence":0.9,
-		"payload":{"summary":"s","data":[1,2,3]}
+		"summary":"s","data":[1,2,3]
 	}`
 	rr, decoded := postJSON(t, srv, "/v1/memory/write", body)
 	if rr.Code != http.StatusBadRequest {
@@ -108,7 +108,7 @@ func TestPayloadDataWireFormIsSemanticNotByteIdentical(t *testing.T) {
 		"session_id":"manual:01HX",
 		"derived_from":"observation",
 		"confidence":0.9,
-		"payload":{"summary":"s","data":` + sent + `}
+		"summary":"s","data":` + sent + `
 	}`
 	rr, _ := postJSON(t, srv, "/v1/memory/write", body)
 	if rr.Code != http.StatusOK {

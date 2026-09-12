@@ -47,7 +47,8 @@ func relatedAdapter(t *testing.T) *Adapter {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: "probe " + key, Body: body},
+			Summary:     "probe " + key,
+			Body:        body,
 		}); wErr != nil {
 			t.Fatalf("write %s: %v", key, wErr)
 		}

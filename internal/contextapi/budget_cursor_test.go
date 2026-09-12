@@ -73,10 +73,8 @@ func seedBudgetRows(t *testing.T, srv *Server, n int) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload: memory.Payload{
-				Summary: "budget probe row",
-				Body:    strings.Repeat("x", 200),
-			},
+			Summary:     "budget probe row",
+			Body:        strings.Repeat("x", 200),
 		}); err != nil {
 			t.Fatalf("seed row %d: %v", i, err)
 		}
@@ -271,7 +269,7 @@ func seedHistory(t *testing.T, srv *Server, n int) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: "history probe"},
+			Summary:     "history probe",
 		})
 		if err != nil {
 			t.Fatalf("seed history %d: %v", i, err)
@@ -296,7 +294,7 @@ func TestMemoryHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 	srv := newLookupServer(t)
 	seedHistory(t, srv, 4)
 
-	bare := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key")
+	bare := getHistory(t, srv, "namespace=user/chrispian/memory/notes&key=hist.key")
 	if bare.Code != http.StatusOK {
 		t.Fatalf("status = %d; body = %s", bare.Code, bare.Body.String())
 	}
@@ -308,7 +306,7 @@ func TestMemoryHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 		t.Errorf("bare history returned %d revisions, want 4", len(arr))
 	}
 
-	paged := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key&limit=2")
+	paged := getHistory(t, srv, "namespace=user/chrispian/memory/notes&key=hist.key&limit=2")
 	m := httpManifest(t, paged.Body.Bytes())
 	if m.ResultsTotal != 4 || m.ResultsReturned != 2 {
 		t.Errorf("paged history manifest = %+v, want total 4 returned 2", m)
@@ -319,7 +317,7 @@ func TestMemoryHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 
 	// And it pages.
 	rest := getHistory(t, srv,
-		"namespace=user/chrispian/memory/notes&memory_key=hist.key&limit=2&cursor="+*m.NextCursor)
+		"namespace=user/chrispian/memory/notes&key=hist.key&limit=2&cursor="+*m.NextCursor)
 	restM := httpManifest(t, rest.Body.Bytes())
 	if restM.ResultsReturned != 2 || restM.NextCursor != nil {
 		t.Errorf("second page manifest = %+v, want 2 results and no further cursor", restM)
@@ -355,7 +353,7 @@ func TestKnowledgeHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 		return rr
 	}
 
-	bare := do("namespace=user/chrispian/knowledge/framework&memory_key=k.hist")
+	bare := do("namespace=user/chrispian/knowledge/framework&key=k.hist")
 	var arr []json.RawMessage
 	if err := json.Unmarshal(bare.Body.Bytes(), &arr); err != nil {
 		t.Fatalf("default knowledge history must stay a bare array: %v (body=%s)",
@@ -365,7 +363,7 @@ func TestKnowledgeHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 		t.Errorf("bare knowledge history returned %d revisions, want 3", len(arr))
 	}
 
-	paged := do("namespace=user/chrispian/knowledge/framework&memory_key=k.hist&limit=1")
+	paged := do("namespace=user/chrispian/knowledge/framework&key=k.hist&limit=1")
 	if m := httpManifest(t, paged.Body.Bytes()); m.ResultsTotal != 3 || m.ResultsReturned != 1 {
 		t.Errorf("paged knowledge history manifest = %+v, want total 3 returned 1", m)
 	}
@@ -389,7 +387,7 @@ func TestMemoryHistoryHTTP_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	seedHistory(t, srv, 4)
 
 	var arr []json.RawMessage
-	base := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key")
+	base := getHistory(t, srv, "namespace=user/chrispian/memory/notes&key=hist.key")
 	if err := json.Unmarshal(base.Body.Bytes(), &arr); err != nil {
 		t.Fatalf("baseline is not a bare array: %v", err)
 	}
@@ -399,7 +397,7 @@ func TestMemoryHistoryHTTP_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	srv.RuntimeConfig.Read.BudgetBytes = 10 << 20
 	srv.RuntimeConfig.Read.BudgetTokens = 10 << 20
 
-	withBudget := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key")
+	withBudget := getHistory(t, srv, "namespace=user/chrispian/memory/notes&key=hist.key")
 	if withBudget.Code != http.StatusOK {
 		t.Fatalf("status = %d; body = %s", withBudget.Code, withBudget.Body.String())
 	}
@@ -415,7 +413,7 @@ func TestMemoryHistoryHTTP_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	// Knowledge history is the same route family and the same UI consumer.
 	seedKnowledge(t, srv)
 	kreq := httptest.NewRequest(http.MethodGet,
-		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&memory_key=go-providers", nil)
+		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&key=go-providers", nil)
 	krr := httptest.NewRecorder()
 	srv.ServeHTTP(krr, kreq)
 	if krr.Code == http.StatusOK {
@@ -428,7 +426,7 @@ func TestMemoryHistoryHTTP_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 	// A PER-CALL budget still engages the envelope — the knob works, it is
 	// only the deployment-level default that must not change shape.
 	perCall := getHistory(t, srv,
-		"namespace=user/chrispian/memory/notes&memory_key=hist.key&budget_bytes=400")
+		"namespace=user/chrispian/memory/notes&key=hist.key&budget_bytes=400")
 	if _, ok := tryHTTPManifest(perCall.Body.Bytes()); !ok {
 		t.Errorf("a per-call budget did not engage the envelope; body = %s", perCall.Body.String())
 	}
@@ -482,7 +480,7 @@ func TestMemoryHistoryHTTP_MalformedKnobsAre400(t *testing.T) {
 	} {
 		t.Run(q, func(t *testing.T) {
 			rr := getHistory(t, srv,
-				"namespace=user/chrispian/memory/notes&memory_key=hist.key&"+q)
+				"namespace=user/chrispian/memory/notes&key=hist.key&"+q)
 			if rr.Code != http.StatusBadRequest {
 				t.Errorf("%s: status = %d, want 400; body = %s", q, rr.Code, rr.Body.String())
 			}
@@ -495,7 +493,7 @@ func TestMemoryHistoryHTTP_CursorRejectsADifferentSeries(t *testing.T) {
 	seedHistory(t, srv, 4)
 	seedBudgetRows(t, srv, 1)
 
-	paged := getHistory(t, srv, "namespace=user/chrispian/memory/notes&memory_key=hist.key&limit=2")
+	paged := getHistory(t, srv, "namespace=user/chrispian/memory/notes&key=hist.key&limit=2")
 	m := httpManifest(t, paged.Body.Bytes())
 	if m.NextCursor == nil {
 		t.Fatal("no cursor issued")
@@ -503,7 +501,7 @@ func TestMemoryHistoryHTTP_CursorRejectsADifferentSeries(t *testing.T) {
 
 	// Same cursor, different key: the series it names no longer matches.
 	rr := getHistory(t, srv,
-		"namespace=user/chrispian/memory/notes&memory_key=prefs.terse&cursor="+*m.NextCursor)
+		"namespace=user/chrispian/memory/notes&key=prefs.terse&cursor="+*m.NextCursor)
 	if rr.Code == http.StatusOK {
 		t.Errorf("a cursor from another series was accepted; body = %s", rr.Body.String())
 	}

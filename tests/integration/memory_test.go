@@ -50,10 +50,8 @@ func TestMemoryEndToEnd(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload: memory.Payload{
-			Summary: "User prefers terse output",
-			Body:    "No trailing summaries.",
-		},
+		Summary:     "User prefers terse output",
+		Body:        "No trailing summaries.",
 	})
 	if err != nil {
 		t.Fatalf("step1: WriteRevision: %v", err)
@@ -112,10 +110,8 @@ func TestMemoryEndToEnd(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.95,
 		Status:      memory.StatusReviewed,
-		Payload: memory.Payload{
-			Summary: "User prefers terse output — updated",
-			Body:    "No trailing summaries. Use bullet points.",
-		},
+		Summary:     "User prefers terse output — updated",
+		Body:        "No trailing summaries. Use bullet points.",
 	})
 	if err != nil {
 		t.Fatalf("step4: WriteRevision(supersedes): %v", err)
@@ -189,9 +185,7 @@ func TestMemoryEndToEnd(t *testing.T) {
 		DerivedFrom: memory.DerivedFromObservation,
 		Confidence:  0.8,
 		Status:      memory.StatusDraft,
-		Payload: memory.Payload{
-			Summary: "User mentioned deadline pressure during this session",
-		},
+		Summary:     "User mentioned deadline pressure during this session",
 	})
 	if err != nil {
 		t.Fatalf("step7: WriteRevision(session): %v", err)

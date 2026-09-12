@@ -44,7 +44,7 @@ func writeTodoHTTP(t *testing.T, srv *Server, key, bag string) {
 		"session_id":"manual:01HX",
 		"derived_from":"user",
 		"confidence":0.9,
-		"payload":{"summary":"a todo"},
+		"summary":"a todo",
 		"consumer_state":` + bag + `
 	}`
 	rr, decoded := postJSON(t, srv, "/v1/memory/write", body)
@@ -65,7 +65,7 @@ func TestHTTPMemoryWriteRoundTripsConsumerState(t *testing.T) {
 		"session_id":"manual:01HX",
 		"derived_from":"user",
 		"confidence":0.9,
-		"payload":{"summary":"buy milk"},
+		"summary":"buy milk",
 		"consumer_state":` + bag + `
 	}`
 	rr := httptest.NewRecorder()
@@ -107,7 +107,7 @@ func TestHTTPMemoryWriteRefusesANonObjectConsumerState(t *testing.T) {
 				"session_id":"manual:01HX",
 				"derived_from":"user",
 				"confidence":0.9,
-				"payload":{"summary":"buy milk"},
+				"summary":"buy milk",
 				"consumer_state":` + bag + `
 			}`
 			rr := httptest.NewRecorder()

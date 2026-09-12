@@ -1,8 +1,14 @@
 package mcpadapter
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // The MCP door for payload.data (CW-20260912-0036).
@@ -45,10 +51,10 @@ func TestPayloadDataAcceptsBothArgumentShapes(t *testing.T) {
 
 	t.Run("JSON-encoded string", func(t *testing.T) {
 		args := base("data.string")
-		args["payload_data"] = `{"component":"auth","severity":3}`
+		args["data"] = `{"component":"auth","severity":3}`
 		body := writeViaHandler(t, a, args)
 		if isRefusal(body) {
-			t.Fatalf("refused a JSON-encoded payload_data: %v", body)
+			t.Fatalf("refused a JSON-encoded data: %v", body)
 		}
 		if got := payloadDataOf(t, body); got == "null" {
 			t.Errorf("payload.data was dropped: %v", body)
@@ -57,10 +63,10 @@ func TestPayloadDataAcceptsBothArgumentShapes(t *testing.T) {
 
 	t.Run("native object", func(t *testing.T) {
 		args := base("data.native")
-		args["payload_data"] = map[string]any{"component": "auth", "severity": 3}
+		args["data"] = map[string]any{"component": "auth", "severity": 3}
 		body := writeViaHandler(t, a, args)
 		if isRefusal(body) {
-			t.Fatalf("refused a native payload_data object: %v", body)
+			t.Fatalf("refused a native data object: %v", body)
 		}
 		if got := payloadDataOf(t, body); got == "null" {
 			t.Errorf("payload.data was dropped: %v", body)
@@ -72,17 +78,17 @@ func TestPayloadDataAcceptsBothArgumentShapes(t *testing.T) {
 	// a success.
 	t.Run("a non-object is refused", func(t *testing.T) {
 		args := base("data.bad")
-		args["payload_data"] = `[1,2,3]`
+		args["data"] = `[1,2,3]`
 		body := writeViaHandler(t, a, args)
 		if !isRefusal(body) {
-			t.Errorf("accepted an array as payload_data: %v", body)
+			t.Errorf("accepted an array as data: %v", body)
 		}
 	})
 
 	// The claim is opt-in and is never filled in for the caller.
 	t.Run("no schema claim stores none", func(t *testing.T) {
 		args := base("data.noclaim")
-		args["payload_data"] = `{"a":1}`
+		args["data"] = `{"a":1}`
 		body := writeViaHandler(t, a, args)
 		if isRefusal(body) {
 			t.Fatalf("refused: %v", body)
@@ -97,7 +103,7 @@ func TestPayloadDataAcceptsBothArgumentShapes(t *testing.T) {
 // TestPayloadDataExplicitNullIsRefusedNotDropped covers PR #41's review finding
 // that MCP and HTTP disagreed about a supplied null.
 //
-// `payload_data: null` is a value the caller sent. HTTP refuses it as a
+// `data: null` is a value the caller sent. HTTP refuses it as a
 // non-object; MCP used to collapse it into "not sent" because a present JSON
 // null arrives as a nil argument, indistinguishable from absence unless the
 // presence check is separated from the nil check.
@@ -118,17 +124,105 @@ func TestPayloadDataExplicitNullIsRefusedNotDropped(t *testing.T) {
 		"derived_from":    "observation",
 		"confidence":      0.9,
 		"payload_summary": "a write sending an explicit null",
-		"payload_data":    nil,
+		"data":            nil,
 	}
 	if body := writeViaHandler(t, a, args); !isRefusal(body) {
-		t.Errorf("an explicit payload_data:null was accepted; HTTP refuses the same value, and a "+
+		t.Errorf("an explicit data:null was accepted; HTTP refuses the same value, and a "+
 			"client that produced null where it meant an object learns nothing: %v", body)
 	}
 
 	// Omission is still omission — the fix must not turn "not sent" into an error.
-	delete(args, "payload_data")
+	delete(args, "data")
 	args["memory_key"] = "omitted"
 	if body := writeViaHandler(t, a, args); isRefusal(body) {
-		t.Errorf("omitting payload_data was refused; absent and null are different: %v", body)
+		t.Errorf("omitting data was refused; absent and null are different: %v", body)
+	}
+}
+
+// Exercise the registered middleware and decoded transport path on every
+// write tool. Exact data bytes survive the string form; retired names never
+// create another revision, whether alone or alongside their replacements.
+func TestFlatDataWriteContractAcrossMCPDoors(t *testing.T) {
+	a, _, ms, _ := crossDomainSurfaces(t)
+	srv := server.NewMCPServer("flat-write", "0.0.0", server.WithToolCapabilities(true))
+	a.RegisterAllTools(srv)
+	const raw = `{ "z":9007199254740993, "a":1e+09, "z":9007199254740995 }`
+	hash := strings.Repeat("a", 64)
+	for _, tc := range []struct{ tool, ns, keyField, summaryField, bodyField string }{
+		{"memory_write", xdMemNS, "memory_key", "payload_summary", "payload_body"},
+		{"knowledge_write", xdKnowNS, "key", "summary", "body"},
+		{"event_write", xdEventNS, "key", "summary", "body"},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			st := srv.ListTools()[tc.tool]
+			args := map[string]any{
+				"namespace": tc.ns, tc.keyField: "flat.data", tc.summaryField: "summary", tc.bodyField: "body",
+				"author_agent_id": "test", "session_id": "s1", "data": raw, "data_schema_hash": hash,
+				"consumer_state": `{"completed":false}`, "tags": `["flat-write"]`,
+			}
+			if tc.tool == "memory_write" {
+				args["trigger"] = "explicit"
+				args["derived_from"] = "user"
+			}
+			if tc.tool == "knowledge_write" {
+				args["kind"] = "doc"
+				args["source"] = "manual"
+				args["pointer_scheme"] = "nil"
+				args["pointer_locator"] = "inline"
+			}
+			call := func(args map[string]any) string {
+				t.Helper()
+				wire, err := json.Marshal(map[string]any{"params": map[string]any{"name": tc.tool, "arguments": args}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var req mcp.CallToolRequest
+				if err = json.Unmarshal(wire, &req); err != nil {
+					t.Fatal(err)
+				}
+				result, err := st.Handler(context.Background(), req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return resultText(t, result)
+			}
+			result := call(args)
+			var written memory.Revision
+			if err := json.Unmarshal([]byte(result), &written); err != nil || written.RevisionID == "" {
+				t.Fatalf("write failed: %s (%v)", result, err)
+			}
+			read, err := ms.GetCurrent(context.Background(), tc.ns, "flat.data")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(read.Payload.Data) != raw || read.Payload.DataSchemaHash != hash || read.Payload.Summary != "summary" || read.Payload.Body != "body" || string(read.ConsumerState) != `{"completed":false}` || len(read.Tags) != 1 || read.Tags[0] != "flat-write" {
+				t.Fatalf("content changed: %+v; data=%s state=%s", read, read.Payload.Data, read.ConsumerState)
+			}
+			for _, field := range []string{"data", "data_schema_hash"} {
+				for _, withNew := range []bool{false, true} {
+					for _, oldValue := range []any{args[field], nil, ""} {
+						bad := make(map[string]any, len(args)+1)
+						for k, v := range args {
+							bad[k] = v
+						}
+						if !withNew {
+							delete(bad, field)
+						}
+						bad["payload_"+field] = oldValue
+						refusal := call(bad)
+						if !strings.Contains(refusal, "validation_error") || !strings.Contains(refusal, "now named `"+field+"`") {
+							t.Errorf("retired %s (new=%v): %s", field, withNew, refusal)
+						}
+					}
+				}
+			}
+			head, err := ms.GetCurrent(context.Background(), tc.ns, "flat.data")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if head.RevisionID != written.RevisionID {
+				t.Fatalf("retired field wrote a revision: %s → %s", written.RevisionID, head.RevisionID)
+			}
+		})
 	}
 }

@@ -1011,6 +1011,9 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	key := strings.TrimSpace(r.URL.Query().Get("key"))
 	if namespace == "" || key == "" {
@@ -1034,6 +1037,9 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	key := strings.TrimSpace(r.URL.Query().Get("key"))
 	if namespace == "" || key == "" {

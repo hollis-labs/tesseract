@@ -37,7 +37,8 @@ func TestTesseract_WriteAndRecall(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Tags:        []string{},
-		Payload:     memory.Payload{Summary: "facade test content", Body: "detailed body"},
+		Summary:     "facade test content",
+		Body:        "detailed body",
 	})
 	if err != nil {
 		t.Fatalf("WriteMemory: %v", err)
@@ -78,7 +79,8 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Tags:        []string{},
-		Payload:     memory.Payload{Summary: "version 1", Body: "body v1"},
+		Summary:     "version 1",
+		Body:        "body v1",
 	})
 	if err != nil {
 		t.Fatalf("WriteMemory: %v", err)

@@ -54,7 +54,7 @@ func TestEventLogKeysetBreaksTiesInsideOneTimestamp(t *testing.T) {
 			DerivedFrom: DerivedFromObservation,
 			Confidence:  0.9,
 			Status:      StatusCanonical,
-			Payload:     Payload{Summary: "tie candidate"},
+			Summary:     "tie candidate",
 		})
 		if err != nil {
 			t.Fatalf("seed %d: %v", i, err)
@@ -163,7 +163,7 @@ func TestEventLogSingleQueryMatchesPagedWalk(t *testing.T) {
 			DerivedFrom: DerivedFromObservation,
 			Confidence:  0.9,
 			Status:      StatusCanonical,
-			Payload:     Payload{Summary: "entry"},
+			Summary:     "entry",
 		})
 		if err != nil {
 			t.Fatalf("seed %d: %v", i, err)

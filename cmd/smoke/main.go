@@ -66,7 +66,8 @@ func main() {
 		DerivedFrom: memory.DerivedFromObservation,
 		Confidence:  0.9,
 		Tags:        []string{"smoke"},
-		Payload:     memory.Payload{Summary: "Tesseract embedding smoke test.", Body: "This is a short body for embedding. The Crow (1994) is a movie."},
+		Summary:     "Tesseract embedding smoke test.",
+		Body:        "This is a short body for embedding. The Crow (1994) is a movie.",
 	})
 	if err != nil {
 		log.Fatalf("WriteMemory: %v", err)

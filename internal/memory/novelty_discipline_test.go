@@ -363,7 +363,10 @@ func TestNoveltyScoreDoesNotChangeBehavior(t *testing.T) {
 		t.Helper()
 		in := sampleInput(key)
 		in.Namespace = "user/chrispian/memory/notes"
-		in.Payload = memory.Payload{Summary: "a captured note", Body: "same body for both"}
+		in.Summary = "a captured note"
+		in.Body = "same body for both"
+		in.Data = nil
+		in.DataSchemaHash = ""
 		rev, err := ms.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatalf("WriteRevision(%s): %v", key, err)

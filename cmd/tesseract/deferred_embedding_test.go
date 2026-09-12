@@ -56,7 +56,7 @@ func TestMemorySubsystemWiresLiveDeferredEmbedding(t *testing.T) {
 		SessionID:   "manual:wiring",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "deferred embedding wiring probe"},
+		Summary:     "deferred embedding wiring probe",
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)

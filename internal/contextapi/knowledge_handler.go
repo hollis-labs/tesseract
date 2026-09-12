@@ -93,8 +93,7 @@ func crossSurfaceHint(spelling string) string {
 		return "; this endpoint nests it as " + spelling +
 			" — the flat spelling is an MCP tool argument, not an HTTP body field"
 	}
-	return "; this endpoint takes it flat as " + spelling +
-		" — the prefixed spelling is an MCP tool argument, not an HTTP body field"
+	return "; this endpoint takes it flat as " + spelling
 }
 
 // unknownFieldPrefix opens the error encoding/json returns under
@@ -126,6 +125,18 @@ var retiredFieldHints = map[string]string{
 		"of the same five values. Only the name moved.",
 }
 
+// rejectRetiredReadKey checks presence, including an empty value and requests
+// carrying both spellings, before a read can select or reinforce an entry.
+func rejectRetiredReadKey(w http.ResponseWriter, r *http.Request) bool {
+	if !r.URL.Query().Has("memory_key") {
+		return false
+	}
+	writeError(w, http.StatusBadRequest, "validation_error",
+		"query parameter memory_key was renamed to key; send key only. Stored revisions and read responses still use memory_key",
+		map[string]any{"unknown_field": "memory_key", "renamed_to": "key", "expected_field": "key"})
+	return true
+}
+
 func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 	field, ok := strings.CutPrefix(err.Error(), unknownFieldPrefix)
 	if !ok {
@@ -144,7 +155,10 @@ func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 	message := "unknown field " + quoteJSON(field) + " in request body"
 	// A retired name is checked first: it is a strictly better explanation than
 	// the flat/nested hint, and a field can plausibly be both.
-	if retired, hinted := retiredFieldHints[field]; hinted {
+	if _, memoryWrite := dst.(*memoryWriteRequest); memoryWrite && field == "payload" {
+		details["expected_fields"] = []string{"summary", "body", "data", "data_schema_hash"}
+		message += "; memory write content is now flat: move payload.summary, payload.body, payload.data and payload.data_schema_hash to top-level summary, body, data and data_schema_hash. Send only the flat fields; read responses still use payload"
+	} else if retired, hinted := retiredFieldHints[field]; hinted {
 		details["renamed_to"] = "derived_from"
 		message += "; " + retired
 	} else if door, known := doorFor(dst); known {
@@ -207,22 +221,11 @@ func jsonFieldNames(dst any) []string {
 
 // knowledgeWriteRequest is the body of POST /v1/knowledge/write.
 //
-// It is NESTED — `pointer` and `author` are objects — while the MCP
-// knowledge_write tool takes the same facts FLAT (pointer_scheme,
-// pointer_locator, author_agent_id, author_version). Both shapes are
-// deliberate, and this door keeps the nesting:
-//
-//   - The HTTP surface is internally consistent. POST /v1/memory/write nests
-//     `author`, `payload` and `facets` for the same reason. Flattening only
-//     knowledge would make the HTTP API inconsistent with itself in order to
-//     match another protocol's ergonomics.
-//   - MCP flattens because MCP tool schemas favor flat scalar parameters.
-//     That is a property of that surface, not a contract this one adopts.
-//
-// The defect this endpoint actually had was never the nesting: it was that a
-// flat body was accepted in silence, leaving Pointer zero-valued and failing
-// later with a validation error about missing pointer facets that named none
-// of the fields the caller had sent. decodeRequestBody is the fix.
+// Content is flat, matching the library and the other HTTP write routes.
+// Pointer and author remain objects; Tesseract's MCP API chooses flat names
+// such as pointer_scheme and author_agent_id for these same facts.
+// decodeRequestBody refuses the other surface's spelling with a useful hint,
+// rather than dropping it and reporting a missing facet later.
 type knowledgeWriteRequest struct {
 	Namespace string         `json:"namespace"`
 	Key       string         `json:"key,omitempty"`
@@ -300,9 +303,9 @@ func (s *Server) knowledgeStoreUnavailable(w http.ResponseWriter) bool {
 	return false
 }
 
-// handleKnowledgeGetCurrent serves GET /v1/knowledge/current?namespace=...&memory_key=...
+// handleKnowledgeGetCurrent serves GET /v1/knowledge/current?namespace=...&key=...
 //
-// Param name `memory_key` matches the equivalent /v1/memory/current handler so
+// Param name `key` matches the equivalent /v1/memory/current handler so
 // callers can target either store with a single normalized identifier. The
 // underlying KnowledgeStore.GetCurrentReinforced call still takes the bare key
 // string.
@@ -316,9 +319,12 @@ func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	namespace := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("memory_key")
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
+	key := r.URL.Query().Get("key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {
@@ -336,15 +342,18 @@ func (s *Server) handleKnowledgeGetCurrent(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, rev)
 }
 
-// handleKnowledgeGetHistory serves GET /v1/knowledge/history?namespace=...&memory_key=...
+// handleKnowledgeGetHistory serves GET /v1/knowledge/history?namespace=...&key=...
 func (s *Server) handleKnowledgeGetHistory(w http.ResponseWriter, r *http.Request) {
 	if s.knowledgeStoreUnavailable(w) {
 		return
 	}
 	namespace := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("memory_key")
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
+	key := r.URL.Query().Get("key")
 	if namespace == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, namespace) {

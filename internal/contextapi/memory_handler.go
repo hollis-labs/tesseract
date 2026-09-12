@@ -24,12 +24,11 @@ func (s *Server) memoryStoreUnavailable(w http.ResponseWriter) bool {
 
 // memoryWriteRequest mirrors memory.WriteInput with JSON-friendly fields.
 //
-// Nested, like every other body on this surface: `author`, `payload` and
-// `facets` are objects. The MCP memory_write tool takes the same facts flat
-// (author_agent_id, author_version, payload_summary, payload_body) because MCP
-// tool schemas favor flat scalar parameters. decodeRequestBody rejects a body
-// in the other surface's shape by name rather than decoding it into a
-// zero-valued struct — see the rationale on knowledgeWriteRequest.
+// Record content is flat: summary, body, data and data_schema_hash. Author and
+// facets remain structured. Read responses still carry content under payload.
+// MCP keeps payload_summary/payload_body for this slice, while data and
+// data_schema_hash match HTTP. decodeRequestBody teaches the current spelling
+// when callers send an old payload object or an MCP-only field name.
 type memoryWriteRequest struct {
 	Domain         domains.Domain     `json:"domain,omitempty"`
 	Namespace      string             `json:"namespace"`
@@ -43,7 +42,10 @@ type memoryWriteRequest struct {
 	Confidence     float64            `json:"confidence"`
 	Tags           []string           `json:"tags,omitempty"`
 	TTLSeconds     int64              `json:"ttl_seconds,omitempty"`
-	Payload        memory.Payload     `json:"payload"`
+	Summary        string             `json:"summary"`
+	Body           string             `json:"body,omitempty"`
+	Data           json.RawMessage    `json:"data,omitempty"`
+	DataSchemaHash string             `json:"data_schema_hash,omitempty"`
 	Facets         memory.Facets      `json:"facets,omitempty"`
 	Dedup          string             `json:"dedup,omitempty"`
 	DedupThreshold float64            `json:"dedup_threshold,omitempty"`
@@ -94,7 +96,10 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		Confidence:     req.Confidence,
 		Tags:           req.Tags,
 		TTL:            time.Duration(req.TTLSeconds) * time.Second,
-		Payload:        req.Payload,
+		Summary:        req.Summary,
+		Body:           req.Body,
+		Data:           req.Data,
+		DataSchemaHash: req.DataSchemaHash,
 		Facets:         req.Facets,
 		Dedup:          req.Dedup,
 		DedupThreshold: req.DedupThreshold,
@@ -254,15 +259,18 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, rev)
 }
 
-// handleMemoryGetCurrent serves GET /v1/memory/current?namespace=...&memory_key=...
+// handleMemoryGetCurrent serves GET /v1/memory/current?namespace=...&key=...
 func (s *Server) handleMemoryGetCurrent(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
 	}
 	ns := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("memory_key")
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
+	key := r.URL.Query().Get("key")
 	if ns == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, ns) {
@@ -285,15 +293,18 @@ func (s *Server) handleMemoryGetCurrent(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, rev)
 }
 
-// handleMemoryHistory serves GET /v1/memory/history?namespace=...&memory_key=...
+// handleMemoryHistory serves GET /v1/memory/history?namespace=...&key=...
 func (s *Server) handleMemoryHistory(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
 	}
 	ns := r.URL.Query().Get("namespace")
-	key := r.URL.Query().Get("memory_key")
+	if rejectRetiredReadKey(w, r) {
+		return
+	}
+	key := r.URL.Query().Get("key")
 	if ns == "" || key == "" {
-		writeError(w, http.StatusBadRequest, "validation_error", "namespace and memory_key are required", nil)
+		writeError(w, http.StatusBadRequest, "validation_error", "namespace and key are required", nil)
 		return
 	}
 	if !requireNamespaceAccess(w, r, ns) {

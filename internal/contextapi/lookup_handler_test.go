@@ -34,7 +34,7 @@ func seedMemory(t *testing.T, srv *Server) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "terse output"},
+		Summary:     "terse output",
 	})
 	if err != nil {
 		t.Fatalf("seed memory: %v", err)
@@ -190,7 +190,8 @@ func seedMemoryWithBody(t *testing.T, srv *Server) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "has a body", Body: lookupBodySentinel},
+		Summary:     "has a body",
+		Body:        lookupBodySentinel,
 	})
 	if err != nil {
 		t.Fatalf("seed memory with body: %v", err)
@@ -410,7 +411,7 @@ func TestTesseractLookup_FacetsCountReturnedRowsOnly(t *testing.T) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: "facet probe"},
+			Summary:     "facet probe",
 		})
 		if err != nil {
 			t.Fatalf("seed: %v", err)

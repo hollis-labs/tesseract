@@ -40,7 +40,7 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
-		"payload":{"summary":"terse output"}
+		"summary":"terse output"
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -102,13 +102,13 @@ func TestMemoryHistory_RoundtripViaHTTP(t *testing.T) {
 		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
-		"payload":{"summary":"v%d"}
+		"summary":"v%d"
 	}`
 	for i := 1; i <= 2; i++ {
 		write(bytesFormat(base, i))
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/memory/history?namespace=user/chrispian/memory/notes&memory_key=prefs.history_test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/memory/history?namespace=user/chrispian/memory/notes&key=prefs.history_test", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 
@@ -140,12 +140,9 @@ func bytesFormat(tmpl string, n int) string {
 	return string(out)
 }
 
-// TestMemoryWrite_FlatMCPBodyRejectedWithNestedHint is the knowledge-write
-// story on its memory-domain peer: memory_write takes author and payload as
-// flat scalars over MCP (author_agent_id, author_version, payload_summary,
-// payload_body) and as objects over HTTP. Posting the flat set used to write a
-// revision-shaped nothing; it now names the field and the nested equivalent.
-func TestMemoryWrite_FlatMCPBodyRejectedWithNestedHint(t *testing.T) {
+// TestMemoryWrite_MCPContentNamesRejectedWithFlatHint checks that the retained
+// MCP payload_summary spelling points HTTP callers at top-level summary.
+func TestMemoryWrite_MCPContentNamesRejectedWithFlatHint(t *testing.T) {
 	srv := newMemoryTestServer(t)
 
 	body := `{
@@ -160,11 +157,11 @@ func TestMemoryWrite_FlatMCPBodyRejectedWithNestedHint(t *testing.T) {
 		"confidence":0.9
 	}`
 	env := mustRejectUnknownField(t, srv, "/v1/memory/write", body, "payload_summary")
-	if env.Details.ExpectedField != "payload.summary" {
-		t.Errorf("details.expected_field = %q, want payload.summary", env.Details.ExpectedField)
+	if env.Details.ExpectedField != "summary" {
+		t.Errorf("details.expected_field = %q, want summary", env.Details.ExpectedField)
 	}
-	if !strings.Contains(env.Message, "payload.summary") {
-		t.Errorf("message does not name the nested equivalent: %s", env.Message)
+	if !strings.Contains(env.Message, "summary") {
+		t.Errorf("message does not name the HTTP equivalent: %s", env.Message)
 	}
 }
 
@@ -277,7 +274,7 @@ func TestPostRoutesStillAcceptTheirCanonicalBodies(t *testing.T) {
 		"confidence":0.9,
 		"status":"draft",
 		"tags":["style"],
-		"payload":{"summary":"terse output","body":"longer"}
+		"summary":"terse output","body":"longer"
 	}`)
 	if write.Code != http.StatusOK {
 		t.Fatalf("memory write status = %d, want 200; body=%s", write.Code, write.Body.String())
@@ -367,7 +364,7 @@ func TestMemoryWrite_RetiredOriginNamesItsReplacement(t *testing.T) {
 		"session_id":"manual:01HX",
 		"origin":"observation",
 		"confidence":0.9,
-		"payload":{"summary":"a write using the retired field name"}
+		"summary":"a write using the retired field name"
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -401,5 +398,43 @@ func TestMemoryWrite_RetiredOriginNamesItsReplacement(t *testing.T) {
 	if !strings.Contains(env.Message, "renamed") {
 		t.Errorf("the message does not explain that the field was renamed, so a caller reading "+
 			"prose rather than parsing details learns nothing: %s", env.Message)
+	}
+}
+
+// Retiring payload must not silently discard content, even when both shapes
+// arrive together. The successful control also pins flat-in / nested-out.
+func TestMemoryWriteRetiredPayloadRefused(t *testing.T) {
+	srv := newMemoryTestServer(t)
+	base := `{"namespace":"user/chrispian/memory/notes","memory_key":"flat.write","author":{"agent_id":"test"},"trigger":"explicit","session_id":"s1","derived_from":"user","confidence":0.9`
+	for _, content := range []string{
+		`,"payload":{"summary":"old"}}`,
+		`,"summary":"new","payload":{"summary":"old"}}`,
+		`,"payload":{"summary":"old"},"summary":"new"}`,
+		`,"summary":"new","payload":null}`,
+	} {
+		env := mustRejectUnknownField(t, srv, "/v1/memory/write", base+content, "payload")
+		for _, field := range []string{"summary", "body", "data", "data_schema_hash"} {
+			if !strings.Contains(env.Message, field) {
+				t.Errorf("refusal omits %s: %s", field, env.Message)
+			}
+		}
+	}
+	rr, _ := postJSON(t, srv, "/v1/memory/write", base+`,"summary":"new","body":"prose","data":{"n":9007199254740993}}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("flat write: %d %s", rr.Code, rr.Body.String())
+	}
+	var rev memory.Revision
+	if err := json.Unmarshal(rr.Body.Bytes(), &rev); err != nil {
+		t.Fatal(err)
+	}
+	if rev.MemoryKey != "flat.write" || rev.Payload.Summary != "new" || rev.Payload.Body != "prose" || string(rev.Payload.Data) != `{"n":9007199254740993}` {
+		t.Fatalf("flat write lost nested response content: %s", rr.Body.String())
+	}
+	history, err := srv.MemoryStore.GetHistory(context.Background(), "user/chrispian/memory/notes", "flat.write")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].RevisionID != rev.RevisionID {
+		t.Fatalf("rejected shapes wrote revisions: %+v", history)
 	}
 }

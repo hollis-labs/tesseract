@@ -10,8 +10,8 @@ import (
 
 func relevanceInput(key, summary, body string) memory.WriteInput {
 	in := sampleInput(key)
-	in.Payload.Summary = summary
-	in.Payload.Body = body
+	in.Summary = summary
+	in.Body = body
 	return in
 }
 

@@ -94,7 +94,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: summary},
+			Summary:     summary,
 		}); err != nil {
 			t.Fatalf("seed memory revision %d: %v", i, err)
 		}
@@ -214,27 +214,27 @@ func TestCrossDomainReadArgumentParity_MCPvsHTTP(t *testing.T) {
 		{
 			name:       "tesseract_get/domain=memory",
 			mcpArgs:    map[string]any{"domain": "memory", "namespace": xdMemNS, "key": xdMemKey},
-			httpPath:   "/v1/memory/current?namespace=" + xdMemNS + "&memory_key=" + xdMemKey,
+			httpPath:   "/v1/memory/current?namespace=" + xdMemNS + "&key=" + xdMemKey,
 			get:        true,
 			wantDomain: "memory",
 		},
 		{
 			name:       "tesseract_get/domain=knowledge",
 			mcpArgs:    map[string]any{"domain": "knowledge", "namespace": xdKnowNS, "key": xdKnowKey},
-			httpPath:   "/v1/knowledge/current?namespace=" + xdKnowNS + "&memory_key=" + xdKnowKey,
+			httpPath:   "/v1/knowledge/current?namespace=" + xdKnowNS + "&key=" + xdKnowKey,
 			get:        true,
 			wantDomain: "knowledge",
 		},
 		{
 			name:       "tesseract_history/domain=memory",
 			mcpArgs:    map[string]any{"domain": "memory", "namespace": xdMemNS, "key": xdMemKey},
-			httpPath:   "/v1/memory/history?namespace=" + xdMemNS + "&memory_key=" + xdMemKey,
+			httpPath:   "/v1/memory/history?namespace=" + xdMemNS + "&key=" + xdMemKey,
 			wantDomain: "memory",
 		},
 		{
 			name:       "tesseract_history/domain=knowledge",
 			mcpArgs:    map[string]any{"domain": "knowledge", "namespace": xdKnowNS, "key": xdKnowKey},
-			httpPath:   "/v1/knowledge/history?namespace=" + xdKnowNS + "&memory_key=" + xdKnowKey,
+			httpPath:   "/v1/knowledge/history?namespace=" + xdKnowNS + "&key=" + xdKnowKey,
 			wantDomain: "knowledge",
 		},
 		{
@@ -242,7 +242,7 @@ func TestCrossDomainReadArgumentParity_MCPvsHTTP(t *testing.T) {
 			mcpArgs: map[string]any{
 				"domain": "memory", "namespace": xdMemNS, "key": xdMemKey, "limit": float64(2),
 			},
-			httpPath:   "/v1/memory/history?namespace=" + xdMemNS + "&memory_key=" + xdMemKey + "&limit=2",
+			httpPath:   "/v1/memory/history?namespace=" + xdMemNS + "&key=" + xdMemKey + "&limit=2",
 			wantDomain: "",
 		},
 	} {
@@ -624,7 +624,7 @@ func TestMemoryOnlyDeployment_RevisionOpsWork(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "memory-only deployment probe"},
+		Summary:     "memory-only deployment probe",
 	})
 	if err != nil {
 		t.Fatalf("seed memory: %v", err)
@@ -1154,8 +1154,8 @@ func TestHTTPMemoryRoutes_RefuseTheOtherDomainsRows(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ name, path string }{
-		{"GET /v1/memory/current", "/v1/memory/current?namespace=" + xdKnowNS + "&memory_key=" + xdKnowKey},
-		{"GET /v1/memory/history", "/v1/memory/history?namespace=" + xdKnowNS + "&memory_key=" + xdKnowKey},
+		{"GET /v1/memory/current", "/v1/memory/current?namespace=" + xdKnowNS + "&key=" + xdKnowKey},
+		{"GET /v1/memory/history", "/v1/memory/history?namespace=" + xdKnowNS + "&key=" + xdKnowKey},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, body := xdHTTP(t, srv, http.MethodGet, tc.path, "")
@@ -1177,7 +1177,7 @@ func TestHTTPMemoryRoutes_RefuseTheOtherDomainsRows(t *testing.T) {
 	// Positive control on the same server, so a 404 from a broken route is
 	// distinguishable from a 404 from the filter.
 	code, body := xdHTTP(t, srv, http.MethodGet,
-		"/v1/memory/current?namespace="+xdMemNS+"&memory_key="+xdMemKey, "")
+		"/v1/memory/current?namespace="+xdMemNS+"&key="+xdMemKey, "")
 	if code != http.StatusOK {
 		t.Fatalf("the matching-domain control failed (%d): %s", code, body)
 	}

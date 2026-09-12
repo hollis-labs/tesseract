@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,7 @@ func registeredSurface(t *testing.T) *server.MCPServer {
 	a := New(cs, "")
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
+	a.EventStore = event.New(ms)
 
 	srv := server.NewMCPServer("strictargs", "0.0.0", server.WithToolCapabilities(true))
 	a.RegisterAllTools(srv)
@@ -231,13 +233,13 @@ func TestStripDoesNotMutateTheCallersMap(t *testing.T) {
 	}
 }
 
-// TestPayloadDataTypoIsRefusedWithASuggestion is the motivating case, end to
-// end: `data` instead of `payload_data` used to produce a SUCCESSFUL WRITE with
-// the object missing.
+// TestRetiredPayloadDataIsRefusedWithASuggestion is the motivating case, end to
+// end: the retired `payload_data` argument must fail with its new name,
+// including when the caller also supplies `data`.
 //
 // The assertion is on the guidance, not only on the refusal. "unexpected key"
 // leaves the caller to guess, and guessing is what produced the key.
-func TestPayloadDataTypoIsRefusedWithASuggestion(t *testing.T) {
+func TestRetiredPayloadDataIsRefusedWithASuggestion(t *testing.T) {
 	srv := registeredSurface(t)
 	st, ok := srv.ListTools()["memory_write"]
 	if !ok {
@@ -248,13 +250,14 @@ func TestPayloadDataTypoIsRefusedWithASuggestion(t *testing.T) {
 	req.Params.Name = "memory_write"
 	req.Params.Arguments = map[string]any{
 		"namespace":       "user/chrispian/memory/notes",
-		"memory_key":      "test.payload_data_typo",
+		"memory_key":      "test.data_typo",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-typo",
 		"derived_from":    "user",
 		"payload_summary": "a summary",
-		"data":            map[string]any{"severity": "high"},
+		"payload_data":    map[string]any{"severity": "high"},
+		"data":            map[string]any{"severity": "low"},
 	}
 
 	res, err := st.Handler(context.Background(), req)
@@ -262,7 +265,7 @@ func TestPayloadDataTypoIsRefusedWithASuggestion(t *testing.T) {
 		t.Fatalf("handler error: %v", err)
 	}
 	text := resultText(t, res)
-	for _, want := range []string{"`data`", "payload_data", "memory_write"} {
+	for _, want := range []string{"`payload_data`", "`data`", "memory_write", "now named"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the refusal does not mention %s.\n  got: %s", want, text)
 		}
@@ -284,6 +287,12 @@ func TestRetiredArgKeepsItsGuidance(t *testing.T) {
 		arg  string
 		want string
 	}{
+		{"memory_write", "payload_data", "now named `data`"},
+		{"memory_write", "payload_data_schema_hash", "now named `data_schema_hash`"},
+		{"knowledge_write", "payload_data", "now named `data`"},
+		{"knowledge_write", "payload_data_schema_hash", "now named `data_schema_hash`"},
+		{"event_write", "payload_data", "now named `data`"},
+		{"event_write", "payload_data_schema_hash", "now named `data_schema_hash`"},
 		{"memory_write", "origin", "derived_from"},
 		{"tesseract_recall", "origins", "derived_from"},
 		{"context_status_set", "to_status", "`status`"},
@@ -350,14 +359,14 @@ func TestRetiredArgsAreNotDeclared(t *testing.T) {
 func TestSuggestArgNames(t *testing.T) {
 	accepted := []string{
 		"consumer_state", "memory_key", "namespace", "payload_body",
-		"payload_data", "payload_data_schema_hash", "payload_summary", "tags",
+		"data", "data_schema_hash", "payload_summary", "tags",
 	}
 	for _, tc := range []struct {
 		unknown string
 		want    string
 		why     string
 	}{
-		{"data", "payload_data", "the short name of a prefixed argument, not a typo — and the SHORTEST containing name wins"},
+		{"summary", "payload_summary", "the short name of a prefixed argument"},
 		{"namespcae", "namespace", "a transposition, which only edit distance catches"},
 		{"payload", "payload_body", "a prefix matching several: the shortest is offered first"},
 		{"tag", "tags", "a singular/plural slip"},

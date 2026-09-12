@@ -141,7 +141,8 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: row.text, Body: row.text},
+			Summary:     row.text,
+			Body:        row.text,
 		})
 		if err != nil {
 			t.Fatalf("seed %s: %v", row.key, err)

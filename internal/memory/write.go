@@ -23,20 +23,23 @@ type WriteInput struct {
 	// Domain selects the revision's policy bucket. REQUIRED — there is no
 	// default, and an empty value is a validation error carrying
 	// errDomainRequired. See that message for why the default was removed.
-	Domain      domains.Domain
-	Namespace   string
-	MemoryKey   string
-	Supersedes  string
-	Status      Status
-	Author      Author
-	Trigger     Trigger
-	SessionID   string
-	DerivedFrom DerivedFrom
-	Confidence  float64
-	Tags        []string
-	TTL         time.Duration
-	Payload     Payload
-	Facets      Facets
+	Domain         domains.Domain
+	Namespace      string
+	MemoryKey      string
+	Supersedes     string
+	Status         Status
+	Author         Author
+	Trigger        Trigger
+	SessionID      string
+	DerivedFrom    DerivedFrom
+	Confidence     float64
+	Tags           []string
+	TTL            time.Duration
+	Summary        string
+	Body           string
+	Data           json.RawMessage
+	DataSchemaHash string
+	Facets         Facets
 
 	// ConsumerState is the consumer's operational JSON bag for this revision
 	// (CW-20260909-0036). Empty writes SQL NULL, which is what every revision
@@ -53,6 +56,8 @@ type WriteInput struct {
 // WriteRevision creates a new revision in the memory store, handling keyed,
 // keyless, and supersedes cases within a single transaction.
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
+	// The input is flat; stored revisions and every read projection retain Payload.
+	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
 	if err := validateWriteInput(in); err != nil {
 		return Revision{}, err
 	}
@@ -67,7 +72,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	// payload.data's two structural facts. Deliberately NOT routed through the
 	// type registry the way consumer state's required_fields are: data has no
 	// declared shape and acquiring one is the thing this field refuses.
-	if err := validatePayloadData(in.Payload); err != nil {
+	if err := validatePayloadData(payload); err != nil {
 		return Revision{}, err
 	}
 
@@ -97,7 +102,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		if threshold == 0 {
 			threshold = 0.85
 		}
-		text := revisionEmbedText(Revision{Payload: in.Payload})
+		text := revisionEmbedText(Revision{Payload: payload})
 		matchID, sameKey, matchErr := s.findSemanticMatch(ctx, in.Domain, in.Namespace, in.MemoryKey, text, threshold)
 		if matchErr != nil {
 			return Revision{}, fmt.Errorf("semantic dedup: %w", matchErr)
@@ -200,13 +205,13 @@ INSERT INTO memory_revisions (
 		string(tagsJSON),
 		nullInt(ttlSeconds),
 		nullTime(expiresAt),
-		nullStr(in.Payload.Summary),
-		nullStr(in.Payload.Body),
+		nullStr(payload.Summary),
+		nullStr(payload.Body),
 		// Bound as bytes, never re-marshaled. Round-tripping through a Go map
 		// would reorder keys and coerce numbers, and "stored verbatim" has to
 		// mean the bytes the caller sent.
-		nullStr(string(in.Payload.Data)),
-		nullStr(in.Payload.DataSchemaHash),
+		nullStr(string(payload.Data)),
+		nullStr(payload.DataSchemaHash),
 		nullStr(in.Facets.Kind),
 		nullStr(in.Facets.Source),
 		nullStr(pointerScheme),
@@ -261,7 +266,7 @@ INSERT INTO memory_revisions (
 			Namespace:  in.Namespace,
 			CreatedAt:  now.Format(memoryTimeFormat),
 		},
-		memorylinks.LinkText(in.Payload.Summary, in.Payload.Body),
+		memorylinks.LinkText(payload.Summary, payload.Body),
 	); err != nil {
 		return Revision{}, fmt.Errorf("index links: %w", err)
 	}
@@ -361,7 +366,7 @@ INSERT INTO memory_revisions (
 		Tags:          tags,
 		TTLSeconds:    ttlSeconds,
 		ExpiresAt:     expiresAt,
-		Payload:       in.Payload,
+		Payload:       payload,
 		Facets:        in.Facets,
 		ConsumerState: in.ConsumerState,
 		DedupMatch:    dedupMatch,
@@ -501,8 +506,8 @@ func validateWriteInput(in WriteInput) error {
 	if in.Status != "" && !in.Status.Valid() {
 		return fmt.Errorf("%w: invalid status %q", ErrInvalidInput, in.Status)
 	}
-	if in.Payload.Summary == "" {
-		return fmt.Errorf("%w: payload.summary is required", ErrInvalidInput)
+	if in.Summary == "" {
+		return fmt.Errorf("%w: summary is required", ErrInvalidInput)
 	}
 	if in.Dedup != "" && in.Dedup != "none" && in.Dedup != "semantic" {
 		return fmt.Errorf("%w: invalid dedup mode %q (must be none or semantic)", ErrInvalidInput, in.Dedup)

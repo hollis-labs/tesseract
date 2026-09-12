@@ -143,20 +143,11 @@ func TestHintExpressesFlatToFlat(t *testing.T) {
 	if !ok {
 		t.Fatal("memory.write door is missing")
 	}
-	if got, _ := memory.HTTPSpellingFor("payload_data"); got != "payload.data" {
-		t.Errorf("memory.write payload_data → %q, want payload.data (the nested answer)", got)
+	if got, _ := memory.HTTPSpellingFor("payload_summary"); got != "summary" {
+		t.Errorf("memory.write payload_summary → %q, want summary", got)
 	}
-
-	knowledge, ok := DoorByName("knowledge.write")
-	if !ok {
-		t.Fatal("knowledge.write door is missing")
-	}
-	got, ok := knowledge.HTTPSpellingFor("payload_data")
-	if !ok {
-		t.Fatal("knowledge.write cannot answer for payload_data — the exact gap this table replaced")
-	}
-	if got != "data" {
-		t.Errorf("knowledge.write payload_data → %q, want data (the flat answer)", got)
+	if got, _ := memory.HTTPSpellingFor("author_agent_id"); got != "author.agent_id" {
+		t.Errorf("memory.write author_agent_id → %q, want author.agent_id", got)
 	}
 }
 

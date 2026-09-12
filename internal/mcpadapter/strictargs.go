@@ -243,6 +243,8 @@ func stripGatewayMetadata(args map[string]any) (map[string]any, gatewayMetadata,
 // TestRetiredArgsAreNotDeclared fails rather than letting it rot.
 var retiredArgGuidance = map[string]map[string]string{
 	"memory_write": {
+		"payload_data":             "this field is now named `data`; send only `data`. The JSON-encoded string form still preserves the exact data bytes, and read responses still use `payload.data`.",
+		"payload_data_schema_hash": "this field is now named `data_schema_hash`; send only `data_schema_hash`. The schema claim and validation are unchanged.",
 		// `origin` until 2026-09-12. An ignored `origin` leaves `derived_from`
 		// empty, so a caller who supplied a value is told a REQUIRED FIELD IS
 		// MISSING — a confusing error about the wrong field. Had the field
@@ -253,6 +255,14 @@ var retiredArgGuidance = map[string]map[string]string{
 			"because `origin` read as *who originated this* and was being filled in as " +
 			"an authorship claim. It is a recall ranking multiplier, so the value matters " +
 			"beyond labeling; see `tesseract_skills memory`.",
+	},
+	"knowledge_write": {
+		"payload_data":             "this field is now named `data`; send only `data`. The JSON-encoded string form still preserves the exact data bytes, and read responses still use `payload.data`.",
+		"payload_data_schema_hash": "this field is now named `data_schema_hash`; send only `data_schema_hash`. The schema claim and validation are unchanged.",
+	},
+	"event_write": {
+		"payload_data":             "this field is now named `data`; send only `data`. The JSON-encoded string form still preserves the exact data bytes, and read responses still use `payload.data`.",
+		"payload_data_schema_hash": "this field is now named `data_schema_hash`; send only `data_schema_hash`. The schema claim and validation are unchanged.",
 	},
 	"tesseract_recall": {
 		// `origins` until 2026-09-12, and the sharpest case on this list: an

@@ -138,7 +138,10 @@ func writeAndEmbed(t *testing.T, ms *memory.Store, key, summary string) memory.R
 	t.Helper()
 	ctx := context.Background()
 	in := sampleInput(key)
-	in.Payload = memory.Payload{Summary: summary}
+	in.Summary = summary
+	in.Body = ""
+	in.Data = nil
+	in.DataSchemaHash = ""
 	rev, err := ms.WriteRevision(ctx, in)
 	if err != nil {
 		t.Fatalf("WriteRevision(%s): %v", key, err)
@@ -301,7 +304,10 @@ func TestNoveltyScopeIsNamespaceAndDomainBounded(t *testing.T) {
 	// scope: the two alphas above are not in it.
 	in := sampleInput("note.elsewhere")
 	in.Namespace = "user/chrispian/memory/decisions"
-	in.Payload = memory.Payload{Summary: "alpha three"}
+	in.Summary = "alpha three"
+	in.Body = ""
+	in.Data = nil
+	in.DataSchemaHash = ""
 	other, err := ms.WriteRevision(ctx, in)
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -402,7 +408,10 @@ func writeAndEmbedWith(t *testing.T, ms *memory.Store, key, summary string) memo
 	t.Helper()
 	ctx := context.Background()
 	in := sampleInput(key)
-	in.Payload = memory.Payload{Summary: summary}
+	in.Summary = summary
+	in.Body = ""
+	in.Data = nil
+	in.DataSchemaHash = ""
 	rev, err := ms.WriteRevision(ctx, in)
 	if err != nil {
 		t.Fatalf("WriteRevision(%s): %v", key, err)
@@ -430,7 +439,10 @@ func TestNoveltyDoesNotChangeDedup(t *testing.T) {
 	// A second alpha is a near-duplicate by construction: same axis, so its
 	// cosine against the original clears 0.85 and the shipped gate fires.
 	in := sampleInput("note.a1")
-	in.Payload = memory.Payload{Summary: "alpha one again"}
+	in.Summary = "alpha one again"
+	in.Body = ""
+	in.Data = nil
+	in.DataSchemaHash = ""
 	in.Dedup = "semantic"
 	dupRev, err := ms.WriteRevision(ctx, in)
 	if err != nil {
@@ -448,7 +460,10 @@ func TestNoveltyDoesNotChangeDedup(t *testing.T) {
 	// A different axis must NOT match, on the same code path, with novelty
 	// being computed for both.
 	fresh := sampleInput("note.g1")
-	fresh.Payload = memory.Payload{Summary: "gamma one"}
+	fresh.Summary = "gamma one"
+	fresh.Body = ""
+	fresh.Data = nil
+	fresh.DataSchemaHash = ""
 	fresh.Dedup = "semantic"
 	freshRev, err := ms.WriteRevision(ctx, fresh)
 	if err != nil {

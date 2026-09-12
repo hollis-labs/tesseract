@@ -434,7 +434,10 @@ func TestSemanticDedupWorksInsideTheEventDomain(t *testing.T) {
 
 	// And it stays scoped: a memory write must not match an event row.
 	memIn := sampleInput("dedup.scope")
-	memIn.Payload = memory.Payload{Summary: "the same thought twice"}
+	memIn.Summary = "the same thought twice"
+	memIn.Body = ""
+	memIn.Data = nil
+	memIn.DataSchemaHash = ""
 	memIn.Dedup = "semantic"
 	memRev, err := ms.WriteRevision(ctx, memIn)
 	if err != nil {

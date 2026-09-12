@@ -1129,7 +1129,7 @@ VALUES
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload:     memory.Payload{Summary: "demo one"},
+		Summary:     "demo one",
 	}); err != nil {
 		t.Fatalf("seed memory revision 1: %v", err)
 	}
@@ -1143,7 +1143,7 @@ VALUES
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload:     memory.Payload{Summary: "demo two"},
+		Summary:     "demo two",
 	}); err != nil {
 		t.Fatalf("seed memory revision 2: %v", err)
 	}
@@ -1157,7 +1157,7 @@ VALUES
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload:     memory.Payload{Summary: "other three"},
+		Summary:     "other three",
 	})
 	if err != nil {
 		t.Fatalf("seed memory revision 3: %v", err)

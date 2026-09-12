@@ -14,9 +14,8 @@ package surfacefields
 //
 // The read doors are not derived, because their HTTP side reads query
 // parameters by literal string and nothing reflects that. They are here anyway,
-// because they carry the `key` versus `memory_key` divergence, and the check
-// earns the column back by asserting each door's behavior instead of its
-// shape.
+// because they carry the keyed-read contract. The check earns the column back
+// by asserting each door's behavior instead of its shape.
 //
 // The remaining catalog pairs are deliberately absent rather than forgotten.
 // This table covers the doors where a caller supplies the record's own fields
@@ -59,10 +58,10 @@ var Doors = []Door{
 					"who flattened the HTTP path mechanically and is right about the fact.",
 			},
 
-			{Concept: "summary", MCP: "payload_summary", HTTP: "payload.summary"},
-			{Concept: "body", MCP: "payload_body", HTTP: "payload.body"},
-			{Concept: "data", MCP: "payload_data", HTTP: "payload.data"},
-			{Concept: "data_schema_hash", MCP: "payload_data_schema_hash", HTTP: "payload.data_schema_hash"},
+			{Concept: "summary", MCP: "payload_summary", HTTP: "summary", Why: "The initial S2 dispatch retains memory MCP payload_summary pending the naming decision; HTTP mirrors the flat library input."},
+			{Concept: "body", MCP: "payload_body", HTTP: "body", Why: "See summary: memory MCP payload_body is retained by the initial S2 dispatch."},
+			{Concept: "data", MCP: "data", HTTP: "data", MCPAliases: []string{"payload_data"}},
+			{Concept: "data_schema_hash", MCP: "data_schema_hash", HTTP: "data_schema_hash", MCPAliases: []string{"payload_data_schema_hash"}},
 
 			{
 				Concept: "domain", HTTP: "domain",
@@ -114,20 +113,8 @@ var Doors = []Door{
 				Why:        "See memory.write; MCP shortens the same way on every door that takes an author.",
 			},
 
-			{
-				Concept: "data", MCP: "payload_data", HTTP: "data",
-				Pending: "CW-20260912-0089",
-				Why: "MCP says `payload_data` where this door says `data`. CW-20260912-0064 " +
-					"ruled MCP flat, so the argument becomes `data` and this row loses its " +
-					"Pending. Until then it is the divergence that motivated the table: it " +
-					"landed on 2026-09-12 and the literal hint map could not express it at " +
-					"all, being flat-to-nested only.",
-			},
-			{
-				Concept: "data_schema_hash", MCP: "payload_data_schema_hash", HTTP: "data_schema_hash",
-				Pending: "CW-20260912-0089",
-				Why:     "Travels with `data`.",
-			},
+			{Concept: "data", MCP: "data", HTTP: "data", MCPAliases: []string{"payload_data"}},
+			{Concept: "data_schema_hash", MCP: "data_schema_hash", HTTP: "data_schema_hash", MCPAliases: []string{"payload_data_schema_hash"}},
 		},
 	},
 
@@ -156,16 +143,8 @@ var Doors = []Door{
 				Why:        "See memory.write.",
 			},
 
-			{
-				Concept: "data", MCP: "payload_data", HTTP: "data",
-				Pending: "CW-20260912-0089",
-				Why:     "See knowledge.write; the rename covers all three write tools at once.",
-			},
-			{
-				Concept: "data_schema_hash", MCP: "payload_data_schema_hash", HTTP: "data_schema_hash",
-				Pending: "CW-20260912-0089",
-				Why:     "Travels with `data`.",
-			},
+			{Concept: "data", MCP: "data", HTTP: "data", MCPAliases: []string{"payload_data"}},
+			{Concept: "data_schema_hash", MCP: "data_schema_hash", HTTP: "data_schema_hash", MCPAliases: []string{"payload_data_schema_hash"}},
 
 			{
 				Concept: "derived_from", HTTP: "derived_from",
@@ -189,12 +168,8 @@ var Doors = []Door{
 
 	// ── Read doors (HTTP column declared, behavior asserted) ────────────
 	//
-	// One tool serves three arms, and it agrees with one of them. tesseract_get
-	// and tesseract_history take `key`; /v1/context/* takes `key`;
-	// /v1/memory/* and /v1/knowledge/* take `memory_key`. So the divergence is
-	// two arms out of three, which is both smaller and more awkward than a
-	// clean surface-versus-surface split — the knowledge door in particular
-	// takes `key` when writing and `memory_key` when reading.
+	// tesseract_get, tesseract_history and all their HTTP peers take key.
+	// Stored revisions and read responses still name the field memory_key.
 
 	{
 		Name: "context.get", MCPTool: "tesseract_get",
@@ -209,15 +184,7 @@ var Doors = []Door{
 		HTTPMethod: "GET", HTTPPath: "/v1/memory/current",
 		Fields: []Field{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
-			{
-				Concept: "key", MCP: "key", HTTP: "memory_key",
-				Pending: "CW-20260912-0089",
-				Why: "The read routes normalized across domains onto `memory_key` so one " +
-					"identifier targets either store; the MCP cross-domain tool normalized " +
-					"onto `key`. Both were reasonable alone. The result is that the same " +
-					"concept has two names by door, and on knowledge also two names by " +
-					"direction.",
-			},
+			{Concept: "key", MCP: "key", HTTP: "key"},
 		},
 	},
 	{
@@ -225,12 +192,7 @@ var Doors = []Door{
 		HTTPMethod: "GET", HTTPPath: "/v1/knowledge/current",
 		Fields: []Field{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
-			{
-				Concept: "key", MCP: "key", HTTP: "memory_key",
-				Pending: "CW-20260912-0089",
-				Why: "See memory.get. This is the door where the split is visible from one " +
-					"side: knowledge.write takes `key` and this takes `memory_key`.",
-			},
+			{Concept: "key", MCP: "key", HTTP: "key"},
 		},
 	},
 	{
@@ -246,11 +208,7 @@ var Doors = []Door{
 		HTTPMethod: "GET", HTTPPath: "/v1/memory/history",
 		Fields: []Field{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
-			{
-				Concept: "key", MCP: "key", HTTP: "memory_key",
-				Pending: "CW-20260912-0089",
-				Why:     "See memory.get.",
-			},
+			{Concept: "key", MCP: "key", HTTP: "key"},
 		},
 	},
 	{
@@ -258,11 +216,7 @@ var Doors = []Door{
 		HTTPMethod: "GET", HTTPPath: "/v1/knowledge/history",
 		Fields: []Field{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
-			{
-				Concept: "key", MCP: "key", HTTP: "memory_key",
-				Pending: "CW-20260912-0089",
-				Why:     "See knowledge.get.",
-			},
+			{Concept: "key", MCP: "key", HTTP: "key"},
 		},
 	},
 }

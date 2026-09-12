@@ -25,7 +25,8 @@ func eventInput(summary string) memory.WriteInput {
 		DerivedFrom: memory.DerivedFromObservation,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: summary, Body: "reasoning: " + summary},
+		Summary:     summary,
+		Body:        "reasoning: " + summary,
 	}
 }
 

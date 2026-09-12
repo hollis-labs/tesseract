@@ -38,7 +38,8 @@ func activationFixtures() map[domains.Domain]activationFixture {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusDraft,
-			Payload:     memory.Payload{Summary: "s", Body: "b"},
+			Summary:     "s",
+			Body:        "b",
 		}
 	}
 

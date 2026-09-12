@@ -158,7 +158,7 @@ func TestPointerHealth_AbsentFieldMeansNoPointer(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.5,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "no pointer here"},
+		Summary:     "no pointer here",
 	}); err != nil {
 		t.Fatalf("WriteRevision: %v", err)
 	}

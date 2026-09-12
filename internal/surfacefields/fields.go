@@ -25,8 +25,8 @@
 // # What this is not
 //
 // It is not a plan to make the surfaces identical. Several differences are
-// correct and must survive: MCP arguments are flat by protocol while HTTP
-// bodies nest, `tags` is a JSON-encoded string on one and an array on the
+// correct and must survive: Tesseract chooses flat MCP arguments while HTTP
+// keeps author and pointer structured, `tags` is a JSON-encoded string on one and an array on the
 // other, and memory_promote says `actor_agent_id` where the write doors say
 // `author_agent_id` because the author wrote the revision and the actor is
 // promoting it. Uniform means predictable, not identical. Each of those is a

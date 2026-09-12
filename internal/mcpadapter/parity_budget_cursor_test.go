@@ -68,10 +68,8 @@ func bothSurfaces(t *testing.T, rows int) (*Adapter, *contextapi.Server) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload: memory.Payload{
-				Summary: "parity probe row",
-				Body:    strings.Repeat("x", 200),
-			},
+			Summary:     "parity probe row",
+			Body:        strings.Repeat("x", 200),
 		}); err != nil {
 			t.Fatalf("seed row %d: %v", i, err)
 		}
@@ -258,7 +256,7 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: "history probe"},
+			Summary:     "history probe",
 		})
 		if err != nil {
 			t.Fatalf("seed history %d: %v", i, err)
@@ -289,7 +287,7 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 		return rr.Code, rr.Body.String(), m
 	}
 
-	const q = "namespace=user/chrispian/memory/notes&memory_key=hist.key"
+	const q = "namespace=user/chrispian/memory/notes&key=hist.key"
 	base := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",

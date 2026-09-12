@@ -44,7 +44,7 @@ func seedN(t *testing.T, ms *memory.Store, n int) []memory.Revision {
 	out := make([]memory.Revision, 0, n)
 	for i := 0; i < n; i++ {
 		in := sampleInput("page.key" + string(rune('a'+i)))
-		in.Payload.Summary = "seeded row " + string(rune('a'+i))
+		in.Summary = "seeded row " + string(rune('a'+i))
 		rev, err := ms.WriteRevision(context.Background(), in)
 		if err != nil {
 			t.Fatalf("WriteRevision(%d): %v", i, err)
@@ -740,7 +740,7 @@ func TestLimitCap_PayloadModeCapIsReportedAndPageable(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		in := sampleInput("cap.key")
 		in.MemoryKey = "" // unkeyed: each write is its own memory
-		in.Payload.Summary = "cap probe"
+		in.Summary = "cap probe"
 		if _, err := ms.WriteRevision(context.Background(), in); err != nil {
 			t.Fatalf("WriteRevision(%d): %v", i, err)
 		}
@@ -922,7 +922,7 @@ func TestPageRevisions_LimitAndCursor(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		in := sampleInput("hist.key")
 		in.Supersedes = last
-		in.Payload.Summary = "revision " + string(rune('0'+i))
+		in.Summary = "revision " + string(rune('0'+i))
 		rev, err := ms.WriteRevision(context.Background(), in)
 		if err != nil {
 			t.Fatalf("WriteRevision(%d): %v", i, err)

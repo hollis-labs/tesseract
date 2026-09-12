@@ -32,10 +32,8 @@ func bm25SampleInput(key, summary, body string) WriteInput {
 		DerivedFrom: DerivedFromUser,
 		Confidence:  0.9,
 		Status:      StatusDraft,
-		Payload: Payload{
-			Summary: summary,
-			Body:    body,
-		},
+		Summary:     summary,
+		Body:        body,
 	}
 }
 

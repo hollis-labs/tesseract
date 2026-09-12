@@ -121,7 +121,7 @@ func TestKnowledgeGetCurrent_Success(t *testing.T) {
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet,
-		"/v1/knowledge/current?namespace=user/chrispian/knowledge/framework&memory_key=framework.go-providers", nil)
+		"/v1/knowledge/current?namespace=user/chrispian/knowledge/framework&key=framework.go-providers", nil)
 	getRR := httptest.NewRecorder()
 	srv.ServeHTTP(getRR, getReq)
 	if getRR.Code != http.StatusOK {
@@ -142,7 +142,7 @@ func TestKnowledgeGetCurrent_Success(t *testing.T) {
 func TestKnowledgeGetCurrent_NotFound(t *testing.T) {
 	srv := newKnowledgeTestServer(t)
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/knowledge/current?namespace=user/chrispian/knowledge/missing&memory_key=nope", nil)
+		"/v1/knowledge/current?namespace=user/chrispian/knowledge/missing&key=nope", nil)
 	rr := httptest.NewRecorder()
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -192,7 +192,7 @@ func TestKnowledgeGetHistory_OrdersNewestFirst(t *testing.T) {
 	}
 
 	histReq := httptest.NewRequest(http.MethodGet,
-		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&memory_key=framework.go-providers", nil)
+		"/v1/knowledge/history?namespace=user/chrispian/knowledge/framework&key=framework.go-providers", nil)
 	histRR := httptest.NewRecorder()
 	srv.ServeHTTP(histRR, histReq)
 	if histRR.Code != http.StatusOK {
@@ -225,7 +225,7 @@ func TestMemoryWrite_RejectsKnowledgeDomain(t *testing.T) {
 		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
-		"payload":{"summary":"sneak knowledge in"}
+		"summary":"sneak knowledge in"
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()

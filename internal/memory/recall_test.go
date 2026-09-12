@@ -388,13 +388,13 @@ func TestRecall_TimeFiltersCompareRFC3339NanoChronologically(t *testing.T) {
 	ctx := context.Background()
 
 	earlyIn := sampleInput("time.prefix.early")
-	earlyIn.Payload.Summary = "prefixneedle early"
+	earlyIn.Summary = "prefixneedle early"
 	early, err := ms.WriteRevision(ctx, earlyIn)
 	if err != nil {
 		t.Fatalf("write early: %v", err)
 	}
 	laterIn := sampleInput("time.prefix.later")
-	laterIn.Payload.Summary = "prefixneedle later"
+	laterIn.Summary = "prefixneedle later"
 	later, err := ms.WriteRevision(ctx, laterIn)
 	if err != nil {
 		t.Fatalf("write later: %v", err)

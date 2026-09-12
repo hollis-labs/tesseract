@@ -19,7 +19,7 @@ func publicMemoryInput() memory.WriteInput {
 		SessionID:   "s1",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "public facade facet contract"},
+		Summary:     "public facade facet contract",
 	}
 }
 

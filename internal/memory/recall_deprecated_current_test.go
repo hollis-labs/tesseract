@@ -22,7 +22,7 @@ func seedDeprecatedCurrentFixture(t *testing.T, store *memory.Store) deprecatedC
 	write := func(key string) memory.Revision {
 		t.Helper()
 		in := sampleInput(key)
-		in.Payload.Summary = deprecatedCurrentQuery
+		in.Summary = deprecatedCurrentQuery
 		rev, err := store.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatalf("write %s: %v", key, err)
@@ -37,7 +37,7 @@ func seedDeprecatedCurrentFixture(t *testing.T, store *memory.Store) deprecatedC
 
 	superseded := write("deprecated.superseded")
 	replacementIn := sampleInput("deprecated.superseded")
-	replacementIn.Payload.Summary = deprecatedCurrentQuery
+	replacementIn.Summary = deprecatedCurrentQuery
 	replacementIn.Supersedes = superseded.RevisionID
 	replacement, err := store.WriteRevision(ctx, replacementIn)
 	if err != nil {

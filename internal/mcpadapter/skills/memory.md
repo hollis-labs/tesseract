@@ -42,8 +42,8 @@ a value outside them is a `validation_error`, not a new category.
 | `session_id` | yes | the session that produced it, for correlating a turn's writes. |
 | `memory_key` | no | a stable identity for an evolving concept; re-writing the key supersedes. See *Keyed vs. unkeyed*. |
 | `status` | no | `draft` (default) \| `reviewed` \| `canonical`. **Weights recall**: 0.6 / 0.9 / 1.0, and a deprecated revision drops to 0.1. |
-| `payload_data` | no | the record's OWN fields as a JSON object, stored verbatim and never interpreted — not indexed, not embedded, not searched. See below. |
-| `payload_data_schema_hash` | no | optional hex sha256 recording which schema `payload_data` claims; stored, never validated. |
+| `data` | no | the record's OWN fields as a JSON object, stored verbatim and never interpreted — not indexed, not embedded, not searched. See below. |
+| `data_schema_hash` | no | optional hex sha256 recording which schema `data` claims; stored, never validated. |
 | `supersedes`, `author_version`, `tags`, `ttl_seconds`, `payload_body`, `consumer_state`, `dedup`, `dedup_threshold` | no | see the mapping table and the `consumer_state` section below. |
 
 **The `{type}` segment** — `decisions`, `feedback`, `followups`, `learnings`,
@@ -118,7 +118,7 @@ Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
 }
 ```
 
-Over HTTP the same fields nest: `author` and `payload` are objects, and `tags` is a real array.
+Over HTTP content is flat as `summary`, `body`, `data` and `data_schema_hash`. `author` stays an object, and `tags` is a real array. The memory write key stays `memory_key` on both doors.
 
 ```bash
 curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
@@ -133,10 +133,8 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
     "derived_from": "observation",
     "confidence": 0.9,
     "tags": ["sqlite", "durability"],
-    "payload": {
-      "summary": "Journal mode stays WAL; DELETE was measured and rejected.",
-      "body": "WAL survives the concurrent-reader case the CLI hits during a serve."
-    }
+    "summary": "Journal mode stays WAL; DELETE was measured and rejected.",
+    "body": "WAL survives the concurrent-reader case the CLI hits during a serve."
   }'
 ```
 
@@ -145,7 +143,7 @@ The field-by-field mapping, for the fields that do not simply carry across:
 | MCP argument | HTTP field |
 |---|---|
 | `author_agent_id`, `author_version` | `author: {agent_id, agent_version}` |
-| `payload_summary`, `payload_body` | `payload: {summary, body}` |
+| `payload_summary`, `payload_body` | top-level `summary`, `body` |
 | `tags` (JSON-encoded string) | `tags` (JSON array) |
 | `consumer_state` (JSON-encoded string) | `consumer_state` (JSON object) |
 | — | `domain` (HTTP only, and optional there: `/v1/memory/write` sets `memory` for you and refuses any other value) |
@@ -184,9 +182,9 @@ session how to work. If you cannot say which of those three sentences describes
 your record, the tie-break is downward — `observation` costs a record ranking
 weight it might deserve, and `user` borrows weight it might not.
 
-## `payload_data` — the record's own fields, in your shape
+## `data` — the record's own fields, in your shape
 
-**`payload_summary` and `payload_body` are prose. `payload_data` is everything
+**`payload_summary` and `payload_body` are prose. `data` is everything
 else**: an ADR's decision and alternatives, a contact's email and phone, a bug
 report's steps and severity. You send an object shaped for you, and you get it
 back. Tesseract checks that it parses, that it is an object, and that it is
@@ -200,42 +198,43 @@ recall's candidate set. That is the point of the field, not a gap in it.
 
 **So put anything you want to be findable in the prose as well.** Recall reaches
 a record through its summary and body. A bug report whose severity lives only in
-`payload_data` is not findable by severity, and the fix is a sentence in the
+`data` is not findable by severity, and the fix is a sentence in the
 summary, not an index here.
 
-**`payload_data` is not `consumer_state`.** They are siblings and the difference
+**`data` is not `consumer_state`.** They are siblings and the difference
 is worth holding: this is **what the record IS**, that is **how it is being
 worked** — and `consumer_state` is filterable via `state_filters` while this is
 not.
 
 | bag | holds | filterable |
 |---|---|---|
-| `payload_data` | the record's own fields | no |
+| `data` | the record's own fields | no |
 | `consumer_state` | lifecycle — done, section, due | yes, `state_filters` |
 | `payload_summary` / `payload_body` | prose, and the only thing search reads | via `query` |
 | `tags` | cross-cutting labels | yes, `tags` |
 
-### The shape differs by door; the failure no longer does
+### Flat content in, nested content out
 
-| door | where `payload_data` goes | a wrong name |
-|---|---|---|
-| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three | `validation_error` |
-| `POST /v1/memory/write` | **nested**: `payload.data` | `400` |
-| `POST /v1/knowledge/write`, `POST /v1/event/write` | **flat**: top-level `data` | `400` |
+| Door | Content fields |
+|---|---|
+| `memory_write` (MCP) | `payload_summary`, `payload_body`, `data`, `data_schema_hash` |
+| `knowledge_write`, `event_write` (MCP) | `summary`, `body`, `data`, `data_schema_hash` |
+| All three HTTP write routes | top-level `summary`, `body`, `data`, `data_schema_hash` |
+| Read responses in all three domains | `payload.summary`, `payload.body`, `payload.data`, `payload.data_schema_hash` |
 
-**A wrong name fails on every door now, and says what the right one is.**
-Until 2026-09-12 the MCP tools accepted an argument name they did not declare
-and simply never read it, so `data` instead of `payload_data` returned a
-**successful write with your object missing** — no error, and the revision
-looked fine until someone went looking for the field. The HTTP routes always
-decoded strictly. That gap is closed: an argument no tool declares is now a
-`validation_error` naming the key, the near-miss it probably meant, and the
-tool's full accepted set.
+Memory MCP retains `memory_key`, `payload_summary` and `payload_body` for this slice.
+All three MCP tools renamed `payload_data` to `data` and `payload_data_schema_hash` to
+`data_schema_hash`. The string-encoded data path and validation are unchanged.
+The old names are refused with migration guidance, even when sent alongside the new names:
 
 ```
-`data` is not an argument of memory_write. Did you mean `payload_data`?
-This tool accepts: author_agent_id, confidence, consumer_state, derived_from, …
+`payload_data` is not an argument of memory_write; this field is now named `data`.
 ```
+
+HTTP memory writes refuse the old `payload` object with a `400 validation_error`
+that tells callers to move its four content fields to the top level. Sending both
+shapes also fails. Unknown argument names are refused on MCP and HTTP; MCP names
+the near-miss and accepted set, and HTTP gives the accepted top-level fields.
 
 **Underscore-prefixed names are not an exception.** `_traceparent` and
 `_tracestate` are accepted and stripped, because the mux gateway writes its
@@ -248,10 +247,6 @@ refuses a typo, a guess, or an argument borrowed from the wrong tool. What a
 retired name gets in addition is the migration sentence: `origin` is not merely
 refused, it is refused with "this field is now named `derived_from`".
 
-The SHAPE difference is still real, and is not new to this field — it is exactly
-how `summary` and `body` already differ between those routes, because memory
-nests them under `payload` and knowledge and event take them flat.
-
 **On read it is uniform**: every domain returns it at `payload.data`.
 
 ```json
@@ -263,7 +258,7 @@ nests them under `payload` and knowledge and event take them flat.
   "derived_from": "user",
   "confidence": 0.9,
   "payload_summary": "Journal mode stays WAL; DELETE was measured and rejected.",
-  "payload_data": "{\"decision\":\"WAL\",\"alternatives\":[\"DELETE\"],\"revisit_if\":\"networked filesystem target\"}"
+  "data": "{\"decision\":\"WAL\",\"alternatives\":[\"DELETE\"],\"revisit_if\":\"networked filesystem target\"}"
 }
 ```
 
@@ -279,12 +274,12 @@ gone and `<`, `>`, `&` escaped. Same JSON value, parses to the same object,
 different bytes. If you sign or checksum
 what you receive, checksum the form you received.
 
-**Over MCP, send a JSON-encoded string when the bytes matter.** A native JSON
-object has already been decoded by the transport before the tool sees it, so an
-integer beyond 2^53 has been rounded through a float and cannot be recovered.
-The string form is stored exactly as you sent it.
+**Over MCP, send a JSON-encoded string when the bytes matter.** Native objects pass through the decoded arguments map used by Tesseract's sanitizer
+and strict-argument middleware, which can round integers beyond 2^53 and reformat JSON.
+Although the MCP request also carries raw arguments, bypassing that checked path would
+bypass those protections. The string form preserves the data bytes in the store.
 
-### `payload_data_schema_hash` — an optional claim, never checked
+### `data_schema_hash` — an optional claim, never checked
 
 If your data follows a schema, you may record which one: a hex sha256 matching a
 type's `schema_ref.schema_hash`. **Tesseract never opens the schema and never
@@ -292,7 +287,7 @@ validates against it.** It stores what you said, so a record written under an
 older schema stays distinguishable from one that drifted.
 
 Omit it if you are making no claim — it is never filled in for you, and a claim
-with no `payload_data` to describe is refused.
+with no `data` to describe is refused.
 
 ## `consumer_state` — the bag that is yours, not Tesseract's
 

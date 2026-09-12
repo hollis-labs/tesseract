@@ -120,7 +120,7 @@ func TestWriteRevisionEnqueueFailureIsObservableAndWriteSurvives(t *testing.T) {
 		}
 	}
 	// And with none of the memory's contents.
-	for _, forbidden := range []string{in.Payload.Summary, in.Payload.Body} {
+	for _, forbidden := range []string{in.Summary, in.Body} {
 		if strings.Contains(out, forbidden) {
 			t.Errorf("log line leaked payload content %q: %s", forbidden, out)
 		}

@@ -17,7 +17,7 @@ func TestHTTPWriteEndpointsEnforceDomainFacetContract(t *testing.T) {
 		"session_id":"s1",
 		"derived_from":"user",
 		"confidence":0.9,
-		"payload":{"summary":"valid memory"}
+		"summary":"valid memory"
 	}`
 	validKnowledge := `{
 		"namespace":"user/chrispian/knowledge/docs",
@@ -34,8 +34,8 @@ func TestHTTPWriteEndpointsEnforceDomainFacetContract(t *testing.T) {
 		wantStatus                 int
 	}{
 		{"valid memory", "/v1/memory/write", validMemory, "", http.StatusOK},
-		{"memory rejects facet kind", "/v1/memory/write", bytesReplace(validMemory, `"payload":`, `"facets":{"kind":"note"},"payload":`), "validation_error", http.StatusBadRequest},
-		{"memory rejects pointer object", "/v1/memory/write", bytesReplace(validMemory, `"payload":`, `"facets":{"pointer":{"scheme":"nil","locator":"inline"}},"payload":`), "validation_error", http.StatusBadRequest},
+		{"memory rejects facet kind", "/v1/memory/write", bytesReplace(validMemory, `"summary":`, `"facets":{"kind":"note"},"summary":`), "validation_error", http.StatusBadRequest},
+		{"memory rejects pointer object", "/v1/memory/write", bytesReplace(validMemory, `"summary":`, `"facets":{"pointer":{"scheme":"nil","locator":"inline"}},"summary":`), "validation_error", http.StatusBadRequest},
 		{"valid knowledge", "/v1/knowledge/write", validKnowledge, "", http.StatusOK},
 		{"knowledge rejects unknown kind", "/v1/knowledge/write", bytesReplace(validKnowledge, `"kind":"doc"`, `"kind":"mcp-server"`), "validation_error", http.StatusBadRequest},
 		{"knowledge rejects missing source", "/v1/knowledge/write", bytesReplace(validKnowledge, `"source":"filesystem"`, `"source":""`), "validation_error", http.StatusBadRequest},

@@ -119,7 +119,10 @@ func seedEvalCorpus(t *testing.T, ms *memory.Store) map[string]string {
 	for _, d := range docs {
 		in := sampleInput(d.key)
 		in.Namespace = ns
-		in.Payload = memory.Payload{Summary: d.summary, Body: d.body}
+		in.Summary = d.summary
+		in.Body = d.body
+		in.Data = nil
+		in.DataSchemaHash = ""
 		rev, err := ms.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatalf("seed %s: %v", d.key, err)

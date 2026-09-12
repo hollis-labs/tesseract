@@ -48,20 +48,19 @@ func TestPayloadDataDoesNotReachTheFTSIndex(t *testing.T) {
 	const needle = "zarquonthirtyseven"
 
 	inData := sampleInput("data.holder")
-	inData.Payload = memory.Payload{
-		Summary: "a record whose fields live in data",
-		Body:    "prose that does not mention the token",
-		Data:    json.RawMessage(`{"component":"` + needle + `","severity":3}`),
-	}
+	inData.Summary = "a record whose fields live in data"
+	inData.Body = "prose that does not mention the token"
+	inData.Data = json.RawMessage(`{"component":"` + needle + `","severity":3}`)
+	inData.DataSchemaHash = ""
 	if _, err := ms.WriteRevision(ctx, inData); err != nil {
 		t.Fatalf("write data revision: %v", err)
 	}
 
 	inBody := sampleInput("body.holder")
-	inBody.Payload = memory.Payload{
-		Summary: "a record whose prose mentions it",
-		Body:    "the component is " + needle + " and that is prose",
-	}
+	inBody.Summary = "a record whose prose mentions it"
+	inBody.Body = "the component is " + needle + " and that is prose"
+	inBody.Data = nil
+	inBody.DataSchemaHash = ""
 	if _, err := ms.WriteRevision(ctx, inBody); err != nil {
 		t.Fatalf("write body revision: %v", err)
 	}
@@ -119,7 +118,10 @@ func TestPayloadDataRoundTripsVerbatim(t *testing.T) {
 	const raw = `{"zeta":1,"id":9007199254740993,"alpha":{"nested":true},"list":[3,2,1]}`
 
 	in := sampleInput("adr.0001")
-	in.Payload = memory.Payload{Summary: "an ADR", Data: json.RawMessage(raw)}
+	in.Summary = "an ADR"
+	in.Body = ""
+	in.Data = json.RawMessage(raw)
+	in.DataSchemaHash = ""
 	written, err := ms.WriteRevision(ctx, in)
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -200,7 +202,10 @@ func TestPayloadDataRefusesNonObjects(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := sampleInput("bad.data")
-			in.Payload = memory.Payload{Summary: "s", Data: json.RawMessage(tc.data)}
+			in.Summary = "s"
+			in.Body = ""
+			in.Data = json.RawMessage(tc.data)
+			in.DataSchemaHash = ""
 			if _, err := ms.WriteRevision(ctx, in); err == nil {
 				t.Fatalf("accepted %s as payload.data (%s)", tc.data, tc.why)
 			}
@@ -228,7 +233,10 @@ func TestPayloadDataRefusesNonObjects(t *testing.T) {
 		`{"a":1,"a":2}`,
 	} {
 		in := sampleInput("good.data")
-		in.Payload = memory.Payload{Summary: "s", Data: json.RawMessage(ok)}
+		in.Summary = "s"
+		in.Body = ""
+		in.Data = json.RawMessage(ok)
+		in.DataSchemaHash = ""
 		if _, err := ms.WriteRevision(ctx, in); err != nil {
 			t.Errorf("refused %s, but Tesseract has no opinion about what is inside: %v", ok, err)
 		}
@@ -247,11 +255,10 @@ func TestPayloadDataSchemaClaim(t *testing.T) {
 
 	t.Run("round trips", func(t *testing.T) {
 		in := sampleInput("claimed")
-		in.Payload = memory.Payload{
-			Summary:        "a record claiming a schema",
-			Data:           json.RawMessage(`{"decision":"use WAL"}`),
-			DataSchemaHash: hash,
-		}
+		in.Summary = "a record claiming a schema"
+		in.Body = ""
+		in.Data = json.RawMessage(`{"decision":"use WAL"}`)
+		in.DataSchemaHash = hash
 		w, err := ms.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatalf("WriteRevision: %v", err)
@@ -271,7 +278,10 @@ func TestPayloadDataSchemaClaim(t *testing.T) {
 	// records that never claimed anything.
 	t.Run("a write making no claim stores none", func(t *testing.T) {
 		in := sampleInput("unclaimed")
-		in.Payload = memory.Payload{Summary: "s", Data: json.RawMessage(`{"decision":"use WAL"}`)}
+		in.Summary = "s"
+		in.Body = ""
+		in.Data = json.RawMessage(`{"decision":"use WAL"}`)
+		in.DataSchemaHash = ""
 		w, err := ms.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatalf("WriteRevision: %v", err)
@@ -289,7 +299,10 @@ func TestPayloadDataSchemaClaim(t *testing.T) {
 
 	t.Run("refuses a claim that is not a digest", func(t *testing.T) {
 		in := sampleInput("badclaim")
-		in.Payload = memory.Payload{Summary: "s", Data: json.RawMessage(`{}`), DataSchemaHash: "v1.2.3"}
+		in.Summary = "s"
+		in.Body = ""
+		in.Data = json.RawMessage(`{}`)
+		in.DataSchemaHash = "v1.2.3"
 		if _, err := ms.WriteRevision(ctx, in); err == nil {
 			t.Error("accepted a non-digest schema claim")
 		}
@@ -297,7 +310,10 @@ func TestPayloadDataSchemaClaim(t *testing.T) {
 
 	t.Run("refuses a claim about absent data", func(t *testing.T) {
 		in := sampleInput("emptyclaim")
-		in.Payload = memory.Payload{Summary: "s", DataSchemaHash: hash}
+		in.Summary = "s"
+		in.Body = ""
+		in.Data = nil
+		in.DataSchemaHash = hash
 		if _, err := ms.WriteRevision(ctx, in); err == nil {
 			t.Error("accepted a schema claim with no data for it to describe")
 		}

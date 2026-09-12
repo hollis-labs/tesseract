@@ -38,8 +38,8 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 		mcp.WithString("author_version", mcp.Description("Agent version string")),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
 		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
-		mcp.WithString("payload_data", mcp.Description(payloadDataArgDescription)),
-		mcp.WithString("payload_data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
+		mcp.WithString("data", mcp.Description(payloadDataArgDescription)),
+		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
 		mcp.WithString("tags", mcp.Description("Optional JSON array of string tags")),
 		mcp.WithNumber("ttl_seconds", mcp.Description(
 			"Optional TTL in seconds (0 = no expiry, the default and the norm — long retention is the point of this domain)")),
@@ -102,7 +102,7 @@ func (a *Adapter) handleEventWrite(ctx context.Context, req mcp.CallToolRequest)
 		Summary:        req.GetString("summary", ""),
 		Body:           req.GetString("body", ""),
 		Data:           payloadDataArg(req),
-		DataSchemaHash: req.GetString("payload_data_schema_hash", ""),
+		DataSchemaHash: req.GetString("data_schema_hash", ""),
 		Author: memory.Author{
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),

@@ -35,7 +35,7 @@ func seedMemoryWithTags(t *testing.T, srv *Server, ns, key, summary string, tags
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
 		Tags:        tags,
-		Payload:     memory.Payload{Summary: summary},
+		Summary:     summary,
 	})
 	if err != nil {
 		t.Fatalf("seedMemoryWithTags: %v", err)

@@ -59,10 +59,8 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 		DerivedFrom: memory.DerivedFromObservation,
 		Confidence:  0.2,
 		Status:      memory.StatusDraft,
-		Payload: memory.Payload{
-			Summary: "Decision recorded under " + ticketID,
-			Body:    "The lane that shipped it. " + strings.Repeat("padding words here. ", 40),
-		},
+		Summary:     "Decision recorded under " + ticketID,
+		Body:        "The lane that shipped it. " + strings.Repeat("padding words here. ", 40),
 	}
 	rev, err := ms.WriteRevision(ctx, target)
 	if err != nil {
@@ -88,7 +86,8 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 			DerivedFrom: memory.DerivedFromFeedback,
 			Confidence:  1.0,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: d.summary, Body: d.body},
+			Summary:     d.summary,
+			Body:        d.body,
 		}
 		if _, err := ms.WriteRevision(ctx, in); err != nil {
 			t.Fatalf("write %s: %v", d.key, err)
@@ -228,7 +227,8 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
 		DerivedFrom: memory.DerivedFromObservation, Confidence: 0.1, Status: memory.StatusDraft,
-		Payload: memory.Payload{Summary: "xylophone", Body: ""},
+		Summary: "xylophone",
+		Body:    "",
 	}
 	strong := memory.WriteInput{
 		Domain:    domains.Memory,
@@ -236,7 +236,8 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
 		DerivedFrom: memory.DerivedFromFeedback, Confidence: 1.0, Status: memory.StatusCanonical,
-		Payload: memory.Payload{Summary: "xylophone", Body: strings.Repeat("filler ", 300)},
+		Summary: "xylophone",
+		Body:    strings.Repeat("filler ", 300),
 	}
 	if _, err := ms.WriteRevision(ctx, weak); err != nil {
 		t.Fatalf("write weak: %v", err)
@@ -371,7 +372,8 @@ func TestSearchModeSemantic_ReturnsCosineOrderingWithScores(t *testing.T) {
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
 			DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
-			Payload: memory.Payload{Summary: r.summary, Body: r.body},
+			Summary: r.summary,
+			Body:    r.body,
 		}
 		rev, err := ms.WriteRevision(ctx, in)
 		if err != nil {
@@ -433,7 +435,8 @@ func TestSearchModeSemantic_SkipsUnembeddedThatLexicalFinds(t *testing.T) {
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
 		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
-		Payload: memory.Payload{Summary: "alpha zebracrossing", Body: ""},
+		Summary: "alpha zebracrossing",
+		Body:    "",
 	}
 	if _, err := ms.WriteRevision(ctx, in); err != nil {
 		t.Fatalf("write: %v", err)
@@ -589,7 +592,8 @@ func TestSearchMode_OperatorsAreOperatorsUnderHybridAndLiteralUnderLexical(t *te
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:op",
 			DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
-			Payload: memory.Payload{Summary: r.summary, Body: r.body},
+			Summary: r.summary,
+			Body:    r.body,
 		}
 		if _, err := ms.WriteRevision(ctx, in); err != nil {
 			t.Fatalf("write %s: %v", r.key, err)

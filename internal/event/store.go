@@ -135,21 +135,19 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		// was written as it will ever be. Landing events in draft would put the
 		// whole log permanently on the bottom rung of a ladder it is not
 		// climbing.
-		Status:      memory.StatusCanonical,
-		Author:      in.Author,
-		Trigger:     trigger,
-		SessionID:   in.SessionID,
-		DerivedFrom: derivedFrom,
-		Confidence:  confidence,
-		Tags:        in.Tags,
-		TTL:         in.TTL,
-		Payload: memory.Payload{
-			Summary:        in.Summary,
-			Body:           in.Body,
-			Data:           in.Data,
-			DataSchemaHash: in.DataSchemaHash,
-		},
-		ConsumerState: in.ConsumerState,
+		Status:         memory.StatusCanonical,
+		Author:         in.Author,
+		Trigger:        trigger,
+		SessionID:      in.SessionID,
+		DerivedFrom:    derivedFrom,
+		Confidence:     confidence,
+		Tags:           in.Tags,
+		TTL:            in.TTL,
+		Summary:        in.Summary,
+		Body:           in.Body,
+		Data:           in.Data,
+		DataSchemaHash: in.DataSchemaHash,
+		ConsumerState:  in.ConsumerState,
 	}
 	return s.mem.WriteRevision(ctx, memIn)
 }

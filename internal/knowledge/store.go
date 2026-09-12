@@ -106,18 +106,16 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		// Knowledge writes originate from indexers or manual capture; use
 		// `reference` as the closest derived_from bucket and `manual` as the
 		// generic trigger. Indexer plugins will refine this later.
-		Trigger:     memory.TriggerManual,
-		SessionID:   in.SessionID,
-		DerivedFrom: memory.DerivedFromReference,
-		Confidence:  confidence,
-		Tags:        in.Tags,
-		TTL:         in.TTL,
-		Payload: memory.Payload{
-			Summary:        in.Summary,
-			Body:           in.Body,
-			Data:           in.Data,
-			DataSchemaHash: in.DataSchemaHash,
-		},
+		Trigger:        memory.TriggerManual,
+		SessionID:      in.SessionID,
+		DerivedFrom:    memory.DerivedFromReference,
+		Confidence:     confidence,
+		Tags:           in.Tags,
+		TTL:            in.TTL,
+		Summary:        in.Summary,
+		Body:           in.Body,
+		Data:           in.Data,
+		DataSchemaHash: in.DataSchemaHash,
 		Facets: memory.Facets{
 			Kind:    in.Kind,
 			Source:  in.Source,

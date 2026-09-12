@@ -37,7 +37,8 @@ func linkInput(ns, key, body string) memory.WriteInput {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "s", Body: body},
+		Summary:     "s",
+		Body:        body,
 	}
 }
 
@@ -129,7 +130,7 @@ func TestWriteRevision_IndexesLinksFromSummary(t *testing.T) {
 	ctx := context.Background()
 
 	in := linkInput(notesNS, "summary_linker", "body has none")
-	in.Payload.Summary = "supersedes the approach in [[other_key]]"
+	in.Summary = "supersedes the approach in [[other_key]]"
 	rev, err := ms.WriteRevision(ctx, in)
 	if err != nil {
 		t.Fatalf("write: %v", err)
@@ -147,7 +148,7 @@ func TestWriteRevision_NoLinkAcrossTheSummaryBodySeam(t *testing.T) {
 	defer cleanup()
 
 	in := linkInput(notesNS, "seam", "spliced]] rest of body")
-	in.Payload.Summary = "trailing [["
+	in.Summary = "trailing [["
 	rev, err := ms.WriteRevision(context.Background(), in)
 	if err != nil {
 		t.Fatalf("write: %v", err)

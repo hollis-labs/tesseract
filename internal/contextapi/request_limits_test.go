@@ -56,9 +56,9 @@ func TestRequestBodyLimitAppliesToDirectDecoders(t *testing.T) {
 	srv := newMemoryTestServer(t)
 
 	var buf bytes.Buffer
-	buf.WriteString(`{"namespace":"app/editor/session","memory_key":"summary","payload":{"summary":"`)
+	buf.WriteString(`{"namespace":"app/editor/session","memory_key":"summary","summary":"`)
 	buf.Write(bytes.Repeat([]byte("a"), maxRequestBodyBytes+1024))
-	buf.WriteString(`"}}`)
+	buf.WriteString(`"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewReader(buf.Bytes()))
 	req.Header.Set("Content-Type", "application/json")

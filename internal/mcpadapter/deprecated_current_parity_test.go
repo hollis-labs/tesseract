@@ -29,7 +29,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusDraft,
-			Payload:     memory.Payload{Summary: "deprecated current parity probe"},
+			Summary:     "deprecated current parity probe",
 		})
 		if err != nil {
 			t.Fatalf("write %s: %v", key, err)
@@ -54,7 +54,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload:     memory.Payload{Summary: "deprecated current parity probe replacement"},
+		Summary:     "deprecated current parity probe replacement",
 	}
 	replacementRev, err := store.WriteRevision(ctx, replacementIn)
 	if err != nil {

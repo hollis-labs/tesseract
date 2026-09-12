@@ -37,10 +37,8 @@ func sampleInput(key string) memory.WriteInput {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
-		Payload: memory.Payload{
-			Summary: "User prefers terse output",
-			Body:    "**Why:** repeated feedback. **How to apply:** no trailing summaries.",
-		},
+		Summary:     "User prefers terse output",
+		Body:        "**Why:** repeated feedback. **How to apply:** no trailing summaries.",
 	}
 }
 
@@ -203,7 +201,7 @@ func TestWriteRevision_ValidatesRequiredFields(t *testing.T) {
 		{"invalid trigger", func(in *memory.WriteInput) { in.Trigger = "bogus" }},
 		{"confidence too high", func(in *memory.WriteInput) { in.Confidence = 1.5 }},
 		{"confidence negative", func(in *memory.WriteInput) { in.Confidence = -0.1 }},
-		{"empty summary", func(in *memory.WriteInput) { in.Payload.Summary = "" }},
+		{"empty summary", func(in *memory.WriteInput) { in.Summary = "" }},
 	}
 
 	for _, tc := range tests {
@@ -282,7 +280,7 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 		SessionID:   "sess-1",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "hello"},
+		Summary:     "hello",
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -327,7 +325,7 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 		SessionID:   "sess-1",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "hello"},
+		Summary:     "hello",
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -384,7 +382,7 @@ func TestDeprecateEmitsTheEntrysOwnDomain(t *testing.T) {
 		SessionID:   "sess-1",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "a knowledge entry"},
+		Summary:     "a knowledge entry",
 		Facets: memory.Facets{
 			Kind:    "doc",
 			Source:  "manual",
@@ -431,7 +429,7 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 		SessionID:   "s1",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "s"},
+		Summary:     "s",
 	})
 	if err != nil {
 		t.Fatalf("seed WriteRevision: %v", err)

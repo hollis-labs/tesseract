@@ -107,7 +107,7 @@ func TestKnowledgeReadsAreNotHeldToTheMemoryKeyRule(t *testing.T) {
 		SessionID:   "indexer:01HX",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
-		Payload:     memory.Payload{Summary: "go-providers: multi-provider AI adapter"},
+		Summary:     "go-providers: multi-provider AI adapter",
 		Facets: memory.Facets{
 			Kind:    "package",
 			Source:  "filesystem",

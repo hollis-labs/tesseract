@@ -399,7 +399,7 @@ the old namespace, the original `created_at`, and the deprecated revision id.
 Nothing was destroyed. The originals are readable at
 
 ```
-GET /v1/memory/history?namespace=user/chrispian/memory/references&memory_key=<key>
+GET /v1/memory/history?namespace=user/chrispian/memory/references&key=<key>
 ```
 
 or `tesseract_history` on the same namespace and key.

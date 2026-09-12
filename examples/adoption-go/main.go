@@ -43,9 +43,7 @@ func main() {
 		SessionID:   "adoption-v0.9",
 		DerivedFrom: memory.DerivedFromProject,
 		Confidence:  0.95,
-		Payload: memory.Payload{
-			Summary: "Nanite consumes immutable Tesseract release tags.",
-		},
+		Summary:     "Nanite consumes immutable Tesseract release tags.",
 	})
 	if err != nil {
 		log.Fatal(err)

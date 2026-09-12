@@ -292,13 +292,8 @@ func TestReadDoorsAcceptTheSpellingsTheyDeclare(t *testing.T) {
 	}
 }
 
-// TestUnknownFieldHintUsesTheSharedTable is the end-to-end for the derivation,
-// written against the field that exposed the literal.
-//
-// `payload_data` is an MCP argument on all three write tools and was absent
-// from the hand-written map, so the one field CW-20260912-0048 was filed about
-// got the bare rejection. The two doors now answer differently and both answer
-// — which the literal could not do, its values being dotted paths.
+// TestUnknownFieldHintUsesTheSharedTable exercises both flat-to-flat content
+// hints and flat-to-nested author/pointer hints through HTTP refusal.
 func TestUnknownFieldHintUsesTheSharedTable(t *testing.T) {
 	srv := newMemoryTestServer(t)
 	srv.KnowledgeStore = knowledge.New(srv.MemoryStore)
@@ -306,9 +301,10 @@ func TestUnknownFieldHintUsesTheSharedTable(t *testing.T) {
 	for _, tc := range []struct {
 		path, field, wantSpelling, wantPhrase string
 	}{
-		{"/v1/memory/write", "payload_data", "payload.data", "nests it as"},
-		{"/v1/knowledge/write", "payload_data", "data", "takes it flat as"},
-		{"/v1/memory/write", "payload_summary", "payload.summary", "nests it as"},
+		{"/v1/memory/write", "payload_data", "data", "takes it flat as"},
+		{"/v1/knowledge/write", "payload_data_schema_hash", "data_schema_hash", "takes it flat as"},
+		{"/v1/knowledge/write", "pointer_scheme", "pointer.scheme", "nests it as"},
+		{"/v1/memory/write", "payload_summary", "summary", "takes it flat as"},
 		{"/v1/memory/write", "author_agent_version", "author.agent_version", "nests it as"},
 	} {
 		t.Run(tc.path+"/"+tc.field, func(t *testing.T) {
@@ -335,5 +331,29 @@ func TestUnknownFieldHintUsesTheSharedTable(t *testing.T) {
 				t.Errorf("message = %q, want it to contain %q", got.Message, tc.wantPhrase)
 			}
 		})
+	}
+}
+
+// Refuse the obsolete query name before selecting a record, including empty
+// values and coexisting spellings, on all get/history doors in the table.
+func TestReadDoorsRefuseRetiredMemoryKey(t *testing.T) {
+	srv := newMemoryTestServer(t)
+	srv.KnowledgeStore = knowledge.New(srv.MemoryStore)
+	for _, path := range []string{"/v1/context/head", "/v1/context/history", "/v1/memory/current", "/v1/memory/history", "/v1/knowledge/current", "/v1/knowledge/history"} {
+		for _, query := range []string{"memory_key=k", "memory_key=", "key=k&memory_key=old", "memory_key=old&key=k"} {
+			req := httptest.NewRequest(http.MethodGet, path+"?namespace=user/x/memory/notes&"+query, nil)
+			rr := httptest.NewRecorder()
+			srv.ServeHTTP(rr, req)
+			var got struct {
+				Code, Message string
+				Details       map[string]any
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if rr.Code != http.StatusBadRequest || got.Code != "validation_error" || got.Details["renamed_to"] != "key" || !strings.Contains(got.Message, "send key only") {
+				t.Errorf("%s?%s: %d %s", path, query, rr.Code, rr.Body.String())
+			}
+		}
 	}
 }

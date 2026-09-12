@@ -336,7 +336,7 @@ func TestGetCurrent_RefusesAMemoryRevision(t *testing.T) {
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.9,
 		Status:      memory.StatusCanonical,
-		Payload:     memory.Payload{Summary: "a memory revision, asked of the knowledge store"},
+		Summary:     "a memory revision, asked of the knowledge store",
 	}); err != nil {
 		t.Fatalf("seed memory revision: %v", err)
 	}

@@ -16,7 +16,10 @@ import (
 func todoInput(key, state string) memory.WriteInput {
 	in := sampleInput(key)
 	in.Namespace = "user/chrispian/memory/todos"
-	in.Payload = memory.Payload{Summary: "buy milk", Body: "the errand"}
+	in.Summary = "buy milk"
+	in.Body = "the errand"
+	in.Data = nil
+	in.DataSchemaHash = ""
 	if state != "" {
 		in.ConsumerState = json.RawMessage(state)
 	}

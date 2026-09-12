@@ -103,7 +103,8 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 		Confidence:  0.9,
 		Status:      memory.StatusDraft,
 		Tags:        []string{"prefs"},
-		Payload:     memory.Payload{Summary: "User prefers terse output", Body: "No trailing summaries."},
+		Summary:     "User prefers terse output",
+		Body:        "No trailing summaries.",
 	}); err != nil {
 		t.Fatalf("write memory revision: %v", err)
 	}
@@ -116,7 +117,7 @@ func seedSourceStore(t *testing.T, s *contextstore.Store) (typedRecordID string,
 		SessionID:   "indexer:backup",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.8,
-		Payload:     memory.Payload{Summary: "go-providers: multi-provider AI adapter"},
+		Summary:     "go-providers: multi-provider AI adapter",
 		Facets: memory.Facets{
 			Kind:    "package",
 			Source:  "filesystem",
@@ -197,7 +198,7 @@ func TestBackupRestoreFullDomainParity(t *testing.T) {
 		SessionID:   "manual:dst",
 		DerivedFrom: memory.DerivedFromUser,
 		Confidence:  0.5,
-		Payload:     memory.Payload{Summary: "destination-only memory"},
+		Summary:     "destination-only memory",
 	}); err != nil {
 		t.Fatalf("seed dst memory: %v", err)
 	}

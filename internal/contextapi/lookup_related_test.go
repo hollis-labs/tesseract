@@ -37,7 +37,8 @@ func seedLinkedCorpus(t *testing.T, srv *Server) {
 			DerivedFrom: memory.DerivedFromUser,
 			Confidence:  0.9,
 			Status:      memory.StatusCanonical,
-			Payload:     memory.Payload{Summary: "seed " + key, Body: body},
+			Summary:     "seed " + key,
+			Body:        body,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", key, err)
 		}

@@ -20,7 +20,7 @@ func TestGetCurrent(t *testing.T) {
 	}
 	time.Sleep(2 * time.Millisecond)
 	in2 := sampleInput("user.preferences.verbosity")
-	in2.Payload.Summary = "updated"
+	in2.Summary = "updated"
 	rev2, err := ms.WriteRevision(ctx, in2)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestGetHistoryReturnsAllRevisionsNewestFirst(t *testing.T) {
 	var written []string
 	for i := 0; i < 3; i++ {
 		in := sampleInput("user.preferences.verbosity")
-		in.Payload.Summary = "v" + string(rune('0'+i))
+		in.Summary = "v" + string(rune('0'+i))
 		rev, err := ms.WriteRevision(ctx, in)
 		if err != nil {
 			t.Fatal(err)
