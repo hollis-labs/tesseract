@@ -20,12 +20,12 @@ import (
 // It replaces "agent-authored content with no external source — use
 // memory_write", which was false for every populated knowledge kind that has an
 // agent as its author: `investigation`, `session_close` and `project_canonical`
-// are all agent-written with nothing outside Tesseract to point at. Origin
+// are all agent-written with nothing outside Tesseract to point at. DerivedFrom
 // never decided this; how the content gets found again does. See
 // docs/knowledge-memory-boundary.md for the corpus test behind that.
 const domainBoundaryLine = "• **Which domain:** **knowledge is content you go TO** — addressed by key, read whole, expected to stay true. " +
 	"**Memory is content that comes TO you** — recall surfaces it while you are working on something nearby, dated, superseded rather than edited. " +
-	"Origin does not decide this: both domains are mostly agent-authored, and a knowledge entry with no external source is normal (`pointer_scheme: \"nil\"`). " +
+	"DerivedFrom does not decide this: both domains are mostly agent-authored, and a knowledge entry with no external source is normal (`pointer_scheme: \"nil\"`). " +
 	"**\"I might look this up later\" is not the test** — nearly all memory is looked up eventually. The test is whether you could NAME it before you went looking. " +
 	"Full statement, with what it does not cover: `tesseract_skills start-here`.\n"
 

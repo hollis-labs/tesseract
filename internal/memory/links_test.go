@@ -28,16 +28,16 @@ func newLinkStore(t *testing.T) (*memory.Store, *sql.DB, func()) {
 
 func linkInput(ns, key, body string) memory.WriteInput {
 	return memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  ns,
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "s", Body: body},
+		Domain:      domains.Memory,
+		Namespace:   ns,
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "s", Body: body},
 	}
 }
 

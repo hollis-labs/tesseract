@@ -28,16 +28,16 @@ func seedLinkedCorpus(t *testing.T, srv *Server) {
 	write := func(key, body string) {
 		t.Helper()
 		if _, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  relatedNS,
-			MemoryKey:  key,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "manual:01HX",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: "seed " + key, Body: body},
+			Domain:      domains.Memory,
+			Namespace:   relatedNS,
+			MemoryKey:   key,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "manual:01HX",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: "seed " + key, Body: body},
 		}); err != nil {
 			t.Fatalf("seed %s: %v", key, err)
 		}

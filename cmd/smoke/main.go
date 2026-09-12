@@ -56,17 +56,17 @@ func main() {
 	ns := "user/chrispian/project/tesseract/memory"
 	key := fmt.Sprintf("smoke_%d", time.Now().UnixNano())
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  ns,
-		MemoryKey:  key,
-		Status:     memory.StatusCanonical,
-		Author:     memory.Author{AgentID: "claude-code", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "smoke-session",
-		Origin:     memory.OriginObservation,
-		Confidence: 0.9,
-		Tags:       []string{"smoke"},
-		Payload:    memory.Payload{Summary: "Tesseract embedding smoke test.", Body: "This is a short body for embedding. The Crow (1994) is a movie."},
+		Domain:      domains.Memory,
+		Namespace:   ns,
+		MemoryKey:   key,
+		Status:      memory.StatusCanonical,
+		Author:      memory.Author{AgentID: "claude-code", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "smoke-session",
+		DerivedFrom: memory.DerivedFromObservation,
+		Confidence:  0.9,
+		Tags:        []string{"smoke"},
+		Payload:     memory.Payload{Summary: "Tesseract embedding smoke test.", Body: "This is a short body for embedding. The Crow (1994) is a movie."},
 	})
 	if err != nil {
 		log.Fatalf("WriteMemory: %v", err)

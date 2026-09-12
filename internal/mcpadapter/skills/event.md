@@ -88,7 +88,7 @@ Pass a key only when an entry genuinely has a revisable identity — a running j
 
 Every event write is stamped `domain=event` and `status=canonical`. Canonical, not the `draft` every other write path defaults to: the `draft → reviewed → canonical` ladder tracks how settled a *claim* is, and a log entry makes no claim to settle. It was as true when written as it will ever be.
 
-`origin` defaults to `observation` and `trigger` to `manual`; both are overridable. `confidence` defaults to `0.9`.
+`derived_from` defaults to `observation` and `trigger` to `manual`; both are overridable. `confidence` defaults to `0.9`.
 
 ### Over HTTP
 

@@ -149,16 +149,16 @@ func TestPointerHealth_AbsentFieldMeansNoPointer(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/tester/memory/notes",
-		MemoryKey:  "plain.note",
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "test:pointer-health",
-		Origin:     memory.OriginUser,
-		Confidence: 0.5,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "no pointer here"},
+		Domain:      domains.Memory,
+		Namespace:   "user/tester/memory/notes",
+		MemoryKey:   "plain.note",
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "test:pointer-health",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.5,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "no pointer here"},
 	}); err != nil {
 		t.Fatalf("WriteRevision: %v", err)
 	}

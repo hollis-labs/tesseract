@@ -74,18 +74,18 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		// Carried from the source revision rather than set to a constant.
 		// Promote is a SCOPE change, so the domain is a property of what is
 		// being moved, not of the operation doing the moving.
-		Domain:     srcRev.Domain,
-		Namespace:  in.TargetNamespace,
-		MemoryKey:  srcRev.MemoryKey,
-		Author:     Author{AgentID: in.ActorAgentID, AgentVersion: in.ActorVersion},
-		Trigger:    TriggerPromotion,
-		SessionID:  srcRev.SessionID,
-		Origin:     srcRev.Origin,
-		Confidence: srcRev.Confidence,
-		Tags:       srcRev.Tags,
-		TTL:        0, // TTL not carried over on promotion
-		Status:     StatusReviewed,
-		Payload:    srcRev.Payload,
+		Domain:      srcRev.Domain,
+		Namespace:   in.TargetNamespace,
+		MemoryKey:   srcRev.MemoryKey,
+		Author:      Author{AgentID: in.ActorAgentID, AgentVersion: in.ActorVersion},
+		Trigger:     TriggerPromotion,
+		SessionID:   srcRev.SessionID,
+		DerivedFrom: srcRev.DerivedFrom,
+		Confidence:  srcRev.Confidence,
+		Tags:        srcRev.Tags,
+		TTL:         0, // TTL not carried over on promotion
+		Status:      StatusReviewed,
+		Payload:     srcRev.Payload,
 	}
 
 	// If keyed and same key exists in target, set supersedes to that revision.

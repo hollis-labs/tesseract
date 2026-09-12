@@ -15,7 +15,7 @@ func validMemoryToolArgs() map[string]any {
 		"author_agent_id": "test",
 		"trigger":         "explicit",
 		"session_id":      "s1",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "valid memory",
 	}

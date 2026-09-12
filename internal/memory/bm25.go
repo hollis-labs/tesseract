@@ -149,9 +149,9 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}, error) {
 		}
 	}
 
-	if len(in.Filters.Origins) > 0 {
-		where = append(where, "r.origin IN ("+placeholders(len(in.Filters.Origins))+")")
-		for _, o := range in.Filters.Origins {
+	if len(in.Filters.DerivedFrom) > 0 {
+		where = append(where, "r.derived_from IN ("+placeholders(len(in.Filters.DerivedFrom))+")")
+		for _, o := range in.Filters.DerivedFrom {
 			args = append(args, string(o))
 		}
 	}

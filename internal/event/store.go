@@ -73,12 +73,12 @@ type WriteInput struct {
 	SessionID string
 
 	// Optional knobs.
-	Tags       []string
-	TTL        time.Duration
-	Confidence float64
-	Origin     memory.Origin
-	Trigger    memory.Trigger
-	Supersedes string
+	Tags        []string
+	TTL         time.Duration
+	Confidence  float64
+	DerivedFrom memory.DerivedFrom
+	Trigger     memory.Trigger
+	Supersedes  string
 
 	// ConsumerState is the writer's operational JSON bag for this entry
 	// (CW-20260909-0036). Optional and usually absent.
@@ -104,11 +104,11 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		confidence = 0.9
 	}
 
-	origin := in.Origin
-	if origin == "" {
+	derivedFrom := in.DerivedFrom
+	if derivedFrom == "" {
 		// `observation` is the closest bucket in the existing vocabulary: an
 		// event is something the author noticed or did, reported first-hand.
-		origin = memory.OriginObservation
+		derivedFrom = memory.DerivedFromObservation
 	}
 
 	trigger := in.Trigger
@@ -128,14 +128,14 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		// was written as it will ever be. Landing events in draft would put the
 		// whole log permanently on the bottom rung of a ladder it is not
 		// climbing.
-		Status:     memory.StatusCanonical,
-		Author:     in.Author,
-		Trigger:    trigger,
-		SessionID:  in.SessionID,
-		Origin:     origin,
-		Confidence: confidence,
-		Tags:       in.Tags,
-		TTL:        in.TTL,
+		Status:      memory.StatusCanonical,
+		Author:      in.Author,
+		Trigger:     trigger,
+		SessionID:   in.SessionID,
+		DerivedFrom: derivedFrom,
+		Confidence:  confidence,
+		Tags:        in.Tags,
+		TTL:         in.TTL,
 		Payload: memory.Payload{
 			Summary: in.Summary,
 			Body:    in.Body,

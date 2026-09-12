@@ -46,7 +46,7 @@ Tesseract owns:
 
 The consuming app owns:
 
-- honest domain, namespace, origin, trigger, confidence, and status selection;
+- honest domain, namespace, derived_from, trigger, confidence, and status selection;
 - the external resource named by a knowledge pointer;
 - calling `tesseract_touch` only for recall results that actually informed work;
 - coordinating process-manager and data-path changes before upgrading the daemon.
@@ -120,7 +120,7 @@ func main() {
 		Author:     memory.Author{AgentID: "nanite"},
 		Trigger:    memory.TriggerExplicit,
 		SessionID:  "adoption-v0.9",
-		Origin:     memory.OriginProject,
+		DerivedFrom: memory.DerivedFromProject,
 		Confidence: 0.95,
 		Payload: memory.Payload{
 			Summary: "Nanite consumes immutable Tesseract release tags.",

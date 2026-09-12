@@ -97,14 +97,14 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		Status:     memory.StatusCanonical,
 		Author:     in.Author,
 		// Knowledge writes originate from indexers or manual capture; use
-		// `reference` as the closest origin bucket and `manual` as the
+		// `reference` as the closest derived_from bucket and `manual` as the
 		// generic trigger. Indexer plugins will refine this later.
-		Trigger:    memory.TriggerManual,
-		SessionID:  in.SessionID,
-		Origin:     memory.OriginReference,
-		Confidence: confidence,
-		Tags:       in.Tags,
-		TTL:        in.TTL,
+		Trigger:     memory.TriggerManual,
+		SessionID:   in.SessionID,
+		DerivedFrom: memory.DerivedFromReference,
+		Confidence:  confidence,
+		Tags:        in.Tags,
+		TTL:         in.TTL,
 		Payload: memory.Payload{
 			Summary: in.Summary,
 			Body:    in.Body,

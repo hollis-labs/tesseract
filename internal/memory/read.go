@@ -30,7 +30,7 @@ type rowScanner interface {
 // revisionColumns is the shared SELECT column list for revision queries.
 const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(memory_key, ''),
        status, COALESCE(supersedes, ''), created_at,
-       author_agent_id, author_version, trigger, session_id, origin,
+       author_agent_id, author_version, trigger, session_id, derived_from,
        confidence, tags, COALESCE(ttl_seconds, 0), expires_at,
        COALESCE(payload_summary, ''), COALESCE(payload_body, ''),
        COALESCE(embedding_model, ''), embedding_vector,
@@ -52,7 +52,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
-		&rev.Author.AgentID, &rev.Author.AgentVersion, &rev.Trigger, &rev.SessionID, &rev.Origin,
+		&rev.Author.AgentID, &rev.Author.AgentVersion, &rev.Trigger, &rev.SessionID, &rev.DerivedFrom,
 		&rev.Confidence, &tagsJSON, &rev.TTLSeconds, &expiresAt,
 		&rev.Payload.Summary, &rev.Payload.Body,
 		&rev.EmbeddingModel, &embeddingBlob,

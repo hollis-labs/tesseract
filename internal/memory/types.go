@@ -7,12 +7,22 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 )
 
-// Origin records WHERE A REVISION'S CONTENT CAME FROM (closed vocabulary,
-// D6/D9). It is not inert bookkeeping: it is a direct multiplier on the recall
-// score in both ranking modes that weight — see originWeights in ranking.go,
-// applied in activationScore and in the relevance path. So an origin chosen by
-// vibe does not merely mislabel a revision, it moves it up or down the results
-// a later session reads.
+// DerivedFrom records WHAT KIND OF INPUT CAUSED A REVISION TO EXIST (closed
+// vocabulary, D6/D9).
+//
+// It was called Origin until 2026-09-12. The word read as *who originated
+// this*, so `origin: "user"` got filled in as an authorship or approval claim
+// by agents who had merely been talking to a person. `derived_from` states the
+// relationship instead — derived from an observation, from the user, from
+// feedback, from a reference. Chrispian chose it knowing `derived_from:
+// project` is the awkward one of the five. The VALUES did not change.
+//
+// The rename was worth a breaking change because this field is not inert
+// bookkeeping: it is a direct multiplier on the recall score in both ranking
+// modes that weight — see derivedFromWeights in ranking.go, applied in
+// activationScore and in the relevance path. A value chosen by vibe does not
+// merely mislabel a revision, it moves it up or down the results a later
+// session reads.
 //
 // The spread is 1.3 to 0.8, and the ratio is what matters: a record stamped
 // `user` outranks the same record stamped `observation` by 1.375x with
@@ -27,34 +37,38 @@ import (
 // ON THE AUTHORITY OF THOSE ONE-LINERS. The values have been a closed
 // vocabulary with no per-value definition anywhere in this repo since they were
 // declared, which is most of why they get chosen by name alone. Two are pinned
-// by code — knowledge.Store.Write stamps OriginReference unconditionally, and
-// event defaults to OriginObservation — and the rest are DESCRIBED FROM SETTLED
-// USE rather than specified: measured 2026-09-12 over 2022 memory-domain
-// revisions, `feedback` carries corrections and working instructions
-// ("subagents given a read-only prompt implement anyway"), and `project`
-// carries facts about a thing ("this repo has one unpushed commit"). Those
-// readings are consistent across the corpus, and they are still a reading.
+// by code — knowledge.Store.Write stamps DerivedFromReference unconditionally,
+// and event defaults to DerivedFromObservation — and the rest are DESCRIBED
+// FROM SETTLED USE rather than specified: measured 2026-09-12 over 2022
+// memory-domain revisions, `feedback` carries corrections and working
+// instructions ("subagents given a read-only prompt implement anyway"), and
+// `project` carries facts about a thing ("this repo has one unpushed commit").
+// Those readings are consistent across the corpus, and they are still a
+// reading.
 //
-// OriginReference is the one to be careful with. On the memory surface it has
-// no settled meaning: 22 of those revisions carry it, 4 under a namespace type
-// retired in 2026-09. Its only systematic writer is knowledge.Store.Write,
-// whose own comment says it picked "the closest origin bucket" — an
-// approximation, not a definition. Treat a memory revision stamped `reference`
-// as unclassified rather than as meaning something specific.
-type Origin string
+// DerivedFromReference is the one to be careful with, and on the KNOWLEDGE
+// domain it is not a choice at all: knowledge.Store.Write hard-codes it for
+// every write, so all 200 current knowledge entries carry it across all 11
+// kinds. The field is a constant there — it carries no information, and every
+// knowledge entry takes the uniform 0.9 weight regardless of content, which
+// nobody chose. That is CW-20260912-0012's subject, deliberately not fixed
+// here. On the memory surface it is merely unsettled: 22 revisions carry it, 4
+// under a namespace type retired in 2026-09. Treat a memory revision stamped
+// `reference` as unclassified rather than as meaning something specific.
+type DerivedFrom string
 
 const (
-	OriginUser        Origin = "user"
-	OriginFeedback    Origin = "feedback"
-	OriginProject     Origin = "project"
-	OriginReference   Origin = "reference"
-	OriginObservation Origin = "observation"
+	DerivedFromUser        DerivedFrom = "user"
+	DerivedFromFeedback    DerivedFrom = "feedback"
+	DerivedFromProject     DerivedFrom = "project"
+	DerivedFromReference   DerivedFrom = "reference"
+	DerivedFromObservation DerivedFrom = "observation"
 )
 
-// Valid reports whether o is one of the five canonical origin values.
-func (o Origin) Valid() bool {
+// Valid reports whether o is one of the five canonical derived_from values.
+func (o DerivedFrom) Valid() bool {
 	switch o {
-	case OriginUser, OriginFeedback, OriginProject, OriginReference, OriginObservation:
+	case DerivedFromUser, DerivedFromFeedback, DerivedFromProject, DerivedFromReference, DerivedFromObservation:
 		return true
 	}
 	return false
@@ -138,24 +152,24 @@ func (f Facets) IsZero() bool {
 // Revision is an immutable memory revision. The only field that may be
 // mutated after write is Status, and only via the deprecation code path.
 type Revision struct {
-	RevisionID string         `json:"revision_id"`
-	MemoryID   string         `json:"memory_id"`
-	Domain     domains.Domain `json:"domain"`
-	Namespace  string         `json:"namespace"`
-	MemoryKey  string         `json:"memory_key,omitempty"`
-	Status     Status         `json:"status"`
-	Supersedes string         `json:"supersedes,omitempty"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Author     Author         `json:"author"`
-	Trigger    Trigger        `json:"trigger"`
-	SessionID  string         `json:"session_id"`
-	Origin     Origin         `json:"origin"`
-	Confidence float64        `json:"confidence"`
-	Tags       []string       `json:"tags"`
-	TTLSeconds int64          `json:"ttl_seconds,omitempty"`
-	ExpiresAt  *time.Time     `json:"expires_at,omitempty"`
-	Payload    Payload        `json:"payload"`
-	Facets     Facets         `json:"facets,omitempty"`
+	RevisionID  string         `json:"revision_id"`
+	MemoryID    string         `json:"memory_id"`
+	Domain      domains.Domain `json:"domain"`
+	Namespace   string         `json:"namespace"`
+	MemoryKey   string         `json:"memory_key,omitempty"`
+	Status      Status         `json:"status"`
+	Supersedes  string         `json:"supersedes,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Author      Author         `json:"author"`
+	Trigger     Trigger        `json:"trigger"`
+	SessionID   string         `json:"session_id"`
+	DerivedFrom DerivedFrom    `json:"derived_from"`
+	Confidence  float64        `json:"confidence"`
+	Tags        []string       `json:"tags"`
+	TTLSeconds  int64          `json:"ttl_seconds,omitempty"`
+	ExpiresAt   *time.Time     `json:"expires_at,omitempty"`
+	Payload     Payload        `json:"payload"`
+	Facets      Facets         `json:"facets,omitempty"`
 
 	// ConsumerState is the consumer's own operational bag, stored as JSON in
 	// memory_revisions.consumer_state (CW-20260909-0036).

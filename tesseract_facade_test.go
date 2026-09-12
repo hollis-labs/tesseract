@@ -27,17 +27,17 @@ func TestTesseract_WriteAndRecall(t *testing.T) {
 	defer c.Close()
 
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/test/memory/notes",
-		MemoryKey:  "facade_test",
-		Status:     memory.StatusDraft,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "s1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Tags:       []string{},
-		Payload:    memory.Payload{Summary: "facade test content", Body: "detailed body"},
+		Domain:      domains.Memory,
+		Namespace:   "user/test/memory/notes",
+		MemoryKey:   "facade_test",
+		Status:      memory.StatusDraft,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "s1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Tags:        []string{},
+		Payload:     memory.Payload{Summary: "facade test content", Body: "detailed body"},
 	})
 	if err != nil {
 		t.Fatalf("WriteMemory: %v", err)
@@ -68,17 +68,17 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 	defer c.Close()
 
 	_, err := c.WriteMemory(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/test/memory/notes",
-		MemoryKey:  "history_test",
-		Status:     memory.StatusDraft,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "s1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Tags:       []string{},
-		Payload:    memory.Payload{Summary: "version 1", Body: "body v1"},
+		Domain:      domains.Memory,
+		Namespace:   "user/test/memory/notes",
+		MemoryKey:   "history_test",
+		Status:      memory.StatusDraft,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "s1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Tags:        []string{},
+		Payload:     memory.Payload{Summary: "version 1", Body: "body v1"},
 	})
 	if err != nil {
 		t.Fatalf("WriteMemory: %v", err)

@@ -222,7 +222,7 @@ func TestMemoryWrite_RejectsKnowledgeDomain(t *testing.T) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
 		"payload":{"summary":"sneak knowledge in"}

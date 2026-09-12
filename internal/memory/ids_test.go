@@ -65,17 +65,17 @@ func TestNewULIDSortableAcrossTime(t *testing.T) {
 }
 
 func TestValidOriginTrigger(t *testing.T) {
-	t.Run("origin", func(t *testing.T) {
-		for _, o := range []memory.Origin{
-			memory.OriginUser, memory.OriginFeedback, memory.OriginProject,
-			memory.OriginReference, memory.OriginObservation,
+	t.Run("derived_from", func(t *testing.T) {
+		for _, o := range []memory.DerivedFrom{
+			memory.DerivedFromUser, memory.DerivedFromFeedback, memory.DerivedFromProject,
+			memory.DerivedFromReference, memory.DerivedFromObservation,
 		} {
 			if !o.Valid() {
 				t.Errorf("expected %q to be valid", o)
 			}
 		}
-		if memory.Origin("bogus").Valid() {
-			t.Errorf("expected 'bogus' origin to be invalid")
+		if memory.DerivedFrom("bogus").Valid() {
+			t.Errorf("expected 'bogus' derived_from to be invalid")
 		}
 	})
 	t.Run("trigger", func(t *testing.T) {

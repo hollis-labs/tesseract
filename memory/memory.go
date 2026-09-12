@@ -46,8 +46,8 @@ type PointerHealth = internal.PointerHealth
 // health on recall results.
 type PointerHealthStatus = internal.PointerHealthStatus
 
-// Origin categorizes why a memory exists.
-type Origin = internal.Origin
+// DerivedFrom categorizes why a memory exists.
+type DerivedFrom = internal.DerivedFrom
 
 // Status is the revision lifecycle state.
 type Status = internal.Status
@@ -73,7 +73,7 @@ type RecallFilters = internal.RecallFilters
 //
 //	activation     activation strength (recency x reinforcement x confidence)
 //	similarity     cosine similarity between query and revision embeddings
-//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/derived_from/activation
 //	relevance + semantic  cosine similarity
 //	relevance + lexical   nil — order is the signal
 //	chronological  nil — no score
@@ -164,11 +164,11 @@ type Namespace = internal.Namespace
 // ---- Re-exported constants ----
 
 const (
-	OriginUser        = internal.OriginUser
-	OriginFeedback    = internal.OriginFeedback
-	OriginProject     = internal.OriginProject
-	OriginReference   = internal.OriginReference
-	OriginObservation = internal.OriginObservation
+	DerivedFromUser        = internal.DerivedFromUser
+	DerivedFromFeedback    = internal.DerivedFromFeedback
+	DerivedFromProject     = internal.DerivedFromProject
+	DerivedFromReference   = internal.DerivedFromReference
+	DerivedFromObservation = internal.DerivedFromObservation
 
 	StatusDraft      = internal.StatusDraft
 	StatusReviewed   = internal.StatusReviewed

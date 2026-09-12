@@ -71,7 +71,7 @@ Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now)
 
 `pointer_resolved_at` is **your assertion at write time**, not a verification — nothing checks the pointer on the write path, by design, because a pointer that is unreachable now may be reachable in an hour. Whether a pointer actually resolves is answered by pointer health, below.
 
-Every knowledge write is stamped `Domain=knowledge`, `status=canonical`, `trigger=manual`, `origin=reference` - these are fixed at the write path, not caller-controlled.
+Every knowledge write is stamped `Domain=knowledge`, `status=canonical`, `trigger=manual`, `derived_from=reference` - these are fixed at the write path, not caller-controlled.
 
 ## Example
 

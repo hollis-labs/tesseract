@@ -34,15 +34,15 @@ func main() {
 	}()
 
 	rev, err := db.WriteMemory(ctx, memory.WriteInput{
-		Domain:     memory.DomainMemory,
-		Namespace:  "user/demo/memory/decisions",
-		MemoryKey:  "release.channel",
-		Status:     memory.StatusCanonical,
-		Author:     memory.Author{AgentID: "nanite"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "adoption-v0.9",
-		Origin:     memory.OriginProject,
-		Confidence: 0.95,
+		Domain:      memory.DomainMemory,
+		Namespace:   "user/demo/memory/decisions",
+		MemoryKey:   "release.channel",
+		Status:      memory.StatusCanonical,
+		Author:      memory.Author{AgentID: "nanite"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "adoption-v0.9",
+		DerivedFrom: memory.DerivedFromProject,
+		Confidence:  0.95,
 		Payload: memory.Payload{
 			Summary: "Nanite consumes immutable Tesseract release tags.",
 		},

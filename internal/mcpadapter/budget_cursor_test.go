@@ -86,7 +86,7 @@ func budgetAdapter(t *testing.T, n int) *Adapter {
 			"author_agent_id": "claude",
 			"trigger":         "explicit",
 			"session_id":      "sess-budget",
-			"origin":          "user",
+			"derived_from":    "user",
 			"confidence":      0.9,
 			"payload_summary": "budget probe row",
 			"payload_body":    strings.Repeat("x", 200),
@@ -348,7 +348,7 @@ func TestMCPHistory_BareArrayUntilAKnobIsPassed(t *testing.T) {
 			"author_agent_id": "claude",
 			"trigger":         "explicit",
 			"session_id":      "sess-hist",
-			"origin":          "user",
+			"derived_from":    "user",
 			"confidence":      0.9,
 			"payload_summary": "history probe",
 		})
@@ -404,7 +404,7 @@ func TestMCPHistory_ConfiguredBudgetDoesNotChangeShape(t *testing.T) {
 			"author_agent_id": "claude",
 			"trigger":         "explicit",
 			"session_id":      "sess-hist",
-			"origin":          "user",
+			"derived_from":    "user",
 			"confidence":      0.9,
 			"payload_summary": "history probe",
 		})
@@ -477,7 +477,7 @@ func TestMCPHistory_ZeroBudgetIsValidationError(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-hist",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "history probe",
 	})

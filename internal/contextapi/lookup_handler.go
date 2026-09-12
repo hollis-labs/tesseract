@@ -53,10 +53,10 @@ type tesseractLookupRequest struct {
 	// matches a bag holding the JSON literal false, not the string "false".
 	StateFilters []memory.StateFilter `json:"state_filters,omitempty"`
 
-	Origins       []memory.Origin `json:"origins,omitempty"`
-	Statuses      []memory.Status `json:"statuses,omitempty"`
-	Tags          []string        `json:"tags,omitempty"`
-	ConfidenceMin float64         `json:"confidence_min,omitempty"`
+	DerivedFrom   []memory.DerivedFrom `json:"derived_from,omitempty"`
+	Statuses      []memory.Status      `json:"statuses,omitempty"`
+	Tags          []string             `json:"tags,omitempty"`
+	ConfidenceMin float64              `json:"confidence_min,omitempty"`
 
 	// SimilarityMin is the cosine floor. Peer of the MCP tesseract_recall
 	// argument of the same name — same range, same ranking/search_mode
@@ -151,7 +151,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		SearchMode:    req.SearchMode,
 		Query:         req.Query,
 		Filters: memory.RecallFilters{
-			Origins:          req.Origins,
+			DerivedFrom:      req.DerivedFrom,
 			Statuses:         req.Statuses,
 			Tags:             req.Tags,
 			ConfidenceMin:    req.ConfidenceMin,

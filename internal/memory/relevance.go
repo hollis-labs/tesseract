@@ -19,7 +19,7 @@ const relevanceArmLimit = 100
 
 // relevanceOrdered implements RankingRelevance: combines BM25 and cosine
 // rankings via Reciprocal Rank Fusion, then multiplies by the same
-// modifiers activation mode uses (status, origin, confidence, recency,
+// modifiers activation mode uses (status, derived_from, confidence, recency,
 // activation). Embedder-optional: BM25-only path fires when no embedder
 // is configured so freshly-written memories surface immediately.
 //
@@ -105,7 +105,7 @@ func (s *Store) relevanceOrdered(ctx context.Context, in RecallInput) ([]RecallR
 		rev := revByID[id]
 		st := states[rev.MemoryID]
 		sw := statusWeights[rev.Status]
-		ow := originWeights[rev.Origin]
+		ow := derivedFromWeights[rev.DerivedFrom]
 		rf := recencyFactor(st.LastAccessedAt, now)
 		final := score * sw * ow * rev.Confidence * rf * st.Activation
 		results = append(results, RecallResult{Revision: rev, Score: scorePtr(final), State: st})
@@ -132,7 +132,7 @@ func (s *Store) relevanceOrdered(ctx context.Context, in RecallInput) ([]RecallR
 // the top is BM25 saying so, not a re-ranking pass overruling it.
 //
 // The arm's ordering is passed through untouched. It is NOT re-scored by the
-// status/origin/confidence/recency/activation modifiers hybrid applies,
+// status/derived_from/confidence/recency/activation modifiers hybrid applies,
 // because those modifiers are what move an exact identifier match off the top:
 // on the live corpus the one revision containing CW-20260519-0032 has no
 // special activation, and any weighting by how recently it was read reorders

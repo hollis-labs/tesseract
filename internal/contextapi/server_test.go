@@ -1120,44 +1120,44 @@ VALUES
 
 	memStore := memory.NewStore(srv.Store.DB(), nil, "", 0, nil)
 	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "rev_1",
-		Author:     memory.Author{AgentID: "app:test"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
-		Payload:    memory.Payload{Summary: "demo one"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "rev_1",
+		Author:      memory.Author{AgentID: "app:test"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
+		Payload:     memory.Payload{Summary: "demo one"},
 	}); err != nil {
 		t.Fatalf("seed memory revision 1: %v", err)
 	}
 	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "rev_2",
-		Author:     memory.Author{AgentID: "app:test"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
-		Payload:    memory.Payload{Summary: "demo two"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "rev_2",
+		Author:      memory.Author{AgentID: "app:test"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
+		Payload:     memory.Payload{Summary: "demo two"},
 	}); err != nil {
 		t.Fatalf("seed memory revision 2: %v", err)
 	}
 	rev3, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "rev_3",
-		Author:     memory.Author{AgentID: "app:test"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
-		Payload:    memory.Payload{Summary: "other three"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "rev_3",
+		Author:      memory.Author{AgentID: "app:test"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
+		Payload:     memory.Payload{Summary: "other three"},
 	})
 	if err != nil {
 		t.Fatalf("seed memory revision 3: %v", err)
@@ -1796,7 +1796,7 @@ func TestGatedPromotionApplyWithoutApprovalFails(t *testing.T) {
 // is not told who is acting records `agent`, never `user`.
 //
 // The direction is the point. An omitted field must not produce the MORE
-// authoritative attribution — 494 of 516 decision records are not origin: user,
+// authoritative attribution — 494 of 516 decision records are not derived_from: user,
 // so defaulting to `user` fabricated the rarer answer and failed open on
 // provenance. After this, `user` is something a caller asserts, which is the
 // only way the assertion carries information.

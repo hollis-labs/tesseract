@@ -563,7 +563,7 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
         },
       };
       if (focusedItem.revision.memory_key) req.memory_key = focusedItem.revision.memory_key;
-      if (focusedItem.revision.origin) req.origin = focusedItem.revision.origin;
+      if (focusedItem.revision.derived_from) req.derived_from = focusedItem.revision.derived_from;
       if (focusedItem.revision.facets) req.facets = focusedItem.revision.facets;
       if (clarifyVersion.trim()) req.author.agent_version = clarifyVersion.trim();
       if (clarifyBody.trim()) req.payload.body = clarifyBody.trim();
@@ -967,7 +967,10 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                           <Detail label="Revision" value={focusedItem.revision.revision_id} mono />
                           <Detail label="Memory" value={focusedItem.revision.memory_id} mono />
                           <Detail label="Author" value={focusedItem.revision.author.agent_id} />
-                          <Detail label="Origin" value={focusedItem.revision.origin ?? "unknown"} />
+                          <Detail
+                            label="Derived from"
+                            value={focusedItem.revision.derived_from ?? "unknown"}
+                          />
                           <Detail
                             label="Created"
                             value={formatTimestamp(focusedItem.revision.created_at)}

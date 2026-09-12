@@ -56,7 +56,7 @@ func TestMemoryWrite_Success(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "User prefers dark mode",
 	})
@@ -90,7 +90,7 @@ func TestMemoryGet_AfterWrite(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "User prefers dark mode",
 	})
@@ -140,7 +140,7 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "User prefers dark mode",
 	})
@@ -191,7 +191,7 @@ func TestMemoryGetRevision_ReinforcesAccess(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "User prefers dark mode",
 	})
@@ -235,7 +235,7 @@ func TestMemoryRecall_DoesNotReinforceAccess(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "User prefers dark mode",
 	})
@@ -280,7 +280,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.8,
 		"payload_summary": "First version",
 	})
@@ -292,7 +292,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-002",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "Second version",
 	})
@@ -333,7 +333,7 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "Dark mode preference",
 	})
@@ -389,7 +389,7 @@ func TestMemoryPromote_SessionToUser(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "observation",
+		"derived_from":    "observation",
 		"confidence":      0.85,
 		"payload_summary": "User prefers dark mode consistently",
 	})
@@ -430,7 +430,7 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "To be deprecated",
 	})

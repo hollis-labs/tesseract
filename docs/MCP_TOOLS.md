@@ -206,7 +206,7 @@ mcp__tesseract__memory_write {
   "author_agent_id": "claude-code",
   "trigger": "explicit",
   "session_id": "2026-04-15:backend",
-  "origin": "user",
+  "derived_from": "user",
   "confidence": 0.9,
   "payload_summary": "Prefer dense prose over bullets for boot prompts.",
   "payload_body": "User feedback 2026-04-15: pure prose sections scan faster during boot.",

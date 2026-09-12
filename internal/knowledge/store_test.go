@@ -327,16 +327,16 @@ func TestGetCurrent_RefusesAMemoryRevision(t *testing.T) {
 	// namespace is the direction that can actually happen.
 	const ns, key = "user/chrispian/memory/notes", "cross.domain.probe"
 	if _, err := mem.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  ns,
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "claude"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "sess-xd",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "a memory revision, asked of the knowledge store"},
+		Domain:      domains.Memory,
+		Namespace:   ns,
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "claude"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "sess-xd",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "a memory revision, asked of the knowledge store"},
 	}); err != nil {
 		t.Fatalf("seed memory revision: %v", err)
 	}

@@ -80,7 +80,7 @@ session into a form a record can actually be tested against.
 > **Memory is content that comes *to you*.** Surfaced by recall when you are
 > working nearby, dated, superseded rather than edited.
 
-Origin drops out. Both domains are overwhelmingly agent-authored; what separates
+`derived_from` drops out. Both domains are overwhelmingly agent-authored; what separates
 them is how the content gets found again.
 
 **The operational form used for this test**, because "you go to it" is not
@@ -303,7 +303,7 @@ both `knowledge_write` and `memory_write`, so the two write tools cannot drift
 from each other.
 
 **Canonical statement** — `skills/start-here.md`, one section, with its reason
-(origin does not decide this) and its limit ("I might look this up later" is not
+(`derived_from` does not decide this) and its limit ("I might look this up later" is not
 the test). `skills/knowledge.md`, `skills/memory.md`,
 `skills/facets-and-kinds.md`, `skills/namespaces.md` and `skills/event.md` carry
 the short form and point at it.

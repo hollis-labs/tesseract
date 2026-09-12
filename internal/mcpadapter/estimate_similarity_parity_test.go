@@ -132,16 +132,16 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 		{"est.opposed", "beta beta " + strings.Repeat("u", 100)},
 	} {
 		rev, err := ms.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  estNS,
-			MemoryKey:  row.key,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-estimate",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: row.text, Body: row.text},
+			Domain:      domains.Memory,
+			Namespace:   estNS,
+			MemoryKey:   row.key,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-estimate",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: row.text, Body: row.text},
 		})
 		if err != nil {
 			t.Fatalf("seed %s: %v", row.key, err)

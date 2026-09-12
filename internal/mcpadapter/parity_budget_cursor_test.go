@@ -60,14 +60,14 @@ func bothSurfaces(t *testing.T, rows int) (*Adapter, *contextapi.Server) {
 
 	for i := 0; i < rows; i++ {
 		if _, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-parity",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-parity",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
 			Payload: memory.Payload{
 				Summary: "parity probe row",
 				Body:    strings.Repeat("x", 200),
@@ -248,17 +248,17 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 	var last string
 	for i := 0; i < 5; i++ {
 		rev, err := a.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			MemoryKey:  "hist.key",
-			Supersedes: last,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-hist",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: "history probe"},
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			MemoryKey:   "hist.key",
+			Supersedes:  last,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-hist",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: "history probe"},
 		})
 		if err != nil {
 			t.Fatalf("seed history %d: %v", i, err)

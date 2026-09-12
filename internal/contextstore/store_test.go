@@ -2,6 +2,7 @@ package contextstore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1308,7 +1309,7 @@ func TestFTS5TriggersMirrorRevisionWrites(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status,
-    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
     tags, payload_summary, payload_body
 ) VALUES (?, ?, 'memory', ?, ?, 'canonical',
     'agent-1', 'v1', 'manual', 'sess-1', 'agent', 0.9,
@@ -1445,7 +1446,7 @@ func TestFTS5BackfillsExistingRevisions(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status,
-    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
     tags, payload_summary, payload_body
 ) VALUES (?, ?, 'memory', ?, ?, 'canonical',
     'agent-legacy', 'v1', 'manual', 'sess-legacy', 'agent', 0.8,
@@ -1478,4 +1479,100 @@ INSERT INTO memory_revisions (
 	if gotID != "rev-legacy" {
 		t.Errorf("expected rev-legacy via FTS rowid, got %s", gotID)
 	}
+}
+
+// TestMigration22RenamesOriginPreservingValues is the fault injection for the
+// `origin` → `derived_from` column rename (2026-09-12).
+//
+// A rename migration has a failure mode an additive one does not: it can appear
+// to work while losing data. `ALTER TABLE RENAME COLUMN` is metadata-only in
+// SQLite and cannot, but the plausible alternative — add the new column, copy,
+// drop the old — can drop before it copies and leave every row NULL with the
+// schema looking exactly right. So this asserts the VALUE survives, not only
+// that the column is named correctly.
+//
+// The fixture builds a genuine schema-21 database: it renames the column back
+// and rolls the recorded version to 21, which is the state every existing store
+// is in before this deploy.
+func TestMigration22RenamesOriginPreservingValues(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := Open(ctx, Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	db := s.DB()
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO memory_state (memory_id, namespace, memory_key, domain)
+		 VALUES ('mem-r', 'user/test/memory/notes', 'k-r', 'memory')`); err != nil {
+		t.Fatalf("seed memory_state: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO memory_revisions (
+    revision_id, memory_id, domain, namespace, memory_key, status,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
+    tags, payload_summary
+) VALUES ('rev-r', 'mem-r', 'memory', 'user/test/memory/notes', 'k-r', 'canonical',
+    'agent', 'v1', 'manual', 'sess-r', 'feedback', 0.9, '[]', 'a row written before the rename')`,
+	); err != nil {
+		t.Fatalf("seed revision: %v", err)
+	}
+
+	// Become a schema-21 store: the old column name, the old recorded version.
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE memory_revisions RENAME COLUMN derived_from TO origin`); err != nil {
+		t.Fatalf("rename back to origin: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 22`); err != nil {
+		t.Fatalf("roll schema_version back: %v", err)
+	}
+	var recorded int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&recorded); err != nil {
+		t.Fatalf("read rolled-back version: %v", err)
+	}
+	if recorded != 21 {
+		t.Fatalf("fixture recorded version is %d, want 21 — it is not simulating a pre-rename store", recorded)
+	}
+	if present, err := columnExists(ctx, mustTx(t, db), "memory_revisions", "origin"); err != nil || !present {
+		t.Fatalf("fixture did not produce an `origin` column (present=%v err=%v)", present, err)
+	}
+
+	if err := s.migrate(ctx); err != nil {
+		t.Fatalf("re-migrate: %v", err)
+	}
+
+	// The column moved.
+	var derivedFrom string
+	if err := db.QueryRowContext(ctx,
+		`SELECT derived_from FROM memory_revisions WHERE revision_id = 'rev-r'`).Scan(&derivedFrom); err != nil {
+		t.Fatalf("read derived_from after migration: %v", err)
+	}
+	// ...and it carried its value with it. This is the assertion that fails on
+	// an add-copy-drop that forgot to copy.
+	if derivedFrom != "feedback" {
+		t.Errorf("derived_from = %q after the rename, want %q — the migration renamed the column but lost the value",
+			derivedFrom, "feedback")
+	}
+	// The old name is gone rather than duplicated. A migration that ADDED
+	// derived_from instead of renaming would leave both and pass every
+	// assertion above.
+	if present, err := columnExists(ctx, mustTx(t, db), "memory_revisions", "origin"); err != nil || present {
+		t.Errorf("`origin` still exists after migration 22 (present=%v err=%v) — "+
+			"the column was added alongside the old one, not renamed", present, err)
+	}
+}
+
+// mustTx opens a throwaway transaction for the columnExists helper, which takes
+// one because every production caller already holds the migration's.
+func mustTx(t *testing.T, db *sql.DB) *sql.Tx {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	return tx
 }

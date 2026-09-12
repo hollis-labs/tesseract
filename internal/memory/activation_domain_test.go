@@ -29,16 +29,16 @@ type activationFixture struct {
 func activationFixtures() map[domains.Domain]activationFixture {
 	base := func(ns, key string) memory.WriteInput {
 		return memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  ns,
-			MemoryKey:  key,
-			Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "manual:01HXXXXX",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusDraft,
-			Payload:    memory.Payload{Summary: "s", Body: "b"},
+			Domain:      domains.Memory,
+			Namespace:   ns,
+			MemoryKey:   key,
+			Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "manual:01HXXXXX",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusDraft,
+			Payload:     memory.Payload{Summary: "s", Body: "b"},
 		}
 	}
 

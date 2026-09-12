@@ -567,7 +567,7 @@ export interface MemoryRevision {
   author: MemoryAuthor;
   trigger?: string;
   session_id?: string;
-  origin?: string;
+  derived_from?: string;
   confidence: number;
   tags: string[];
   ttl_seconds?: number;
@@ -610,7 +610,7 @@ export interface MemoryWriteRequest {
   author: MemoryAuthor;
   trigger?: string;
   session_id?: string;
-  origin?: string;
+  derived_from?: string;
   confidence?: number;
   tags?: string[];
   ttl_seconds?: number;
@@ -698,7 +698,7 @@ export interface TesseractLookupRequest {
   domains?: ("memory" | "knowledge")[];
   facet_kinds?: string[];
   facet_sources?: string[];
-  origins?: string[];
+  derived_from?: string[];
   statuses?: MemoryStatus[];
   tags?: string[];
   confidence_min?: number;

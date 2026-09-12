@@ -54,16 +54,16 @@ func seedSearchModeCorpus(t *testing.T, ms *memory.Store) {
 	}
 	for _, r := range rows {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			MemoryKey:  r.key,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-searchmode",
-			Origin:     memory.OriginUser,
-			Confidence: r.confidence,
-			Status:     r.status,
-			Payload:    memory.Payload{Summary: r.summary, Body: r.body},
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			MemoryKey:   r.key,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-searchmode",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  r.confidence,
+			Status:      r.status,
+			Payload:     memory.Payload{Summary: r.summary, Body: r.body},
 		}); err != nil {
 			t.Fatalf("seed %s: %v", r.key, err)
 		}

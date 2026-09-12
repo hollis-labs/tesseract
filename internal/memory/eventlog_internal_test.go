@@ -46,15 +46,15 @@ func TestEventLogKeysetBreaksTiesInsideOneTimestamp(t *testing.T) {
 	var ids []string
 	for i := 0; i < 5; i++ {
 		rev, err := ms.WriteRevision(ctx, WriteInput{
-			Domain:     domains.Event,
-			Namespace:  ns,
-			Author:     Author{AgentID: "test-agent"},
-			Trigger:    TriggerManual,
-			SessionID:  "manual:tie",
-			Origin:     OriginObservation,
-			Confidence: 0.9,
-			Status:     StatusCanonical,
-			Payload:    Payload{Summary: "tie candidate"},
+			Domain:      domains.Event,
+			Namespace:   ns,
+			Author:      Author{AgentID: "test-agent"},
+			Trigger:     TriggerManual,
+			SessionID:   "manual:tie",
+			DerivedFrom: DerivedFromObservation,
+			Confidence:  0.9,
+			Status:      StatusCanonical,
+			Payload:     Payload{Summary: "tie candidate"},
 		})
 		if err != nil {
 			t.Fatalf("seed %d: %v", i, err)
@@ -155,15 +155,15 @@ func TestEventLogSingleQueryMatchesPagedWalk(t *testing.T) {
 	var ids []string
 	for i := 0; i < 6; i++ {
 		rev, err := ms.WriteRevision(ctx, WriteInput{
-			Domain:     domains.Event,
-			Namespace:  ns,
-			Author:     Author{AgentID: "test-agent"},
-			Trigger:    TriggerManual,
-			SessionID:  "manual:tie",
-			Origin:     OriginObservation,
-			Confidence: 0.9,
-			Status:     StatusCanonical,
-			Payload:    Payload{Summary: "entry"},
+			Domain:      domains.Event,
+			Namespace:   ns,
+			Author:      Author{AgentID: "test-agent"},
+			Trigger:     TriggerManual,
+			SessionID:   "manual:tie",
+			DerivedFrom: DerivedFromObservation,
+			Confidence:  0.9,
+			Status:      StatusCanonical,
+			Payload:     Payload{Summary: "entry"},
 		})
 		if err != nil {
 			t.Fatalf("seed %d: %v", i, err)

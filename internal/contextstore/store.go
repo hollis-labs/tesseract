@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 21
+	schemaVersion = 22
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1202,6 +1202,48 @@ CREATE TABLE IF NOT EXISTS novelty_basis (
 				}
 				if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
 					return err
+				}
+			}
+		case 22:
+			// `origin` becomes `derived_from` (Chrispian, 2026-09-12). A pure
+			// rename: the column's type, its NOT NULL, and all 2,259 values are
+			// untouched, and the five-value vocabulary does not change.
+			//
+			// WHY A BREAKING RENAME WAS WORTH IT. The old name read as *who
+			// originated this*, so `origin: "user"` was filled in as an
+			// authorship claim by agents who had merely been talking to a
+			// person. That is not a labeling nicety: derivedFromWeights
+			// (internal/memory/ranking.go) makes this column a multiplier on
+			// the recall score in both weighting paths, so `user` outranks the
+			// identical row stamped `observation` by 1.375x. A name that
+			// invites the wrong value is a name that quietly sells ranking.
+			// 78 of 518 current memory/decisions heads carry `user`.
+			//
+			// RENAME COLUMN rather than add-copy-drop. SQLite has had it since
+			// 3.25 and it is a metadata-only edit — no table rewrite, no row
+			// touched, so the 2,259 values cannot be corrupted by it. It also
+			// rewrites references in dependent triggers, views and indexes
+			// automatically; nothing here relies on that, because no other
+			// object in this schema mentions the column (verified against the
+			// live store: the only sqlite_master row matching '%origin%' is
+			// memory_revisions itself, and memory_revisions_fts indexes
+			// memory_key/payload_summary/payload_body/tags).
+			//
+			// Guarded by columnExists rather than by catching an error: a store
+			// that already carries `derived_from` has nothing to do, and
+			// matching on the driver's "no such column" text would tie this
+			// migration to a message the driver is free to change.
+			{
+				var hasOld bool
+				hasOld, err = columnExists(ctx, tx, "memory_revisions", "origin")
+				if err != nil {
+					return err
+				}
+				if hasOld {
+					if _, err = tx.ExecContext(ctx,
+						`ALTER TABLE memory_revisions RENAME COLUMN origin TO derived_from`); err != nil {
+						return err
+					}
 				}
 			}
 		}

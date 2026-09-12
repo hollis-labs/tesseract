@@ -9,12 +9,12 @@ var statusWeights = map[Status]float64{
 	StatusDeprecated: 0.1,
 }
 
-var originWeights = map[Origin]float64{
-	OriginFeedback:    1.3,
-	OriginUser:        1.1,
-	OriginProject:     1.0,
-	OriginReference:   0.9,
-	OriginObservation: 0.8,
+var derivedFromWeights = map[DerivedFrom]float64{
+	DerivedFromFeedback:    1.3,
+	DerivedFromUser:        1.1,
+	DerivedFromProject:     1.0,
+	DerivedFromReference:   0.9,
+	DerivedFromObservation: 0.8,
 }
 
 func recencyFactor(lastAccessed *time.Time, now time.Time) float64 {
@@ -33,7 +33,7 @@ func recencyFactor(lastAccessed *time.Time, now time.Time) float64 {
 
 func activationScore(rev Revision, state State, now time.Time) float64 {
 	sw := statusWeights[rev.Status]
-	ow := originWeights[rev.Origin]
+	ow := derivedFromWeights[rev.DerivedFrom]
 	rf := recencyFactor(state.LastAccessedAt, now)
 	return state.Activation * sw * rev.Confidence * ow * rf
 }

@@ -67,16 +67,16 @@ func seedTouchable(t *testing.T, ms *memory.Store, key string) memory.Revision {
 	t.Helper()
 	ctx := context.Background()
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  touchNS,
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "sess-touch",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "touchable " + key, Body: "body " + key},
+		Domain:      domains.Memory,
+		Namespace:   touchNS,
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "sess-touch",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "touchable " + key, Body: "body " + key},
 	})
 	if err != nil {
 		t.Fatalf("seed %s: %v", key, err)

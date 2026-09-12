@@ -41,15 +41,15 @@ func TestMemoryEndToEnd(t *testing.T) {
 
 	// ── Step 1: Write first revision ────────────────────────────────────────────
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  userNS,
-		MemoryKey:  memKey,
-		Author:     author,
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  sessionID,
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   userNS,
+		MemoryKey:   memKey,
+		Author:      author,
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   sessionID,
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
 		Payload: memory.Payload{
 			Summary: "User prefers terse output",
 			Body:    "No trailing summaries.",
@@ -102,16 +102,16 @@ func TestMemoryEndToEnd(t *testing.T) {
 
 	// ── Step 4: Write second revision (supersedes first) → first auto-deprecated ─
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  userNS,
-		MemoryKey:  memKey,
-		Supersedes: rev1.RevisionID,
-		Author:     author,
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  sessionID,
-		Origin:     memory.OriginUser,
-		Confidence: 0.95,
-		Status:     memory.StatusReviewed,
+		Domain:      domains.Memory,
+		Namespace:   userNS,
+		MemoryKey:   memKey,
+		Supersedes:  rev1.RevisionID,
+		Author:      author,
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   sessionID,
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.95,
+		Status:      memory.StatusReviewed,
 		Payload: memory.Payload{
 			Summary: "User prefers terse output — updated",
 			Body:    "No trailing summaries. Use bullet points.",
@@ -180,15 +180,15 @@ func TestMemoryEndToEnd(t *testing.T) {
 
 	// ── Step 7: Write session-scoped memory ──────────────────────────────────────
 	sessionRev, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  sessionNS,
-		MemoryKey:  "session.insight",
-		Author:     author,
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  sessionID,
-		Origin:     memory.OriginObservation,
-		Confidence: 0.8,
-		Status:     memory.StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   sessionNS,
+		MemoryKey:   "session.insight",
+		Author:      author,
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   sessionID,
+		DerivedFrom: memory.DerivedFromObservation,
+		Confidence:  0.8,
+		Status:      memory.StatusDraft,
 		Payload: memory.Payload{
 			Summary: "User mentioned deadline pressure during this session",
 		},

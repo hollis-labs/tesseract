@@ -23,15 +23,15 @@ func newBM25TestStore(t *testing.T) (*Store, func()) {
 
 func bm25SampleInput(key, summary, body string) WriteInput {
 	return WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  key,
-		Author:     Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    TriggerExplicit,
-		SessionID:  "manual:bm25",
-		Origin:     OriginUser,
-		Confidence: 0.9,
-		Status:     StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   key,
+		Author:      Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     TriggerExplicit,
+		SessionID:   "manual:bm25",
+		DerivedFrom: DerivedFromUser,
+		Confidence:  0.9,
+		Status:      StatusDraft,
 		Payload: Payload{
 			Summary: summary,
 			Body:    body,

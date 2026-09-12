@@ -9,10 +9,10 @@ import (
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-func writeWithOrigin(t *testing.T, ms *memory.Store, key string, origin memory.Origin) memory.Revision {
+func writeWithDerivedFrom(t *testing.T, ms *memory.Store, key string, derivedFrom memory.DerivedFrom) memory.Revision {
 	t.Helper()
 	in := sampleInput(key)
-	in.Origin = origin
+	in.DerivedFrom = derivedFrom
 	rev, err := ms.WriteRevision(context.Background(), in)
 	if err != nil {
 		t.Fatalf("WriteRevision(%s): %v", key, err)
@@ -24,9 +24,9 @@ func TestRecall_ActivationRanking(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 
-	writeWithOrigin(t, ms, "act.project", memory.OriginProject)
-	writeWithOrigin(t, ms, "act.user", memory.OriginUser)
-	writeWithOrigin(t, ms, "act.feedback", memory.OriginFeedback)
+	writeWithDerivedFrom(t, ms, "act.project", memory.DerivedFromProject)
+	writeWithDerivedFrom(t, ms, "act.user", memory.DerivedFromUser)
+	writeWithDerivedFrom(t, ms, "act.feedback", memory.DerivedFromFeedback)
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
 		Namespaces: []string{"user/chrispian/memory/notes"},
@@ -39,15 +39,15 @@ func TestRecall_ActivationRanking(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
 
-	// Feedback (1.3) > User (1.1) > Project (1.0) by origin weight.
-	if results[0].Revision.Origin != memory.OriginFeedback {
-		t.Errorf("expected feedback first, got %s", results[0].Revision.Origin)
+	// Feedback (1.3) > User (1.1) > Project (1.0) by derivedFrom weight.
+	if results[0].Revision.DerivedFrom != memory.DerivedFromFeedback {
+		t.Errorf("expected feedback first, got %s", results[0].Revision.DerivedFrom)
 	}
-	if results[1].Revision.Origin != memory.OriginUser {
-		t.Errorf("expected user second, got %s", results[1].Revision.Origin)
+	if results[1].Revision.DerivedFrom != memory.DerivedFromUser {
+		t.Errorf("expected user second, got %s", results[1].Revision.DerivedFrom)
 	}
-	if results[2].Revision.Origin != memory.OriginProject {
-		t.Errorf("expected project third, got %s", results[2].Revision.Origin)
+	if results[2].Revision.DerivedFrom != memory.DerivedFromProject {
+		t.Errorf("expected project third, got %s", results[2].Revision.DerivedFrom)
 	}
 }
 
@@ -458,14 +458,14 @@ func TestRecall_OriginFilter(t *testing.T) {
 	ms, cleanup := newTestStore(t)
 	defer cleanup()
 
-	writeWithOrigin(t, ms, "orig.fb", memory.OriginFeedback)
-	writeWithOrigin(t, ms, "orig.usr", memory.OriginUser)
-	writeWithOrigin(t, ms, "orig.prj", memory.OriginProject)
+	writeWithDerivedFrom(t, ms, "orig.fb", memory.DerivedFromFeedback)
+	writeWithDerivedFrom(t, ms, "orig.usr", memory.DerivedFromUser)
+	writeWithDerivedFrom(t, ms, "orig.prj", memory.DerivedFromProject)
 
 	results, err := ms.Recall(context.Background(), memory.RecallInput{
 		Namespaces: []string{"user/chrispian/memory/notes"},
 		Filters: memory.RecallFilters{
-			Origins: []memory.Origin{memory.OriginFeedback},
+			DerivedFrom: []memory.DerivedFrom{memory.DerivedFromFeedback},
 		},
 	})
 	if err != nil {
@@ -474,8 +474,8 @@ func TestRecall_OriginFilter(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
-	if results[0].Revision.Origin != memory.OriginFeedback {
-		t.Fatalf("expected feedback origin, got %s", results[0].Revision.Origin)
+	if results[0].Revision.DerivedFrom != memory.DerivedFromFeedback {
+		t.Fatalf("expected feedback derivedFrom, got %s", results[0].Revision.DerivedFrom)
 	}
 }
 

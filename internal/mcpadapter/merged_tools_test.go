@@ -1468,3 +1468,72 @@ func TestPayloadMaxBytes_NegativeCapIsRejected(t *testing.T) {
 		"shape": "packet", "namespaces": "app/test/*", "payload_max_bytes": float64(-1),
 	}), "validation_error")
 }
+
+// ── `origin` → `derived_from` (2026-09-12) ──────────────────────────────────
+
+// TestRetiredArg_OriginIsRefusedNotIgnored covers the rename on both MCP doors
+// that took the old name.
+//
+// The two halves fail differently if ignored, and the second is the dangerous
+// one. On memory_write an ignored `origin` leaves `derived_from` empty and the
+// caller is told a required field is missing — confusing, but loud. On
+// tesseract_recall an ignored `origins` FILTER does not fail at all: it widens
+// the candidate set silently, and the caller gets rows it asked to exclude,
+// ranked and plausible, with no error anywhere.
+func TestRetiredArg_OriginIsRefusedNotIgnored(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+
+	t.Run("memory_write/origin", func(t *testing.T) {
+		body := mustCall(t, a.handleMemoryWrite, map[string]any{
+			"namespace":       "user/chrispian/memory/notes",
+			"author_agent_id": "test",
+			"trigger":         "explicit",
+			"session_id":      "s-1",
+			"origin":          "observation",
+			"confidence":      0.9,
+			"payload_summary": "a write using the retired field name",
+		})
+		wantErrorCode(t, body, "validation_error")
+		wantMessageNames(t, body, "origin")
+		// Naming the replacement is the point; a refusal that only says no
+		// costs the caller another turn.
+		wantMessageNames(t, body, "derived_from")
+	})
+
+	t.Run("tesseract_recall/origins", func(t *testing.T) {
+		body := mustCall(t, a.handleTesseractRecall, map[string]any{
+			"namespaces": `["user/chrispian/memory/notes"]`,
+			"origins":    `["observation"]`,
+		})
+		wantErrorCode(t, body, "validation_error")
+		wantMessageNames(t, body, "origins")
+		wantMessageNames(t, body, "derived_from")
+	})
+
+	// Positive controls: the new spelling is accepted on both doors, so the
+	// refusals above are about the NAME and nothing else.
+	t.Run("memory_write/derived_from is accepted", func(t *testing.T) {
+		body := mustCall(t, a.handleMemoryWrite, map[string]any{
+			"namespace":       "user/chrispian/memory/notes",
+			"author_agent_id": "test",
+			"trigger":         "explicit",
+			"session_id":      "s-1",
+			"derived_from":    "observation",
+			"confidence":      0.9,
+			"payload_summary": "a write using the current field name",
+		})
+		if code, isErr := body["code"]; isErr {
+			t.Fatalf("derived_from was rejected on memory_write (code %v): %v", code, body)
+		}
+	})
+
+	t.Run("tesseract_recall/derived_from is accepted", func(t *testing.T) {
+		body := mustCall(t, a.handleTesseractRecall, map[string]any{
+			"namespaces":   `["user/chrispian/memory/notes"]`,
+			"derived_from": `["observation"]`,
+		})
+		if code, isErr := body["code"]; isErr {
+			t.Fatalf("derived_from was rejected on tesseract_recall (code %v): %v", code, body)
+		}
+	})
+}

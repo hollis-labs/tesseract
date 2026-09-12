@@ -12,7 +12,7 @@ package memory
 //	semantic  the cosine arm alone, in similarity order. Meaning-match
 //	          retrieval when the caller knows the words will not line up.
 //
-// lexical and semantic deliberately do NOT apply the status/origin/confidence/
+// lexical and semantic deliberately do NOT apply the status/derived_from/confidence/
 // recency/activation modifiers hybrid multiplies into its fused score. Those
 // modifiers exist to arbitrate between two arms that disagree; applied to a
 // single arm they only move an exact match away from the top, which is the

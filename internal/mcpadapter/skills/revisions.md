@@ -52,7 +52,7 @@ An edit is a full write plus one field — there is no partial-update call, so e
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-05-02:backend",
-  "origin": "observation",
+  "derived_from": "observation",
   "confidence": 0.95,
   "payload_summary": "Journal mode stays WAL, now confirmed under the networked-filesystem case too."
 }
@@ -69,7 +69,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
     "author": {"agent_id": "claude"},
     "trigger": "explicit",
     "session_id": "2026-05-02:backend",
-    "origin": "observation",
+    "derived_from": "observation",
     "confidence": 0.95,
     "payload": {"summary": "Journal mode stays WAL, now confirmed under the networked-filesystem case too."}
   }'

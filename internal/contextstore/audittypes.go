@@ -84,7 +84,7 @@ const (
 //
 // It is `agent` rather than `user` because an omitted field must never produce
 // the MORE authoritative attribution. 494 of 516 decision records are not
-// `origin: user`, so the old default fabricated the rarer answer -- and it
+// `derived_from: user`, so the old default fabricated the rarer answer -- and it
 // failed open on provenance, which is the wrong direction for a field whose
 // whole job is recording who decided. Making `user` something a caller asserts
 // deliberately is the only way the assertion carries information.

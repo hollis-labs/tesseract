@@ -94,7 +94,7 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "Dark mode preference",
 	})
@@ -139,7 +139,7 @@ func TestTesseractLookup_OmitsEmbeddingVector(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "Dark mode preference",
 	})
@@ -179,7 +179,7 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "Dark mode preference",
 	})

@@ -35,7 +35,7 @@ a value outside them is a `validation_error`, not a new category.
 |---|---|---|
 | `namespace` | yes | where the revision lives, and therefore who owns it and what it is *about*. Must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. |
 | `payload_summary` | yes | the one line a later session reads in recall results before deciding whether to hydrate. Write it as the claim, not as a title. |
-| `origin` | yes | where the content came from. **Weights recall** — see below. |
+| `derived_from` | yes | where the content came from. **Weights recall** — see below. |
 | `trigger` | yes | what caused you to write *now*. Provenance only; nothing reads it for behaviour. |
 | `confidence` | yes | float in `[0, 1.0]`. **Weights recall** as a direct multiplier. |
 | `author_agent_id` | yes | who wrote it. |
@@ -50,9 +50,16 @@ stronger type fits. (`references` was retired 2026-09-10 — a pointer to where
 information lives is content you go to, so it is knowledge.) The per-type
 meanings live in `tesseract_skills namespaces`; they are not restated here.
 
-### `origin` — where the content came from
+### `derived_from` — where the content came from
 
-**This is the field most often filled in by reflex, and it is not free.** Origin
+> **This field was called `origin` until 2026-09-12.** The values did not
+> change. The old name is **refused, not ignored**, on every surface: a write or
+> a recall filter carrying `origin` fails with an error naming `derived_from`.
+> The rename happened because `origin` read as *who originated this*, so it was
+> being filled in as an authorship claim by agents that had merely been talking
+> to a person.
+
+**This is the field most often filled in by reflex, and it is not free.** It
 is a direct multiplier on the recall score, so it does not merely label a
 revision — it moves it up or down the results a later session reads. A record
 stamped `user` outranks the same record stamped `observation` by 1.375x with
@@ -68,7 +75,7 @@ everything else equal.
 
 The distinction that goes wrong most often is **`user` vs `observation`**: if the
 body of your record says something was *measured*, *observed* or *found*, the
-origin is `observation` even when a person asked you to go measure it. `user` is
+the value is `observation` even when a person asked you to go measure it. `user` is
 for the ruling itself — "we are keeping WAL" — not for the evidence behind it.
 
 `reference` is the one to be careful with. It has no settled meaning on the
@@ -82,14 +89,14 @@ record belongs in `knowledge_write`.
 `explicit` (asked to), `post_compact` (carrying context across a compaction),
 `per_turn` (a routine end-of-turn capture), `promotion` (set for you by
 `memory_promote`), `manual` (a human or a script wrote it directly). Unlike
-`origin`, nothing reads this for behaviour — it is provenance, so pick the one
+`derived_from`, nothing reads this for behaviour — it is provenance, so pick the one
 that is true and move on.
 
 ## A complete write, on both surfaces
 
 Copy one of these and edit it. They write the same revision; the shapes differ, and the differences are structural rather than cosmetic — see `tesseract_skills start-here` for the two-surface rules and for what `$TESSERACT_URL` / `$TESSERACT_TOKEN` are.
 
-**This record's origin is `observation`, and that is the point of the example.** A person asked for the decision, but the summary says DELETE *was measured and rejected* — the content is the measurement, so `observation` is the honest value. `user` would be right for the ruling alone ("we are staying on WAL"), and choosing it here would quietly buy this record a 1.375x ranking advantage it has not earned.
+**This record's `derived_from` is `observation`, and that is the point of the example.** A person asked for the decision, but the summary says DELETE *was measured and rejected* — the content is the measurement, so `observation` is the honest value. `user` would be right for the ruling alone ("we are staying on WAL"), and choosing it here would quietly buy this record a 1.375x ranking advantage it has not earned.
 
 Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
 
@@ -101,7 +108,7 @@ Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
   "author_version": "opus-5",
   "trigger": "explicit",
   "session_id": "2026-04-19:backend",
-  "origin": "observation",
+  "derived_from": "observation",
   "confidence": 0.9,
   "tags": "[\"sqlite\",\"durability\"]",
   "payload_summary": "Journal mode stays WAL; DELETE was measured and rejected.",
@@ -121,7 +128,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
     "author": {"agent_id": "claude", "agent_version": "opus-5"},
     "trigger": "explicit",
     "session_id": "2026-04-19:backend",
-    "origin": "observation",
+    "derived_from": "observation",
     "confidence": 0.9,
     "tags": ["sqlite", "durability"],
     "payload": {
@@ -143,7 +150,7 @@ The field-by-field mapping, for the fields that do not simply carry across:
 
 `facets` exists on the HTTP body but is a knowledge-domain field: a memory write carrying a non-zero facet is rejected. Facets go to `POST /v1/knowledge/write` — see `tesseract_skills knowledge`.
 
-### A third origin, because the contrast is the lesson
+### A third value, because the contrast is the lesson
 
 Same tool, same required fields, a different answer — this one is `feedback`,
 the highest-weighted value in the vocabulary:
@@ -154,7 +161,7 @@ the highest-weighted value in the vocabulary:
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-09-12:review",
-  "origin": "feedback",
+  "derived_from": "feedback",
   "confidence": 0.9,
   "tags": "[\"subagents\",\"prompting\"]",
   "payload_summary": "A read-only instruction in a subagent prompt does not hold; give the agent no write tools instead.",
@@ -162,13 +169,13 @@ the highest-weighted value in the vocabulary:
 }
 ```
 
-Note that the body reports an observation and the origin is still `feedback`.
-The two are not in tension: `origin` asks where the CONTENT came from, and the
+Note that the body reports an observation and the value is still `feedback`.
+The two are not in tension: `derived_from` asks where the CONTENT came from, and the
 content here is the standing instruction the observation produced. Had the
 record stopped at "subagents ignored the instruction three times," it would be
 `observation` — a measurement with no rule attached.
 
-**Three records, three origins, one field.** The decision above is
+**Three records, three values, one field.** The decision above is
 `observation` because its content is a measurement; the todo below is `user`
 because a person said so; this one is `feedback` because it tells a later
 session how to work. If you cannot say which of those three sentences describes
@@ -195,7 +202,7 @@ Filter on it with `state_filters` — see `tesseract_skills recall-and-ranking`.
 
 `user/{id}/memory/todos` holds flat list items with light state. **A todo is not a task**: a Torque task is FSM-governed tracked work with dispatch, budgets and dependencies, and it stays in Torque. A todo is a note with a checkbox, often ephemeral.
 
-The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag. **This one keeps `origin: "user"` and is the counterexample**: nobody measured or inferred that the registration needs renewing — a person said so, and the record is that instruction. That is what `user` is for.
+The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag. **This one keeps `derived_from: "user"` and is the counterexample**: nobody measured or inferred that the registration needs renewing — a person said so, and the record is that instruction. That is what `user` is for.
 
 ```json
 {
@@ -203,7 +210,7 @@ The shape, from NIL's working model — title in `payload_summary`, notes in `pa
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-09-10:inbox",
-  "origin": "user",
+  "derived_from": "user",
   "confidence": 0.9,
   "payload_summary": "renew the domain registration",
   "consumer_state": "{\"kind\":\"todo\",\"section\":\"now\",\"completed\":false,\"pinned\":true,\"priority\":\"high\",\"due_at\":\"2026-09-30\",\"external_ref\":\"fe-doc-991\"}"
