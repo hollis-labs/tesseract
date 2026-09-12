@@ -67,7 +67,11 @@ From the `knowledge_write` MCP declaration:
 - `author_agent_id` (required)
 - `session_id` (required)
 
-Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`.
+Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `payload_data`, `payload_data_schema_hash`, `consumer_state`.
+
+**`payload_data`** carries the entry's own fields as a JSON object — stored verbatim, never interpreted, not indexed and not searched. The contract, the `consumer_state` distinction and the limits of "verbatim" are stated once in `tesseract_skills memory`; they are identical here and are not repeated.
+
+**One difference that matters, because a wrong shape is a `400` rather than an ignored field.** `POST /v1/knowledge/write` takes it **flat at the top level** as `data` and `data_schema_hash` — not nested under `payload`, which is where `/v1/memory/write` puts it. That is the same split this route already has for `summary` and `body`, which memory nests and knowledge takes flat. Over MCP the name is the same on all three write tools — `payload_data` — but note that MCP **silently ignores** an argument name it does not declare, so a wrong name there is a successful write with the object missing rather than a refusal. On READ it is uniform — every domain returns it at `payload.data`.
 
 `pointer_resolved_at` is **your assertion at write time**, not a verification — nothing checks the pointer on the write path, by design, because a pointer that is unreachable now may be reachable in an hour. Whether a pointer actually resolves is answered by pointer health, below.
 

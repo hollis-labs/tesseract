@@ -105,6 +105,23 @@ OpenTelemetry instrumentation. Namespace/key metadata can enter traces, and
 full request logging includes raw query strings; operators choose and protect
 those outputs.
 
+Some memory revisions also carry a **novelty measurement, computed at embed time and acting on
+nothing**. It is scored only when an embedding vector lands, is never backfilled, and is best-effort —
+a scoring failure leaves the columns NULL rather than failing the write. So NULL has three distinct
+causes and none of them is an error: the revision was never embedded, it was embedded before the
+series shipped, or scoring failed. The majority of rows are the middle case; count them with
+`SELECT SUM(novelty_score IS NOT NULL), SUM(embedding_vector IS NOT NULL), COUNT(*) FROM
+memory_revisions` rather than assuming a ratio. Two series are stored: one over the full embedding dimension, and a second in a frozen
+PCA-16 subspace that deliberately emits no route, because the published thresholds were tuned at a
+different dimension and naming one here would invent the answer the series exists to make answerable.
+Nothing reads either score — no write is refused, deduplicated, ranked or retained differently because
+of it. They are here so the decision can be evaluated against real data later rather than argued from
+first principles, and a store with no fitted basis simply scores NULL.
+
+This is recorded because the columns are otherwise unexplained: a reader doing schema archaeology finds
+a dozen fields that appear load-bearing and are not. It is deliberately **not** in the agent-facing
+skills — an agent cannot make any call differently because of it, so a section there would be noise.
+
 Backup v2 uses a whole-database `VACUUM INTO` snapshot plus the context payload
 tree and a checksummed manifest. Restore validates and stages the replacement,
 migrates older schemas before the swap, and uses a journaled same-filesystem
