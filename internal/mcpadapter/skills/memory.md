@@ -235,6 +235,13 @@ That is the one failure here worth being careful about. A `400` costs you a
 retry; a silent drop costs you the data and you learn about it later, from a
 record that was never written the way you thought.
 
+**This does not contradict what the `derived_from` section says** about the
+retired `origin` name being refused on every surface. Retired names are refused
+on MCP because each one is named in an explicit check, added when it was
+retired. That is per-name, not a property of the door: a name that was never a
+retired spelling — a typo, a guess, an argument from the wrong tool — is still
+ignored.
+
 That asymmetry is not new to this field — it is exactly how `summary` and `body`
 already differ between those routes, because memory nests them under `payload`
 and knowledge and event take them flat.
