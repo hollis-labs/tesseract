@@ -33,6 +33,7 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // callTool builds a CallToolRequest from a plain argument map.
@@ -46,6 +47,31 @@ func mergedToolRequest(args map[string]any) mcp.CallToolRequest {
 func mustCall(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), args map[string]any) map[string]any {
 	t.Helper()
 	res, err := h(context.Background(), mergedToolRequest(args))
+	if err != nil {
+		t.Fatalf("handler returned a Go error (tools answer with an error BODY, never this): %v", err)
+	}
+	return parseResult(t, res)
+}
+
+// mustCallRegistered runs a tool AS THE SERVER EXPOSES IT — through the handler
+// Adapter.addTool built, not the bare handler function.
+//
+// The layer matters for anything about argument NAMES. Refusing an argument a
+// tool does not declare is a property of the registered tool (CW-20260912-0055:
+// strictArgsMiddleware, installed by addTool), not of the handler body, so a
+// test that calls the body directly would assert the rejection against code that
+// no longer performs it — and would keep passing if the middleware were removed.
+func mustCallRegistered(t *testing.T, a *Adapter, toolName string, args map[string]any) map[string]any {
+	t.Helper()
+	srv := server.NewMCPServer("merged-tools-test", "0.0.0", server.WithToolCapabilities(true))
+	a.RegisterAllTools(srv)
+	st, ok := srv.ListTools()[toolName]
+	if !ok {
+		t.Fatalf("tool %q is not registered on this adapter", toolName)
+	}
+	req := mergedToolRequest(args)
+	req.Params.Name = toolName
+	res, err := st.Handler(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handler returned a Go error (tools answer with an error BODY, never this): %v", err)
 	}
@@ -305,10 +331,13 @@ func TestContextPack_ShapeRejectsTheOtherShapesKnobs(t *testing.T) {
 func TestContextPack_RejectListIsLoadBearing(t *testing.T) {
 	a := New(newTestStore(t), "")
 
+	// payload_mode is deliberately absent: context_pack does not DECLARE it, so
+	// strictArgsMiddleware refuses it for both shapes before an arm is chosen
+	// (CW-20260912-0055). Its refusal is covered by TestRetiredArgKeepsItsGuidance
+	// and TestPayloadMode_RetiredVocabularyFailsClosed.
 	for knob, value := range map[string]any{
 		"include_pins":      true,
 		"payload_max_bytes": float64(10),
-		"payload_mode":      "full",
 	} {
 		t.Run("list/"+knob, func(t *testing.T) {
 			body := mustCall(t, a.handleContextPackShape, map[string]any{"view_id": "task_exec", knob: value})
@@ -876,7 +905,7 @@ func TestContextRegistryList_RejectsKnobsTheChosenKindCannotHonor(t *testing.T) 
 func TestRetiredArg_ToStatusIsRefusedNotIgnored(t *testing.T) {
 	s, a := statusFixture(t)
 
-	body := mustCall(t, a.handleStatusSet, map[string]any{
+	body := mustCallRegistered(t, a, "context_status_set", map[string]any{
 		"namespace": "app/test/status",
 		"key":       "doc",
 		"to_status": "canonical",
@@ -923,7 +952,7 @@ func TestRetiredArg_NamespaceIsRefusedNotIgnored(t *testing.T) {
 	}
 	a := New(s, "")
 
-	body := mustCall(t, a.handleRegistryList, map[string]any{
+	body := mustCallRegistered(t, a, "context_registry_list", map[string]any{
 		"kind":      "namespaces",
 		"namespace": "app/one/ns",
 	})
@@ -957,24 +986,24 @@ func TestRetiredArg_BudgetNamesAreRefusedNotIgnored(t *testing.T) {
 	a := New(newTestStore(t), "")
 
 	for _, tc := range []struct {
-		name    string
-		handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
-		args    map[string]any
-		names   string
+		name  string
+		tool  string
+		args  map[string]any
+		names string
 	}{
-		{"context_plan/budget_items", a.handleContextPlan,
+		{"context_plan/budget_items", "context_plan",
 			map[string]any{"intent": "custom", "budget_items": float64(10)}, "budget_items"},
-		{"context_plan/budget_tokens", a.handleContextPlan,
+		{"context_plan/budget_tokens", "context_plan",
 			map[string]any{"intent": "custom", "budget_tokens": float64(1000)}, "budget_tokens"},
-		{"context_plan/budget_tokens under execute", a.handleContextPlan,
+		{"context_plan/budget_tokens under execute", "context_plan",
 			map[string]any{"intent": "custom", "execute": true, "budget_tokens": float64(1000)}, "budget_tokens"},
-		{"context_pack/max_tokens under list", a.handleContextPackShape,
+		{"context_pack/max_tokens under list", "context_pack",
 			map[string]any{"view_id": "task_exec", "max_tokens": float64(10)}, "max_tokens"},
-		{"context_pack/max_tokens under packet", a.handleContextPackShape,
+		{"context_pack/max_tokens under packet", "context_pack",
 			map[string]any{"shape": "packet", "max_tokens": float64(10)}, "max_tokens"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := mustCall(t, tc.handler, tc.args)
+			body := mustCallRegistered(t, a, tc.tool, tc.args)
 			wantErrorCode(t, body, "validation_error")
 			wantMessageNames(t, body, tc.names)
 			// The message has to carry the caller forward, not just say no.
@@ -1442,21 +1471,29 @@ func TestPayloadMode_RetiredVocabularyFailsClosed(t *testing.T) {
 	writeRecord(t, s, "app/test/big", "doc", `{"v":1}`)
 	a := New(s, "")
 
-	for _, mode := range []string{"head_only", "keys", "summary", "bogus"} {
+	// `full` is in this list now, and that is the change CW-20260912-0055 made.
+	// It used to be accepted as a no-op — it was the default, and meant what it
+	// means everywhere else — but context_pack does not DECLARE payload_mode, so
+	// accepting it was the same "arrives, read by nothing, reported as success"
+	// shape this surface is closing. The projection knob is untouched where it
+	// is real: tesseract_recall and event_list declare it and still take it.
+	for _, mode := range []string{"head_only", "keys", "summary", "bogus", "full"} {
 		t.Run(mode, func(t *testing.T) {
-			body := mustCall(t, a.handleContextPackShape, map[string]any{
+			body := mustCallRegistered(t, a, "context_pack", map[string]any{
 				"shape": "packet", "namespaces": "app/test/big", "payload_mode": mode,
 			})
 			wantErrorCode(t, body, "validation_error")
+			wantMessageNames(t, body, "payload_max_bytes=512")
 			if _, ok := body["items"]; ok {
 				t.Errorf("payload_mode=%q fell through and returned items: %v", mode, body)
 			}
 		})
 	}
 
-	// `full` was the default and means the same thing here as everywhere else.
-	wantNoError(t, mustCall(t, a.handleContextPackShape, map[string]any{
-		"shape": "packet", "namespaces": "app/test/big", "payload_mode": "full",
+	// Positive control: the same call WITHOUT payload_mode succeeds, so every
+	// refusal above is about the argument name and not about the call.
+	wantNoError(t, mustCallRegistered(t, a, "context_pack", map[string]any{
+		"shape": "packet", "namespaces": "app/test/big",
 	}))
 }
 
@@ -1484,7 +1521,7 @@ func TestRetiredArg_OriginIsRefusedNotIgnored(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:write", "memory:read")
 
 	t.Run("memory_write/origin", func(t *testing.T) {
-		body := mustCall(t, a.handleMemoryWrite, map[string]any{
+		body := mustCallRegistered(t, a, "memory_write", map[string]any{
 			"namespace":       "user/chrispian/memory/notes",
 			"author_agent_id": "test",
 			"trigger":         "explicit",
@@ -1501,7 +1538,7 @@ func TestRetiredArg_OriginIsRefusedNotIgnored(t *testing.T) {
 	})
 
 	t.Run("tesseract_recall/origins", func(t *testing.T) {
-		body := mustCall(t, a.handleTesseractRecall, map[string]any{
+		body := mustCallRegistered(t, a, "tesseract_recall", map[string]any{
 			"namespaces": `["user/chrispian/memory/notes"]`,
 			"origins":    `["observation"]`,
 		})

@@ -71,6 +71,23 @@ tool names no adapter registers. That guard is blind to a rename that changes
 both the domain and the operation segment at once, so land the doc updates in
 the same commit.
 
+MCP refuses an argument no tool declares. The accepted set is read off each
+tool's own schema at registration — never a hand-maintained list — and the
+refusal names the key, the nearest declared alternative and the whole accepted
+set. A `registerXxx` helper is handed a `toolRegistrar`, not the server, so a
+tool cannot be registered without that check, and
+`TestEveryRegisteredToolRefusesAnUndeclaredArgument` asserts the same thing by
+behavior, for a tool that reaches the server some other way.
+`retiredArgGuidance` adds the migration
+sentence for a name that USED to work, keyed by tool — `namespace` is retired on
+one tool and declared by fourteen.
+
+The gateway strip is not an underscore exception. Exactly `_traceparent` and
+`_tracestate` are accepted and removed, because mux writes trace context into
+the arguments map; any other `_name` is refused like any other undeclared name.
+It comes out when every DEPLOYED mux is past CW-20260907-0026 — not when that
+task merges.
+
 Writes never mutate: `AppendRecord` allocates the next revision and advances
 `heads` in one transaction. Cross-namespace movement goes through the
 request → approve → apply promotion workflow, which apps cannot bypass.

@@ -8,10 +8,9 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
+func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 	// ── memory_write ─────────────────────────────────────────────────────────
 	a.addTool(s, mcp.NewTool("memory_write",
 		mcp.WithDescription(
@@ -83,22 +82,6 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
-	}
-
-	// `origin` was this argument's name until 2026-09-12. Refused, not
-	// ignored: mcp-go does not set additionalProperties:false, so an argument
-	// the tool no longer declares still arrives at the handler with nothing
-	// reading it. An ignored `origin` would leave `derived_from` empty, and a
-	// caller who supplied a value would be told a required field is missing —
-	// a confusing error about the wrong field. Worse, had this field carried a
-	// default, the write would have SUCCEEDED at the wrong ranking weight.
-	if errResult := rejectRetiredArg(req, "origin",
-		"this field is now named `derived_from`. The five values are unchanged "+
-			"(user, feedback, project, reference, observation) — only the name moved, "+
-			"because `origin` read as *who originated this* and was being filled in as "+
-			"an authorship claim. It is a recall ranking multiplier, so the value matters "+
-			"beyond labeling; see `tesseract_skills memory`."); errResult != nil {
-		return errResult, nil
 	}
 
 	// Parse tags — accept both native JSON array and JSON-encoded string.

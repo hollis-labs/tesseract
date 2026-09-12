@@ -9,10 +9,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerEmbeddingTools(s *server.MCPServer) {
+func (a *Adapter) registerEmbeddingTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_embed",
 		mcp.WithDescription("Generate and store an embedding for a record. Requires a configured embedding provider. Idempotent: re-embedding overwrites the previous vector. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("record_id", mcp.Required(), mcp.Description("Record ID to embed")),

@@ -9,10 +9,9 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerRecallTool(s *server.MCPServer) {
+func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_recall",
 		mcp.WithDescription(
 			"**Ranked recall across the curated corpus — memory + knowledge.** Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
@@ -180,17 +179,6 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	}
 	// Field shape and value types are validated by the store, not here, so
 	// this door and both HTTP peers cannot drift on what a state filter is.
-
-	// `origins` was this filter's name until 2026-09-12. Refused rather than
-	// ignored for the sharper of the two reasons: an ignored recall FILTER does
-	// not fail, it silently widens the result set. The caller gets rows it
-	// asked to exclude, ranked and plausible, with no error anywhere.
-	if errResult := rejectRetiredArg(req, "origins",
-		"this filter is now named `derived_from` and still takes a JSON array of the "+
-			"same five values (user, feedback, project, reference, observation). "+
-			"Only the name moved."); errResult != nil {
-		return errResult, nil
-	}
 
 	derivedFromStrs, errRes := unmarshalStrings("derived_from")
 	if errRes != nil {

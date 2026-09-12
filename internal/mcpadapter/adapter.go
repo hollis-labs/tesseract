@@ -17,6 +17,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Adapter exposes context memory service operations as MCP tools over stdio.
@@ -402,10 +403,14 @@ func (a *Adapter) version() string {
 	return "dev"
 }
 
-// RegisterAllTools registers every MCP tool supported by this adapter on s.
+// RegisterAllTools registers every MCP tool supported by this adapter on srv.
 // The parity test uses this to introspect the live tool surface without
 // starting a stdio server.
-func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
+//
+// This is the one place that holds the raw server, and it hands the helpers a
+// toolRegistrar instead — see that type for why.
+func (a *Adapter) RegisterAllTools(srv *server.MCPServer) {
+	s := &toolRegistrar{adapter: a, server: srv}
 	a.registerTools(s)
 	a.registerTypedTools(s)
 	a.registerEmbeddingTools(s)
@@ -437,19 +442,84 @@ func (a *Adapter) RegisterAllTools(s *server.MCPServer) {
 	a.registerSkillsTool(s)
 }
 
-// addTool wraps every MCP tool handler with the go-mcp-sanitize middleware,
-// which auto-cleans malformed agent tool-call XML in free-text params before
-// the handler runs. Clean calls are silent; cleaned calls emit one warn-level
-// slog line (see github.com/hollis-labs/go-mcp-sanitize).
+// toolRegistrar is the only thing a registerXxx helper is given, and it is what
+// makes the protections below non-optional.
 //
-// All registerXxx helpers must call a.addTool(s, tool, handler) instead of
-// s.AddTool(tool, handler) directly so the protection stays uniform.
-func (a *Adapter) addTool(s *server.MCPServer, t mcp.Tool, h server.ToolHandlerFunc) {
+// addTool used to take the *server.MCPServer itself and ask, in a comment, that
+// every helper route through it "so the protection stays uniform". Nothing
+// enforced that: a new helper calling s.AddTool directly opted silently out of
+// the sanitize middleware, and now out of strict argument checking too — which
+// is the same silent-drop defect as CW-20260912-0055, one layer up.
+//
+// Holding the server in an unexported field with no accessor turns the request
+// into a compile error. A helper that wants to bypass addTool has nothing to
+// call AddTool on, and giving itself one means changing its own signature,
+// which is a visible act in review rather than a plausible-looking line.
+//
+// The compiler is the first gate, not the only one. It answers "did someone
+// write the bypass" and cannot answer "is every tool the server actually
+// exposes protected" — a tool could still arrive through a path this type does
+// not own. TestEveryRegisteredToolRefusesAnUndeclaredArgument answers that one
+// by behavior: it enumerates what the server ended up with and calls each tool.
+type toolRegistrar struct {
+	adapter *Adapter
+	server  *server.MCPServer
+}
+
+// addTool registers one tool with the protections every tool gets.
+//
+// Wrapping order, outermost first — the handler sees the result of all three:
+//
+//  1. stripGatewayMetadata, so mux's `_traceparent` is gone before anything
+//     judges the argument names, and recorded as the upstream trace link so
+//     correlation survives the strip (CW-20260912-0055).
+//  2. go-mcp-sanitize, which auto-cleans malformed agent tool-call XML in
+//     free-text params. Clean calls are silent; cleaned calls emit one
+//     warn-level slog line (see github.com/hollis-labs/go-mcp-sanitize).
+//  3. strictArgsMiddleware, which refuses any argument the tool does not
+//     declare. It runs INSIDE sanitize deliberately: sanitize can move a leaked
+//     `<parameter name="OTHER">` fragment into args["OTHER"], so checking
+//     before it ran would validate a different call than the handler receives.
+func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc) {
 	logger := a.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s.AddTool(t, mcpsanitize.Middleware(logger)(h))
+	strict, err := strictArgsMiddleware(t)
+	if err != nil {
+		// Registration time, not call time: a tool whose declared arguments
+		// cannot be read cannot be protected, and registering it unprotected
+		// is the defect this exists to remove. Every test that registers the
+		// surface reaches this line.
+		panic(fmt.Sprintf("mcpadapter: cannot derive declared arguments: %v", err))
+	}
+	handler := strict(h)
+	handler = mcpsanitize.Middleware(logger)(handler)
+	r.server.AddTool(t, gatewayMetadataMiddleware(handler))
+}
+
+// gatewayMetadataMiddleware removes the gateway's transport keys from the
+// arguments and attaches the upstream trace context to the request context.
+//
+// A call carrying none of them is passed through untouched, which is every call
+// that did not come through a mux old enough to inject into arguments.
+func gatewayMetadataMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		if len(args) == 0 {
+			return next(ctx, req)
+		}
+		stripped, meta, changed := stripGatewayMetadata(args)
+		if !changed {
+			return next(ctx, req)
+		}
+		req.Params.Arguments = stripped
+		ctx = contextWithGatewayMetadata(ctx, meta)
+		if meta.UpstreamTrace.IsValid() {
+			ctx = trace.ContextWithRemoteSpanContext(ctx, meta.UpstreamTrace)
+		}
+		return next(ctx, req)
+	}
 }
 
 // checkScope validates the configured token and checks for the required scope.

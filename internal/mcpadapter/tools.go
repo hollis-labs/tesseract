@@ -16,10 +16,9 @@ import (
 	"github.com/hollis-labs/go-mcp/budget"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-func (a *Adapter) registerTools(s *server.MCPServer) {
+func (a *Adapter) registerTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_view",
 		mcp.WithDescription("Evaluate a view over the context store and return matching records. "+
 			"`full_evaluation` selects between two evaluation arms — see its description; they differ in more than whether metadata is attached. "+
@@ -268,20 +267,8 @@ func (a *Adapter) handlePromote(ctx context.Context, req mcp.CallToolRequest) (*
 func (a *Adapter) handleContextPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// The assembly budget is spelled `max_items` / `max_tokens_estimate` on
 	// every packet-assembly surface — this tool, context_pack, and the HTTP
-	// peers POST /v1/context/packet and POST /v1/broker/plan. This tool used to
-	// spell it `budget_items` / `budget_tokens` at a different token default
-	// (4000, against 8000 everywhere else), so an ignored old name would not
-	// merely drop a knob: it would silently double the token budget the caller
-	// asked for. Refuse it and name the replacement.
-	if errResult := rejectRetiredArg(req, "budget_items",
-		"the item budget is now named `max_items`, matching context_pack and POST /v1/context/packet."); errResult != nil {
-		return errResult, nil
-	}
-	if errResult := rejectRetiredArg(req, "budget_tokens",
-		"the token budget is now named `max_tokens_estimate` and defaults to 8000 (was 4000), matching context_pack and POST /v1/context/packet. "+
-			"`budget_tokens` still exists on tesseract_recall / tesseract_history / tesseract_get, where it is a different knob — the response serialization ceiling, not an assembly budget."); errResult != nil {
-		return errResult, nil
-	}
+	// peers POST /v1/context/packet and POST /v1/broker/plan. The spellings
+	// this tool retired are refused by name in retiredArgGuidance.
 	if req.GetBool("execute", false) {
 		return a.handlePlanAndFetch(ctx, req)
 	}
@@ -290,9 +277,6 @@ func (a *Adapter) handleContextPlan(ctx context.Context, req mcp.CallToolRequest
 	if raw, ok := req.GetArguments()["payload_max_bytes"]; ok && raw != nil {
 		return toolError(codeValidationError,
 			"payload_max_bytes applies only under execute: true; the planning arm returns no records"), nil
-	}
-	if errResult := rejectRetiredPayloadMode(req); errResult != nil {
-		return errResult, nil
 	}
 	return a.handlePlanOnly(ctx, req)
 }
@@ -309,14 +293,6 @@ var namespaceListKnobs = []string{
 // handleRegistryList serves the merged context_registry_list. `kind` selects
 // which registry is read.
 func (a *Adapter) handleRegistryList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// The retired context_namespace_show spelled this argument `namespace`.
-	// Silently ignoring the old spelling would answer the whole-list question
-	// for a caller who asked about one namespace.
-	if errResult := rejectRetiredArg(req, "namespace",
-		"kind=namespaces names a single namespace with `name`, not `namespace`."); errResult != nil {
-		return errResult, nil
-	}
-
 	kind := req.GetString("kind", "")
 	name := strings.TrimSpace(req.GetString("name", ""))
 
@@ -374,16 +350,13 @@ func splitCommaList(s string) []string {
 }
 
 // resolvePayloadMaxBytes reads the payload byte cap for the packet-shaped
-// tools, and rejects the retired payload_mode vocabulary on the way past.
+// tools.
 //
 // A negative cap is an error rather than a clamp: it is outside the knob's
 // meaning, and quietly reading it as "no cap" would return MORE context than
 // the caller asked for — the direction of failure this whole surface is trying
 // to close off.
 func resolvePayloadMaxBytes(req mcp.CallToolRequest) (int, *mcp.CallToolResult) {
-	if errResult := rejectRetiredPayloadMode(req); errResult != nil {
-		return 0, errResult
-	}
 	n, err := wholeNumberArg(req, "payload_max_bytes", 0)
 	if err != nil {
 		return 0, toolError(codeValidationError, err.Error())
@@ -392,49 +365,6 @@ func resolvePayloadMaxBytes(req mcp.CallToolRequest) (int, *mcp.CallToolResult) 
 		return 0, toolError(codeValidationError, "payload_max_bytes must be >= 0; omit it or pass 0 for no cap")
 	}
 	return n, nil
-}
-
-// rejectRetiredArg fails closed when a call carries an argument name this tool
-// used to accept under a different spelling.
-//
-// mcp-go does not set `additionalProperties: false` on a tool's input schema, so
-// an argument the tool no longer declares still ARRIVES at the handler — where
-// nothing reads it. That is the worst shape a rename can take. A migrated
-// `context_status_promote(to_status: "canonical")` call would otherwise find
-// `status` empty, advance the record ONE step to `reviewed`, and report success:
-// a plausible answer to a question the caller did not ask. A hard error naming
-// the new spelling is strictly better than a silent behavior change.
-//
-// Same reasoning as rejectRetiredPayloadMode; that one is separate because its
-// old name survives with one legal value rather than being retired outright.
-func rejectRetiredArg(req mcp.CallToolRequest, old, guidance string) *mcp.CallToolResult {
-	raw, ok := req.GetArguments()[old]
-	if !ok || raw == nil || raw == "" {
-		return nil
-	}
-	return toolError(codeValidationError, old+" is not an argument of this tool. "+guidance)
-}
-
-// rejectRetiredPayloadMode fails closed on the packet-shaped tools' former
-// payload_mode vocabulary.
-//
-// `head_only` used to cut a payload mid-JSON, and every OTHER value — `keys`,
-// `summary`, a typo — fell through to full payloads with no error at all. Both
-// halves of that are fixed here by refusing the argument: `payload_mode` now
-// means exactly one thing across the surface (the keys|summary|full projection
-// on the recall/lookup tools), and these tools cap bytes with
-// payload_max_bytes instead.
-//
-// `full` is accepted as a no-op because it was the default and means the same
-// thing here as it does everywhere else: everything.
-func rejectRetiredPayloadMode(req mcp.CallToolRequest) *mcp.CallToolResult {
-	raw := strings.TrimSpace(req.GetString("payload_mode", ""))
-	if raw == "" || raw == "full" {
-		return nil
-	}
-	return toolError(codeValidationError,
-		"payload_mode is not a projection knob on this tool: it accepts only \"full\". "+
-			"The former payload_mode=head_only is now payload_max_bytes=512. Got: "+raw)
 }
 
 // capPayload applies a payload_max_bytes cap to one item.

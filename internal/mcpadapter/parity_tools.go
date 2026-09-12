@@ -7,7 +7,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // registerParityTools adds MCP tools that mirror HTTP routes for agent parity.
@@ -15,7 +14,7 @@ import (
 // The view-evaluation peer of /v1/views/evaluate is no longer a tool of its
 // own: it is the full_evaluation arm of context_view, registered in tools.go. Its
 // handler still lives here, next to the other selector-shaped op.
-func (a *Adapter) registerParityTools(s *server.MCPServer) {
+func (a *Adapter) registerParityTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_estimate",
 		mcp.WithDescription("Estimate record count, payload bytes, and rough token count for a selector without returning the records. Peer of HTTP /v1/context/estimate. See `tesseract_skills start-here` for the primitive model."),
 		mcp.WithString("selector", mcp.Required(), mcp.Description("JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)")),

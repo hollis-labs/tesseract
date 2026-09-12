@@ -11,7 +11,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // ingestModeArgDescription documents the arm selector on context_ingest.
@@ -23,7 +22,7 @@ const ingestModeArgDescription = "What is being ingested, which decides how it i
 	"<key_prefix>/chunk-000, chunk-001, … each auto-embedded. Answers `{namespace, key_prefix, strategy, total_chunks, embedded, results}`. " +
 	"MCP-only: chunked ingest has no HTTP peer."
 
-func (a *Adapter) registerBulkTools(s *server.MCPServer) {
+func (a *Adapter) registerBulkTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("context_ingest",
 		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for the per-record payload shape — each entry of `items` is the same object `context_typed_write` takes, and one malformed entry in a batch of fifty is reported per-item rather than failing the call. "+
 			"Writes records into the context store in batch. "+
