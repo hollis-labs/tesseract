@@ -30,18 +30,22 @@ import (
 // rest of the HTTP API to match another protocol's ergonomics would be a worse
 // inconsistency than the one it removed.
 type eventWriteRequest struct {
-	Namespace   string             `json:"namespace"`
-	Key         string             `json:"key,omitempty"`
-	Summary     string             `json:"summary"`
-	Body        string             `json:"body,omitempty"`
-	Author      memory.Author      `json:"author"`
-	SessionID   string             `json:"session_id"`
-	Tags        []string           `json:"tags,omitempty"`
-	TTLSeconds  int64              `json:"ttl_seconds,omitempty"`
-	Confidence  float64            `json:"confidence,omitempty"`
-	DerivedFrom memory.DerivedFrom `json:"derived_from,omitempty"`
-	Trigger     memory.Trigger     `json:"trigger,omitempty"`
-	Supersedes  string             `json:"supersedes,omitempty"`
+	Namespace string `json:"namespace"`
+	Key       string `json:"key,omitempty"`
+	Summary   string `json:"summary"`
+	Body      string `json:"body,omitempty"`
+	// The record's own fields, stored verbatim and never interpreted.
+	// See internal/memory/payloaddata.go.
+	Data           json.RawMessage    `json:"data,omitempty"`
+	DataSchemaHash string             `json:"data_schema_hash,omitempty"`
+	Author         memory.Author      `json:"author"`
+	SessionID      string             `json:"session_id"`
+	Tags           []string           `json:"tags,omitempty"`
+	TTLSeconds     int64              `json:"ttl_seconds,omitempty"`
+	Confidence     float64            `json:"confidence,omitempty"`
+	DerivedFrom    memory.DerivedFrom `json:"derived_from,omitempty"`
+	Trigger        memory.Trigger     `json:"trigger,omitempty"`
+	Supersedes     string             `json:"supersedes,omitempty"`
 
 	// ConsumerState is the writer's operational JSON bag (CW-20260909-0036) —
 	// the state an event carries that the epistemic status ladder cannot say.
@@ -72,19 +76,21 @@ func (s *Server) handleEventWrite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rev, err := s.EventStore.Write(r.Context(), event.WriteInput{
-		Namespace:     req.Namespace,
-		Key:           req.Key,
-		Summary:       req.Summary,
-		Body:          req.Body,
-		Author:        req.Author,
-		SessionID:     req.SessionID,
-		Tags:          req.Tags,
-		TTL:           time.Duration(req.TTLSeconds) * time.Second,
-		Confidence:    req.Confidence,
-		DerivedFrom:   req.DerivedFrom,
-		Trigger:       req.Trigger,
-		Supersedes:    req.Supersedes,
-		ConsumerState: req.ConsumerState,
+		Namespace:      req.Namespace,
+		Key:            req.Key,
+		Summary:        req.Summary,
+		Body:           req.Body,
+		Data:           req.Data,
+		DataSchemaHash: req.DataSchemaHash,
+		Author:         req.Author,
+		SessionID:      req.SessionID,
+		Tags:           req.Tags,
+		TTL:            time.Duration(req.TTLSeconds) * time.Second,
+		Confidence:     req.Confidence,
+		DerivedFrom:    req.DerivedFrom,
+		Trigger:        req.Trigger,
+		Supersedes:     req.Supersedes,
+		ConsumerState:  req.ConsumerState,
 	})
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {

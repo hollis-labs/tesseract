@@ -24,6 +24,12 @@ import (
 //
 //	It parses. It is an object. That is the whole list.
 //
+// Stored verbatim: the column holds the caller's bytes, and a Go caller reads
+// them back unchanged. A JSON response is semantically identical but not
+// byte-identical — encoding/json compacts and HTML-escapes on the way out. The
+// boundary is stated on Payload.Data and pinned by a test, because "byte for
+// byte" was promised more broadly than it was true.
+//
 // No typing, no schema enforcement, no required keys, no vocabulary, no
 // coupling to the type registry, no indexing, and NO CODE PATH READS A VALUE
 // OUT OF IT. Not embedded, not in FTS, not ranked, not filtered on by us, no

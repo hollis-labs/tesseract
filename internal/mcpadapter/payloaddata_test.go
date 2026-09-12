@@ -93,3 +93,42 @@ func TestPayloadDataAcceptsBothArgumentShapes(t *testing.T) {
 		}
 	})
 }
+
+// TestPayloadDataExplicitNullIsRefusedNotDropped covers PR #41's review finding
+// that MCP and HTTP disagreed about a supplied null.
+//
+// `payload_data: null` is a value the caller sent. HTTP refuses it as a
+// non-object; MCP used to collapse it into "not sent" because a present JSON
+// null arrives as a nil argument, indistinguishable from absence unless the
+// presence check is separated from the nil check.
+//
+// Silently accepting what the peer surface refuses is the worse half. The
+// likely origin of a null here is a client that meant to send an object and
+// produced nothing — exactly the bug a refusal surfaces and a silent drop
+// buries.
+func TestPayloadDataExplicitNullIsRefusedNotDropped(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write", "memory:read")
+
+	args := map[string]any{
+		"namespace":       "user/chrispian/memory/notes",
+		"memory_key":      "explicit.null",
+		"author_agent_id": "test",
+		"trigger":         "explicit",
+		"session_id":      "s-1",
+		"derived_from":    "observation",
+		"confidence":      0.9,
+		"payload_summary": "a write sending an explicit null",
+		"payload_data":    nil,
+	}
+	if body := writeViaHandler(t, a, args); !isRefusal(body) {
+		t.Errorf("an explicit payload_data:null was accepted; HTTP refuses the same value, and a "+
+			"client that produced null where it meant an object learns nothing: %v", body)
+	}
+
+	// Omission is still omission — the fix must not turn "not sent" into an error.
+	delete(args, "payload_data")
+	args["memory_key"] = "omitted"
+	if body := writeViaHandler(t, a, args); isRefusal(body) {
+		t.Errorf("omitting payload_data was refused; absent and null are different: %v", body)
+	}
+}

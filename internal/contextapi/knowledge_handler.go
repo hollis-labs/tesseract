@@ -183,19 +183,24 @@ func jsonFieldNames(dst any) []string {
 // later with a validation error about missing pointer facets that named none
 // of the fields the caller had sent. decodeRequestBody is the fix.
 type knowledgeWriteRequest struct {
-	Namespace  string         `json:"namespace"`
-	Key        string         `json:"key,omitempty"`
-	Kind       string         `json:"kind"`
-	Source     string         `json:"source"`
-	Pointer    memory.Pointer `json:"pointer"`
-	Summary    string         `json:"summary"`
-	Body       string         `json:"body,omitempty"`
-	Author     memory.Author  `json:"author"`
-	SessionID  string         `json:"session_id"`
-	Tags       []string       `json:"tags,omitempty"`
-	TTLSeconds int64          `json:"ttl_seconds,omitempty"`
-	Confidence float64        `json:"confidence,omitempty"`
-	Supersedes string         `json:"supersedes,omitempty"`
+	Namespace string         `json:"namespace"`
+	Key       string         `json:"key,omitempty"`
+	Kind      string         `json:"kind"`
+	Source    string         `json:"source"`
+	Pointer   memory.Pointer `json:"pointer"`
+	Summary   string         `json:"summary"`
+	Body      string         `json:"body,omitempty"`
+	// The record's own fields, stored verbatim and never interpreted. Nested
+	// here where MCP takes a JSON-encoded string, the way `tags` already
+	// differs. See internal/memory/payloaddata.go.
+	Data           json.RawMessage `json:"data,omitempty"`
+	DataSchemaHash string          `json:"data_schema_hash,omitempty"`
+	Author         memory.Author   `json:"author"`
+	SessionID      string          `json:"session_id"`
+	Tags           []string        `json:"tags,omitempty"`
+	TTLSeconds     int64           `json:"ttl_seconds,omitempty"`
+	Confidence     float64         `json:"confidence,omitempty"`
+	Supersedes     string          `json:"supersedes,omitempty"`
 
 	// ConsumerState is the caller's operational JSON bag (CW-20260909-0036).
 	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
@@ -216,20 +221,22 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rev, err := s.KnowledgeStore.Write(r.Context(), knowledge.WriteInput{
-		Namespace:     req.Namespace,
-		Key:           req.Key,
-		Kind:          req.Kind,
-		Source:        req.Source,
-		Pointer:       req.Pointer,
-		Summary:       req.Summary,
-		Body:          req.Body,
-		Author:        req.Author,
-		SessionID:     req.SessionID,
-		Tags:          req.Tags,
-		TTL:           time.Duration(req.TTLSeconds) * time.Second,
-		Confidence:    req.Confidence,
-		Supersedes:    req.Supersedes,
-		ConsumerState: req.ConsumerState,
+		Namespace:      req.Namespace,
+		Key:            req.Key,
+		Kind:           req.Kind,
+		Source:         req.Source,
+		Pointer:        req.Pointer,
+		Summary:        req.Summary,
+		Body:           req.Body,
+		Data:           req.Data,
+		DataSchemaHash: req.DataSchemaHash,
+		Author:         req.Author,
+		SessionID:      req.SessionID,
+		Tags:           req.Tags,
+		TTL:            time.Duration(req.TTLSeconds) * time.Second,
+		Confidence:     req.Confidence,
+		Supersedes:     req.Supersedes,
+		ConsumerState:  req.ConsumerState,
 	})
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {

@@ -139,6 +139,17 @@ type Payload struct {
 	// trip reorders keys and pushes every number through float64, so a
 	// consumer's 64-bit id would come back changed. "Stored verbatim" has to
 	// mean the bytes.
+	//
+	// HOW FAR "VERBATIM" REACHES, because the honest boundary is narrower than
+	// it first looks. The COLUMN holds exactly what the caller sent, and a Go
+	// caller reading Revision.Payload.Data gets exactly those bytes back. A
+	// JSON RESPONSE does not: encoding/json compacts a RawMessage and escapes
+	// <, > and & as \u003c, \u003e and \u0026, so `{"a": 1,"h":"x<y"}` leaves
+	// over HTTP or MCP as `{"a":1,"h":"x\u003cy"}`. That is the same JSON
+	// value and parses identically — but it is not the same bytes, so a
+	// consumer hashing or signing what it receives must hash the re-serialized
+	// form, not assume it matches what it sent. Pinned by
+	// TestPayloadDataWireFormIsSemanticNotByteIdentical.
 	Data json.RawMessage `json:"data,omitempty"`
 
 	// DataSchemaHash is the caller's CLAIM about which schema Data was written
