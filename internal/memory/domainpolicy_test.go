@@ -83,6 +83,14 @@ func TestKnowledgePolicyValidateNamespace(t *testing.T) {
 		"user/alice/knowledge",
 		"user/alice/knowledge/framework",
 		"app/ingester/knowledge/obsidian/work",
+		// The scope vocabulary widened to six in CW-20260912-0078, so these
+		// roots are legal now. `org/acme/knowledge` in particular moved from
+		// the bad list to this one: it used to be "wrong prefix" because every
+		// namespace had to begin with its owner.
+		"org/acme/knowledge",
+		"project/tether/knowledge/adr",
+		"session/s-1/knowledge/scratch",
+		"system/knowledge/glossary",
 	}
 	for _, ns := range ok {
 		if err := p.ValidateNamespace(ns); err != nil {
@@ -98,7 +106,7 @@ func TestKnowledgePolicyValidateNamespace(t *testing.T) {
 		"user/alice/knowledge/",       // trailing slash
 		"user//knowledge",             // empty segment
 		"user/alice",                  // too short
-		"org/acme/knowledge",          // wrong prefix
+		"tenant/acme/knowledge/notes", // not a scope type
 	}
 	for _, ns := range bad {
 		if err := p.ValidateNamespace(ns); err == nil {

@@ -311,7 +311,13 @@ func TestEventNamespaceGrammar(t *testing.T) {
 		{"user/chrispian/event/telemetry", false, "type outside the closed vocabulary"},
 		{"user/chrispian/memory/notes", false, "memory namespace, wrong domain segment"},
 		{"user/chrispian/knowledge/framework", false, "knowledge namespace"},
-		{"app/indexer/event/reasoning", false, "must begin with user/"},
+		// Legal since CW-20260912-0078: the first segment names a scope TYPE,
+		// so `app/` is a root rather than a violation. What replaced the old
+		// rule is a closed scope vocabulary, which the next case pins.
+		{"app/indexer/event/reasoning", true, "app scope under the scope-type-rooted grammar"},
+		{"project/tether/event/journal", true, "project scope"},
+		{"system/event/journal", true, "the system singleton takes no id segment"},
+		{"tenant/acme/event/journal", false, "tenant is not a scope type"},
 		// The trap the grammar deliberately declines: created_at is indexed and
 		// the log read filters on it, so a date partition buys nothing and
 		// turns every window read into a multi-namespace query.
