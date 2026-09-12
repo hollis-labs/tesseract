@@ -1576,3 +1576,90 @@ func mustTx(t *testing.T, db *sql.DB) *sql.Tx {
 	t.Cleanup(func() { _ = tx.Rollback() })
 	return tx
 }
+
+// TestMigration23AddsPayloadDataWithoutDisturbingExistingRows is the fault
+// injection for the payload.data columns (CW-20260912-0036).
+//
+// An ADD COLUMN migration has a different risk profile from the rename in 22,
+// and the thing worth asserting is the part that differs: rows written before
+// the column existed must read back with SQL NULL — not an empty string, and
+// not the four bytes `null` — because those are three spellings of "no data"
+// that every future reader would have to know to collapse.
+//
+// It also pins the property the deploy note depends on: a query that names the
+// columns it wants is unaffected by a column it does not name. That is what
+// makes this migration safe for already-running MCP children, and what schema
+// 22 could not offer.
+func TestMigration23AddsPayloadDataWithoutDisturbingExistingRows(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := Open(ctx, Config{RootDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	db := s.DB()
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO memory_state (memory_id, namespace, memory_key, domain)
+		 VALUES ('mem-p', 'user/test/memory/notes', 'k-p', 'memory')`); err != nil {
+		t.Fatalf("seed memory_state: %v", err)
+	}
+
+	// Become a schema-22 store: drop the two columns and roll the version back.
+	for _, col := range []string{"payload_data_schema_hash", "payload_data"} {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE memory_revisions DROP COLUMN `+col); err != nil {
+			t.Fatalf("drop %s: %v", col, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_version WHERE version >= 23`); err != nil {
+		t.Fatalf("roll schema_version back: %v", err)
+	}
+
+	// A revision written while the columns did not exist.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO memory_revisions (
+    revision_id, memory_id, domain, namespace, memory_key, status,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
+    tags, payload_summary
+) VALUES ('rev-p', 'mem-p', 'memory', 'user/test/memory/notes', 'k-p', 'canonical',
+    'agent', 'v1', 'manual', 'sess-p', 'observation', 0.9, '[]', 'written before payload.data existed')`,
+	); err != nil {
+		t.Fatalf("seed pre-migration revision: %v", err)
+	}
+
+	if err := s.migrate(ctx); err != nil {
+		t.Fatalf("re-migrate: %v", err)
+	}
+
+	for _, col := range []string{"payload_data", "payload_data_schema_hash"} {
+		present, colErr := columnExists(ctx, mustTx(t, db), "memory_revisions", col)
+		if colErr != nil || !present {
+			t.Fatalf("column %s missing after migration 23 (present=%v err=%v)", col, present, colErr)
+		}
+	}
+
+	// NULL, specifically — not '' and not 'null'.
+	var data, hash sql.NullString
+	if err := db.QueryRowContext(ctx,
+		`SELECT payload_data, payload_data_schema_hash FROM memory_revisions WHERE revision_id = 'rev-p'`).
+		Scan(&data, &hash); err != nil {
+		t.Fatalf("read the pre-migration row: %v", err)
+	}
+	if data.Valid || hash.Valid {
+		t.Errorf("a row written before the columns existed backfilled to %q/%q; it must be SQL NULL, "+
+			"because an empty string and a literal null are two more spellings of nothing",
+			data.String, hash.String)
+	}
+
+	// The pre-existing content is untouched.
+	var summary string
+	if err := db.QueryRowContext(ctx,
+		`SELECT payload_summary FROM memory_revisions WHERE revision_id = 'rev-p'`).Scan(&summary); err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	if summary != "written before payload.data existed" {
+		t.Errorf("payload_summary = %q after the migration; an ADD COLUMN must not touch existing data", summary)
+	}
+}

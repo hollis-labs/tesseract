@@ -136,6 +136,13 @@ const consumerStateArgDescription = "Optional JSON OBJECT stored as this revisio
 // the authority on whether the bytes are a well-formed JSON object, so a
 // malformed value is reported by the one validator every write path reaches
 // rather than by whichever door it happened to arrive at.
+// NOTE (PR #41 review, 2026-09-12): this collapses an EXPLICIT
+// `consumer_state: null` into "not sent", the way payloadDataArg used to.
+// validateConsumerState refuses a literal null, so MCP silently accepts here
+// what HTTP and the library refuse. Left as behavior deliberately: fixing it
+// turns a currently-succeeding call into an error on a shipped surface, which
+// is a change to this tool's contract and belongs in its own task rather than
+// riding along with payload.data. Filed as CW-20260912-0045.
 func consumerStateArg(req mcp.CallToolRequest) json.RawMessage {
 	raw, ok := req.GetArguments()["consumer_state"]
 	if !ok || raw == nil {
@@ -152,6 +159,74 @@ func consumerStateArg(req mcp.CallToolRequest) json.RawMessage {
 		// Unreachable for anything an MCP transport can deliver, and if it
 		// were reached, handing the store an invalid bag is the right failure:
 		// it reports the one error message every surface reports.
+		return json.RawMessage("null")
+	}
+	return b
+}
+
+// payloadDataArgDescription is the shared prose for the `payload_data`
+// argument on the three write doors (CW-20260912-0036).
+const payloadDataArgDescription = "Optional JSON OBJECT holding THE RECORD'S OWN FIELDS in your shape — " +
+	"an ADR's decision and alternatives, a contact's email and phone, a bug report's steps and severity. " +
+	"The summary and body arguments stay PROSE; this is everything else. " +
+	"**Tesseract checks that it parses and that it is an object, and nothing else.** No typing, " +
+	"no schema enforcement, no required keys, not indexed, not embedded, not searched, never ranked or " +
+	"filtered on by us, and no value inside it changes anything Tesseract does. " +
+	"**Send it as a JSON-ENCODED STRING if the exact bytes matter to you** — a native JSON object is " +
+	"decoded by the MCP transport before this tool sees it, which re-orders nothing but does round " +
+	"integers beyond 2^53 through a float. The string form is stored exactly as you sent it. " +
+	"**Not `consumer_state`**, which is your OPERATIONAL state about the record — is it done, which " +
+	"section — and IS filterable via `state_filters`. This is what the record IS; that is how it is being " +
+	"worked. Search still finds a record by its summary and body, so put anything you want to be " +
+	"findable in prose as well."
+
+// payloadDataSchemaHashArgDescription is the shared prose for the optional
+// schema CLAIM.
+const payloadDataSchemaHashArgDescription = "Optional hex sha256 recording WHICH schema your `payload_data` " +
+	"follows, matching a type's `schema_ref.schema_hash`. **Tesseract never opens the schema and never " +
+	"validates against it** — it stores what you said, so that a record written under an older schema is " +
+	"later distinguishable from one that drifted. Omit it if you are making no claim; it is never " +
+	"defaulted for you."
+
+// payloadDataArg reads the `payload_data` write argument.
+//
+// A client may send a JSON-encoded string or a native object. Neither is
+// normalized here beyond what the transport already did, because the store is
+// the single authority on whether the bytes are an object — a malformed bag is
+// reported by the one validator every write path reaches rather than by
+// whichever door it arrived at.
+//
+// TWO SHAPES, ONE OF WHICH PRESERVES BYTES. A JSON-encoded string arrives as
+// the caller typed it and is stored that way. A native object has ALREADY been
+// decoded into map[string]any by the MCP transport before this function runs,
+// so an integer beyond 2^53 has already been rounded through float64 and the
+// original spelling is gone. Re-marshaling here does not cause that and cannot
+// undo it. The argument description tells callers which form to use when the
+// bytes matter; this comment exists so the next reader does not "fix" the
+// re-marshal expecting precision to come back.
+//
+// ABSENT IS NOT NULL. `payload_data: null` is a value the caller supplied, and
+// the store rejects a literal null as a non-object. Collapsing it into "not
+// sent" would make MCP silently accept something HTTP refuses, and would hide a
+// client bug that produced null where an object was meant.
+func payloadDataArg(req mcp.CallToolRequest) json.RawMessage {
+	raw, ok := req.GetArguments()["payload_data"]
+	if !ok {
+		return nil
+	}
+	if raw == nil {
+		// Present and explicitly null. Hand the four bytes to the validator so
+		// the caller gets the same refusal every other surface gives.
+		return json.RawMessage("null")
+	}
+	if s, isStr := raw.(string); isStr {
+		if strings.TrimSpace(s) == "" {
+			return nil
+		}
+		return json.RawMessage(s)
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
 		return json.RawMessage("null")
 	}
 	return b

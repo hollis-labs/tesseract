@@ -33,6 +33,7 @@ const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(mem
        author_agent_id, author_version, trigger, session_id, derived_from,
        confidence, tags, COALESCE(ttl_seconds, 0), expires_at,
        COALESCE(payload_summary, ''), COALESCE(payload_body, ''),
+       payload_data, payload_data_schema_hash,
        COALESCE(embedding_model, ''), embedding_vector,
        facet_kind, facet_source,
        facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
@@ -49,12 +50,14 @@ func scanRevision(r rowScanner) (Revision, error) {
 	var facetKind, facetSource sql.NullString
 	var pointerScheme, pointerLocator, pointerResolvedAt sql.NullString
 	var consumerState sql.NullString
+	var payloadData, payloadDataSchemaHash sql.NullString
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
 		&rev.Status, &rev.Supersedes, &createdAt,
 		&rev.Author.AgentID, &rev.Author.AgentVersion, &rev.Trigger, &rev.SessionID, &rev.DerivedFrom,
 		&rev.Confidence, &tagsJSON, &rev.TTLSeconds, &expiresAt,
 		&rev.Payload.Summary, &rev.Payload.Body,
+		&payloadData, &payloadDataSchemaHash,
 		&rev.EmbeddingModel, &embeddingBlob,
 		&facetKind, &facetSource,
 		&pointerScheme, &pointerLocator, &pointerResolvedAt,
@@ -95,6 +98,14 @@ func scanRevision(r rowScanner) (Revision, error) {
 	// json.RawMessage is a slice that would still be pointing at it.
 	if consumerState.Valid && consumerState.String != "" {
 		rev.ConsumerState = json.RawMessage(append([]byte(nil), consumerState.String...))
+	}
+	// Copied out as bytes and handed back unexamined. Nothing here parses it,
+	// and nothing downstream may either — see payloaddata.go.
+	if payloadData.Valid && payloadData.String != "" {
+		rev.Payload.Data = json.RawMessage(append([]byte(nil), payloadData.String...))
+	}
+	if payloadDataSchemaHash.Valid {
+		rev.Payload.DataSchemaHash = payloadDataSchemaHash.String
 	}
 	return rev, nil
 }

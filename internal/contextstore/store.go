@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 22
+	schemaVersion = 23
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1244,6 +1244,58 @@ CREATE TABLE IF NOT EXISTS novelty_basis (
 						`ALTER TABLE memory_revisions RENAME COLUMN origin TO derived_from`); err != nil {
 						return err
 					}
+				}
+			}
+		case 23:
+			// payload.data and its schema claim (CW-20260912-0036).
+			//
+			// Two columns rather than one: the claim is ABOUT the data, and the
+			// alternative — a reserved key inside the bag — would require
+			// Tesseract to read a key out of an object it promises never to
+			// read. That contradiction would be load-bearing rather than
+			// cosmetic, because the guard that holds the promise works by
+			// failing on exactly that kind of access.
+			//
+			// ADD COLUMN, so this is additive in the strict sense: existing
+			// rows get SQL NULL, which reads back as an absent Data, and no
+			// existing query mentions either column. That matters for more than
+			// tidiness — see the deploy note below.
+			//
+			// NOT in memory_revisions_fts, and that is the point of the field
+			// rather than an omission. The FTS table indexes
+			// memory_key/payload_summary/payload_body/tags; adding a column to
+			// its external-content table does not change what it indexes,
+			// because an external-content FTS5 table maps its own declared
+			// columns onto the content table by name.
+			//
+			// No index. Callers scan data with SQLite's JSON functions. An
+			// index here would be the first thing that makes Tesseract care
+			// what is inside, and migration 19's lesson is that declaring one
+			// for a query shape nobody has written yet is the mistake.
+			//
+			// DEPLOY NOTE, because the last migration got this wrong in the
+			// other direction. Schema 22 RENAMED a column, so already-running
+			// MCP children — whose SELECT lists named `origin` — started
+			// failing with "no such column" the moment it landed. An ADD COLUMN
+			// cannot do that: every query in this repository names its columns
+			// explicitly, so a column nobody selects is invisible to a
+			// connection already open. What still bites is a NEW process on an
+			// OLD binary: migrate() runs on Open and refuses a store newer than
+			// the binary, so old children keep working until they reconnect.
+			for _, col := range []struct{ name, ddl string }{
+				{"payload_data", `ALTER TABLE memory_revisions ADD COLUMN payload_data TEXT NULL`},
+				{"payload_data_schema_hash", `ALTER TABLE memory_revisions ADD COLUMN payload_data_schema_hash TEXT NULL`},
+			} {
+				var present bool
+				present, err = columnExists(ctx, tx, "memory_revisions", col.name)
+				if err != nil {
+					return err
+				}
+				if present {
+					continue
+				}
+				if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
+					return err
 				}
 			}
 		}

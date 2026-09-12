@@ -64,6 +64,12 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	if err := validateConsumerStateFor(in); err != nil {
 		return Revision{}, err
 	}
+	// payload.data's two structural facts. Deliberately NOT routed through the
+	// type registry the way consumer state's required_fields are: data has no
+	// declared shape and acquiring one is the thing this field refuses.
+	if err := validatePayloadData(in.Payload); err != nil {
+		return Revision{}, err
+	}
 
 	// Make sure the namespace is in the policy registry before we write data
 	// for it. Idempotent — only inserts the first time the namespace is seen.
@@ -173,9 +179,10 @@ INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
     created_at, author_agent_id, author_version, trigger, session_id, derived_from,
     confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
+    payload_data, payload_data_schema_hash,
     facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
     consumer_state
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID,
 		memoryID,
 		string(in.Domain),
@@ -195,6 +202,11 @@ INSERT INTO memory_revisions (
 		nullTime(expiresAt),
 		nullStr(in.Payload.Summary),
 		nullStr(in.Payload.Body),
+		// Bound as bytes, never re-marshaled. Round-tripping through a Go map
+		// would reorder keys and coerce numbers, and "stored verbatim" has to
+		// mean the bytes the caller sent.
+		nullStr(string(in.Payload.Data)),
+		nullStr(in.Payload.DataSchemaHash),
 		nullStr(in.Facets.Kind),
 		nullStr(in.Facets.Source),
 		nullStr(pointerScheme),

@@ -97,10 +97,24 @@ const (
 // a stored record validatable after the catalog moves on — it detects drift
 // instead of silently validating against a schema that changed underneath.
 //
-// Nothing consumes this yet. Structured objects (CW-20260909-0036) are the
-// consumer; the field is declared here because the field set was settled as a
-// whole in [[tesseract_type_declaration_field_set]], and adding it later would
-// mean revisiting every declaration.
+// The consumer is payload.data (CW-20260912-0036), which reads this the only
+// way a hash can be useful: a WRITE may record the hash its data claims, on the
+// revision. Drift detection needs the claim on the row, because otherwise a
+// record written under an older schema is indistinguishable from one that
+// drifted.
+//
+// Tesseract still never opens SourcePath, never parses the schema and never
+// validates data against it. It stores a claim; enforcement is the consumer's.
+//
+// This used to say "Structured objects (CW-20260909-0036) are the consumer,"
+// which pointed at a task that had already closed having shipped something else
+// (consumer_state), so the pointer read as satisfied when nothing consumed it.
+//
+// NOTE there is no API that registers a type or a schema. A type enters the
+// registry through defaults.go at compile time or an operator's types.yaml read
+// once at boot; the only type surface is read-only. Whether a registration
+// endpoint should exist is open and filed separately — it is not implied by
+// this field having a consumer.
 type SchemaRef struct {
 	SourcePath string `json:"source_path" yaml:"source_path"`
 	SchemaHash string `json:"schema_hash" yaml:"schema_hash"`

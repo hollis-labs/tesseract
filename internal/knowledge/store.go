@@ -55,6 +55,13 @@ type WriteInput struct {
 	Summary string
 	Body    string
 
+	// Data is the consumer's own object for this record, stored verbatim and
+	// never interpreted. DataSchemaHash is the caller's claim about which
+	// schema it follows, recorded and never checked. See
+	// internal/memory/payloaddata.go for the contract.
+	Data           json.RawMessage
+	DataSchemaHash string
+
 	// Authorship + trace metadata.
 	Author    memory.Author
 	SessionID string
@@ -106,8 +113,10 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		Tags:        in.Tags,
 		TTL:         in.TTL,
 		Payload: memory.Payload{
-			Summary: in.Summary,
-			Body:    in.Body,
+			Summary:        in.Summary,
+			Body:           in.Body,
+			Data:           in.Data,
+			DataSchemaHash: in.DataSchemaHash,
 		},
 		Facets: memory.Facets{
 			Kind:    in.Kind,
