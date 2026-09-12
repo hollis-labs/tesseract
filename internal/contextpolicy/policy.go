@@ -122,42 +122,111 @@ func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 		return errors.New("actor required")
 	}
 
-	if strings.HasPrefix(ns, "user/") {
-		if actor != "user" {
-			return fmt.Errorf("writes to protected namespace %q require actor=user", ns)
-		}
-		return nil
-	}
-
-	if strings.HasPrefix(ns, "app/") {
-		parts := strings.Split(ns, "/")
-		if len(parts) < 2 || parts[1] == "" {
-			return fmt.Errorf("invalid app namespace %q", ns)
-		}
-		nsOwner := parts[1]
-		if clientID != nsOwner || actor != "app:"+nsOwner {
-			return fmt.Errorf("namespace %q writable only by app:%s", ns, nsOwner)
-		}
-	}
-
+	// The registry is the authority on ownership, and it is consulted FIRST.
+	//
+	// It used to be consulted last, behind two string-prefix rules that read an
+	// owner out of the path: `user/` meant "protected, actor=user only", and
+	// `app/{id}/` meant "writable only by app:{id}", with {id} taken from the
+	// second segment. Under the scope-type-rooted grammar
+	// (CW-20260912-0078) the first segment names a SCOPE TYPE, one of six, and
+	// a scope type is not an owner — `project/tether` has an owner, and it is
+	// not "tether". Deriving one from the path is the claim this grammar
+	// removes.
 	e.mu.RLock()
-	owner, ok := e.owners[ns]
+	owner, registered := e.owners[ns]
 	e.mu.RUnlock()
-	if !ok {
+	// owner_type "system" is a SENTINEL registration for namespaces that never
+	// fit the user|app tier shape, and RegisterNamespace documents that it is
+	// not consulted for enforcement. Treating it as registered here would let a
+	// sentinel row silently disable the scope fence below — so it falls
+	// through, exactly as it did when the fence was a prefix rule.
+	if registered && owner.OwnerType != "system" {
+		switch owner.OwnerType {
+		case "user":
+			if actor != "user" {
+				return fmt.Errorf("namespace %q writable only by user", ns)
+			}
+		case "app":
+			if actor != "app:"+owner.OwnerID || clientID != owner.OwnerID {
+				return fmt.Errorf("namespace %q writable only by app:%s", ns, owner.OwnerID)
+			}
+		}
 		return nil
 	}
 
-	switch owner.OwnerType {
-	case "user":
-		if actor != "user" {
-			return fmt.Errorf("namespace %q writable only by user", ns)
-		}
-	case "app":
-		if actor != "app:"+owner.OwnerID || clientID != owner.OwnerID {
-			return fmt.Errorf("namespace %q writable only by app:%s", ns, owner.OwnerID)
+	// UNREGISTERED. These two fences stay, and CW-20260912-0078 deliberately
+	// did NOT remove them despite moving ownership to the registry in every
+	// other respect.
+	//
+	// The reason is that registration is a SIDE EFFECT OF WRITING, so the
+	// first write to any namespace arrives unregistered and reaches the
+	// fallthrough below. That makes these the only rules protecting a
+	// namespace that does not exist yet:
+	//
+	//   - user scope: without it, any actor could create a namespace in the
+	//     one tier the ADR exists to keep agents out of.
+	//   - app scope: without it, app `editor` may write `app/other/session`.
+	//     That is cross-app isolation, not bookkeeping — TestPolicyDeniedWrite,
+	//     TestPolicyAndDeterminismEndToEnd and the golden API error contract
+	//     all assert the 403, on namespaces no registry row covers.
+	//
+	// So what this grammar change actually removes here is the ad-hoc STRING
+	// PREFIX form, not the rules: both now read the scope off the shared
+	// vocabulary, so `user/` and `app/` are scope types rather than two magic
+	// strings, and the other four scopes are visibly unfenced rather than
+	// accidentally omitted.
+	//
+	// Replacing inference with declared ownership is N4's job and needs
+	// declared registration to exist first. Until then an unregistered
+	// namespace cannot be refused outright without breaking every first write,
+	// and these are a fence rather than a model.
+	if scope, id, ok := splitScopeHead(ns); ok {
+		switch scope {
+		case "user":
+			if actor != "user" {
+				return fmt.Errorf("writes to protected namespace %q require actor=user", ns)
+			}
+		case "app":
+			if id == "" {
+				return fmt.Errorf("invalid app namespace %q", ns)
+			}
+			if clientID != id || actor != "app:"+id {
+				return fmt.Errorf("namespace %q writable only by app:%s", ns, id)
+			}
 		}
 	}
 	return nil
+}
+
+// splitScopeHead returns the scope keyword and its id segment, and whether the
+// namespace begins with a known scope type.
+//
+// It duplicates no vocabulary: scopeTypes is the list, stated once below. The
+// parser in internal/memory owns the full grammar, but contextpolicy cannot
+// import it — internal/memory imports contextpolicy's peer packages and the
+// cycle is real — so what crosses the boundary is the scope vocabulary alone,
+// pinned by TestScopeVocabularyMatchesTheParser.
+func splitScopeHead(ns string) (scope, id string, ok bool) {
+	parts := strings.Split(ns, "/")
+	if len(parts) == 0 {
+		return "", "", false
+	}
+	if !scopeTypes[parts[0]] {
+		return "", "", false
+	}
+	if parts[0] == "system" {
+		return parts[0], "", true
+	}
+	if len(parts) < 2 || parts[1] == "" {
+		return parts[0], "", true
+	}
+	return parts[0], parts[1], true
+}
+
+// scopeTypes is the closed scope vocabulary, mirroring memory.scopeKeywords.
+var scopeTypes = map[string]bool{
+	"user": true, "project": true, "app": true,
+	"org": true, "session": true, "system": true,
 }
 
 // CanPromote checks promotion constraints into protected user namespace.

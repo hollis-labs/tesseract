@@ -131,7 +131,8 @@ func (a *Adapter) registerCrossDomainReadTools(s *server.MCPServer) {
 		mcp.WithString("domain", mcp.Required(), mcp.Description(
 			"Which store to read: "+domainList+". Required — there is no default, because guessing it from the namespace would answer the wrong question silently.")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description(
-			"Namespace. Memory: user/{id}/memory/{type}. Knowledge: {user|app}/{id}/knowledge/... . Event: user/{id}/event/{type}. Context: any registered namespace path.")),
+			"Namespace. The first segment is the scope type ("+memory.ScopeList()+"), the second its id; `system` is a singleton with no id segment. "+
+				"Memory: {scope}/{id}/memory/{type}. Knowledge: {scope}/{id}/knowledge/... (free depth). Event: {scope}/{id}/event/{type}. Context: any registered namespace path.")),
 		mcp.WithString("key", mcp.Required(), mcp.Description(
 			"Entry key within the namespace. This is the field memory, knowledge and event revisions carry as `memory_key`. Most event entries are keyless and are read through `event_list` instead.")),
 		// The unified tool must advertise the strongest effect of any arm. The

@@ -34,7 +34,11 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"• **Don't use this for:** deterministic selection — use `context_view` (with `full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
 				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. Memory namespaces use typed form user/{id}/memory/{type} or the prefix form user/{id}/memory (matches every type). Knowledge namespaces use user/{id}/knowledge/... (e.g. [\"user/chrispian/memory/decisions\",\"user/chrispian/knowledge/portfolio\"]).")),
+		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. The first segment is the SCOPE TYPE — one of "+memory.ScopeList()+" — and the second its id; `system` is a singleton and takes no id. "+
+			"Memory and event use the typed form {scope}/{id}/memory/{type}; knowledge has free depth after {scope}/{id}/knowledge/. "+
+			"**Append `/*` to sweep a prefix at ANY tier**: project/* (every project), project/tether/* (one project, every domain), project/tether/knowledge/* (its knowledge). "+
+			"The bare forms {scope}/{id}/memory and {scope}/{id}/event also match every type, as a grandfathered shorthand — but a bare knowledge namespace is EXACT, not a prefix, so use the explicit /* there. "+
+			"e.g. [\"project/tesseract/memory/decisions\",\"project/tesseract/knowledge/*\"].")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
 		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation). "+
 			"`activation` is defined only over domains that take part in activation, so asking for it over `event` is a validation_error rather than an ordering by a constant; an event-only recall that names no ranking resolves to `chronological`.")),
