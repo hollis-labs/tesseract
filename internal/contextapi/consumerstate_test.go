@@ -42,7 +42,7 @@ func writeTodoHTTP(t *testing.T, srv *Server, key, bag string) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"payload":{"summary":"a todo"},
 		"consumer_state":` + bag + `
@@ -63,7 +63,7 @@ func TestHTTPMemoryWriteRoundTripsConsumerState(t *testing.T) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"payload":{"summary":"buy milk"},
 		"consumer_state":` + bag + `
@@ -105,7 +105,7 @@ func TestHTTPMemoryWriteRefusesANonObjectConsumerState(t *testing.T) {
 				"author":{"agent_id":"test","agent_version":"1.0"},
 				"trigger":"explicit",
 				"session_id":"manual:01HX",
-				"origin":"user",
+				"derived_from":"user",
 				"confidence":0.9,
 				"payload":{"summary":"buy milk"},
 				"consumer_state":` + bag + `

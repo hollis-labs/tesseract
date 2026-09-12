@@ -10,16 +10,16 @@ import (
 
 func publicMemoryInput() memory.WriteInput {
 	return memory.WriteInput{
-		Domain:     memory.DomainMemory,
-		Namespace:  "user/test/memory/notes",
-		MemoryKey:  "facet.boundary",
-		Status:     memory.StatusDraft,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "s1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "public facade facet contract"},
+		Domain:      memory.DomainMemory,
+		Namespace:   "user/test/memory/notes",
+		MemoryKey:   "facet.boundary",
+		Status:      memory.StatusDraft,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "s1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "public facade facet contract"},
 	}
 }
 

@@ -25,17 +25,17 @@ func newRecallServer(t *testing.T) *Server {
 func seedMemoryWithTags(t *testing.T, srv *Server, ns, key, summary string, tags []string) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  ns,
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Tags:       tags,
-		Payload:    memory.Payload{Summary: summary},
+		Domain:      domains.Memory,
+		Namespace:   ns,
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Tags:        tags,
+		Payload:     memory.Payload{Summary: summary},
 	})
 	if err != nil {
 		t.Fatalf("seedMemoryWithTags: %v", err)

@@ -80,7 +80,7 @@ func (a *Adapter) registerRecallTool(s *server.MCPServer) {
 				"get the entry's revision history through the graph. "+
 				"No effect without `related_to`.")),
 		mcp.WithString("state_filters", mcp.Description(stateFiltersArgDescription)),
-		mcp.WithString("origins", mcp.Description("JSON array of origin filters")),
+		mcp.WithString("derived_from", mcp.Description("JSON array of derived_from filters")),
 		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
 		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
 		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence")),
@@ -177,13 +177,24 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	// Field shape and value types are validated by the store, not here, so
 	// this door and both HTTP peers cannot drift on what a state filter is.
 
-	originStrs, errRes := unmarshalStrings("origins")
+	// `origins` was this filter's name until 2026-09-12. Refused rather than
+	// ignored for the sharper of the two reasons: an ignored recall FILTER does
+	// not fail, it silently widens the result set. The caller gets rows it
+	// asked to exclude, ranked and plausible, with no error anywhere.
+	if errResult := rejectRetiredArg(req, "origins",
+		"this filter is now named `derived_from` and still takes a JSON array of the "+
+			"same five values (user, feedback, project, reference, observation). "+
+			"Only the name moved."); errResult != nil {
+		return errResult, nil
+	}
+
+	derivedFromStrs, errRes := unmarshalStrings("derived_from")
 	if errRes != nil {
 		return errRes, nil
 	}
-	var origins []memory.Origin
-	for _, o := range originStrs {
-		origins = append(origins, memory.Origin(o))
+	var derivedFrom []memory.DerivedFrom
+	for _, o := range derivedFromStrs {
+		derivedFrom = append(derivedFrom, memory.DerivedFrom(o))
 	}
 
 	statusStrs, errRes := unmarshalStrings("statuses")
@@ -230,7 +241,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
 		Query:      req.GetString("query", ""),
 		Filters: memory.RecallFilters{
-			Origins:       origins,
+			DerivedFrom:   derivedFrom,
 			Statuses:      statuses,
 			Tags:          tags,
 			ConfidenceMin: req.GetFloat("confidence_min", 0),

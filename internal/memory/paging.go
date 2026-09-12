@@ -296,7 +296,7 @@ type orderingKey struct {
 	Ranking       string   `json:"rank"`
 	Query         string   `json:"q"`
 	SearchMode    string   `json:"search_mode"`
-	Origins       []string `json:"origins"`
+	DerivedFrom   []string `json:"derived_from"`
 	Statuses      []string `json:"statuses"`
 	Tags          []string `json:"tags"`
 	ConfidenceMin float64  `json:"conf"`
@@ -347,7 +347,7 @@ func RecallOrderingFingerprint(in RecallInput) string {
 		// lexical and resumed under semantic would offset into a different
 		// sequence and return plausible, wrong rows with no error.
 		SearchMode:    string(in.SearchMode),
-		Origins:       sortedStringsFrom(in.Filters.Origins, func(o Origin) string { return string(o) }),
+		DerivedFrom:   sortedStringsFrom(in.Filters.DerivedFrom, func(o DerivedFrom) string { return string(o) }),
 		Statuses:      sortedStringsFrom(in.Filters.Statuses, func(s Status) string { return string(s) }),
 		Tags:          sortedCopy(in.Filters.Tags),
 		ConfidenceMin: in.Filters.ConfidenceMin,

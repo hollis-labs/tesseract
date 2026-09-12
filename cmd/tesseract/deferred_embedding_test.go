@@ -48,15 +48,15 @@ func TestMemorySubsystemWiresLiveDeferredEmbedding(t *testing.T) {
 
 	// A write through the production store must actually reach the queue.
 	rev, err := mem.Store.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "wiring.deferred_embedding",
-		Author:     memory.Author{AgentID: "wiring-test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:wiring",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "deferred embedding wiring probe"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "wiring.deferred_embedding",
+		Author:      memory.Author{AgentID: "wiring-test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:wiring",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "deferred embedding wiring probe"},
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)

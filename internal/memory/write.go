@@ -23,20 +23,20 @@ type WriteInput struct {
 	// Domain selects the revision's policy bucket. REQUIRED — there is no
 	// default, and an empty value is a validation error carrying
 	// errDomainRequired. See that message for why the default was removed.
-	Domain     domains.Domain
-	Namespace  string
-	MemoryKey  string
-	Supersedes string
-	Status     Status
-	Author     Author
-	Trigger    Trigger
-	SessionID  string
-	Origin     Origin
-	Confidence float64
-	Tags       []string
-	TTL        time.Duration
-	Payload    Payload
-	Facets     Facets
+	Domain      domains.Domain
+	Namespace   string
+	MemoryKey   string
+	Supersedes  string
+	Status      Status
+	Author      Author
+	Trigger     Trigger
+	SessionID   string
+	DerivedFrom DerivedFrom
+	Confidence  float64
+	Tags        []string
+	TTL         time.Duration
+	Payload     Payload
+	Facets      Facets
 
 	// ConsumerState is the consumer's operational JSON bag for this revision
 	// (CW-20260909-0036). Empty writes SQL NULL, which is what every revision
@@ -171,7 +171,7 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
-    created_at, author_agent_id, author_version, trigger, session_id, origin,
+    created_at, author_agent_id, author_version, trigger, session_id, derived_from,
     confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
     facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
     consumer_state
@@ -188,7 +188,7 @@ INSERT INTO memory_revisions (
 		in.Author.AgentVersion,
 		string(in.Trigger),
 		in.SessionID,
-		string(in.Origin),
+		string(in.DerivedFrom),
 		in.Confidence,
 		string(tagsJSON),
 		nullInt(ttlSeconds),
@@ -344,7 +344,7 @@ INSERT INTO memory_revisions (
 		Author:        in.Author,
 		Trigger:       in.Trigger,
 		SessionID:     in.SessionID,
-		Origin:        in.Origin,
+		DerivedFrom:   in.DerivedFrom,
 		Confidence:    in.Confidence,
 		Tags:          tags,
 		TTLSeconds:    ttlSeconds,
@@ -471,11 +471,11 @@ func validateWriteInput(in WriteInput) error {
 	if in.Author.AgentID == "" {
 		return fmt.Errorf("%w: author.agent_id is required", ErrInvalidInput)
 	}
-	if in.Origin == "" {
-		return fmt.Errorf("%w: origin is required", ErrInvalidInput)
+	if in.DerivedFrom == "" {
+		return fmt.Errorf("%w: derived_from is required", ErrInvalidInput)
 	}
-	if !in.Origin.Valid() {
-		return fmt.Errorf("%w: invalid origin %q", ErrInvalidInput, in.Origin)
+	if !in.DerivedFrom.Valid() {
+		return fmt.Errorf("%w: invalid derived_from %q", ErrInvalidInput, in.DerivedFrom)
 	}
 	if in.Trigger == "" {
 		return fmt.Errorf("%w: trigger is required", ErrInvalidInput)

@@ -83,7 +83,7 @@ type RecallInput struct {
 
 // RecallFilters constrains which revisions are returned.
 type RecallFilters struct {
-	Origins       []Origin
+	DerivedFrom   []DerivedFrom
 	Statuses      []Status
 	Tags          []string
 	ConfidenceMin float64
@@ -215,7 +215,7 @@ type RecallFilters struct {
 //
 //	activation   activation strength (recency x reinforcement x confidence)
 //	similarity   cosine similarity between query and revision embeddings
-//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/origin/activation
+//	relevance + hybrid    RRF-fused BM25 + cosine, weighted by status/derived_from/activation
 //	relevance + semantic  cosine similarity
 //	relevance + lexical   no score — nil; order is the signal
 //	chronological  no score — nil
@@ -771,7 +771,7 @@ func includesStatus(statuses []Status, want Status) bool {
 // explicit r. prefix to avoid ambiguity when JOINing with memory_state.
 const recallRevisionColumns = `r.revision_id, r.memory_id, r.domain, r.namespace, COALESCE(r.memory_key, ''),
        r.status, COALESCE(r.supersedes, ''), r.created_at,
-       r.author_agent_id, r.author_version, r.trigger, r.session_id, r.origin,
+       r.author_agent_id, r.author_version, r.trigger, r.session_id, r.derived_from,
        r.confidence, r.tags, COALESCE(r.ttl_seconds, 0), r.expires_at,
        COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, ''),
        COALESCE(r.embedding_model, ''), r.embedding_vector,
@@ -893,7 +893,7 @@ const SimilarityMinBoundaryRule = "the floor is inclusive — a result clears it
 //	                                        the cosine through untouched.
 //
 //	ranking=relevance + search_mode=hybrid  the score is an RRF fusion of two
-//	    arm POSITIONS multiplied by status/origin/confidence/recency/activation
+//	    arm POSITIONS multiplied by status/derived_from/confidence/recency/activation
 //	    modifiers. It is not a similarity and is not on the same scale. Worse,
 //	    the BM25 arm admits revisions with no embedding at all, so a floor
 //	    applied to the cosine arm would not bound what the caller receives —

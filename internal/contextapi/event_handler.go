@@ -30,18 +30,18 @@ import (
 // rest of the HTTP API to match another protocol's ergonomics would be a worse
 // inconsistency than the one it removed.
 type eventWriteRequest struct {
-	Namespace  string         `json:"namespace"`
-	Key        string         `json:"key,omitempty"`
-	Summary    string         `json:"summary"`
-	Body       string         `json:"body,omitempty"`
-	Author     memory.Author  `json:"author"`
-	SessionID  string         `json:"session_id"`
-	Tags       []string       `json:"tags,omitempty"`
-	TTLSeconds int64          `json:"ttl_seconds,omitempty"`
-	Confidence float64        `json:"confidence,omitempty"`
-	Origin     memory.Origin  `json:"origin,omitempty"`
-	Trigger    memory.Trigger `json:"trigger,omitempty"`
-	Supersedes string         `json:"supersedes,omitempty"`
+	Namespace   string             `json:"namespace"`
+	Key         string             `json:"key,omitempty"`
+	Summary     string             `json:"summary"`
+	Body        string             `json:"body,omitempty"`
+	Author      memory.Author      `json:"author"`
+	SessionID   string             `json:"session_id"`
+	Tags        []string           `json:"tags,omitempty"`
+	TTLSeconds  int64              `json:"ttl_seconds,omitempty"`
+	Confidence  float64            `json:"confidence,omitempty"`
+	DerivedFrom memory.DerivedFrom `json:"derived_from,omitempty"`
+	Trigger     memory.Trigger     `json:"trigger,omitempty"`
+	Supersedes  string             `json:"supersedes,omitempty"`
 
 	// ConsumerState is the writer's operational JSON bag (CW-20260909-0036) —
 	// the state an event carries that the epistemic status ladder cannot say.
@@ -81,7 +81,7 @@ func (s *Server) handleEventWrite(w http.ResponseWriter, r *http.Request) {
 		Tags:          req.Tags,
 		TTL:           time.Duration(req.TTLSeconds) * time.Second,
 		Confidence:    req.Confidence,
-		Origin:        req.Origin,
+		DerivedFrom:   req.DerivedFrom,
 		Trigger:       req.Trigger,
 		Supersedes:    req.Supersedes,
 		ConsumerState: req.ConsumerState,

@@ -17,15 +17,15 @@ const eventNS = "user/chrispian/event/reasoning"
 
 func eventInput(summary string) memory.WriteInput {
 	return memory.WriteInput{
-		Domain:     domains.Event,
-		Namespace:  eventNS,
-		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginObservation,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: summary, Body: "reasoning: " + summary},
+		Domain:      domains.Event,
+		Namespace:   eventNS,
+		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromObservation,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: summary, Body: "reasoning: " + summary},
 	}
 }
 

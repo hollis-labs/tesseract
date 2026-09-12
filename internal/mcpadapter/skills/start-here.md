@@ -24,7 +24,7 @@ Tesseract is a local-first, append-only context and memory service. You reach it
 >
 > **Memory is content that comes *to you*.** Surfaced by recall when you are working nearby, dated, superseded rather than edited.
 
-**Origin does not decide this, and used to be claimed to.** Until 2026-09-10 the guidance said knowledge was for external content and that agent-authored content with no external source belonged in memory. That was false for every populated knowledge kind an agent writes — `investigation`, `session_close` and `project_canonical` are all agent-authored with nothing outside Tesseract to point at, and `pointer_scheme: "nil"` exists to say so. Both domains are mostly agent-authored. What separates them is **how the content gets found again**.
+**`derived_from` does not decide this, and used to be claimed to.** Until 2026-09-10 the guidance said knowledge was for external content and that agent-authored content with no external source belonged in memory. That was false for every populated knowledge kind an agent writes — `investigation`, `session_close` and `project_canonical` are all agent-authored with nothing outside Tesseract to point at, and `pointer_scheme: "nil"` exists to say so. Both domains are mostly agent-authored. What separates them is **how the content gets found again**.
 
 **Where this stops.** *"I might look this up later"* is not the test, and reading it that way sends everything to knowledge — nearly all memory is looked up eventually. The question that actually separates them is whether you could **name it before you went looking**:
 

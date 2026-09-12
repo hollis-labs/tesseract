@@ -75,6 +75,12 @@ Writes never mutate: `AppendRecord` allocates the next revision and advances
 `heads` in one transaction. Cross-namespace movement goes through the
 request → approve → apply promotion workflow, which apps cannot bypass.
 
+`derived_from` was called `origin` until 2026-09-12 (schema 22). The values did
+not change; the name is refused rather than ignored on every surface, because an
+ignored recall filter widens a result set silently. It is a recall ranking
+multiplier (`derivedFromWeights`), not a label — which is why a name that
+invited the wrong value was worth a breaking change.
+
 `memory.WriteInput.Domain` is required and has no default. The surfaces set it
 for their own domain — `memory_write` and `/v1/memory/write` stamp `memory`,
 `knowledge.Store.Write` and `event.Store.Write` stamp theirs — so a caller

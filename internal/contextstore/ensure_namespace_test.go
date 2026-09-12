@@ -199,7 +199,7 @@ VALUES (?, ?, ?, ?, 1.0, 0)`,
 		if _, err := s.db.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, created_at,
-    author_agent_id, author_version, trigger, session_id, origin, confidence,
+    author_agent_id, author_version, trigger, session_id, derived_from, confidence,
     tags, payload_summary
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"r-"+memID, memID, "memory", namespace, key, "canonical",

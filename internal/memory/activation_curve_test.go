@@ -435,7 +435,7 @@ func TestReinforcementDecayEquilibrium(t *testing.T) {
 			// Scope: this is a claim about memory_state.activation, the column
 			// this curve governs. It is NOT a claim about rank order.
 			// ranking=activation scores with activationScore (ranking.go), which
-			// multiplies the column by status, confidence, origin and recency
+			// multiplies the column by status, confidence, derived_from and recency
 			// weights — so two memories can order either way depending on those.
 			// TestFreshMemoryMovesUnderTouch is the per-touch counterpart of
 			// this; neither says anything about the composite score.

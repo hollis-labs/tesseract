@@ -30,7 +30,7 @@ INSERT INTO memory_state (
 		if _, err := db.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, created_at,
-    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
     tags, expires_at, payload_summary, facet_kind, facet_source,
     facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at
 ) VALUES (?, 'mem-prefix', 'memory', 'user/test/memory/notes', 'prefix.key',
@@ -161,7 +161,7 @@ VALUES ('mem-invalid', 'user/test/memory/notes', 'invalid.key', 'memory')`); err
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, created_at,
-    author_agent_id, author_version, "trigger", session_id, origin, confidence,
+    author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
     tags, expires_at, payload_summary
 ) VALUES (
     'rev-invalid', 'mem-invalid', 'memory', 'user/test/memory/notes', 'invalid.key',

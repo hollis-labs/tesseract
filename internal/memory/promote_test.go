@@ -13,15 +13,15 @@ import (
 // sessionInput returns a WriteInput rooted in a session-scoped namespace.
 func sessionInput(key string) memory.WriteInput {
 	return memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/session/sess123/memory/notes",
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/session/sess123/memory/notes",
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
 		Payload: memory.Payload{
 			Summary: "User prefers terse output",
 			Body:    "**Why:** repeated feedback. **How to apply:** no trailing summaries.",

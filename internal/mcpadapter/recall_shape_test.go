@@ -25,7 +25,7 @@ func recallShapeAdapter(t *testing.T) *Adapter {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-001",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.9,
 		"payload_summary": "shape probe",
 	})

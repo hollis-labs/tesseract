@@ -25,16 +25,16 @@ func newLookupServer(t *testing.T) *Server {
 func seedMemory(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "prefs.terse",
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "terse output"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "prefs.terse",
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "terse output"},
 	})
 	if err != nil {
 		t.Fatalf("seed memory: %v", err)
@@ -181,16 +181,16 @@ const lookupBodySentinel = "BODY-SENTINEL rest body that projection must drop"
 func seedMemoryWithBody(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "prefs.body",
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HY",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "has a body", Body: lookupBodySentinel},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "prefs.body",
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HY",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "has a body", Body: lookupBodySentinel},
 	})
 	if err != nil {
 		t.Fatalf("seed memory with body: %v", err)
@@ -401,16 +401,16 @@ func TestTesseractLookup_FacetsCountReturnedRowsOnly(t *testing.T) {
 	srv := newLookupServer(t)
 	for i := 0; i < 5; i++ {
 		_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			MemoryKey:  "facet.probe." + string(rune('a'+i)),
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "manual:01HZ",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: "facet probe"},
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			MemoryKey:   "facet.probe." + string(rune('a'+i)),
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "manual:01HZ",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: "facet probe"},
 		})
 		if err != nil {
 			t.Fatalf("seed: %v", err)

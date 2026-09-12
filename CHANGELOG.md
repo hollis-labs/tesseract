@@ -63,6 +63,38 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- **`origin` is renamed to `derived_from` on every surface. Breaking, and the
+  old name is refused rather than ignored.** The five values are unchanged:
+  `user`, `feedback`, `project`, `reference`, `observation`.
+
+  Callers must rename one field. MCP: `memory_write(origin:)` →
+  `derived_from:`, and the `tesseract_recall` filter `origins` →
+  `derived_from`. HTTP: the `origin` body field on `/v1/memory/write` and
+  `/v1/event/write`, and `origins` in the lookup/recall filters. Go:
+  `memory.Origin` → `memory.DerivedFrom`, `memory.OriginUser` →
+  `memory.DerivedFromUser` (and the other four), `WriteInput.Origin` →
+  `.DerivedFrom`, `RecallFilters.Origins` → `.DerivedFrom`. The response field
+  on every revision is now `derived_from`.
+
+  **Both surfaces refuse the retired name with an error naming the
+  replacement**, following the `budget_items` precedent from v0.10.0: ignoring
+  a retired spelling is worse than rejecting it, and worst of all on the recall
+  FILTER, where an ignored `origins` does not fail — it silently widens the
+  candidate set and returns rows the caller asked to exclude.
+
+  **Why the churn was accepted.** `origin` read as *who originated this*, so
+  `origin: "user"` was being filled in as an authorship or approval claim by
+  agents that had merely been talking to a person. The field is a multiplier on
+  the recall score in both weighting paths (`derivedFromWeights`), so `user`
+  outranks the identical record stamped `observation` by 1.375x — a name that
+  invites the wrong value is a name that quietly sells ranking. 78 of 518
+  current `memory/decisions` heads carry `user`. `derived_from` states the
+  relationship rather than the actor.
+
+  **Schema migration 22** renames the column over 2,259 revisions. It is
+  `ALTER TABLE RENAME COLUMN` — metadata-only, no row rewritten, values
+  untouched.
+
 - **`memory.WriteInput.Domain` is required and no longer defaults to `memory`.**
   Breaking for the Go library surface only: `Tesseract.WriteMemory` and
   `memory.Store.WriteRevision` now reject an empty `Domain` with a

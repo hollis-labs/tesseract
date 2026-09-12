@@ -65,14 +65,14 @@ func seedBudgetRows(t *testing.T, srv *Server, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
 		if _, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-budget",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-budget",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
 			Payload: memory.Payload{
 				Summary: "budget probe row",
 				Body:    strings.Repeat("x", 200),
@@ -261,17 +261,17 @@ func seedHistory(t *testing.T, srv *Server, n int) {
 	var last string
 	for i := 0; i < n; i++ {
 		rev, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			MemoryKey:  "hist.key",
-			Supersedes: last,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-hist",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: "history probe"},
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			MemoryKey:   "hist.key",
+			Supersedes:  last,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-hist",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: "history probe"},
 		})
 		if err != nil {
 			t.Fatalf("seed history %d: %v", i, err)

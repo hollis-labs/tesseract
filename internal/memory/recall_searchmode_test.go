@@ -10,7 +10,7 @@ package memory_test
 //     of one adjacency-bound phrase, the decoys that scatter CW, 20260519 and
 //     0032 across unrelated text would match, and the shorter ones would
 //     outrank the target on bm25.
-//   - If lexical applied hybrid's status/origin/confidence/recency/activation
+//   - If lexical applied hybrid's status/derived_from/confidence/recency/activation
 //     modifiers, the deliberately low-confidence draft target would be pushed
 //     below the canonical, high-confidence, freshly-reinforced decoys — which
 //     is exactly what the hybrid assertion in the same test demonstrates.
@@ -41,8 +41,8 @@ const ticketID = "CW-20260519-0032"
 // four decoys that carry its three tokens scattered.
 //
 // The target is deliberately the WEAKEST row by every non-retrieval signal:
-// draft status (0.6), observation origin (0.8), confidence 0.2, never read.
-// The decoys are the strongest: canonical (1.0), feedback origin (1.3),
+// draft status (0.6), observation derived_from (0.8), confidence 0.2, never read.
+// The decoys are the strongest: canonical (1.0), feedback derived_from (1.3),
 // confidence 1.0, and reinforced below so their activation and recency are
 // high. Any ordering that consults those signals puts the target last.
 func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
@@ -50,15 +50,15 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 	ctx := context.Background()
 
 	target := memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  searchModeNS,
-		MemoryKey:  "target.ticket",
-		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:searchmode",
-		Origin:     memory.OriginObservation,
-		Confidence: 0.2,
-		Status:     memory.StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   searchModeNS,
+		MemoryKey:   "target.ticket",
+		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:searchmode",
+		DerivedFrom: memory.DerivedFromObservation,
+		Confidence:  0.2,
+		Status:      memory.StatusDraft,
 		Payload: memory.Payload{
 			Summary: "Decision recorded under " + ticketID,
 			Body:    "The lane that shipped it. " + strings.Repeat("padding words here. ", 40),
@@ -79,16 +79,16 @@ func seedIdentifierCorpus(t *testing.T, ms *memory.Store) string {
 	}
 	for _, d := range decoys {
 		in := memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  searchModeNS,
-			MemoryKey:  d.key,
-			Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "manual:searchmode",
-			Origin:     memory.OriginFeedback,
-			Confidence: 1.0,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: d.summary, Body: d.body},
+			Domain:      domains.Memory,
+			Namespace:   searchModeNS,
+			MemoryKey:   d.key,
+			Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "manual:searchmode",
+			DerivedFrom: memory.DerivedFromFeedback,
+			Confidence:  1.0,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: d.summary, Body: d.body},
 		}
 		if _, err := ms.WriteRevision(ctx, in); err != nil {
 			t.Fatalf("write %s: %v", d.key, err)
@@ -227,7 +227,7 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 		Namespace: searchModeNS, MemoryKey: "mod.weak",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
-		Origin: memory.OriginObservation, Confidence: 0.1, Status: memory.StatusDraft,
+		DerivedFrom: memory.DerivedFromObservation, Confidence: 0.1, Status: memory.StatusDraft,
 		Payload: memory.Payload{Summary: "xylophone", Body: ""},
 	}
 	strong := memory.WriteInput{
@@ -235,7 +235,7 @@ func TestSearchModeLexical_IgnoresActivationModifiers(t *testing.T) {
 		Namespace: searchModeNS, MemoryKey: "mod.strong",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:mod",
-		Origin: memory.OriginFeedback, Confidence: 1.0, Status: memory.StatusCanonical,
+		DerivedFrom: memory.DerivedFromFeedback, Confidence: 1.0, Status: memory.StatusCanonical,
 		Payload: memory.Payload{Summary: "xylophone", Body: strings.Repeat("filler ", 300)},
 	}
 	if _, err := ms.WriteRevision(ctx, weak); err != nil {
@@ -370,7 +370,7 @@ func TestSearchModeSemantic_ReturnsCosineOrderingWithScores(t *testing.T) {
 			Namespace: searchModeNS, MemoryKey: r.key,
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
-			Origin: memory.OriginUser, Confidence: 0.9, Status: memory.StatusCanonical,
+			DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
 			Payload: memory.Payload{Summary: r.summary, Body: r.body},
 		}
 		rev, err := ms.WriteRevision(ctx, in)
@@ -432,7 +432,7 @@ func TestSearchModeSemantic_SkipsUnembeddedThatLexicalFinds(t *testing.T) {
 		Namespace: searchModeNS, MemoryKey: "fresh.unembedded",
 		Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 		Trigger: memory.TriggerExplicit, SessionID: "manual:sem",
-		Origin: memory.OriginUser, Confidence: 0.9, Status: memory.StatusCanonical,
+		DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
 		Payload: memory.Payload{Summary: "alpha zebracrossing", Body: ""},
 	}
 	if _, err := ms.WriteRevision(ctx, in); err != nil {
@@ -588,7 +588,7 @@ func TestSearchMode_OperatorsAreOperatorsUnderHybridAndLiteralUnderLexical(t *te
 			Namespace: searchModeNS, MemoryKey: r.key,
 			Author:  memory.Author{AgentID: "t", AgentVersion: "1"},
 			Trigger: memory.TriggerExplicit, SessionID: "manual:op",
-			Origin: memory.OriginUser, Confidence: 0.9, Status: memory.StatusCanonical,
+			DerivedFrom: memory.DerivedFromUser, Confidence: 0.9, Status: memory.StatusCanonical,
 			Payload: memory.Payload{Summary: r.summary, Body: r.body},
 		}
 		if _, err := ms.WriteRevision(ctx, in); err != nil {

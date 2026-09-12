@@ -733,7 +733,7 @@ export const demo = {
       author: { agent_id: "demo-agent", agent_version: "0.1.0" },
       trigger: "explicit",
       session_id: "session-demo",
-      origin: "project",
+      derived_from: "project",
       confidence: 0.92,
       tags: ["demo", "memory", memoryKey.split("_")[0] ?? "general"],
       payload: {

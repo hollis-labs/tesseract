@@ -31,22 +31,22 @@ func (s *Server) memoryStoreUnavailable(w http.ResponseWriter) bool {
 // in the other surface's shape by name rather than decoding it into a
 // zero-valued struct — see the rationale on knowledgeWriteRequest.
 type memoryWriteRequest struct {
-	Domain         domains.Domain `json:"domain,omitempty"`
-	Namespace      string         `json:"namespace"`
-	MemoryKey      string         `json:"memory_key,omitempty"`
-	Supersedes     string         `json:"supersedes,omitempty"`
-	Status         memory.Status  `json:"status,omitempty"`
-	Author         memory.Author  `json:"author"`
-	Trigger        memory.Trigger `json:"trigger"`
-	SessionID      string         `json:"session_id"`
-	Origin         memory.Origin  `json:"origin"`
-	Confidence     float64        `json:"confidence"`
-	Tags           []string       `json:"tags,omitempty"`
-	TTLSeconds     int64          `json:"ttl_seconds,omitempty"`
-	Payload        memory.Payload `json:"payload"`
-	Facets         memory.Facets  `json:"facets,omitempty"`
-	Dedup          string         `json:"dedup,omitempty"`
-	DedupThreshold float64        `json:"dedup_threshold,omitempty"`
+	Domain         domains.Domain     `json:"domain,omitempty"`
+	Namespace      string             `json:"namespace"`
+	MemoryKey      string             `json:"memory_key,omitempty"`
+	Supersedes     string             `json:"supersedes,omitempty"`
+	Status         memory.Status      `json:"status,omitempty"`
+	Author         memory.Author      `json:"author"`
+	Trigger        memory.Trigger     `json:"trigger"`
+	SessionID      string             `json:"session_id"`
+	DerivedFrom    memory.DerivedFrom `json:"derived_from"`
+	Confidence     float64            `json:"confidence"`
+	Tags           []string           `json:"tags,omitempty"`
+	TTLSeconds     int64              `json:"ttl_seconds,omitempty"`
+	Payload        memory.Payload     `json:"payload"`
+	Facets         memory.Facets      `json:"facets,omitempty"`
+	Dedup          string             `json:"dedup,omitempty"`
+	DedupThreshold float64            `json:"dedup_threshold,omitempty"`
 
 	// ConsumerState is the caller's own operational JSON bag for this revision
 	// (CW-20260909-0036). Nested as an object here, matching the rest of this
@@ -90,7 +90,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		Author:         req.Author,
 		Trigger:        req.Trigger,
 		SessionID:      req.SessionID,
-		Origin:         req.Origin,
+		DerivedFrom:    req.DerivedFrom,
 		Confidence:     req.Confidence,
 		Tags:           req.Tags,
 		TTL:            time.Duration(req.TTLSeconds) * time.Second,
@@ -145,7 +145,7 @@ type memoryRecallRequest struct {
 	// It is declared FLAT here, next to search_mode and payload_mode, rather
 	// than left to ride inside `filters`. The MCP argument is spelled
 	// similarity_min, and this route's `filters` object decodes
-	// memory.RecallFilters with Go's default field names (Origins, Tags,
+	// memory.RecallFilters with Go's default field names (DerivedFrom, Tags,
 	// ConfidenceMin, ...), so a nested spelling would be `SimilarityMin` and the
 	// two doors would disagree on the name of the same knob. Flat keeps the
 	// vocabulary identical across all four surfaces.
@@ -157,7 +157,7 @@ type memoryRecallRequest struct {
 	// rather than left to be discovered.
 	//
 	// Note what that means for the nested object: memory.RecallFilters carries
-	// no struct tags, so its keys are its Go field names (Origins, Statuses,
+	// no struct tags, so its keys are its Go field names (DerivedFrom, Statuses,
 	// Tags, ConfidenceMin, ...), matched case-insensitively and NOT across
 	// underscores. `filters` is the one place on this surface that is not
 	// snake_case. Under decodeRequestBody a snake_case child now returns a 400

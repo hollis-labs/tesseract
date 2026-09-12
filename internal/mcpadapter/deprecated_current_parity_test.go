@@ -20,16 +20,16 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 	write := func(key string) memory.Revision {
 		t.Helper()
 		rev, err := store.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  "user/chrispian/memory/notes",
-			MemoryKey:  key,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "deprecated-current-parity",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusDraft,
-			Payload:    memory.Payload{Summary: "deprecated current parity probe"},
+			Domain:      domains.Memory,
+			Namespace:   "user/chrispian/memory/notes",
+			MemoryKey:   key,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "deprecated-current-parity",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusDraft,
+			Payload:     memory.Payload{Summary: "deprecated current parity probe"},
 		})
 		if err != nil {
 			t.Fatalf("write %s: %v", key, err)
@@ -44,17 +44,17 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 
 	supersededRev := write("deprecated.parity.superseded")
 	replacementIn := memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  "deprecated.parity.superseded",
-		Supersedes: supersededRev.RevisionID,
-		Author:     memory.Author{AgentID: "test", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "deprecated-current-parity",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
-		Payload:    memory.Payload{Summary: "deprecated current parity probe replacement"},
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   "deprecated.parity.superseded",
+		Supersedes:  supersededRev.RevisionID,
+		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "deprecated-current-parity",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
+		Payload:     memory.Payload{Summary: "deprecated current parity probe replacement"},
 	}
 	replacementRev, err := store.WriteRevision(ctx, replacementIn)
 	if err != nil {

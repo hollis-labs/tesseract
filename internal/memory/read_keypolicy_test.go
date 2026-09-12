@@ -99,15 +99,15 @@ func TestKnowledgeReadsAreNotHeldToTheMemoryKeyRule(t *testing.T) {
 	const knowledgeKey = "framework.go-providers"
 
 	written, err := ms.WriteRevision(ctx, memory.WriteInput{
-		Domain:     domains.Knowledge,
-		Namespace:  ns,
-		MemoryKey:  knowledgeKey,
-		Author:     memory.Author{AgentID: "indexer", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "indexer:01HX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "go-providers: multi-provider AI adapter"},
+		Domain:      domains.Knowledge,
+		Namespace:   ns,
+		MemoryKey:   knowledgeKey,
+		Author:      memory.Author{AgentID: "indexer", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "indexer:01HX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "go-providers: multi-provider AI adapter"},
 		Facets: memory.Facets{
 			Kind:    "package",
 			Source:  "filesystem",

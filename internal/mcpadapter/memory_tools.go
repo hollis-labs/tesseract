@@ -16,7 +16,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 	a.addTool(s, mcp.NewTool("memory_write",
 		mcp.WithDescription(
 			"**Append an agent memory revision** under `(namespace, memory_key)`.\n"+
-				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which nests the same fields differently. Seven arguments are required, and `trigger`, `origin` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
+				"• **Read this first:** call `tesseract_skills memory` before composing a write. It carries the complete request shape as a copy-pasteable payload — for this surface AND for the HTTP peer, which nests the same fields differently. Seven arguments are required, and `trigger`, `derived_from` and the namespace `{type}` segment are closed vocabularies; the skill is faster than finding that out one validation_error at a time.\n"+
 				"• **Kind of content:** agent observations, preferences, session notes — content you'll want to recall by similarity, activation, or chronological order.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				domainBoundaryLine+
@@ -36,7 +36,7 @@ func (a *Adapter) registerMemoryTools(s *server.MCPServer) {
 		mcp.WithString("author_version", mcp.Description("Agent version string")),
 		mcp.WithString("trigger", mcp.Required(), mcp.Description("Trigger: explicit|post_compact|per_turn|promotion|manual")),
 		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier (e.g. 2026-04-19:backend)")),
-		mcp.WithString("origin", mcp.Required(), mcp.Description("Origin: user|feedback|project|reference|observation")),
+		mcp.WithString("derived_from", mcp.Required(), mcp.Description("DerivedFrom: user|feedback|project|reference|observation")),
 		mcp.WithNumber("confidence", mcp.Required(), mcp.Description("Confidence score in [0, 1.0] (e.g. 0.9)")),
 		mcp.WithString("tags", mcp.Description("JSON array of string tags (e.g. [\"preference\",\"style\"])")),
 		mcp.WithNumber("ttl_seconds", mcp.Description("Time-to-live in seconds (0 = no expiry)")),
@@ -81,6 +81,22 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 		return res, nil
 	}
 
+	// `origin` was this argument's name until 2026-09-12. Refused, not
+	// ignored: mcp-go does not set additionalProperties:false, so an argument
+	// the tool no longer declares still arrives at the handler with nothing
+	// reading it. An ignored `origin` would leave `derived_from` empty, and a
+	// caller who supplied a value would be told a required field is missing —
+	// a confusing error about the wrong field. Worse, had this field carried a
+	// default, the write would have SUCCEEDED at the wrong ranking weight.
+	if errResult := rejectRetiredArg(req, "origin",
+		"this field is now named `derived_from`. The five values are unchanged "+
+			"(user, feedback, project, reference, observation) — only the name moved, "+
+			"because `origin` read as *who originated this* and was being filled in as "+
+			"an authorship claim. It is a recall ranking multiplier, so the value matters "+
+			"beyond labeling; see `tesseract_skills memory`."); errResult != nil {
+		return errResult, nil
+	}
+
 	// Parse tags — accept both native JSON array and JSON-encoded string.
 	tags, _, err := parseStringArrayArg(req, "tags")
 	if err != nil {
@@ -103,12 +119,12 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),
 		},
-		Trigger:    memory.Trigger(req.GetString("trigger", "")),
-		SessionID:  req.GetString("session_id", ""),
-		Origin:     memory.Origin(req.GetString("origin", "")),
-		Confidence: req.GetFloat("confidence", 0),
-		Tags:       tags,
-		TTL:        time.Duration(ttlSeconds) * time.Second,
+		Trigger:     memory.Trigger(req.GetString("trigger", "")),
+		SessionID:   req.GetString("session_id", ""),
+		DerivedFrom: memory.DerivedFrom(req.GetString("derived_from", "")),
+		Confidence:  req.GetFloat("confidence", 0),
+		Tags:        tags,
+		TTL:         time.Duration(ttlSeconds) * time.Second,
 		Payload: memory.Payload{
 			Summary: req.GetString("payload_summary", ""),
 			Body:    req.GetString("payload_body", ""),

@@ -37,7 +37,7 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
 		"payload":{"summary":"terse output"}
@@ -99,7 +99,7 @@ func TestMemoryHistory_RoundtripViaHTTP(t *testing.T) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
 		"payload":{"summary":"v%d"}
@@ -156,7 +156,7 @@ func TestMemoryWrite_FlatMCPBodyRejectedWithNestedHint(t *testing.T) {
 		"author_agent_id":"test",
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9
 	}`
 	env := mustRejectUnknownField(t, srv, "/v1/memory/write", body, "payload_summary")
@@ -273,7 +273,7 @@ func TestPostRoutesStillAcceptTheirCanonicalBodies(t *testing.T) {
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
-		"origin":"user",
+		"derived_from":"user",
 		"confidence":0.9,
 		"status":"draft",
 		"tags":["style"],
@@ -344,5 +344,62 @@ func TestPostRoutesStillAcceptTheirCanonicalBodies(t *testing.T) {
 				t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 			}
 		})
+	}
+}
+
+// TestMemoryWrite_RetiredOriginNamesItsReplacement covers the HTTP half of the
+// `origin` → `derived_from` rename (2026-09-12).
+//
+// The REFUSAL is free here and always has been: decodeJSON runs
+// DisallowUnknownFields, so an HTTP caller sending the old name fails closed
+// rather than having its value dropped. What this pins is the other half —
+// that the rejection tells a migrating client where the value went. A bare
+// `unknown field "origin"` is a correct denial and a useless one: it says the
+// field is wrong without saying what is right, which is the shape
+// `actionable-failures.md` calls a denial that costs another turn.
+func TestMemoryWrite_RetiredOriginNamesItsReplacement(t *testing.T) {
+	srv := newMemoryTestServer(t)
+
+	body := `{
+		"namespace":"user/chrispian/memory/notes",
+		"author":{"agent_id":"test","agent_version":"1.0"},
+		"trigger":"explicit",
+		"session_id":"manual:01HX",
+		"origin":"observation",
+		"confidence":0.9,
+		"payload":{"summary":"a write using the retired field name"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 — the retired name was ACCEPTED, and a write that "+
+			"silently drops derived_from takes a default ranking weight nobody chose; body=%s",
+			rr.Code, rr.Body.String())
+	}
+	// Asserting only that the body mentions `derived_from` would be VACUOUS:
+	// every unknown-field rejection already lists the accepted fields, and
+	// `derived_from` is one of them. What the hint uniquely adds is the
+	// CORRESPONDENCE — that this retired name maps to that new one — so that is
+	// what gets pinned, structurally in details and as an explanation in the
+	// message.
+	var env struct {
+		Message string `json:"message"`
+		Details struct {
+			RenamedTo string `json:"renamed_to"`
+		} `json:"details"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Details.RenamedTo != "derived_from" {
+		t.Errorf("details.renamed_to = %q, want %q — the caller is told its field is unknown "+
+			"but not where the value went: %s", env.Details.RenamedTo, "derived_from", rr.Body.String())
+	}
+	if !strings.Contains(env.Message, "renamed") {
+		t.Errorf("the message does not explain that the field was renamed, so a caller reading "+
+			"prose rather than parsing details learns nothing: %s", env.Message)
 	}
 }

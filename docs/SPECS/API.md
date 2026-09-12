@@ -297,7 +297,7 @@ HTTP uses nested objects:
   "author": {"agent_id": "assistant", "agent_version": "1"},
   "trigger": "explicit",
   "session_id": "session-2026-09-04",
-  "origin": "user",
+  "derived_from": "user",
   "confidence": 0.9,
   "tags": ["preference"],
   "payload": {"summary": "Prefer concise diffs.", "body": "Keep reviews focused."}

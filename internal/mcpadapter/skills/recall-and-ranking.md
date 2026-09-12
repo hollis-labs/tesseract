@@ -32,8 +32,8 @@ For reading a log in order — with keyset paging and a time window — use `eve
 
 | `search_mode` | What runs | Ordered by |
 |---|---|---|
-| `hybrid` | BM25 + cosine, fused by RRF, then weighted by status, origin, confidence, recency and activation | fused score |
-| `lexical` | BM25 alone | `bm25()` — match strength, with `memory_key` weighted above the prose columns; none of the status/origin/confidence/recency/activation weighting |
+| `hybrid` | BM25 + cosine, fused by RRF, then weighted by status, derived_from, confidence, recency and activation | fused score |
+| `lexical` | BM25 alone | `bm25()` — match strength, with `memory_key` weighted above the prose columns; none of the status/derived_from/confidence/recency/activation weighting |
 | `semantic` | cosine alone | cosine similarity |
 
 The default is `hybrid`, which is what every caller got before the knob existed.
@@ -85,7 +85,7 @@ Projected results (`keys`, `summary`) carry a `payload_mode` field; `full` resul
 |---|---|
 | `activation` | activation strength — recency x reinforcement x confidence |
 | `similarity` | cosine similarity between query and revision embeddings; legitimately 0 (orthogonal) or negative (opposite) |
-| `relevance` + `search_mode=hybrid` | RRF-fused BM25 + cosine, weighted by status, origin, confidence, recency, and activation |
+| `relevance` + `search_mode=hybrid` | RRF-fused BM25 + cosine, weighted by status, derived_from, confidence, recency, and activation |
 | `relevance` + `search_mode=semantic` | cosine similarity only |
 | `relevance` + `search_mode=lexical` | **absent** |
 | `chronological` | **absent** |
@@ -151,7 +151,7 @@ tesseract_recall namespaces=[...] ranking=chronological payload_mode=summary lim
 All rankings accept the same filter set:
 
 - `namespaces` (JSON array)
-- `origins`, `statuses`, `tags` (JSON arrays)
+- `derived_from`, `statuses`, `tags` (JSON arrays)
 - `confidence_min` (0-1)
 - `since` / `until` (RFC3339 bounds)
 - `facet_kinds` / `facet_sources` (knowledge-aware)

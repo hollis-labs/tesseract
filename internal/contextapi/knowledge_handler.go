@@ -73,6 +73,25 @@ const unknownFieldPrefix = "json: unknown field "
 // field by name, the nested equivalent when this is a known MCP-vs-HTTP pair,
 // and the list of keys the endpoint does accept — the canonical shape is
 // otherwise undiscoverable from the error alone.
+// retiredFieldHints names fields this API used to accept under a different
+// spelling, so an unknown-field rejection can say where the value went.
+//
+// The rejection itself is free — decodeJSON runs DisallowUnknownFields, so an
+// HTTP caller sending a retired name already fails closed rather than having
+// its value dropped. What is NOT free is the caller learning the new name: a
+// bare "unknown field \"origin\"" tells a migrating client that its field is
+// wrong without telling it what is right, which costs a round trip at best and
+// a guess at worst. This is the HTTP half of the MCP surface's
+// rejectRetiredArg.
+var retiredFieldHints = map[string]string{
+	"origin": "`origin` was renamed to `derived_from` on 2026-09-12. The five values are " +
+		"unchanged (user, feedback, project, reference, observation) — only the name moved, " +
+		"because `origin` read as *who originated this* and was being filled in as an " +
+		"authorship claim.",
+	"origins": "`origins` was renamed to `derived_from` on 2026-09-12 and still takes an array " +
+		"of the same five values. Only the name moved.",
+}
+
 func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 	field, ok := strings.CutPrefix(err.Error(), unknownFieldPrefix)
 	if !ok {
@@ -89,7 +108,12 @@ func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 		"accepted_fields": accepted,
 	}
 	message := "unknown field " + quoteJSON(field) + " in request body"
-	if nested, hinted := mcpFlatFieldHints[field]; hinted {
+	// A retired name is checked first: it is a strictly better explanation than
+	// the flat/nested hint, and a field can plausibly be both.
+	if retired, hinted := retiredFieldHints[field]; hinted {
+		details["renamed_to"] = "derived_from"
+		message += "; " + retired
+	} else if nested, hinted := mcpFlatFieldHints[field]; hinted {
 		if parent, _, _ := strings.Cut(nested, "."); slices.Contains(accepted, parent) {
 			details["expected_field"] = nested
 			message += "; this endpoint nests it as " + nested +

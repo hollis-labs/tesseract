@@ -38,16 +38,16 @@ func relatedAdapter(t *testing.T) *Adapter {
 	write := func(key, body string) {
 		t.Helper()
 		if _, wErr := ms.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  relNamespace,
-			MemoryKey:  key,
-			Author:     memory.Author{AgentID: "test", AgentVersion: "1"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-rel",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: "probe " + key, Body: body},
+			Domain:      domains.Memory,
+			Namespace:   relNamespace,
+			MemoryKey:   key,
+			Author:      memory.Author{AgentID: "test", AgentVersion: "1"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-rel",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: "probe " + key, Body: body},
 		}); wErr != nil {
 			t.Fatalf("write %s: %v", key, wErr)
 		}

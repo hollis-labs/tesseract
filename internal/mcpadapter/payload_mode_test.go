@@ -33,7 +33,7 @@ func projAdapter(t *testing.T) *Adapter {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-proj",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.77,
 		"tags":            `["alpha","beta"]`,
 		"payload_summary": projTestSummary,
@@ -225,7 +225,7 @@ func TestPayloadMode_SummaryKeepsZeroConfidence(t *testing.T) {
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
 		"session_id":      "sess-proj",
-		"origin":          "user",
+		"derived_from":    "user",
 		"confidence":      0.0,
 		"payload_summary": "zero confidence probe",
 	})

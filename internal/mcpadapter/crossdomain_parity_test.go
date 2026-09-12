@@ -85,16 +85,16 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	ctx := context.Background()
 	for i, summary := range []string{"mem first", "mem second", "mem third"} {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
-			Domain:     domains.Memory,
-			Namespace:  xdMemNS,
-			MemoryKey:  xdMemKey,
-			Author:     memory.Author{AgentID: "claude"},
-			Trigger:    memory.TriggerExplicit,
-			SessionID:  "sess-xd",
-			Origin:     memory.OriginUser,
-			Confidence: 0.9,
-			Status:     memory.StatusCanonical,
-			Payload:    memory.Payload{Summary: summary},
+			Domain:      domains.Memory,
+			Namespace:   xdMemNS,
+			MemoryKey:   xdMemKey,
+			Author:      memory.Author{AgentID: "claude"},
+			Trigger:     memory.TriggerExplicit,
+			SessionID:   "sess-xd",
+			DerivedFrom: memory.DerivedFromUser,
+			Confidence:  0.9,
+			Status:      memory.StatusCanonical,
+			Payload:     memory.Payload{Summary: summary},
 		}); err != nil {
 			t.Fatalf("seed memory revision %d: %v", i, err)
 		}
@@ -615,16 +615,16 @@ func TestMemoryOnlyDeployment_RevisionOpsWork(t *testing.T) {
 	}
 
 	rev, err := a.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  xdMemNS,
-		MemoryKey:  xdMemKey,
-		Author:     memory.Author{AgentID: "claude"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "sess-xd",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusCanonical,
-		Payload:    memory.Payload{Summary: "memory-only deployment probe"},
+		Domain:      domains.Memory,
+		Namespace:   xdMemNS,
+		MemoryKey:   xdMemKey,
+		Author:      memory.Author{AgentID: "claude"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "sess-xd",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusCanonical,
+		Payload:     memory.Payload{Summary: "memory-only deployment probe"},
 	})
 	if err != nil {
 		t.Fatalf("seed memory: %v", err)

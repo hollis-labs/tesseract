@@ -28,15 +28,15 @@ func newTestStore(t *testing.T) (*memory.Store, func()) {
 
 func sampleInput(key string) memory.WriteInput {
 	return memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/chrispian/memory/notes",
-		MemoryKey:  key,
-		Author:     memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
-		Trigger:    memory.TriggerExplicit,
-		SessionID:  "manual:01HXXXXX",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Status:     memory.StatusDraft,
+		Domain:      domains.Memory,
+		Namespace:   "user/chrispian/memory/notes",
+		MemoryKey:   key,
+		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
+		Trigger:     memory.TriggerExplicit,
+		SessionID:   "manual:01HXXXXX",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Status:      memory.StatusDraft,
 		Payload: memory.Payload{
 			Summary: "User prefers terse output",
 			Body:    "**Why:** repeated feedback. **How to apply:** no trailing summaries.",
@@ -197,8 +197,8 @@ func TestWriteRevision_ValidatesRequiredFields(t *testing.T) {
 		{"invalid key", func(in *memory.WriteInput) { in.MemoryKey = "UPPER.case" }},
 		{"missing session_id", func(in *memory.WriteInput) { in.SessionID = "" }},
 		{"missing author", func(in *memory.WriteInput) { in.Author = memory.Author{} }},
-		{"missing origin", func(in *memory.WriteInput) { in.Origin = "" }},
-		{"invalid origin", func(in *memory.WriteInput) { in.Origin = "bogus" }},
+		{"missing derived_from", func(in *memory.WriteInput) { in.DerivedFrom = "" }},
+		{"invalid derived_from", func(in *memory.WriteInput) { in.DerivedFrom = "bogus" }},
 		{"missing trigger", func(in *memory.WriteInput) { in.Trigger = "" }},
 		{"invalid trigger", func(in *memory.WriteInput) { in.Trigger = "bogus" }},
 		{"confidence too high", func(in *memory.WriteInput) { in.Confidence = 1.5 }},
@@ -274,15 +274,15 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 	ms.SetAuditSink(cs)
 
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/alice/memory/notes",
-		MemoryKey:  "notes.today",
-		Author:     memory.Author{AgentID: "test-agent"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "sess-1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "hello"},
+		Domain:      domains.Memory,
+		Namespace:   "user/alice/memory/notes",
+		MemoryKey:   "notes.today",
+		Author:      memory.Author{AgentID: "test-agent"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "sess-1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "hello"},
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -319,15 +319,15 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 	ms.SetAuditSink(cs)
 
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/alice/memory/notes",
-		MemoryKey:  "notes.today",
-		Author:     memory.Author{AgentID: "test-agent"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "sess-1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "hello"},
+		Domain:      domains.Memory,
+		Namespace:   "user/alice/memory/notes",
+		MemoryKey:   "notes.today",
+		Author:      memory.Author{AgentID: "test-agent"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "sess-1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "hello"},
 	})
 	if err != nil {
 		t.Fatalf("WriteRevision: %v", err)
@@ -376,15 +376,15 @@ func TestDeprecateEmitsTheEntrysOwnDomain(t *testing.T) {
 	ms.SetAuditSink(cs)
 
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Knowledge,
-		Namespace:  "user/alice/knowledge/docs",
-		MemoryKey:  "the.doc",
-		Author:     memory.Author{AgentID: "test-agent"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "sess-1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "a knowledge entry"},
+		Domain:      domains.Knowledge,
+		Namespace:   "user/alice/knowledge/docs",
+		MemoryKey:   "the.doc",
+		Author:      memory.Author{AgentID: "test-agent"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "sess-1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "a knowledge entry"},
 		Facets: memory.Facets{
 			Kind:    "doc",
 			Source:  "manual",
@@ -423,15 +423,15 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 
 	// Seed a session-scoped source revision.
 	srcRev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-		Domain:     domains.Memory,
-		Namespace:  "user/alice/session/s1/memory/notes",
-		MemoryKey:  "note.42",
-		Author:     memory.Author{AgentID: "test-agent"},
-		Trigger:    memory.TriggerManual,
-		SessionID:  "s1",
-		Origin:     memory.OriginUser,
-		Confidence: 0.9,
-		Payload:    memory.Payload{Summary: "s"},
+		Domain:      domains.Memory,
+		Namespace:   "user/alice/session/s1/memory/notes",
+		MemoryKey:   "note.42",
+		Author:      memory.Author{AgentID: "test-agent"},
+		Trigger:     memory.TriggerManual,
+		SessionID:   "s1",
+		DerivedFrom: memory.DerivedFromUser,
+		Confidence:  0.9,
+		Payload:     memory.Payload{Summary: "s"},
 	})
 	if err != nil {
 		t.Fatalf("seed WriteRevision: %v", err)
