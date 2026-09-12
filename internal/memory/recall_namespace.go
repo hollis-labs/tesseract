@@ -95,27 +95,64 @@ func orTree(conds []string) string {
 	return "(" + orTree(conds[:mid]) + " OR " + orTree(conds[mid:]) + ")"
 }
 
-// scopedPrefix returns (prefix-without-trailing-slash, true) if ns is a
-// prefix request under one of the scoped shallow-faceted grammars — either
-// ending in the bare domain segment (legacy flat form, now interpreted as "any
-// type") or ending in `/{segment}/*` (explicit wildcard). Otherwise returns
-// ("", false).
+// scopedPrefix returns (prefix-without-trailing-slash, true) if ns is a prefix
+// REQUEST, and ("", false) if it names an exact namespace.
 //
-// It covers `/memory` and `/event`, the two grammars that carry a {type}
-// segment (see scopedNamespaceSegments). Knowledge is excluded on purpose: its
-// namespaces have free depth, so `user/x/knowledge/foo` is an exact namespace
-// somebody writes to, and reading any `/knowledge`-suffixed string as a prefix
-// would reinterpret real namespaces rather than add a shorthand.
+// Two ways to ask, and the asymmetry between them is the decision
+// (CW-20260912-0078):
 //
-// Intentionally lenient about shape: any namespace ending in one of those
-// segments is treated as a prefix, including non-canonical forms — the SQL
-// prefix match returns nothing for malformed inputs, which is the right
-// outcome (graceful no-op rather than parser errors at recall time).
+//   - An EXPLICIT trailing `/*` is a prefix request at ANY tier and any depth.
+//     `project/*`, `project/tether/*`, `project/tether/knowledge/*`,
+//     `user/chrispian/memory/*`. This is the universal rule, and the one an
+//     agent should learn.
+//   - A BARE form ending in `/memory` or `/event` is ALSO read as a prefix.
+//     This is inference, it is grandfathered, and it is not extended to
+//     anything else — see below.
+//
+// WHY INFERENCE WAS GRANDFATHERED RATHER THAN EXTENDED.
+//
+// The scope-type-rooted grammar gives knowledge a fixed-depth head, which made
+// it look as though `{scope}/{id}/knowledge` could now be inferred as a prefix
+// the way `/memory` is. It cannot, and the reason is measured rather than
+// theoretical. Two populations in the live store sit at exactly the boundary
+// any such inference would claim:
+//
+//   - `user/chrispian/knowledge` holds a canonical knowledge record
+//     (`cerberus.v2.setup_guide.node_launchd_absolute_path`, revision
+//     01KQ8C32HNABJSEF9RHSWD1EE9). Inferring a prefix there turns a read that
+//     returns ONE record into a read across the 74 knowledge namespaces
+//     beneath it.
+//   - 64 records across 9 namespaces sit at exactly two segments — `app/mentat`
+//     (35), `user/memory` (10), `app/volon` (5), `global/system` (5),
+//     `app/conduit` (3), `app/cortex` (3), `agentrc/docs`, `app/hadron`,
+//     `mentat/epics`. Every one of those IS a scope head under the new
+//     grammar, so head inference would make all 64 unreachable by exact match.
+//
+// Memory's bare form is not the same case, and the difference is what makes
+// this a decision rather than a consistency failure: `user/{id}/memory` is a
+// shape the PARSER REJECTS, so it is a dead spelling that nothing can write to
+// and reinterpreting it costs nothing. `{scope}/{id}/knowledge` is live and
+// writable today.
+//
+// What the original exclusion comment was protecting against — inference
+// reinterpreting namespaces that are legal exact namespaces — is therefore
+// still true, and this honors it rather than overriding it. The fix is to stop
+// inferring at the new tiers, not to bound the inference.
+//
+// Do not "simplify" this into one uniform rule in either direction. Extending
+// inference silently widens 65 reads; withdrawing it from `/memory` and
+// `/event` breaks callers that rely on a documented shorthand. The root cause
+// is that registration is a side effect of writing, so the registry holds
+// namespaces at every depth — which N4 mitigates but does not remove.
+//
+// Intentionally lenient about shape: a malformed prefix returns nothing from
+// the SQL match, which is the right outcome — a graceful no-op rather than a
+// parser error at recall time.
 func scopedPrefix(ns string) (string, bool) {
+	if strings.HasSuffix(ns, "/*") {
+		return strings.TrimSuffix(ns, "/*"), true
+	}
 	for _, seg := range scopedNamespaceSegments {
-		if strings.HasSuffix(ns, "/"+seg+"/*") {
-			return strings.TrimSuffix(ns, "/*"), true
-		}
 		if strings.HasSuffix(ns, "/"+seg) {
 			return ns, true
 		}

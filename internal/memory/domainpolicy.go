@@ -213,11 +213,29 @@ func (knowledgePolicy) ValidateNamespace(ns string) error {
 			return fmt.Errorf("knowledge namespace must not contain empty segments: %q", ns)
 		}
 	}
-	if segs[0] != "user" && segs[0] != "app" {
-		return fmt.Errorf("knowledge namespace must begin with 'user/' or 'app/', got %q", segs[0])
+	// The scope vocabulary widened from {user, app} to the six scope types in
+	// CW-20260912-0078, so project/, org/, session/ and system/ knowledge are
+	// writable. This is the only change to this function, and it is
+	// deliberately a WIDENING.
+	//
+	// What it does NOT do is require a tail. `user/chrispian/knowledge` — the
+	// bare head — still validates, and still holds a canonical record. Making
+	// it invalid would have been the other half of reading the bare head as a
+	// prefix, and that reading was rejected (see scopedPrefix). Whether a
+	// tail-less knowledge namespace is a shape worth keeping is N4's question
+	// about declared registration, not this slice's.
+	//
+	// `system` is the singleton and has no id segment, so its head is one
+	// segment shorter and `knowledge` lands at index 1 rather than 2.
+	domainIdx := 2
+	if segs[0] == "system" {
+		domainIdx = 1
 	}
-	if segs[2] != "knowledge" {
-		return fmt.Errorf("knowledge namespace third segment must be 'knowledge', got %q in %q", segs[2], ns)
+	if _, known := scopeKeywords[segs[0]]; !known {
+		return fmt.Errorf("knowledge namespace must begin with one of: %s — got %q", ScopeList(), segs[0])
+	}
+	if len(segs) <= domainIdx || segs[domainIdx] != "knowledge" {
+		return fmt.Errorf("knowledge namespace must carry a 'knowledge' segment at position %d, got %q", domainIdx+1, ns)
 	}
 	return nil
 }
