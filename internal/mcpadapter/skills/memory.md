@@ -42,6 +42,8 @@ a value outside them is a `validation_error`, not a new category.
 | `session_id` | yes | the session that produced it, for correlating a turn's writes. |
 | `memory_key` | no | a stable identity for an evolving concept; re-writing the key supersedes. See *Keyed vs. unkeyed*. |
 | `status` | no | `draft` (default) \| `reviewed` \| `canonical`. **Weights recall**: 0.6 / 0.9 / 1.0, and a deprecated revision drops to 0.1. |
+| `payload_data` | no | the record's OWN fields as a JSON object, stored verbatim and never interpreted — not indexed, not embedded, not searched. See below. |
+| `payload_data_schema_hash` | no | optional hex sha256 recording which schema `payload_data` claims; stored, never validated. |
 | `supersedes`, `author_version`, `tags`, `ttl_seconds`, `payload_body`, `consumer_state`, `dedup`, `dedup_threshold` | no | see the mapping table and the `consumer_state` section below. |
 
 **The `{type}` segment** — `decisions`, `feedback`, `followups`, `learnings`,
@@ -181,6 +183,93 @@ because a person said so; this one is `feedback` because it tells a later
 session how to work. If you cannot say which of those three sentences describes
 your record, the tie-break is downward — `observation` costs a record ranking
 weight it might deserve, and `user` borrows weight it might not.
+
+## `payload_data` — the record's own fields, in your shape
+
+**`payload_summary` and `payload_body` are prose. `payload_data` is everything
+else**: an ADR's decision and alternatives, a contact's email and phone, a bug
+report's steps and severity. You send an object shaped for you, and you get it
+back. Tesseract checks two things — that it parses, and that it is an object —
+and nothing else. No typing, no schema enforcement, no required keys.
+
+**It is not indexed, not embedded and not searched.** No value inside it changes
+anything Tesseract does: not ranking, not activation, not retention, not
+recall's candidate set. That is the point of the field, not a gap in it.
+
+**So put anything you want to be findable in the prose as well.** Recall reaches
+a record through its summary and body. A bug report whose severity lives only in
+`payload_data` is not findable by severity, and the fix is a sentence in the
+summary, not an index here.
+
+**`payload_data` is not `consumer_state`.** They are siblings and the difference
+is worth holding: this is **what the record IS**, that is **how it is being
+worked** — and `consumer_state` is filterable via `state_filters` while this is
+not.
+
+| bag | holds | filterable |
+|---|---|---|
+| `payload_data` | the record's own fields | no |
+| `consumer_state` | lifecycle — done, section, due | yes, `state_filters` |
+| `payload_summary` / `payload_body` | prose, and the only thing search reads | via `query` |
+| `tags` | cross-cutting labels | yes, `tags` |
+
+### The shape differs by door, and a wrong shape is a `400`
+
+Every write route runs strict decoding, so an unknown field is **rejected, not
+ignored**. Sending the wrong shape fails the whole write rather than dropping
+the field quietly.
+
+| door | where `payload_data` goes |
+|---|---|
+| `memory_write`, `knowledge_write`, `event_write` (MCP) | `payload_data` — flat, same on all three |
+| `POST /v1/memory/write` | **nested**: `payload.data` |
+| `POST /v1/knowledge/write`, `POST /v1/event/write` | **flat**: top-level `data` |
+
+That asymmetry is not new to this field — it is exactly how `summary` and `body`
+already differ between those routes, because memory nests them under `payload`
+and knowledge and event take them flat.
+
+**On read it is uniform**: every domain returns it at `payload.data`.
+
+```json
+{
+  "namespace": "user/chrispian/memory/decisions",
+  "author_agent_id": "claude",
+  "trigger": "explicit",
+  "session_id": "2026-09-12:adr",
+  "derived_from": "user",
+  "confidence": 0.9,
+  "payload_summary": "Journal mode stays WAL; DELETE was measured and rejected.",
+  "payload_data": "{\"decision\":\"WAL\",\"alternatives\":[\"DELETE\"],\"revisit_if\":\"networked filesystem target\"}"
+}
+```
+
+### How exact "you get it back" is
+
+Exact in the store: the column holds the bytes you sent, and a Go caller reading
+the revision gets those bytes.
+
+**Not byte-exact over the wire, and the difference is only visible if you hash
+it.** `encoding/json` compacts and escapes on the way out, so
+`{"a": 1, "h":"x<y"}` comes back as `{"a":1,"h":"x\u003cy"}` — the whitespace
+gone and `<`, `>`, `&` escaped. Same JSON value, parses to the same object,
+different bytes. If you sign or checksum
+what you receive, checksum the form you received.
+
+**Over MCP, send a JSON-encoded string when the bytes matter.** A native JSON
+object has already been decoded by the transport before the tool sees it, so an
+integer beyond 2^53 has been rounded through a float and cannot be recovered.
+The string form is stored exactly as you sent it.
+
+### `payload_data_schema_hash` — an optional claim, never checked
+
+If your data follows a schema, you may record which one: a hex sha256 matching a
+type's `schema_ref.schema_hash`. **Tesseract never opens the schema and never
+validates against it.** It stores what you said, so a record written under an
+older schema stays distinguishable from one that drifted.
+
+Omit it if you are making no claim — it is never filled in for you, and a claim
+with no `payload_data` to describe is refused.
 
 ## `consumer_state` — the bag that is yours, not Tesseract's
 

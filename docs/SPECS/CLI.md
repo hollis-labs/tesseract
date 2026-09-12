@@ -148,9 +148,9 @@ audited request → approve → apply workflow:
 |---|---|
 | `context promote request` | `--source-namespace`, `--source-key`, `--target-namespace`, `--target-key` (required); `--actor` (default `cli`), `--client-id` (default `cli`), `--reason`, `--summary` |
 | `context promote list` | `--status pending|approved|applied|all` (default `pending`) |
-| `context promote approve <request-id>` | `--actor` (default `user`), `--notes` |
-| `context promote apply <request-id>` | `--actor` (default `user`) |
-| `context promote accept <request-id>` | Convenience approve + apply; `--actor` (default `user`), `--notes` |
+| `context promote approve <request-id>` | `--actor` (default `agent`), `--notes` |
+| `context promote apply <request-id>` | `--actor` (default `agent`) |
+| `context promote accept <request-id>` | Convenience approve + apply; `--actor` (default `agent`), `--notes` |
 
 `request` always captures the current source head. It prints the generated
 request ID for the later commands.
