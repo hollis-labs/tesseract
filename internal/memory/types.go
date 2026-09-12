@@ -7,7 +7,40 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 )
 
-// Origin categorizes why a memory exists (closed vocabulary, D6/D9).
+// Origin records WHERE A REVISION'S CONTENT CAME FROM (closed vocabulary,
+// D6/D9). It is not inert bookkeeping: it is a direct multiplier on the recall
+// score in both ranking modes that weight — see originWeights in ranking.go,
+// applied in activationScore and in the relevance path. So an origin chosen by
+// vibe does not merely mislabel a revision, it moves it up or down the results
+// a later session reads.
+//
+// The spread is 1.3 to 0.8, and the ratio is what matters: a record stamped
+// `user` outranks the same record stamped `observation` by 1.375x with
+// everything else held equal.
+//
+//	feedback     1.3   a correction, or a standing instruction about how to work
+//	user         1.1   a person ruled it
+//	project      1.0   a property of a codebase or project
+//	reference    0.9   see the note below
+//	observation  0.8   the author noticed or measured it
+//
+// ON THE AUTHORITY OF THOSE ONE-LINERS. The values have been a closed
+// vocabulary with no per-value definition anywhere in this repo since they were
+// declared, which is most of why they get chosen by name alone. Two are pinned
+// by code — knowledge.Store.Write stamps OriginReference unconditionally, and
+// event defaults to OriginObservation — and the rest are DESCRIBED FROM SETTLED
+// USE rather than specified: measured 2026-09-12 over 2022 memory-domain
+// revisions, `feedback` carries corrections and working instructions
+// ("subagents given a read-only prompt implement anyway"), and `project`
+// carries facts about a thing ("this repo has one unpushed commit"). Those
+// readings are consistent across the corpus, and they are still a reading.
+//
+// OriginReference is the one to be careful with. On the memory surface it has
+// no settled meaning: 22 of those revisions carry it, 4 under a namespace type
+// retired in 2026-09. Its only systematic writer is knowledge.Store.Write,
+// whose own comment says it picked "the closest origin bucket" — an
+// approximation, not a definition. Treat a memory revision stamped `reference`
+// as unclassified rather than as meaning something specific.
 type Origin string
 
 const (

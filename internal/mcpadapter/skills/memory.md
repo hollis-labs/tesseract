@@ -26,23 +26,70 @@ The thread through those: a later session should **meet** it while working nearb
 - **Generic state records.** Use `context_write` - memory has specific lifecycle semantics (activation, promotion, dedup) you don't need for plain records.
 - **Ephemeral session scratch.** Write to session-scoped memory (`user/{id}/session/{sid}/memory/{type}`) when you want promotion later; use app context records (`app/{id}/session/*`) when you just want ephemeral scratch.
 
-## Required fields on memory_write
+## The fields, and how to choose their values
 
-From the `memory_write` MCP declaration:
+From the `memory_write` MCP declaration. The vocabularies below are **closed** —
+a value outside them is a `validation_error`, not a new category.
 
-- `namespace` (required) - must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. Allowed types: `decisions`, `feedback`, `followups`, `learnings`, `limitations`, `notes`, `outcomes`, `todos`. Use `notes` as the default catch-all when no stronger type fits. (`references` was retired 2026-09-10 — a pointer to where information lives is content you go to, so it is knowledge.) See `tesseract_skills namespaces` for the per-type meaning.
-- `author_agent_id` (required)
-- `trigger` (required) - one of `explicit`, `post_compact`, `per_turn`, `promotion`, `manual`.
-- `session_id` (required)
-- `origin` (required) - one of `user`, `feedback`, `project`, `reference`, `observation`.
-- `confidence` (required) - float in `[0, 1.0]`.
-- `payload_summary` (required)
+| Field | Required | What it is for |
+|---|---|---|
+| `namespace` | yes | where the revision lives, and therefore who owns it and what it is *about*. Must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. |
+| `payload_summary` | yes | the one line a later session reads in recall results before deciding whether to hydrate. Write it as the claim, not as a title. |
+| `origin` | yes | where the content came from. **Weights recall** — see below. |
+| `trigger` | yes | what caused you to write *now*. Provenance only; nothing reads it for behaviour. |
+| `confidence` | yes | float in `[0, 1.0]`. **Weights recall** as a direct multiplier. |
+| `author_agent_id` | yes | who wrote it. |
+| `session_id` | yes | the session that produced it, for correlating a turn's writes. |
+| `memory_key` | no | a stable identity for an evolving concept; re-writing the key supersedes. See *Keyed vs. unkeyed*. |
+| `status` | no | `draft` (default) \| `reviewed` \| `canonical`. **Weights recall**: 0.6 / 0.9 / 1.0, and a deprecated revision drops to 0.1. |
+| `supersedes`, `author_version`, `tags`, `ttl_seconds`, `payload_body`, `consumer_state`, `dedup`, `dedup_threshold` | no | see the mapping table and the `consumer_state` section below. |
 
-Optional: `memory_key`, `supersedes`, `status` (`draft`|`reviewed`|`canonical`; default `draft`), `author_version`, `tags` (JSON array), `ttl_seconds`, `payload_body`, `consumer_state` (JSON object; see below), `dedup` (`none`|`semantic`), `dedup_threshold`.
+**The `{type}` segment** — `decisions`, `feedback`, `followups`, `learnings`,
+`limitations`, `notes`, `outcomes`, `todos`. `notes` is the catch-all when no
+stronger type fits. (`references` was retired 2026-09-10 — a pointer to where
+information lives is content you go to, so it is knowledge.) The per-type
+meanings live in `tesseract_skills namespaces`; they are not restated here.
+
+### `origin` — where the content came from
+
+**This is the field most often filled in by reflex, and it is not free.** Origin
+is a direct multiplier on the recall score, so it does not merely label a
+revision — it moves it up or down the results a later session reads. A record
+stamped `user` outranks the same record stamped `observation` by 1.375x with
+everything else equal.
+
+| value | weight | when it applies |
+|---|---|---|
+| `feedback` | 1.3 | a correction, or a standing instruction about how to work |
+| `user` | 1.1 | **a person ruled it.** Not "a person was in the conversation" |
+| `project` | 1.0 | a property of a codebase or project — true of the thing |
+| `reference` | 0.9 | what `knowledge_write` stamps. On the memory surface, see the note |
+| `observation` | 0.8 | you noticed it, measured it, or read it out of the system |
+
+The distinction that goes wrong most often is **`user` vs `observation`**: if the
+body of your record says something was *measured*, *observed* or *found*, the
+origin is `observation` even when a person asked you to go measure it. `user` is
+for the ruling itself — "we are keeping WAL" — not for the evidence behind it.
+
+`reference` is the one to be careful with. It has no settled meaning on the
+memory surface; its only systematic writer is the knowledge write path, whose
+own comment says it picked the closest available bucket. If you are reaching for
+it on a memory write, you probably want `project` or `observation` — or the
+record belongs in `knowledge_write`.
+
+### `trigger` — what made you write now
+
+`explicit` (asked to), `post_compact` (carrying context across a compaction),
+`per_turn` (a routine end-of-turn capture), `promotion` (set for you by
+`memory_promote`), `manual` (a human or a script wrote it directly). Unlike
+`origin`, nothing reads this for behaviour — it is provenance, so pick the one
+that is true and move on.
 
 ## A complete write, on both surfaces
 
 Copy one of these and edit it. They write the same revision; the shapes differ, and the differences are structural rather than cosmetic — see `tesseract_skills start-here` for the two-surface rules and for what `$TESSERACT_URL` / `$TESSERACT_TOKEN` are.
+
+**This record's origin is `observation`, and that is the point of the example.** A person asked for the decision, but the summary says DELETE *was measured and rejected* — the content is the measurement, so `observation` is the honest value. `user` would be right for the ruling alone ("we are staying on WAL"), and choosing it here would quietly buy this record a 1.375x ranking advantage it has not earned.
 
 Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
 
@@ -54,7 +101,7 @@ Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
   "author_version": "opus-5",
   "trigger": "explicit",
   "session_id": "2026-04-19:backend",
-  "origin": "user",
+  "origin": "observation",
   "confidence": 0.9,
   "tags": "[\"sqlite\",\"durability\"]",
   "payload_summary": "Journal mode stays WAL; DELETE was measured and rejected.",
@@ -74,7 +121,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
     "author": {"agent_id": "claude", "agent_version": "opus-5"},
     "trigger": "explicit",
     "session_id": "2026-04-19:backend",
-    "origin": "user",
+    "origin": "observation",
     "confidence": 0.9,
     "tags": ["sqlite", "durability"],
     "payload": {
@@ -96,6 +143,38 @@ The field-by-field mapping, for the fields that do not simply carry across:
 
 `facets` exists on the HTTP body but is a knowledge-domain field: a memory write carrying a non-zero facet is rejected. Facets go to `POST /v1/knowledge/write` — see `tesseract_skills knowledge`.
 
+### A third origin, because the contrast is the lesson
+
+Same tool, same required fields, a different answer — this one is `feedback`,
+the highest-weighted value in the vocabulary:
+
+```json
+{
+  "namespace": "user/chrispian/memory/feedback",
+  "author_agent_id": "claude",
+  "trigger": "explicit",
+  "session_id": "2026-09-12:review",
+  "origin": "feedback",
+  "confidence": 0.9,
+  "tags": "[\"subagents\",\"prompting\"]",
+  "payload_summary": "A read-only instruction in a subagent prompt does not hold; give the agent no write tools instead.",
+  "payload_body": "Observed across several dispatches: subagents told 'research only' in prose implemented and committed anyway. Prompt text is not a permission boundary."
+}
+```
+
+Note that the body reports an observation and the origin is still `feedback`.
+The two are not in tension: `origin` asks where the CONTENT came from, and the
+content here is the standing instruction the observation produced. Had the
+record stopped at "subagents ignored the instruction three times," it would be
+`observation` — a measurement with no rule attached.
+
+**Three records, three origins, one field.** The decision above is
+`observation` because its content is a measurement; the todo below is `user`
+because a person said so; this one is `feedback` because it tells a later
+session how to work. If you cannot say which of those three sentences describes
+your record, the tie-break is downward — `observation` costs a record ranking
+weight it might deserve, and `user` borrows weight it might not.
+
 ## `consumer_state` — the bag that is yours, not Tesseract's
 
 A revision can carry `consumer_state`: a JSON **object** holding your own operational state for that entry. Tesseract checks that it is well-formed JSON and an object, plus any `required_fields` the type declares, and **never reads a value out of it**. No vocabulary, no transition checking, ever. Nothing decays, ranks or expires differently because of what is in it.
@@ -116,7 +195,7 @@ Filter on it with `state_filters` — see `tesseract_skills recall-and-ranking`.
 
 `user/{id}/memory/todos` holds flat list items with light state. **A todo is not a task**: a Torque task is FSM-governed tracked work with dispatch, budgets and dependencies, and it stays in Torque. A todo is a note with a checkbox, often ephemeral.
 
-The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag:
+The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag. **This one keeps `origin: "user"` and is the counterexample**: nobody measured or inferred that the registration needs renewing — a person said so, and the record is that instruction. That is what `user` is for.
 
 ```json
 {
