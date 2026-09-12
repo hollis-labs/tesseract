@@ -110,9 +110,19 @@ func validateConsumerState(raw json.RawMessage, required []string) error {
 		return fmt.Errorf("%w: consumer_state must be well-formed JSON", ErrInvalidInput)
 	}
 
-	// Decoded into a map rather than checked for a leading `{`, so that a
-	// duplicate key or a trailing token is rejected here rather than stored and
-	// found later by json_extract, which resolves duplicates by its own rule.
+	// Decoded into a map rather than checked for a leading `{`, because a
+	// leading brace does not make something an object.
+	//
+	// CORRECTION 2026-09-12: this comment used to add "so that a duplicate key
+	// or a trailing token is rejected here." Only the trailing token is, and by
+	// json.Valid above rather than by this decode. encoding/json accepts
+	// `{"a":1,"a":2}` and silently keeps the LAST value, so a duplicate key is
+	// stored — and unlike payload.data, that has a consequence here: state
+	// filters reach these values through json_extract, which resolves
+	// duplicates by its own rule, and the two rules need not agree. Left as
+	// behavior rather than fixed, because refusing it is a change to the
+	// validation contract and belongs in its own task; what is fixed is the
+	// comment claiming a guarantee that was never held.
 	var bag map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &bag); err != nil {
 		return fmt.Errorf("%w: consumer_state must be a JSON object, not an array or a scalar: %w",

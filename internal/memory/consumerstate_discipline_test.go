@@ -51,6 +51,14 @@ var consumerStateIdentifiers = []string{
 	"consumerstate",
 	"statefilter",
 	"statevalue",
+	// payload.data (CW-20260912-0036) is the second opaque bag and takes the
+	// same walk rather than a second one, because it is the same rule: a
+	// consumer's object, stored verbatim, never read. A local named
+	// payloadData is caught by this substring; the `x.Payload.Data` selector
+	// shape is caught by namesPayloadDataSelector below, because Go's idents
+	// there are `Payload` and `Data` separately and neither alone should
+	// implicate every field named Data in the repository.
+	"payloaddata",
 }
 
 // mechanismSites are the functions allowed to handle consumer-state values at
@@ -74,6 +82,8 @@ var mechanismSites = map[string]string{
 	"stateFilterFingerprint":   "renders filters to a string that is hashed, never parsed",
 	"consumerStateArg":         "reads the write argument off the request; hands bytes to the store unexamined",
 	"parseStateFiltersArg":     "decodes the filter argument; hands the typed shape to the store unexamined",
+	"validatePayloadData":      "well-formedness, object-ness, byte ceiling and the claim's SHAPE; never reads a value",
+	"payloadDataArg":           "reads the write argument off the request; hands bytes to the store unexamined",
 }
 
 // TestNoCodePathBranchesOnConsumerStateValue parses every non-test Go file in
@@ -131,15 +141,15 @@ func TestNoCodePathBranchesOnConsumerStateValue(t *testing.T) {
 				if _, ok := mechanismSites[enclosing]; ok {
 					return true
 				}
-				if namesConsumerState(node.X) && isLiteral(node.Y) ||
-					namesConsumerState(node.Y) && isLiteral(node.X) {
+				if namesOpaqueBag(node.X) && isLiteral(node.Y) ||
+					namesOpaqueBag(node.Y) && isLiteral(node.X) {
 					violations = append(violations, describe(fset, rel, enclosing, node.Pos()))
 				}
 			case *ast.SwitchStmt:
 				if _, ok := mechanismSites[enclosing]; ok {
 					return true
 				}
-				if node.Tag != nil && namesConsumerState(node.Tag) {
+				if node.Tag != nil && namesOpaqueBag(node.Tag) {
 					violations = append(violations, describe(fset, rel, enclosing, node.Pos()))
 				}
 			}
@@ -156,7 +166,10 @@ func TestNoCodePathBranchesOnConsumerStateValue(t *testing.T) {
 
 	for _, v := range violations {
 		t.Errorf("%s\n"+
-			"A consumer-state VALUE is being compared to a literal. Tesseract may index "+
+			"A value out of an OPAQUE BAG — consumer_state or payload.data — is being compared to a "+
+			"literal. Tesseract may index consumer_state fields and filter on them; it must never "+
+			"branch behavior on a value, and payload.data is not even indexed. "+
+			"(Original wording follows.) Tesseract may index "+
 			"consumer_state fields and filter on them; it must never branch behavior on a value "+
 			"([[tesseract_consumer_state_separate_from_status]] rev 2).\n"+
 			"Whatever this enables — skipping decay for done items, ranking pinned ones higher, "+
@@ -166,6 +179,39 @@ func TestNoCodePathBranchesOnConsumerStateValue(t *testing.T) {
 			"the function to mechanismSites with a line saying why. Do not widen the allowlist to "+
 			"make a feature fit.", v)
 	}
+}
+
+// namesPayloadDataSelector reports whether e reads `.Data` off something that
+// names a payload — `rev.Payload.Data`, `in.Payload.Data`, `payload.Data`.
+//
+// Separate from the substring list because `Data` alone is far too common a
+// field name to implicate, and `Payload` alone is read legitimately everywhere
+// (summary and body are prose and ARE read). The pair is the signal: selecting
+// Data off a payload is the only way to get at the bag's bytes, and comparing
+// what comes back to a literal is the first line of an opinion about content.
+func namesPayloadDataSelector(e ast.Expr) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok || sel.Sel == nil || sel.Sel.Name != "Data" {
+			return true
+		}
+		ast.Inspect(sel.X, func(inner ast.Node) bool {
+			id, isIdent := inner.(*ast.Ident)
+			if isIdent && strings.Contains(strings.ToLower(id.Name), "payload") {
+				found = true
+				return false
+			}
+			return true
+		})
+		return true
+	})
+	return found
+}
+
+// namesOpaqueBag is the union: either bag, reached either way.
+func namesOpaqueBag(e ast.Expr) bool {
+	return namesConsumerState(e) || namesPayloadDataSelector(e)
 }
 
 // namesConsumerState reports whether e reads through an identifier that names

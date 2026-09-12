@@ -774,6 +774,7 @@ const recallRevisionColumns = `r.revision_id, r.memory_id, r.domain, r.namespace
        r.author_agent_id, r.author_version, r.trigger, r.session_id, r.derived_from,
        r.confidence, r.tags, COALESCE(r.ttl_seconds, 0), r.expires_at,
        COALESCE(r.payload_summary, ''), COALESCE(r.payload_body, ''),
+       r.payload_data, r.payload_data_schema_hash,
        COALESCE(r.embedding_model, ''), r.embedding_vector,
        r.facet_kind, r.facet_source,
        r.facet_pointer_scheme, r.facet_pointer_locator, r.facet_pointer_resolved_at,

@@ -120,9 +120,41 @@ type Author struct {
 }
 
 // Payload is the structured-by-convention memory content (D9).
+//
+// Summary and Body are PROSE and always have been: they are what recall reads,
+// what the embedder embeds, and what FTS indexes. Data is the third member and
+// is none of those things — see payloaddata.go for the contract, which is the
+// part of this that is easy to erode.
 type Payload struct {
 	Summary string `json:"summary"`
 	Body    string `json:"body,omitempty"`
+
+	// Data is the consumer's own object: an ADR's fields, a contact's fields,
+	// a bug report's fields. Shaped for THEM, stored verbatim, never
+	// interpreted. Tesseract checks that it parses and that it is an object,
+	// and nothing else — no typing, no schema enforcement, no required keys,
+	// no indexing, and no code path reads a value out of it.
+	//
+	// json.RawMessage rather than map[string]any deliberately: a map round
+	// trip reorders keys and pushes every number through float64, so a
+	// consumer's 64-bit id would come back changed. "Stored verbatim" has to
+	// mean the bytes.
+	Data json.RawMessage `json:"data,omitempty"`
+
+	// DataSchemaHash is the caller's CLAIM about which schema Data was written
+	// against — a hex sha256 matching a typeregistry.SchemaRef.SchemaHash.
+	//
+	// Tesseract never opens the schema, never parses it and never validates
+	// Data against it. It records what the writer said so that drift is
+	// detectable later: without the hash on the revision, a record written
+	// under an older schema is indistinguishable from one that drifted.
+	//
+	// Absent means the caller made no claim, and it is NEVER defaulted from
+	// the type's current SchemaRef. Stamping the current hash onto a write
+	// that claimed nothing would manufacture exactly the evidence this field
+	// exists to provide — and per AGENTS.md, "a default is indistinguishable
+	// from a choice in the audit log."
+	DataSchemaHash string `json:"data_schema_hash,omitempty"`
 }
 
 // Pointer identifies an external reference for knowledge revisions. Scheme
