@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 )
 
 // parityOp is one row in the surface catalog. Either MCP or HTTP may be
@@ -104,6 +105,10 @@ var surfaceCatalog = []parityOp{
 	{MCP: "memory_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/promote"},
 	{MCP: "memory_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/write"},
 
+	// ── Workspace domain ────────────────────────────────────────────────
+	{MCP: "workspace_delete", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/delete"},
+	{MCP: "workspace_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/write"},
+
 	// ── Knowledge domain ───────────────────────────────────────────────
 	{MCP: "knowledge_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/knowledge/write"},
 
@@ -133,6 +138,7 @@ var surfaceCatalog = []parityOp{
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}"},
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/current"},
+	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/workspace/current"},
 	{MCP: "tesseract_get_revision", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/revisions/{id}"},
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/history"},
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}/history"},
@@ -203,6 +209,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/metrics"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/get"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/namespaces/list"},
+	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/workspace/current"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/create"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/auth/tokens/revoke"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/broker/plan"},
@@ -234,6 +241,8 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/write"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/delete"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/write"},
 }
 
 // TestSurfaceCatalogWaivers asserts every catalog row is either fully paired
@@ -360,6 +369,7 @@ func newFullyWiredAdapter(t *testing.T) *mcpadapter.Adapter {
 		MemoryStore:    mem,
 		KnowledgeStore: know,
 		EventStore:     event.New(mem),
+		WorkspaceStore: workspace.NewStore(cs.DB()),
 	}
 }
 
@@ -376,5 +386,6 @@ func newFullyWiredHTTPServer(t *testing.T) *contextapi.Server {
 	srv.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	srv.KnowledgeStore = knowledge.New(srv.MemoryStore)
 	srv.EventStore = event.New(srv.MemoryStore)
+	srv.WorkspaceStore = workspace.NewStore(cs.DB())
 	return srv
 }

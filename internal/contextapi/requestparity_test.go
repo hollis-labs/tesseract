@@ -19,6 +19,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/surfacefields"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 )
 
 // The request-shape half of surface parity.
@@ -94,9 +95,11 @@ func descendsIntoJSONObject(t reflect.Type) bool {
 // struct a door names. Keeping them separate keeps the production map free of
 // test-only entries.
 var requestStructs = map[string]any{
-	"memory.write":    memoryWriteRequest{},
-	"knowledge.write": knowledgeWriteRequest{},
-	"event.write":     eventWriteRequest{},
+	"memory.write":     memoryWriteRequest{},
+	"knowledge.write":  knowledgeWriteRequest{},
+	"event.write":      eventWriteRequest{},
+	"workspace.write":  workspaceWriteRequest{},
+	"workspace.delete": workspaceDeleteRequest{},
 }
 
 func registeredToolArgs(t *testing.T) map[string]map[string]any {
@@ -113,6 +116,7 @@ func registeredToolArgs(t *testing.T) map[string]map[string]any {
 	adapter.MemoryStore = mem
 	adapter.KnowledgeStore = knowledge.New(mem)
 	adapter.EventStore = event.New(mem)
+	adapter.WorkspaceStore = workspace.NewStore(cs.DB())
 
 	srv := server.NewMCPServer("request-parity", "0.0.0", server.WithToolCapabilities(true))
 	adapter.RegisterAllTools(srv)

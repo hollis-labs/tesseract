@@ -9,6 +9,7 @@ import (
 
 	"github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/memory"
+	"github.com/hollis-labs/tesseract/workspace"
 )
 
 func main() {
@@ -17,6 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer func() {
 		if removeErr := os.RemoveAll(root); removeErr != nil {
 			log.Printf("remove temporary Tesseract root: %v", removeErr)
@@ -32,6 +34,19 @@ func main() {
 			log.Printf("close tesseract: %v", closeErr)
 		}
 	}()
+
+	draft, err := db.CreateWorkspaceItem(ctx, workspace.CreateRequest{
+		CreateInput: workspace.CreateInput{
+			Namespace: "project/demo/workspace/scratch",
+			Summary:   "Current release draft",
+			Author:    memory.Author{AgentID: "nanite"},
+			SessionID: "adoption-v0.9",
+		},
+		IdempotencyKey: "adoption-draft-1",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	rev, err := db.WriteMemory(ctx, memory.WriteInput{
 		Domain:      memory.DomainMemory,
@@ -68,6 +83,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s)",
-		current.ItemID, current.RevisionID, len(history), len(hits))
+	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s); workspace item %s",
+		current.ItemID, current.RevisionID, len(history), len(hits), draft.ItemID)
 }

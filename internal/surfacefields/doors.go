@@ -165,6 +165,35 @@ var Doors = []Door{
 			},
 		},
 	},
+	{
+		Name: "workspace.write", MCPTool: "workspace_write",
+		HTTPMethod: "POST", HTTPPath: "/v1/workspace/write", Derived: true,
+		Fields: []Field{
+			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
+			{Concept: "item_id", MCP: "item_id", HTTP: "item_id"},
+			{Concept: "version_token", MCP: "version_token", HTTP: "version_token"},
+			{Concept: "idempotency_key", MCP: "idempotency_key", HTTP: "idempotency_key"},
+			{Concept: "key", MCP: "key", HTTP: "key"},
+			{Concept: "summary", MCP: "summary", HTTP: "summary"},
+			{Concept: "body", MCP: "body", HTTP: "body"},
+			{Concept: "data", MCP: "data", HTTP: "data"},
+			{Concept: "data_schema_hash", MCP: "data_schema_hash", HTTP: "data_schema_hash"},
+			{Concept: "tags", MCP: "tags", HTTP: "tags"},
+			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
+			{Concept: "clear_fields", MCP: "clear_fields", HTTP: "clear_fields"},
+			{Concept: "author_agent_id", MCP: "author_agent_id", HTTP: "author.agent_id"},
+			{Concept: "author_version", MCP: "author_version", HTTP: "author.agent_version", Why: "MCP flattens and shortens the structured HTTP author field consistently with the other write doors."},
+			{Concept: "session_id", MCP: "session_id", HTTP: "session_id"},
+		},
+	},
+	{
+		Name: "workspace.delete", MCPTool: "workspace_delete",
+		HTTPMethod: "POST", HTTPPath: "/v1/workspace/delete", Derived: true,
+		Fields: []Field{
+			{Concept: "item_id", MCP: "item_id", HTTP: "item_id"},
+			{Concept: "version_token", MCP: "version_token", HTTP: "version_token"},
+		},
+	},
 
 	// ── Read doors (HTTP column declared, behavior asserted) ────────────
 	//
@@ -201,6 +230,11 @@ var Doors = []Door{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
 			{Concept: "key", MCP: "key", HTTP: "key"},
 		},
+	},
+	{
+		Name: "workspace.get", MCPTool: "tesseract_get",
+		HTTPMethod: "GET", HTTPPath: "/v1/workspace/current",
+		Fields: []Field{{Concept: "namespace", MCP: "namespace", HTTP: "namespace"}, {Concept: "key", MCP: "key", HTTP: "key"}},
 	},
 	{
 		Name: "context.history", MCPTool: "tesseract_history",

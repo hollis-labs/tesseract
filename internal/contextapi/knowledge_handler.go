@@ -60,6 +60,7 @@ var requestDoors = map[reflect.Type]string{
 	reflect.TypeOf(memoryWriteRequest{}):    "memory.write",
 	reflect.TypeOf(knowledgeWriteRequest{}): "knowledge.write",
 	reflect.TypeOf(eventWriteRequest{}):     "event.write",
+	reflect.TypeOf(workspaceWriteRequest{}): "workspace.write",
 }
 
 // doorFor resolves the door a decode target belongs to, or false for a request

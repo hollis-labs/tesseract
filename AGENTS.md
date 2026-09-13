@@ -88,9 +88,12 @@ the arguments map; any other `_name` is refused like any other undeclared name.
 It comes out when every DEPLOYED mux is past CW-20260907-0026 — not when that
 task merges.
 
-Writes never mutate: `AppendRecord` allocates the next revision and advances
-`heads` in one transaction. Cross-namespace movement goes through the
-request → approve → apply promotion workflow, which apps cannot bypass.
+Revisioned-domain writes never mutate: `AppendRecord` allocates the next
+revision and advances `heads` in one transaction. Workspace is the explicit
+exception: it stores one mutable current value guarded by a version token,
+retains no content history, and leaves an identity tombstone on deletion.
+Cross-namespace movement of revisioned records goes through the request →
+approve → apply promotion workflow, which apps cannot bypass.
 
 `derived_from` was called `origin` until 2026-09-12 (schema 22). The values did
 not change; the name is refused rather than ignored on every surface, because an

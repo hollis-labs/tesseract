@@ -33,6 +33,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -206,6 +207,8 @@ type Server struct {
 	// EventStore backs /v1/event/* routes. Wired by cmd/tesseract to
 	// event.New(MemoryStore).
 	EventStore *event.Store
+	// WorkspaceStore backs mutable workspace routes and cross-domain item reads.
+	WorkspaceStore *workspace.Store
 	// SynthesisProvider is the LLM Provider used by /v1/synthesis/ask.
 	// When nil, the synthesis route returns 503 service_unavailable. Wired by
 	// cmd/tesseract from config.Synthesis settings.
@@ -362,6 +365,11 @@ var apiRoutes = []apiRoute{
 	{http.MethodPost, "/v1/memory/touch", false, authRequired, (*Server).handleMemoryTouch},
 	{http.MethodPost, "/v1/memory/deprecate", false, authRequired, (*Server).handleMemoryDeprecate},
 	{http.MethodPost, "/v1/memory/promote", false, authRequired, (*Server).handleMemoryPromote},
+
+	// --- workspace ---
+	{http.MethodPost, "/v1/workspace/write", false, authRequired, (*Server).handleWorkspaceWrite},
+	{http.MethodPost, "/v1/workspace/delete", false, authRequired, (*Server).handleWorkspaceDelete},
+	{http.MethodGet, "/v1/workspace/current", false, authRequired, (*Server).handleWorkspaceCurrent},
 
 	// --- stable item identity ---
 	// One prefix handler serves both /v1/items/{item_id} and its /history

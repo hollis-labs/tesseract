@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 24
+	schemaVersion = 25
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1430,6 +1430,25 @@ AFTER UPDATE OF key_name, summary, body, tags ON workspace_items BEGIN
 	INSERT INTO workspace_items_fts(rowid, key_name, summary, body, tags)
 	VALUES (new.rowid, new.key_name, new.summary, new.body, new.tags);
 END`); err != nil {
+				return err
+			}
+		case 25:
+			// A workspace create receipt binds one caller-generated retry key to
+			// the identity allocated by the original committed create. It keeps no
+			// authored payload or edit token: delayed retries can recover identity
+			// after edits or deletion without retaining an old content snapshot.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS workspace_creation_receipts (
+	namespace       TEXT NOT NULL,
+	operation       TEXT NOT NULL CHECK (operation = 'create'),
+	idempotency_key TEXT NOT NULL,
+	request_digest  TEXT NOT NULL,
+	item_id         TEXT NOT NULL,
+	PRIMARY KEY (namespace, operation, idempotency_key)
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_creation_receipts_item ON workspace_creation_receipts(item_id)`); err != nil {
 				return err
 			}
 		}

@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
-// tesseractLookupRequest is the unified search payload across memory +
-// knowledge domains. Thin wrapper over memory.RecallInput that makes the
-// cross-domain filters explicit in JSON.
+// tesseractLookupRequest is the unified typed search payload. Thin wrapper
+// over memory.RecallInput that makes cross-domain filters explicit in JSON.
 type tesseractLookupRequest struct {
 	Namespaces    []string             `json:"namespaces"`
 	RevisionScope memory.RevisionScope `json:"revision_scope,omitempty"`
@@ -167,14 +167,14 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			StateFilters:     req.StateFilters,
 		},
 	}
-	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
+	page, err := s.itemService().RecallPaged(r.Context(), in, pr)
 	if err != nil {
 		writeRecallError(w, err, "lookup_failed")
 		return
 	}
 	// Facets come from the unprojected results: the histogram describes what
 	// this page returned, not what was serialized.
-	facets := buildFacets(page.Kept)
+	facets := buildItemFacets(page.Kept)
 	// Built from the same facets value and the same manifest the full response
 	// below carries, so an estimate cannot report different numbers than the
 	// read it is estimating.
@@ -400,6 +400,27 @@ func buildFacets(results []memory.RecallResult) lookupFacets {
 		}
 		if s := r.Revision.Facets.Source; s != "" {
 			out.Sources[s]++
+		}
+	}
+	return out
+}
+
+func buildItemFacets(results []itemservice.RecallResult) lookupFacets {
+	out := lookupFacets{Domains: map[string]int{}, Kinds: map[string]int{}, Sources: map[string]int{}}
+	for _, r := range results {
+		if r.Item != nil {
+			out.Domains[r.Item.Domain]++
+			continue
+		}
+		if r.Revision == nil {
+			continue
+		}
+		out.Domains[string(r.Revision.Domain)]++
+		if k := r.Revision.Facets.Kind; k != "" {
+			out.Kinds[k]++
+		}
+		if src := r.Revision.Facets.Source; src != "" {
+			out.Sources[src]++
 		}
 	}
 	return out

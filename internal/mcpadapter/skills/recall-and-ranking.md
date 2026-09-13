@@ -2,16 +2,23 @@
 name: recall-and-ranking
 description: The four ranking modes — activation, chronological, similarity, relevance — plus search_mode, related_to and the link graph, payload_mode, budgets and paging, estimate_only, similarity_min, and the recall/use/touch loop that feeds activation.
 scope_hint: memory:read
-related: [memory, revisions, event]
+related: [memory, revisions, event, workspace]
 ---
 
 # Recall and ranking
 
-`tesseract_recall` is the ranking surface for memory and knowledge alike. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
+`tesseract_recall` is the typed ranking surface across revisioned domains and workspace. Pass `ranking=<mode>`; the default is `relevance` when a `query` is provided, otherwise `activation`. Under `relevance`, `search_mode` picks which retrieval arms run.
 
 ## What recall covers by default
 
-**Memory and knowledge — the curated corpus.** A recall that does not name `domains` searches those two and leaves the event log alone.
+**Memory and knowledge — the curated corpus.** A recall that does not name `domains` searches those two and leaves event and workspace alone.
+
+Workspace is opt-in with `domains:["workspace"]`. It supports activation,
+chronological order, and lexical relevance. It has no embeddings or retained
+revisions, so semantic/similarity modes, `revision_scope=timeline`, and
+revision-only filters are rejected. Mixed lexical recall ranks each store
+independently and fuses their positions rather than comparing unrelated raw
+scores. See `tesseract_skills workspace`.
 
 That default is the Event domain's isolation, not an oversight. A reasoning log runs an order of magnitude or two larger than a corpus of deliberate captures, so including it by default would make every unqualified recall a log search and the curated records would be a rounding error in the candidate set. Pass `domains: ["event"]` — or list it alongside the others — and the log is fully recallable, embeddings and all. See `tesseract_skills event`.
 
@@ -63,7 +70,7 @@ Two more things `lexical` does differently from `hybrid`: `AND`, `OR` and `NOT` 
 
 ## Result shape and `score`
 
-`tesseract_recall` answers with an envelope: `{results, facets, manifest}`. Inside `results`, every entry is `{revision, score}`, best first. `facets` counts the rows this page returned, not the whole match set.
+`tesseract_recall` answers with an envelope: `{results, facets, manifest}`. Inside `results`, every entry carries exactly one typed alternative: `{revision, score}` or `{item, score}` for workspace. `facets` counts the rows this page returned, not the whole match set.
 
 How much of each result you get is set by `payload_mode`:
 

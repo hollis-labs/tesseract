@@ -35,19 +35,22 @@ import (
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 const (
-	xdMemNS    = "user/chrispian/memory/notes"
-	xdEventNS  = "user/chrispian/event/reasoning"
-	xdEventKey = "xd.event.key"
-	xdKnowNS   = "user/chrispian/knowledge/framework"
-	xdCtxNS    = "app/test/session/xd"
-	xdMemKey   = "xd.mem.key"
-	xdKnowKey  = "xd.know.key"
-	xdCtxKey   = "xd.ctx.key"
+	xdMemNS        = "user/chrispian/memory/notes"
+	xdEventNS      = "user/chrispian/event/reasoning"
+	xdEventKey     = "xd.event.key"
+	xdKnowNS       = "user/chrispian/knowledge/framework"
+	xdCtxNS        = "app/test/session/xd"
+	xdMemKey       = "xd.mem.key"
+	xdKnowKey      = "xd.know.key"
+	xdCtxKey       = "xd.ctx.key"
+	xdWorkspaceNS  = "project/tesseract/workspace/tests"
+	xdWorkspaceKey = "xd/workspace key"
 )
 
 // crossDomainSurfaces builds one store and puts both doors on it: the MCP
@@ -63,6 +66,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	ks := knowledge.New(ms)
 	es := event.New(ms)
+	ws := workspace.NewStore(cs.DB())
 
 	tok, _, err := cs.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{
 		Label:  "crossdomain",
@@ -76,13 +80,18 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	a.MemoryStore = ms
 	a.KnowledgeStore = ks
 	a.EventStore = es
+	a.WorkspaceStore = ws
 
 	srv := contextapi.NewServer(cs, contextpolicy.New())
 	srv.MemoryStore = ms
 	srv.KnowledgeStore = ks
 	srv.EventStore = es
+	srv.WorkspaceStore = ws
 
 	ctx := context.Background()
+	if _, err := ws.Create(ctx, workspace.CreateInput{Namespace: xdWorkspaceNS, Key: xdWorkspaceKey, Summary: "workspace current", Author: memory.Author{AgentID: "test"}, SessionID: "sess-xd"}); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
 	for i, summary := range []string{"mem first", "mem second", "mem third"} {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
@@ -703,7 +712,7 @@ func TestContextOnlyDeployment_RevisionOpsAbsent(t *testing.T) {
 // three values here is that changing the vocabulary has to be a deliberate edit
 // in two places.
 func TestReadDomainVocabularyIsExactlyThese(t *testing.T) {
-	want := []string{"context", "memory", "knowledge", "event"}
+	want := []string{"context", "memory", "knowledge", "event", "workspace"}
 	got := readDomainVocabulary()
 	if len(got) != len(want) {
 		t.Fatalf("vocabulary = %v, want %v", got, want)
@@ -743,6 +752,7 @@ func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 		"memory":    {xdMemNS, xdMemKey},
 		"knowledge": {xdKnowNS, xdKnowKey},
 		"event":     {xdEventNS, xdEventKey},
+		"workspace": {xdWorkspaceNS, xdWorkspaceKey},
 	}
 
 	for _, name := range []string{"tesseract_get", "tesseract_history"} {
@@ -777,6 +787,12 @@ func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 				continue
 			}
 			raw := xdMCP(t, h, map[string]any{"domain": dom, "namespace": probe[0], "key": probe[1]})
+			if name == "tesseract_history" && dom == "workspace" {
+				if !strings.Contains(raw, `"code":"history_unavailable"`) {
+					t.Errorf("%s workspace arm = %s, want history_unavailable", name, raw)
+				}
+				continue
+			}
 			if strings.Contains(raw, `"code":"`) {
 				t.Errorf("%s advertises domain %q but answers an error for it: %s", name, dom, raw)
 			}

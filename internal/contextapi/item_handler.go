@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 )
 
 // itemRevisionStore returns the shared revision store through whichever
@@ -34,6 +36,8 @@ func (s *Server) itemDomainAvailable(domain domains.Domain) bool {
 		return s.KnowledgeStore != nil
 	case domains.Event:
 		return s.EventStore != nil
+	case domains.Domain(workspace.Domain):
+		return s.WorkspaceStore != nil
 	default:
 		return false
 	}
@@ -47,8 +51,7 @@ func (s *Server) itemDomainAvailable(domain domains.Domain) bool {
 // Resolution reads only memory_state first. Namespace authorization then runs
 // before revision content is loaded or activation is reinforced.
 func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
-	store := s.itemRevisionStore()
-	if store == nil {
+	if s.itemRevisionStore() == nil && s.WorkspaceStore == nil {
 		writeError(w, http.StatusServiceUnavailable, "domain_unavailable",
 			"no item-backed domain store is wired into this server", nil)
 		return
@@ -65,7 +68,7 @@ func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := store.GetState(r.Context(), itemID)
+	meta, err := s.itemService().LookupMetadata(r.Context(), itemID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found", "item_id not found: "+itemID, nil)
@@ -74,13 +77,13 @@ func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
 		return
 	}
-	if !requireNamespaceAccess(w, r, state.Namespace) {
+	if !requireNamespaceAccess(w, r, meta.Namespace) {
 		return
 	}
-	if !s.itemDomainAvailable(state.Domain) {
+	if !s.itemDomainAvailable(domains.Domain(meta.Domain)) {
 		writeError(w, http.StatusServiceUnavailable, "domain_unavailable",
-			"no store is wired for resolved item domain "+string(state.Domain),
-			map[string]any{"domain": state.Domain})
+			"no store is wired for resolved item domain "+meta.Domain,
+			map[string]any{"domain": meta.Domain})
 		return
 	}
 
@@ -89,8 +92,12 @@ func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		revs, readErr := store.GetHistoryByItemID(r.Context(), itemID)
+		revs, readErr := s.itemService().History(r.Context(), meta)
 		if readErr != nil {
+			if errors.Is(readErr, itemservice.ErrHistoryUnavailable) {
+				writeWorkspaceError(w, readErr, "read_failed")
+				return
+			}
 			writeItemReadError(w, readErr)
 			return
 		}
@@ -98,17 +105,16 @@ func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var rev memory.Revision
-	if state.Domain == domains.Event {
-		rev, err = store.GetCurrentByItemID(r.Context(), itemID)
-	} else {
-		rev, err = store.GetCurrentByItemIDReinforced(r.Context(), itemID)
-	}
+	read, err := s.itemService().ReadCurrent(r.Context(), meta)
 	if err != nil {
-		writeItemReadError(w, err)
+		writeWorkspaceError(w, err, "read_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, rev)
+	if read.Item != nil {
+		writeJSON(w, http.StatusOK, *read.Item)
+		return
+	}
+	writeJSON(w, http.StatusOK, *read.Revision)
 }
 
 func writeItemReadError(w http.ResponseWriter, err error) {

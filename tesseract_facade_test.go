@@ -9,6 +9,7 @@ import (
 
 	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/memory"
+	"github.com/hollis-labs/tesseract/workspace"
 )
 
 func openTestTesseract(t *testing.T) *tesseract.Tesseract {
@@ -19,6 +20,50 @@ func openTestTesseract(t *testing.T) *tesseract.Tesseract {
 		t.Fatalf("tesseract.Open: %v", err)
 	}
 	return c
+}
+
+func TestPublicWorkspaceFacade(t *testing.T) {
+	ctx := context.Background()
+	c := openTestTesseract(t)
+	defer c.Close()
+
+	create := workspace.CreateRequest{CreateInput: workspace.CreateInput{
+		Namespace: "project/test/workspace/facade", Summary: "draft",
+		Author: memory.Author{AgentID: "facade-test"}, SessionID: "facade",
+	}, IdempotencyKey: "facade-create-1"}
+	receipt, err := c.CreateWorkspaceItem(ctx, create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := c.ReadItem(ctx, receipt.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Item == nil || read.Revision != nil || read.Item.Payload.Summary != "draft" {
+		t.Fatalf("typed read=%+v", read)
+	}
+	if _, historyErr := c.GetItemHistory(ctx, receipt.ItemID); !errors.Is(historyErr, tesseract.ErrItemHistoryUnavailable) {
+		t.Fatalf("workspace history error=%v", historyErr)
+	}
+	updated := "final"
+	edit, err := c.EditWorkspaceItem(ctx, workspace.EditInput{
+		ItemID: receipt.ItemID, VersionToken: receipt.VersionToken, Summary: &updated,
+		Author: memory.Author{AgentID: "facade-test"}, SessionID: "facade",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := c.DeleteWorkspaceItem(ctx, workspace.DeleteInput{ItemID: receipt.ItemID, VersionToken: edit.VersionToken})
+	if err != nil || deleted.Status != "deleted" || deleted.DeletedAt == nil {
+		t.Fatalf("delete receipt=%+v err=%v", deleted, err)
+	}
+	replay, err := c.CreateWorkspaceItem(ctx, create)
+	if err != nil || replay.Status != "replayed" || replay.Availability != "deleted" || replay.VersionToken != "" {
+		t.Fatalf("create replay=%+v err=%v", replay, err)
+	}
+	if _, err := c.ReadItem(ctx, receipt.ItemID); !errors.Is(err, workspace.ErrDeleted) {
+		t.Fatalf("deleted read error=%v", err)
+	}
 }
 
 func TestTesseract_WriteAndRecall(t *testing.T) {

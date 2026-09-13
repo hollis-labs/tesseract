@@ -32,8 +32,13 @@ const (
 	codeSelectorError   errorCode = "selector_error"
 
 	// Lookup failures.
-	codeNotFound      errorCode = "not_found"
-	codeSkillNotFound errorCode = "skill_not_found"
+	codeNotFound            errorCode = "not_found"
+	codeSkillNotFound       errorCode = "skill_not_found"
+	codeDeleted             errorCode = "deleted"
+	codeHistoryUnavailable  errorCode = "history_unavailable"
+	codeKeyConflict         errorCode = "key_conflict"
+	codeVersionConflict     errorCode = "version_conflict"
+	codeIdempotencyConflict errorCode = "idempotency_conflict"
 
 	// Authorization failures.
 	codeAuthRequired          errorCode = "auth_required"
@@ -54,6 +59,7 @@ const (
 	codePromoteFailed   errorCode = "promote_failed"
 	codeRegisterFailed  errorCode = "register_failed"
 	codeWriteFailed     errorCode = "write_failed"
+	codeDeleteFailed    errorCode = "delete_failed"
 	codeEmbeddingError  errorCode = "embedding_error"
 	codeSearchError     errorCode = "search_error"
 

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/hollis-labs/tesseract/domains"
 )
 
 const (
@@ -199,6 +201,42 @@ type TouchResult struct {
 	// names something the activation system does not move. Collapsing them
 	// would send a caller looking for a revision that is sitting right there.
 	NotReinforced []string `json:"not_reinforced"`
+}
+
+// TouchItems is the item-ID counterpart to TouchRevisions. It preserves the
+// same result buckets while resolving identities directly from memory_state.
+func (s *Store) TouchItems(ctx context.Context, itemIDs []string) (TouchResult, error) {
+	res := TouchResult{NotFound: []string{}, NotReinforced: []string{}}
+	if len(itemIDs) > MaxTouchRevisions {
+		return res, fmt.Errorf("%w: at most %d item_ids per touch, got %d", ErrInvalidInput, MaxTouchRevisions, len(itemIDs))
+	}
+	seen := map[string]bool{}
+	var activating []string
+	for _, itemID := range itemIDs {
+		if seen[itemID] {
+			continue
+		}
+		seen[itemID] = true
+		state, err := s.GetState(ctx, itemID)
+		if errors.Is(err, ErrNotFound) {
+			res.NotFound = append(res.NotFound, itemID)
+			continue
+		}
+		if err != nil {
+			return res, err
+		}
+		if state.Domain == domains.Event {
+			res.NotReinforced = append(res.NotReinforced, itemID)
+			continue
+		}
+		activating = append(activating, itemID)
+	}
+	moved, err := s.reinforceMemoryIDs(ctx, activating)
+	if err != nil {
+		return res, err
+	}
+	res.Touched = len(moved)
+	return res, nil
 }
 
 // TouchRevisions reinforces the memories behind the given revision IDs: the

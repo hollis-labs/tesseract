@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,8 @@ import (
 const itemColumns = `item_id, version_token, namespace, key_name, summary, body,
 	data, data_schema_hash, tags, consumer_state, author_agent_id, author_version,
 	session_id, created_at, updated_at, activation, access_count, last_used_at, last_decayed_at`
+
+var errRetryReceiptRace = errors.New("retry workspace receipt race")
 
 type Store struct {
 	db    *sql.DB
@@ -51,6 +54,72 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Item, error) {
 	})
 }
 
+// CreateWithReceipt atomically creates an item and its retry receipt. An exact
+// replay returns the original identity without reading or reinforcing content.
+func (s *Store) CreateWithReceipt(ctx context.Context, req CreateRequest) (MutationReceipt, error) {
+	if err := validateCreate(req.CreateInput); err != nil {
+		return MutationReceipt{}, err
+	}
+	if req.Key == "" && req.IdempotencyKey == "" {
+		return MutationReceipt{}, fmt.Errorf("%w: idempotency_key is required for keyless create", ErrInvalidInput)
+	}
+	digest, err := createDigest(req.CreateInput)
+	if err != nil {
+		return MutationReceipt{}, err
+	}
+	return retryMutation(ctx, "create", func() (MutationReceipt, error) {
+		return s.createWithReceiptOnce(ctx, req, digest)
+	})
+}
+
+func (s *Store) createWithReceiptOnce(ctx context.Context, req CreateRequest, digest string) (MutationReceipt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return MutationReceipt{}, fmt.Errorf("begin workspace create: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if req.IdempotencyKey != "" {
+		var storedDigest, itemID string
+		err = tx.QueryRowContext(ctx, `SELECT request_digest, item_id FROM workspace_creation_receipts
+			WHERE namespace = ? AND operation = 'create' AND idempotency_key = ?`, req.Namespace, req.IdempotencyKey).
+			Scan(&storedDigest, &itemID)
+		switch {
+		case err == nil:
+			if storedDigest != digest {
+				return MutationReceipt{}, fmt.Errorf("%w: idempotency_key was already used for different create arguments", ErrIdempotencyConflict)
+			}
+			availability, availabilityErr := receiptAvailability(ctx, tx, itemID)
+			if availabilityErr != nil {
+				return MutationReceipt{}, availabilityErr
+			}
+			return MutationReceipt{Status: "replayed", ItemID: itemID, Availability: availability}, nil
+		case !errors.Is(err, sql.ErrNoRows):
+			return MutationReceipt{}, fmt.Errorf("read workspace create receipt: %w", err)
+		}
+	}
+
+	item, err := s.createInTx(ctx, tx, req.CreateInput)
+	if err != nil {
+		return MutationReceipt{}, err
+	}
+	if req.IdempotencyKey != "" {
+		_, err = tx.ExecContext(ctx, `INSERT INTO workspace_creation_receipts
+			(namespace, operation, idempotency_key, request_digest, item_id)
+			VALUES (?, 'create', ?, ?, ?)`, req.Namespace, req.IdempotencyKey, digest, item.ItemID)
+		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				return MutationReceipt{}, errRetryReceiptRace
+			}
+			return MutationReceipt{}, fmt.Errorf("insert workspace create receipt: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return MutationReceipt{}, fmt.Errorf("commit workspace create: %w", err)
+	}
+	return MutationReceipt{Status: "created", ItemID: item.ItemID, VersionToken: item.VersionToken}, nil
+}
+
 func (s *Store) createOnce(ctx context.Context, in CreateInput) (Item, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -58,6 +127,17 @@ func (s *Store) createOnce(ctx context.Context, in CreateInput) (Item, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	item, err := s.createInTx(ctx, tx, in)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Item{}, fmt.Errorf("commit workspace create: %w", err)
+	}
+	return item, nil
+}
+
+func (s *Store) createInTx(ctx context.Context, tx *sql.Tx, in CreateInput) (Item, error) {
 	key := optionalText(in.Key)
 	if key.Valid {
 		occupied, checkErr := liveKeyExists(ctx, tx, in.Namespace, in.Key, "")
@@ -98,10 +178,46 @@ func (s *Store) createOnce(ctx context.Context, in CreateInput) (Item, error) {
 	if err != nil {
 		return Item{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return Item{}, fmt.Errorf("commit workspace create: %w", err)
-	}
 	return item, nil
+}
+
+func createDigest(in CreateInput) (string, error) {
+	// RawMessage is serialized without decoding through float64, preserving the
+	// caller's JSON number representation in data and consumer_state.
+	b, err := json.Marshal(struct {
+		Namespace      string          `json:"namespace"`
+		Key            string          `json:"key"`
+		Summary        string          `json:"summary"`
+		Body           string          `json:"body"`
+		Data           json.RawMessage `json:"data"`
+		DataSchemaHash string          `json:"data_schema_hash"`
+		Tags           []string        `json:"tags"`
+		ConsumerState  json.RawMessage `json:"consumer_state"`
+		Author         memory.Author   `json:"author"`
+		SessionID      string          `json:"session_id"`
+	}{in.Namespace, in.Key, in.Summary, in.Body, in.Data, in.DataSchemaHash, in.Tags, in.ConsumerState, in.Author, in.SessionID})
+	if err != nil {
+		return "", fmt.Errorf("encode workspace create digest: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+func receiptAvailability(ctx context.Context, tx *sql.Tx, itemID string) (string, error) {
+	var live, deleted int
+	if err := tx.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM workspace_items WHERE item_id = ?),
+		EXISTS(SELECT 1 FROM workspace_tombstones WHERE item_id = ?)`, itemID, itemID).Scan(&live, &deleted); err != nil {
+		return "", fmt.Errorf("read workspace receipt availability: %w", err)
+	}
+	switch {
+	case live != 0:
+		return "live", nil
+	case deleted != 0:
+		return "deleted", nil
+	default:
+		return "", fmt.Errorf("workspace create receipt points to missing item %s", itemID)
+	}
 }
 
 func (s *Store) Edit(ctx context.Context, in EditInput) (Item, error) {
@@ -208,6 +324,25 @@ func (s *Store) Delete(ctx context.Context, in DeleteInput) (Metadata, error) {
 	return retryMutation(ctx, "delete", func() (Metadata, error) {
 		return s.deleteOnce(ctx, in)
 	})
+}
+
+// DeleteWithReceipt applies a conditional first delete and makes later retries
+// converge on the original tombstone receipt.
+func (s *Store) DeleteWithReceipt(ctx context.Context, in DeleteInput) (DeleteReceipt, error) {
+	if strings.TrimSpace(in.ItemID) == "" || in.VersionToken == "" {
+		return DeleteReceipt{}, fmt.Errorf("%w: item_id and version_token are required", ErrInvalidInput)
+	}
+	meta, err := s.LookupMetadata(ctx, in.ItemID)
+	if err != nil {
+		return DeleteReceipt{}, err
+	}
+	if !meta.Deleted {
+		meta, err = s.Delete(ctx, in)
+		if err != nil {
+			return DeleteReceipt{}, err
+		}
+	}
+	return DeleteReceipt{Status: "deleted", ItemID: meta.ItemID, DeletedAt: meta.DeletedAt}, nil
 }
 
 func (s *Store) deleteOnce(ctx context.Context, in DeleteInput) (Metadata, error) {
@@ -519,7 +654,7 @@ func retryMutation[T any](ctx context.Context, operation string, fn func() (T, e
 	var lastErr error
 	for attempt := range 8 {
 		result, err := fn()
-		if !isSQLiteBusy(err) {
+		if !isSQLiteBusy(err) && !errors.Is(err, errRetryReceiptRace) {
 			return result, err
 		}
 		lastErr = err

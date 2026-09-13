@@ -1,6 +1,6 @@
 # Tesseract — MCP Tools (agent reference)
 
-This is the agent-facing catalog for Tesseract's 28-tool MCP surface. Every
+This is the agent-facing catalog for Tesseract's 30-tool MCP surface. Every
 tool here is registered by `tesseract mcp` and has an HTTP peer under `/v1/*`
 unless the row is marked **MCP-only**.
 
@@ -41,11 +41,11 @@ Every agent hitting this surface should start with `tesseract_skills start-here`
 - `tesseract_skills` with no args → returns the skill index (name + description + scope hint).
 - `tesseract_skills` with `name=<skill-name>` → returns the full markdown body of one skill.
 
-Shipped skills (11):
+Shipped skills (13):
 
 | Name | Type | Body covers |
 |---|---|---|
-| `start-here` | orientation | Tesseract's three domains, invariants, how to use this surface. |
+| `start-here` | orientation | Tesseract's five domains, invariants, how to use this surface. |
 | `namespaces` | primitive | Canonical tier patterns, ownership, memory-domain stricter form. |
 | `facets-and-kinds` | primitive | Facet vocabulary, the `kind` convention, extension rules. |
 | `revisions` | primitive | Append-only model, supersede chains, dedup, revision IDs. |
@@ -54,6 +54,8 @@ Shipped skills (11):
 | `views` | primitive | Selectors-not-processors; namespace globs. |
 | `memory` | domain | When to use memory, common patterns. |
 | `knowledge` | domain | Content addressed by key, with `kind`/`source`/`pointer` facets. |
+| `event` | domain | The append-only narrative log and its chronological read. |
+| `workspace` | domain | Mutable project scratch, retry receipts, version tokens, tombstones, recall, and touch. |
 | `context-packet` | feature | Boot workflows, plan and fetch, budget tuning. |
 | `audit` | feature | Querying the audit log. |
 
@@ -64,6 +66,8 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 - **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `full_evaluation`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity/relevance rankings).
 - **Knowledge** — content a later session will go looking for by name (a project canonical, handoff, playbook, doc, package) with structured facets. Backed by the memory revision store with `domain=knowledge`. The boundary against memory, with its limits, is stated once in `tesseract_skills start-here`.
+- **Event** — append-only narrative log, excluded from unqualified recall and activation.
+- **Workspace** — mutable project-owned scratch with stable `item_id`, optimistic `version_token`, no history, and identity tombstones.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
 
 ## Tool naming
@@ -82,12 +86,14 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `knowledge_` | the knowledge domain only — content addressed by key |
 | `memory_` | the memory domain only — agent-authored revisions |
 | `tesseract_` | spans every domain, or serves the surface itself |
+| `workspace_` | the mutable workspace domain only |
 
 **Verb table.** The verb is the trailing segment(s) of the name; anything between prefix and verb is a subject naming what is operated on.
 
 | Verb | Means | Prefixes |
 |---|---|---|
 | `deprecate` | Soft-remove one revision; history keeps it. | `tesseract` |
+| `delete` | Delete mutable workspace content and retain its identity tombstone. | `workspace` |
 | `embed` | Compute and store an embedding vector for a record. | `context` |
 | `estimate` | Size what a selector would return, without returning it. | `context` |
 | `get` | Fetch the current entry at one identity. | `tesseract` |
@@ -104,7 +110,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `set` | Move a record to a named value of a closed field. | `context` |
 | `touch` | Report deliberate use, so it counts toward activation. | `tesseract` |
 | `view` | Evaluate a view or selector and return what it matches. | `context` |
-| `write` | Append a revision or record. | `context`, `event`, `knowledge`, `memory` |
+| `write` | Write content; append in revisioned domains and replace current authored state in workspace. | `context`, `event`, `knowledge`, `memory`, `workspace` |
 
 **Exemptions.** Registered names that do not match the vocabulary, and why.
 
@@ -161,11 +167,22 @@ The append-only narrative log — reasoning in prose, not telemetry. Two propert
 | `event_write` | `memory:write` | `POST /v1/event/write` | `tesseract_skills event` | Append one log entry. `key` is optional and usually omitted — a log entry records that something happened, not a current value. Stamped `status=canonical`. |
 | `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`. No total, by design. Deprecated entries excluded. |
 
+### Workspace
+
+Workspace stores project-owned scratch and other replaceable working state. Each item has
+one mutable current value, a stable `item_id`, and a concurrency `version_token`; it has no
+revision history. See `tesseract_skills workspace`.
+
+| Tool | Scope | HTTP peer | Deeper | Notes |
+|---|---|---|---|---|
+| `workspace_write` | `memory:write` | `POST /v1/workspace/write` | `tesseract_skills workspace` | Create by `namespace`, or conditionally edit by `item_id` + `version_token`. Keyless creates require `idempotency_key`; an exact retry returns the original identity without a stale token. |
+| `workspace_delete` | `memory:write` | `POST /v1/workspace/delete` | `tesseract_skills workspace` | Delete current content and retain an identity tombstone. Repeated delete returns the original deleted receipt. |
+
 ### Cross-domain
 
-For the legacy keyed selector, `domain` is an argument on the reads: `context`, `memory`, `knowledge`, or `event`. It is required when using the keyed selector — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
+For the legacy keyed selector, `domain` is an argument on the reads: `context`, `memory`, `knowledge`, `event`, or `workspace`. It is required when using the keyed selector — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
 
-The preferred selector is `item_id`, supplied alone. It is the stable identity returned on every memory, knowledge, and event revision, and is the same value retained as `memory_id`. Tesseract resolves the stored domain and namespace, applies namespace policy, and can therefore read keyless items. The alternative legacy selector is the complete `domain` + `namespace` + `key` triple. Mixed and partial forms are rejected.
+The preferred selector is `item_id`, supplied alone. It is the stable identity returned on every revision and workspace item. Revisioned domains retain the same value as `memory_id`; workspace does not expose `memory_id` or `revision_id`. Tesseract resolves the stored domain and namespace, applies namespace policy, and can therefore read keyless items. The alternative legacy selector is the complete `domain` + `namespace` + `key` triple. Mixed and partial forms are rejected.
 
 The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was. `revision_id` remains the exact immutable-version selector; it is not interchangeable with `item_id`.
 
@@ -177,12 +194,12 @@ Each tool covers the item-ID routes and the existing keyed HTTP routes; the pari
 
 | Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_get` | `memory:read` for item/`memory`/`knowledge`/`event`; none for `context` | `GET /v1/items/{item_id}`, `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current item by `item_id`, or current entry by the complete legacy `(domain, namespace, key)` selector. Item IDs reach keyless entries. Reinforces memory and knowledge after authorization; event and context do not. |
-| `tesseract_history` | as above | `GET /v1/items/{item_id}/history`, `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history newest first by `item_id`, including keyless items, or by the complete legacy keyed selector. History never reinforces. |
-| `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over the curated corpus — memory + knowledge — (activation / chronological / similarity / relevance). Narrow with `domains`, which is also how you opt `event` in. |
+| `tesseract_get` | `memory:read` for item/`memory`/`knowledge`/`event`/`workspace`; none for `context` | `GET /v1/items/{item_id}`, `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current`, `GET /v1/workspace/current` | `tesseract_skills memory`, `workspace` | Current item by `item_id`, or current entry by the complete legacy `(domain, namespace, key)` selector. Item IDs reach keyless entries. Reinforces memory, knowledge, and workspace after authorization; event and context do not. |
+| `tesseract_history` | as above | `GET /v1/items/{item_id}/history`, `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history newest first by `item_id`, including keyless items, or by the complete legacy keyed selector. Workspace returns `history_unavailable`. History never reinforces. |
+| `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Typed recall. The default remains memory + knowledge. Use `domains` to opt in workspace or event; workspace supports lexical relevance, activation, and chronological ordering but has no semantic embeddings or timeline. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
-| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory` | Report which recalled revisions actually shaped the turn, especially projected hits not deliberately fetched. Any domain's revision id resolves; an event id comes back under `not_reinforced`, since that domain opts out of activation. |
+| `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory`, `workspace` | Pass exactly one of `revision_ids` or `item_ids`. Item IDs reinforce mutable/revisioned current items; event IDs return under `not_reinforced`, deleted workspace IDs under `deleted`, and unknown IDs under `not_found`. |
 
 Under the default `revision_scope=current`, omitted `statuses` continue to hide
 deprecated revisions. When `statuses` explicitly includes `deprecated`, current
@@ -243,6 +260,25 @@ mcp__tesseract__knowledge_write {
 
 Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are required. Confidence defaults to 0.9 if omitted.
 
+### 2a. Create and update workspace scratch
+
+```json
+mcp__tesseract__workspace_write {
+  "namespace": "project/example/workspace/scratch",
+  "idempotency_key": "session-42-draft-1",
+  "summary": "Current draft",
+  "body": "Working content",
+  "consumer_state": "{\"phase\":\"draft\"}",
+  "author_agent_id": "assistant",
+  "session_id": "session-42"
+}
+```
+
+The first call returns `status=created`, `item_id`, and `version_token`. An exact retry
+returns `status=replayed`, the original `item_id`, and `availability`; it deliberately
+omits `version_token`. Read the current item, then edit through `workspace_write` with
+`item_id` and that read's current `version_token`. Delete through `workspace_delete`.
+
 ### 3. Look up anything by topic
 
 ```json
@@ -294,12 +330,20 @@ mcp__tesseract__tesseract_get {
 mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }
 ```
 
-Useful when a `tesseract_recall` hit references a revision you want to inspect in full. Every result carries `revision_id` under every `payload_mode`, so this hydrate step is always available. The deliberate fetch reinforces the parent entry once.
+Useful when a revision result from `tesseract_recall` needs full hydration. Workspace hits
+carry `item_id` instead of `revision_id`; hydrate those through `tesseract_get`. The
+deliberate fetch reinforces the item once.
 
 ### 7. Close the loop after using what you recalled
 
 ```json
 mcp__tesseract__tesseract_touch { "revision_ids": ["01HXYZ…"] }
+```
+
+For typed current-item results, use `item_ids` instead:
+
+```json
+mcp__tesseract__tesseract_touch { "item_ids": ["01HITEM…"] }
 ```
 
 Recall itself does not reinforce results — being returned by a search is the ranker's guess, not evidence it was right. Call this after the reasoning for projected hits that shaped the turn without a deliberate fetch. `tesseract_get` under `domain=memory` or `domain=knowledge`, and `tesseract_get_revision`, already reinforce once; touching the same hit adds a second reinforcement and should be intentional.

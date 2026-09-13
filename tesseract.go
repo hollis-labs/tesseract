@@ -11,7 +11,9 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	queue "github.com/hollis-labs/go-queue"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/workspace"
 )
 
 // Config holds the top-level configuration for a Tesseract instance.
@@ -78,6 +80,8 @@ func WithQueue(q queue.Queue) Option {
 type Tesseract struct {
 	store          *contextstore.Store
 	memoryStore    *memory.Store
+	workspaceStore *workspace.Store
+	items          *itemservice.Service
 	embedder       embedcontracts.Embedder
 	embeddingModel string
 	logger         func(string, ...any)
@@ -141,6 +145,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
 	memStore.SetAuditSink(store)
 	memStore.SetNamespaceRegistrar(store)
+	workspaceStore := workspace.NewStore(store.DB())
 
 	// Reconcile any namespaces that have data but no policy row. Idempotent —
 	// only writes the first time a divergence is observed. CW-20260428-0005.
@@ -157,6 +162,8 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 	tesseract := &Tesseract{
 		store:          store,
 		memoryStore:    memStore,
+		workspaceStore: workspaceStore,
+		items:          &itemservice.Service{Revisions: memStore, Workspace: workspaceStore},
 		embedder:       o.embedder,
 		embeddingModel: o.embeddingModel,
 		logger:         o.logger,
@@ -201,6 +208,9 @@ func (c *Tesseract) Store() *contextstore.Store { return c.store }
 // MemoryStore returns the underlying memory.Store.
 func (c *Tesseract) MemoryStore() *memory.Store { return c.memoryStore }
 
+// WorkspaceStore returns the mutable workspace store.
+func (c *Tesseract) WorkspaceStore() *workspace.Store { return c.workspaceStore }
+
 // WriteMemory writes a new memory revision.
 func (c *Tesseract) WriteMemory(ctx context.Context, in memory.WriteInput) (memory.Revision, error) {
 	return c.memoryStore.WriteRevision(ctx, in)
@@ -226,10 +236,83 @@ func (c *Tesseract) GetCurrentItem(ctx context.Context, itemID string) (memory.R
 	return c.memoryStore.GetCurrentByItemID(ctx, itemID)
 }
 
+// ItemMetadata identifies an item's domain and authorization namespace without content.
+type ItemMetadata = itemservice.Metadata
+
+// ItemReadResult contains exactly one current revision or workspace item.
+type ItemReadResult = itemservice.ReadResult
+
+// WorkspaceItem is the public current workspace response shape.
+type WorkspaceItem = itemservice.WorkspaceItem
+
+// ItemRecallResult contains exactly one typed revision or workspace result.
+type ItemRecallResult = itemservice.RecallResult
+
+// PagedItemRecall is a projected typed recall page and its manifest.
+type PagedItemRecall = itemservice.PagedRecall
+
+// ItemTouchResult reports item identities that moved or could not be reinforced.
+type ItemTouchResult = itemservice.TouchResult
+
+// ErrItemHistoryUnavailable reports that a mutable item retains no revisions.
+var ErrItemHistoryUnavailable = itemservice.ErrHistoryUnavailable
+
+func (c *Tesseract) ReadItem(ctx context.Context, itemID string) (ItemReadResult, error) {
+	meta, err := c.items.LookupMetadata(ctx, itemID)
+	if err != nil {
+		return ItemReadResult{}, err
+	}
+	return c.items.ReadCurrent(ctx, meta)
+}
+
+func (c *Tesseract) ReadWorkspaceCurrent(ctx context.Context, namespace, key string) (WorkspaceItem, error) {
+	return c.items.ReadWorkspaceByKey(ctx, namespace, key)
+}
+
+func (c *Tesseract) CreateWorkspaceItem(ctx context.Context, in workspace.CreateRequest) (workspace.MutationReceipt, error) {
+	return c.workspaceStore.CreateWithReceipt(ctx, in)
+}
+
+func (c *Tesseract) EditWorkspaceItem(ctx context.Context, in workspace.EditInput) (workspace.MutationReceipt, error) {
+	item, err := c.workspaceStore.Edit(ctx, in)
+	if err != nil {
+		return workspace.MutationReceipt{}, err
+	}
+	return workspace.MutationReceipt{Status: "updated", ItemID: item.ItemID, VersionToken: item.VersionToken}, nil
+}
+
+func (c *Tesseract) DeleteWorkspaceItem(ctx context.Context, in workspace.DeleteInput) (workspace.DeleteReceipt, error) {
+	return c.workspaceStore.DeleteWithReceipt(ctx, in)
+}
+
+func (c *Tesseract) RecallItems(ctx context.Context, in memory.RecallInput, page memory.PageRequest) (PagedItemRecall, error) {
+	return c.items.RecallPaged(ctx, in, page)
+}
+
+func (c *Tesseract) TouchItems(ctx context.Context, itemIDs []string) (ItemTouchResult, error) {
+	metas := make([]itemservice.Metadata, 0, len(itemIDs))
+	for _, id := range itemIDs {
+		meta, err := c.items.LookupMetadata(ctx, id)
+		if errors.Is(err, memory.ErrNotFound) {
+			metas = append(metas, itemservice.Metadata{ItemID: id})
+			continue
+		}
+		if err != nil {
+			return ItemTouchResult{}, err
+		}
+		metas = append(metas, meta)
+	}
+	return c.items.TouchItems(ctx, metas)
+}
+
 // GetItemHistory returns an item's immutable revisions by stable item_id,
 // newest first.
 func (c *Tesseract) GetItemHistory(ctx context.Context, itemID string) ([]memory.Revision, error) {
-	return c.memoryStore.GetHistoryByItemID(ctx, itemID)
+	meta, err := c.items.LookupMetadata(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	return c.items.History(ctx, meta)
 }
 
 // EmbedRevision generates and stores an embedding for a memory revision.

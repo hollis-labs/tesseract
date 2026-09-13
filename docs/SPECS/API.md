@@ -4,7 +4,7 @@ Status: implemented public-preview contract.
 
 The HTTP server exposes JSON routes under `/v1/` and the embedded web UI at
 `/`. The authoritative route registry is `apiRoutes` in
-`internal/contextapi/server.go`; this document describes all 63 routes in that
+`internal/contextapi/server.go`; this document describes all 66 routes in that
 registry.
 
 ## Starting the server
@@ -194,18 +194,18 @@ These routes are protected whenever a token mode is enabled, but they do not
 add a second handler-level scope check. Prefer the local CLI for initial token
 creation and recovery.
 
-### Memory and knowledge
+### Memory, knowledge, event, and workspace
 
 | Method and path | Additional authorization | Contract |
 |---|---|---|
 | `POST /v1/memory/write` | namespace | Append a memory-domain revision. |
-| `POST /v1/memory/recall` | each namespace | Ranked memory/knowledge recall with cursor and response budgets. |
+| `POST /v1/memory/recall` | each namespace | Typed ranked recall. The default remains memory + knowledge; workspace and event are opt-in through `filters.domains`. |
 | `GET /v1/memory/revisions/{id}` | — | Read one exact revision by `revision_id`. |
-| `GET /v1/items/{item_id}` | resolved namespace | Read the current memory, knowledge, or event revision by stable item identity; works for keyless items. |
-| `GET /v1/items/{item_id}/history` | resolved namespace | Read the item's immutable revision chain newest first; accepts history paging and budget query parameters. |
+| `GET /v1/items/{item_id}` | resolved namespace | Read a current revision or workspace item by stable identity; works for keyless items. Workspace returns its current item shape and reinforces use. |
+| `GET /v1/items/{item_id}/history` | resolved namespace | Read a revisioned item's immutable chain newest first; accepts history paging and budget query parameters. Workspace returns `400 history_unavailable`. |
 | `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `key`. |
 | `GET /v1/memory/history` | namespace | Memory history for `namespace` + `key`. |
-| `POST /v1/memory/touch` | — | Reinforce deliberately used revision IDs. |
+| `POST /v1/memory/touch` | resolved namespace for `item_ids` | Reinforce deliberately used `revision_ids` or current `item_ids`; pass exactly one selector. Deleted workspace IDs are reported under `deleted`. |
 | `POST /v1/memory/deprecate` | — | Deprecate one revision by ID. |
 | `POST /v1/memory/promote` | source + target namespaces | Promote session-scoped memory to user/project scope. |
 | `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. |
@@ -213,6 +213,9 @@ creation and recovery.
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
 | `POST /v1/event/write` | namespace | Append one event-log entry. `key` optional; a keyless write appends a new entry. |
 | `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `limit`, `cursor`, `payload_mode`. Every namespace named is authorized, not just the first. |
+| `POST /v1/workspace/write` | `write` + namespace | Create by `namespace`, or edit by `item_id` + `version_token`. Keyless create requires `idempotency_key`; an exact retry returns the original identity without returning a stale token. |
+| `POST /v1/workspace/delete` | `write` + resolved namespace | Conditionally delete current content and retain an identity tombstone. Repeated delete returns the same successful deleted receipt. |
+| `GET /v1/workspace/current` | namespace | Read and reinforce one keyed workspace item by `namespace` + `key`. |
 
 Here, `namespace` means a `namespace_globs` authorization check when managed or
 static authentication is active. The item routes resolve the stored namespace first and
@@ -220,19 +223,20 @@ apply the same policy before returning revision content or reinforcing activatio
 memory, knowledge and event routes currently do not require the MCP-only `memory:read` or
 `memory:write` scopes.
 
-`item_id` is the stable identity of a Tesseract-owned memory, knowledge, or event item. It
-is the same value retained as `memory_id`; revision and state responses carry both fields
-for compatibility. The preferred item routes need no domain, namespace, or key, and they
-therefore reach keyless items. Existing per-domain namespace/key routes remain supported.
-`revision_id` still selects one exact immutable revision and must not be treated as an
-item ID.
+`item_id` is the stable identity of any Tesseract-owned item. Revisioned domains retain
+the same value as `memory_id`; revision and state responses carry both fields for
+compatibility. Workspace has no `memory_id` or `revision_id`: its current content carries
+`item_id` and `version_token`. The preferred item routes need no domain, namespace, or key,
+so they reach keyless items. Existing per-domain namespace/key routes remain supported.
+`revision_id` still selects one exact immutable revision and must not be treated as an item
+ID.
 
 ### Retrieval and synthesis
 
 | Method and path | Additional authorization | Contract |
 |---|---|---|
 | `POST /v1/tesseract/lookup` | each namespace | Cross-domain ranked lookup with filters, facets, cursors, and payload budgets. |
-| `GET /v1/recall` | namespace | Script-oriented recall. Requires `namespace`; accepts comma-separated `tags`, `limit`, and `format=brief|full`. |
+| `GET /v1/recall` | namespace | Script-oriented typed recall. Requires `namespace`; accepts comma-separated `tags` and `domains`, plus `limit` and `format=brief|full`. Workspace and event remain opt-in. |
 | `POST /v1/synthesis/ask` | — | Recall sources and ask the configured LLM; returns answer, numbered sources, and usage/cost metadata. |
 
 Synthesis returns `503 synthesis_unavailable` unless a provider and its API key
@@ -307,9 +311,54 @@ curl -sS "$TESSERACT_URL/v1/items/01HITEM.../history?limit=20" \
   -H "Authorization: Bearer $TESSERACT_TOKEN"
 ```
 
-The current read reinforces memory and knowledge activation after authorization. Event
-items do not participate in activation, and history does not reinforce any domain. An
-unknown `item_id` returns `404 not_found`.
+The current read reinforces memory, knowledge, and workspace activation after
+authorization. Event items do not participate in activation, and history does not
+reinforce any domain. A deleted workspace item returns `410 deleted`; an unknown
+`item_id` returns `404 not_found`.
+
+### Workspace create, retry, edit, and delete
+
+Create uses `namespace` as its selector. A keyless create requires an opaque
+`idempotency_key`; keyed creates may use one too:
+
+```json
+{
+  "namespace": "project/example/workspace/scratch",
+  "idempotency_key": "run-42-draft-1",
+  "summary": "Draft release notes",
+  "body": "Current working copy",
+  "data": {"section": 1},
+  "tags": ["release"],
+  "consumer_state": {"phase": "draft"},
+  "author": {"agent_id": "assistant", "agent_version": "1"},
+  "session_id": "session-42"
+}
+```
+
+The first response is `{status:"created", item_id, version_token}`. An exact retry
+returns `{status:"replayed", item_id, availability:"live"}` and omits
+`version_token`, because the original token may no longer be current. Reusing the retry
+key with different create arguments returns `409 idempotency_conflict`.
+
+Edit through the same route with `item_id` and the current `version_token`; supplied
+content replaces current values, while `clear_fields` removes optional fields:
+
+```json
+{
+  "item_id": "01HITEM...",
+  "version_token": "01HTOKEN...",
+  "summary": "Reviewed release notes",
+  "clear_fields": ["body"],
+  "author": {"agent_id": "assistant"},
+  "session_id": "session-42"
+}
+```
+
+A stale token returns `409 version_conflict`. Delete uses
+`POST /v1/workspace/delete` with `{item_id, version_token}`. It erases content, retains
+the item's namespace identity in a tombstone, and returns `{status:"deleted", item_id,
+deleted_at}`. Repeating delete is successful even though the old version token is no
+longer usable for content mutation.
 
 ### Memory write shape
 

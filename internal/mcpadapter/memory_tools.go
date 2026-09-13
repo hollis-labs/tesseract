@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -145,8 +146,46 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req mcp.CallToolRequ
 	if err != nil {
 		return toolError(codeValidationError, "revision_ids "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
-	if !present {
-		return toolError(codeValidationError, "revision_ids is required"), nil
+	itemIDs, itemPresent, itemErr := parseStringArrayArg(req, "item_ids")
+	if itemErr != nil {
+		return toolError(codeValidationError, "item_ids "+itemErr.Error()), nil //nolint:nilerr // MCP application errors are tool results
+	}
+	if present == itemPresent {
+		return toolError(codeValidationError, "choose exactly one of revision_ids or item_ids"), nil
+	}
+	if itemPresent {
+		if len(itemIDs) > memory.MaxTouchRevisions {
+			return toolError(codeValidationError, "at most 100 item_ids per touch"), nil
+		}
+		_, claims := a.checkScope(ctx, "memory:read")
+		metas := make([]itemservice.Metadata, 0, len(itemIDs))
+		seen := map[string]bool{}
+		for _, id := range itemIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			meta, lookupErr := a.itemService().LookupMetadata(ctx, id)
+			if errors.Is(lookupErr, memory.ErrNotFound) {
+				metas = append(metas, itemservice.Metadata{ItemID: id})
+				continue
+			}
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit touching: "+meta.Namespace), nil
+			}
+			metas = append(metas, meta)
+		}
+		out, touchErr := a.itemService().TouchItems(ctx, metas)
+		if touchErr != nil {
+			if errors.Is(touchErr, memory.ErrInvalidInput) {
+				return toolError(codeValidationError, touchErr.Error()), nil
+			}
+			return nil, touchErr
+		}
+		return toolJSON(out), nil
 	}
 
 	res, err := a.revisionStore().TouchRevisions(ctx, revisionIDs)

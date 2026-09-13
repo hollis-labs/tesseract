@@ -74,6 +74,7 @@ The main groups are:
 - `memory_*` for memory writes and domain workflows
 - `knowledge_*` for knowledge writes — content addressed by key, whether or not it points anywhere outside Tesseract
 - `event_*` for the append-only narrative log — an agent's reasoning in prose, and its linear read
+- `workspace_*` for mutable project-owned scratch with stable item IDs and optimistic version tokens
 - `tesseract_*` for cross-domain reads, history, recall, revision access, and touch
 
 The full inventory is in [MCP tools](MCP_TOOLS.md).

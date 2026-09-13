@@ -1,0 +1,123 @@
+---
+name: workspace
+description: Mutable project-owned scratch — create retry receipts, optimistic edits, tombstones, current reads, typed recall, and touch by item_id.
+scope_hint: memory:read, memory:write
+related: [start-here, namespaces, recall-and-ranking]
+---
+
+# Workspace
+
+Workspace holds replaceable working state owned by one project. It is the one
+Tesseract domain that updates content in place. Every live item has a stable
+`item_id` and a current `version_token`; it has no immutable `revision_id`,
+`memory_id`, or retained content history.
+
+Use a namespace shaped like `{scope}/{id}/workspace/{anything}/...`, normally
+`project/<project-id>/workspace/<purpose>`. A `workstream_id`, when useful, is
+content or consumer state rather than another namespace tier.
+
+## Create and retry safely
+
+Create through `workspace_write` with `namespace`. `summary`,
+`author_agent_id`, and `session_id` are required. `key` is optional. A keyless
+create also requires `idempotency_key`; keyed creates may provide one.
+
+```text
+workspace_write namespace="project/example/workspace/scratch" \
+  idempotency_key="session-42-draft-1" \
+  summary="Current draft" body="Working content" \
+  consumer_state='{"phase":"draft"}' \
+  author_agent_id="assistant" session_id="session-42"
+```
+
+The first successful call returns:
+
+```json
+{"status":"created","item_id":"01HITEM...","version_token":"01HTOKEN..."}
+```
+
+An exact retry returns the original identity without reading or reinforcing the
+item:
+
+```json
+{"status":"replayed","item_id":"01HITEM...","availability":"live"}
+```
+
+The replay omits `version_token`, because the item may have changed after the
+first response was lost. Read current state before editing. Reusing the same
+retry key and namespace with different create arguments returns
+`idempotency_conflict`. A retry after deletion returns the same `item_id` with
+`availability:"deleted"`; it never recreates the item.
+
+## Read and edit current state
+
+Prefer `tesseract_get item_id=<item-id>`. It works for keyed and keyless items,
+returns the workspace item directly, and records one use. Existing key lookup
+also works:
+
+```text
+tesseract_get domain="workspace" \
+  namespace="project/example/workspace/scratch" key="release-notes"
+```
+
+Content remains nested under `payload`; concurrency identity stays at the item
+level:
+
+```json
+{
+  "item_id":"01HITEM...",
+  "domain":"workspace",
+  "version_token":"01HTOKEN...",
+  "namespace":"project/example/workspace/scratch",
+  "key":"release-notes",
+  "payload":{"summary":"Current draft","body":"Working content"}
+}
+```
+
+Edit through `workspace_write` with `item_id` and the current `version_token`.
+Only supplied fields change. `clear_fields` removes optional `key`, `body`,
+`data`, `tags`, or `consumer_state`. A stale token returns
+`version_conflict`; a rename to an occupied live key returns `key_conflict`.
+An edit returns a fresh token.
+
+## Delete and tombstones
+
+`workspace_delete item_id=<id> version_token=<current-token>` erases content
+and retains only identity, namespace, and deletion time. Current reads then
+return `deleted`; an ID that never existed returns `not_found`. Repeating the
+delete returns the same successful deleted receipt. Recreating the former key
+creates a new item identity.
+
+Workspace deliberately has no history. `tesseract_history` for a workspace
+item returns `history_unavailable`.
+
+## Recall and use
+
+Workspace is never part of unqualified recall. Opt it in explicitly:
+
+```text
+tesseract_recall \
+  namespaces='["project/example/workspace/scratch"]' \
+  domains='["workspace"]' query="release" \
+  ranking="relevance" search_mode="lexical"
+```
+
+Workspace supports lexical relevance, activation, and chronological ordering.
+It has no embeddings, so semantic/similarity modes are rejected. It has no
+timeline, revision status, confidence, provenance, knowledge facets, pointers,
+or link graph; filters for those revision-only fields are rejected when
+workspace is included. Tags, `state_filters`, and `since`/`until` apply before
+the result limit.
+
+Recall returns a typed alternative: a revision result has `revision`, while a
+workspace result has `item`. Projected workspace results retain `item_id`, so
+hydrate one with `tesseract_get item_id=<id>`. Recall itself never records use.
+After reasoning, report projected workspace hits that mattered with:
+
+```text
+tesseract_touch item_ids='["01HITEM..."]'
+```
+
+Pass exactly one of `item_ids` or `revision_ids`. Deleted workspace identities
+are listed under `deleted`, unknown IDs under `not_found`, and event item IDs
+under `not_reinforced`.

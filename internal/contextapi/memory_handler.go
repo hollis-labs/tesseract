@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -219,7 +220,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		Query:         req.Query,
 		Filters:       filters,
 	}
-	page, err := s.MemoryStore.RecallPaged(r.Context(), in, pr)
+	page, err := s.itemService().RecallPaged(r.Context(), in, pr)
 	if err != nil {
 		writeRecallError(w, err, "recall_failed")
 		return
@@ -361,6 +362,7 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 // the two are asserted equal in tests/parity.
 type memoryTouchRequest struct {
 	RevisionIDs []string `json:"revision_ids"`
+	ItemIDs     []string `json:"item_ids"`
 }
 
 // handleMemoryTouch serves POST /v1/memory/touch: the caller reporting which
@@ -370,17 +372,58 @@ type memoryTouchRequest struct {
 // the MCP tool cannot drift on either — both surface memory.ErrInvalidInput as a
 // validation_error with the store's own message.
 //
-// No namespace check: the request names revision IDs, not namespaces, exactly as
-// GET /v1/memory/revisions/{id} does — the other route that reinforces by
-// revision ID. It is gated by authorizeRequest in the router because it is a
-// POST that changes state; that gate authenticates rather than checking a
-// write scope, so a read-only caller can still close the loop.
+// Revision IDs keep their existing behavior. Item IDs resolve metadata first,
+// and every namespace is authorized before any activation state is changed.
+// The route is gated by authorizeRequest but needs no write scope, so a
+// read-only caller can still close the loop.
 func (s *Server) handleMemoryTouch(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
 	}
 	var req memoryTouchRequest
 	if !decodeRequestBody(w, r, &req) {
+		return
+	}
+	if (req.RevisionIDs != nil) == (req.ItemIDs != nil) {
+		writeError(w, http.StatusBadRequest, "validation_error", "choose exactly one of revision_ids or item_ids", nil)
+		return
+	}
+	if req.ItemIDs != nil {
+		if len(req.ItemIDs) > memory.MaxTouchRevisions {
+			writeError(w, http.StatusBadRequest, "validation_error", "at most 100 item_ids per touch", nil)
+			return
+		}
+		metas := make([]itemservice.Metadata, 0, len(req.ItemIDs))
+		seen := map[string]bool{}
+		for _, id := range req.ItemIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			meta, lookupErr := s.itemService().LookupMetadata(r.Context(), id)
+			if errors.Is(lookupErr, memory.ErrNotFound) {
+				metas = append(metas, itemservice.Metadata{ItemID: id})
+				continue
+			}
+			if lookupErr != nil {
+				writeError(w, http.StatusInternalServerError, "touch_failed", lookupErr.Error(), nil)
+				return
+			}
+			if !requireNamespaceAccess(w, r, meta.Namespace) {
+				return
+			}
+			metas = append(metas, meta)
+		}
+		res, touchErr := s.itemService().TouchItems(r.Context(), metas)
+		if touchErr != nil {
+			if errors.Is(touchErr, memory.ErrInvalidInput) {
+				writeError(w, http.StatusBadRequest, "validation_error", touchErr.Error(), nil)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "touch_failed", touchErr.Error(), nil)
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
 		return
 	}
 	res, err := s.MemoryStore.TouchRevisions(r.Context(), req.RevisionIDs)

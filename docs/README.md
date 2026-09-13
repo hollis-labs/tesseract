@@ -26,6 +26,7 @@ documentation drift.
 - [Type vocabularies](OPERATIONS.md#type-vocabularies-typesyaml)
 - [Promotion](SPECS/PROMOTION.md)
 - [Storage](SPECS/STORAGE.md)
+- [Workspace HTTP contract](SPECS/API.md#workspace-create-retry-edit-and-delete)
 - [Views](SPECS/VIEWS.md)
 
 ## Maintainers and contributors

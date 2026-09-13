@@ -1,20 +1,21 @@
 ---
 name: start-here
-description: Orientation for agents new to Tesseract — the four domains, invariants, and how to use tesseract_skills.
+description: Orientation for agents new to Tesseract — its five domains, invariants, and how to use tesseract_skills.
 scope_hint: none
-related: [namespaces, memory, knowledge, event]
+related: [namespaces, memory, knowledge, event, workspace]
 ---
 
 # Tesseract — start here
 
-Tesseract is a local-first, append-only context and memory service. You reach it through the `mcp__tesseract__*` tool family. Everything you write is revisioned, auditable, and namespace-owned.
+Tesseract is a local-first context and memory service. You reach it through the `mcp__tesseract__*` tool family. Revisioned domains are append-only; workspace holds one mutable current value. Everything is namespace-owned.
 
-## The four domains
+## The five domains
 
 - **Memory** — decisions, limitations, follow-ups, feedback, outcomes, what a session learned. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
 - **Knowledge** — a project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference. Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
 - **Event** — the append-only narrative log: reasoning about what you are doing, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
+- **Workspace** — project-owned scratch and replaceable working state. One mutable current value per item, guarded by a version token, with a tombstone after deletion and no content history. Start with `tesseract_skills workspace`.
 
 ### Memory or knowledge — the canonical statement
 
@@ -37,11 +38,11 @@ The third domain is a different axis and rarely ambiguous: what happened and wha
 
 **The fork is one-way.** A record's domain is stamped when it is created and never changes, so a write to the wrong domain stays there. The promotion workflow is the obvious escape and it is the wrong shape — it moves records across *namespaces*, not across domains. The only way to reclassify is to write a new record under a new identity, which discards the revision lineage the store exists to keep. This is worth one moment of thought at write time; it is not worth agonizing over, because `notes` and `note` are honest catch-alls and a record in a defensible domain is fine where it is.
 
-`tesseract_recall` is the unified query surface over the curated corpus — memory + knowledge. It does **not** search the event log unless you pass `domains: ["event"]`, so that the log's volume cannot drown the records recall exists to surface.
+`tesseract_recall` defaults to the curated corpus — memory + knowledge. Event and workspace are explicit opt-ins through `domains`.
 
 ## Invariants (don't fight these)
 
-- **Append-only.** Every write creates a new revision. Nothing is mutated in place.
+- **Append-only revisioned domains.** Context, memory, knowledge, and event writes create revisions. Workspace is the explicit mutable exception: a version token guards replacement, no old content is retained, and deletion leaves an identity tombstone.
 - **Namespace-owned.** `user/*` is user-owned (write-protected except via promotion). `app/*` is app-owned. See `tesseract_skills namespaces`.
 - **Deterministic.** Identical selectors against identical state return identical results.
 - **Audited.** Context writes and promotions are logged, and so is every memory, knowledge and event revision write, supersede and deprecation. Use `tesseract_skills audit` to query — it also names where the MCP and HTTP doors emit differently, which is where a reconstruction from the log goes wrong.
@@ -63,6 +64,7 @@ Every write tool's description opens by naming the skill that carries its reques
 | A decision, limitation, follow-up, or what a session learned | `memory_write` | `tesseract_skills memory` |
 | A canonical, handoff, playbook, dossier, doc or package reference | `knowledge_write` | `tesseract_skills knowledge` |
 | Your reasoning about what you are doing, or a journal entry | `event_write` | `tesseract_skills event` |
+| Project-owned scratch or replaceable working state | `workspace_write` | `tesseract_skills workspace` |
 | A plain revisioned record | `context_write` | below, on this page |
 | A record with a registered type and lifecycle status | `context_typed_write` | below, on this page |
 | Many records at once, or one long document | `context_ingest` | below, on this page |

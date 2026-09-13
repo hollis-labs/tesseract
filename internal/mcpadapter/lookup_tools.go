@@ -14,15 +14,15 @@ import (
 func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_recall",
 		mcp.WithDescription(
-			"**Ranked recall across the curated corpus — memory + knowledge.** Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
+			"**Typed ranked recall across Tesseract items.** The default corpus remains memory + knowledge; event and workspace are opt-in through `domains`. Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
 				"• **The event log is opt-in.** A call that does not pass `domains` covers memory and knowledge only; add `\"event\"` to search the narrative log. That default is deliberate — a reasoning log runs an order of magnitude or two above a curated corpus, so including it by default would make every unqualified recall a log search. To read the log in ORDER rather than by rank, use `event_list`.\n"+
-				"• **Kind of content:** mixed memory and knowledge revisions matching query + filters, with a uniform shape.\n"+
-				"• **Result shape:** `{results: [{revision, score}], facets: {domains, kinds, sources}, manifest: {...}}`, best first. `state` rides only on `payload_mode=full`; projected results carry `payload_mode` instead.\n"+
+				"• **Kind of content:** revisions and opt-in mutable workspace items matching query + filters, as typed alternatives.\n"+
+				"• **Result shape:** each result carries exactly one of `revision` or workspace `item`, plus `score` when the ranking has one. Workspace items carry `item_id`, never `revision_id`.\n"+
 				manifestResultShapeDescription+
 				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
-				"• **Just-in-time pattern — recall → choose → hydrate.** **Recall** at the default `payload_mode` to see what exists, **choose** the few hits worth reading, then **hydrate** each by passing its `revision_id` to `tesseract_get_revision`. Reaching for `payload_mode=full` to skip the third step is how a single recall eats a context window.\n"+
+				"• **Just-in-time pattern — recall → choose → hydrate.** Hydrate revision hits with `tesseract_get_revision`; hydrate workspace hits with `tesseract_get item_id=...`.\n"+
 				touchLoopDescription+
-				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries `revision_id` in every mode. Under `keys` and `summary` each result also carries `payload_mode` — a missing `payload.body` there means **withheld**, never **empty**, so never write back a body you recalled without it.\n"+
+				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries stable `item_id`; revision results also carry `revision_id`. Under projections, a missing body means withheld rather than empty.\n"+
 				"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
 				"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
 				"• **`estimate_only`:** size a recall before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
@@ -34,7 +34,7 @@ func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. The first segment is the SCOPE TYPE — one of "+memory.ScopeList()+" — and the second its id; `system` is a singleton and takes no id. "+
-			"Memory and event use the typed form {scope}/{id}/memory/{type}; knowledge has free depth after {scope}/{id}/knowledge/. "+
+			"Memory and event use a typed tail; knowledge and workspace have free depth after their domain segment. "+
 			"**Append `/*` to sweep a prefix at ANY tier**: project/* (every project), project/tether/* (one project, every domain), project/tether/knowledge/* (its knowledge). "+
 			"The bare forms {scope}/{id}/memory and {scope}/{id}/event also match every type, as a grandfathered shorthand — but a bare knowledge namespace is EXACT, not a prefix, so use the explicit /* there. "+
 			"e.g. [\"project/tesseract/memory/decisions\",\"project/tesseract/knowledge/*\"].")),
@@ -44,8 +44,8 @@ func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
 		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
 		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
-		mcp.WithString("domains", mcp.Description("JSON array of domain filters, e.g. [\"memory\",\"knowledge\"]. "+
-			"Omitting it covers the curated corpus (memory + knowledge) and NOT the event log — name `\"event\"` to include it, alone or alongside the others.")),
+		mcp.WithString("domains", mcp.Description("JSON array of domain filters: memory, knowledge, event, workspace. "+
+			"Omitting it covers the curated corpus (memory + knowledge). Event and workspace are opt-in. Workspace supports lexical relevance, activation and chronological ranking; it rejects semantic, similarity, timeline and revision-only filters.")),
 		mcp.WithString("facet_kinds", mcp.Description("JSON array of facet kind filters (knowledge), e.g. [\"package\",\"doc\"]")),
 		mcp.WithString("facet_sources", mcp.Description("JSON array of facet source filters (knowledge), e.g. [\"filesystem\",\"obsidian\"]")),
 		// Rendered from the vocabulary rather than restated, so this cannot
@@ -253,7 +253,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		},
 	}
 
-	page, err := a.revisionStore().RecallPaged(ctx, in, pageReq)
+	page, err := a.itemService().RecallPaged(ctx, in, pageReq)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidCursor) {
 			return toolError(codeValidationError, err.Error()), nil
@@ -278,6 +278,10 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		"sources": {},
 	}
 	for _, r := range page.Kept {
+		if r.Item != nil {
+			facets["domains"][r.Item.Domain]++
+			continue
+		}
 		if d := string(r.Revision.Domain); d != "" {
 			facets["domains"][d]++
 		}
@@ -293,7 +297,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	// the non-estimate branch below returns, one statement apart, so the two
 	// cannot report different numbers for the same call.
 	if pageReq.EstimateOnly {
-		return toolJSON(estimateEnvelope(page, facets)), nil
+		return toolJSON(estimateEnvelope(page.Manifest, facets)), nil
 	}
 
 	return toolJSON(map[string]any{

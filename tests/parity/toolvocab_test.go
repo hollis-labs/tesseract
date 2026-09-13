@@ -125,6 +125,8 @@ var anchorMustAccept = []anchorName{
 	{"memory_write", "per-domain write"},
 	{"knowledge_write", "per-domain write"},
 	{"context_write", "per-domain write"},
+	{"workspace_write", "workspace create and conditional edit"},
+	{"workspace_delete", "workspace content deletion with an identity tombstone"},
 	{"memory_promote", "promote is scoped to memory and context"},
 	{"context_typed_write", "subject `typed` between prefix and verb"},
 	{"context_registry_list", "subject `registry`"},
@@ -172,6 +174,8 @@ var anchorMustReject = []anchorName{
 	{"tesseract_write", "`write` is per-domain; there is no cross-domain write"},
 	{"knowledge_promote", "`promote` is scoped to context and memory only"},
 	{"tesseract_list", "`list` is a context-domain registry op"},
+	{"memory_delete", "delete belongs only to mutable workspace"},
+	{"workspace_history", "history is cross-domain, and workspace answers history_unavailable there"},
 
 	// The scoping half of the seven context-domain verbs. These are what
 	// make widening any of them to another prefix fail HERE, rather than
@@ -189,7 +193,7 @@ var anchorMustReject = []anchorName{
 	// Malformed.
 	{"tesseract", "single segment — no verb"},
 	{"contextwrite", "no separator, so there is no prefix and no verb"},
-	{"plugin_write", "`plugin` is not one of the four prefixes"},
+	{"plugin_write", "`plugin` is not one of the five prefixes"},
 	{"Context_Write", "segments must be lower-case"},
 }
 

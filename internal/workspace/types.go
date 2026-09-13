@@ -16,11 +16,12 @@ import (
 const Domain = "workspace"
 
 var (
-	ErrInvalidInput    = errors.New("invalid workspace input")
-	ErrNotFound        = errors.New("workspace item not found")
-	ErrDeleted         = errors.New("workspace item deleted")
-	ErrVersionConflict = errors.New("workspace version conflict")
-	ErrKeyConflict     = errors.New("workspace key conflict")
+	ErrInvalidInput        = errors.New("invalid workspace input")
+	ErrNotFound            = errors.New("workspace item not found")
+	ErrDeleted             = errors.New("workspace item deleted")
+	ErrVersionConflict     = errors.New("workspace version conflict")
+	ErrKeyConflict         = errors.New("workspace key conflict")
+	ErrIdempotencyConflict = errors.New("workspace idempotency conflict")
 )
 
 // Item is the one current authored state of a live workspace object.
@@ -70,6 +71,32 @@ type CreateInput struct {
 	SessionID      string
 }
 
+// CreateRequest adds retry identity to the authored create arguments. Keyless
+// creates require IdempotencyKey; keyed creates may omit it.
+type CreateRequest struct {
+	CreateInput
+	IdempotencyKey string
+}
+
+// MutationReceipt is the small response shared by workspace create and edit.
+// Replayed creates intentionally omit VersionToken: the item may have changed
+// since the first response was lost, so callers must read current state before
+// attempting an edit.
+type MutationReceipt struct {
+	Status       string `json:"status"`
+	ItemID       string `json:"item_id"`
+	VersionToken string `json:"version_token,omitempty"`
+	Availability string `json:"availability,omitempty"`
+}
+
+// DeleteReceipt is stable across repeated deletes. DeletedAt points at the
+// original deletion; no content or former version token is retained.
+type DeleteReceipt struct {
+	Status    string     `json:"status"`
+	ItemID    string     `json:"item_id"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
 // ClearField names an optional field that an edit removes. Summary, namespace,
 // item identity and version identity are deliberately absent.
 type ClearField string
@@ -113,4 +140,23 @@ type SearchResult struct {
 	Summary   string    `json:"summary"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Score     float64   `json:"score"`
+}
+
+// RecallInput is the workspace side of all-domain recall. Filters are applied
+// in SQL before Limit so a selective query cannot be sampled from an unrelated
+// truncated result set.
+type RecallInput struct {
+	Namespaces   []string
+	Query        string
+	Ranking      memory.Ranking
+	Tags         []string
+	StateFilters []memory.StateFilter
+	Since        *time.Time
+	Until        *time.Time
+	Limit        int
+}
+
+type RecallResult struct {
+	Item  Item
+	Score *float64
 }

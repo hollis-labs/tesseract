@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -26,6 +27,16 @@ type recallBriefItem struct {
 	CreatedAt  string   `json:"created_at"`
 }
 
+type recallBriefWorkspaceItem struct {
+	ItemID    string   `json:"item_id"`
+	Domain    string   `json:"domain"`
+	Namespace string   `json:"namespace"`
+	Key       string   `json:"key,omitempty"`
+	Tags      []string `json:"tags"`
+	Summary   string   `json:"summary"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
 // recallResponse is the envelope returned by GET /v1/recall.
 type recallResponse struct {
 	Results any          `json:"results"`
@@ -41,7 +52,7 @@ type recallMeta struct {
 }
 
 // handleRecall serves GET /v1/recall — a read-only, query-param-driven recall
-// endpoint that spans all three domains (memory, knowledge) within a single
+// endpoint that spans revisioned domains and opt-in workspace within a single
 // namespace. Mirrors POST /v1/tesseract/lookup but optimized for scripted/agent
 // consumption where a GET + URL params is more convenient than a JSON body.
 //
@@ -56,6 +67,8 @@ type recallMeta struct {
 //	format     (optional) — "brief" (default) returns condensed items;
 //	             "full" returns the complete RecallResult including score
 //	             and State.
+//	domains    (optional) — comma-separated domain filters; workspace and event
+//	             remain opt-in.
 func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
@@ -78,6 +91,14 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		for _, t := range strings.Split(raw, ",") {
 			if t = strings.TrimSpace(t); t != "" {
 				tags = append(tags, t)
+			}
+		}
+	}
+	var requestedDomains []domains.Domain
+	if raw := strings.TrimSpace(q.Get("domains")); raw != "" {
+		for _, d := range strings.Split(raw, ",") {
+			if d = strings.TrimSpace(d); d != "" {
+				requestedDomains = append(requestedDomains, domains.Domain(d))
 			}
 		}
 	}
@@ -104,11 +125,11 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		RevisionScope: memory.RevisionScopeCurrent,
 		Limit:         limit,
 		Filters: memory.RecallFilters{
-			Tags: tags,
+			Tags: tags, Domains: requestedDomains,
 		},
 	}
 
-	results, err := s.MemoryStore.Recall(r.Context(), in)
+	page, err := s.itemService().RecallPaged(r.Context(), in, memory.PageRequest{Limit: limit, PayloadMode: memory.PayloadModeFull})
 	if err != nil {
 		if errors.Is(err, memory.ErrEmbedderUnavailable) {
 			writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
@@ -122,13 +143,17 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	facets := buildFacets(results)
+	facets := buildItemFacets(page.Kept)
 
 	var items any
 	if format == "brief" {
-		brief := make([]recallBriefItem, 0, len(results))
-		for _, rr := range results {
-			rev := rr.Revision
+		brief := make([]any, 0, len(page.Kept))
+		for _, rr := range page.Kept {
+			if rr.Item != nil {
+				brief = append(brief, recallBriefWorkspaceItem{ItemID: rr.Item.ItemID, Domain: rr.Item.Domain, Namespace: rr.Item.Namespace, Key: rr.Item.Key, Tags: rr.Item.Tags, Summary: rr.Item.Payload.Summary, UpdatedAt: rr.Item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z")})
+				continue
+			}
+			rev := *rr.Revision
 			brief = append(brief, recallBriefItem{
 				RevisionID: rev.RevisionID,
 				ItemID:     rev.MemoryID,
@@ -144,7 +169,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		}
 		items = brief
 	} else {
-		items = results
+		items = page.Results
 	}
 
 	writeJSON(w, http.StatusOK, recallResponse{
@@ -153,7 +178,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		Meta: recallMeta{
 			Namespace: namespace,
 			Limit:     limit,
-			Returned:  len(results),
+			Returned:  len(page.Kept),
 			Format:    format,
 		},
 	})

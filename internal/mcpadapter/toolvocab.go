@@ -49,6 +49,7 @@ var ToolPrefixRule = []ToolPrefix{
 	{"knowledge", "the knowledge domain only — content addressed by key"},
 	{"memory", "the memory domain only — agent-authored revisions"},
 	{"tesseract", "spans every domain, or serves the surface itself"},
+	{"workspace", "the mutable workspace domain only"},
 }
 
 // ToolOperation is one row of the verb table.
@@ -66,6 +67,7 @@ type ToolOperation struct {
 // ToolVerbTable is the vocabulary. Keep sorted by Verb.
 var ToolVerbTable = []ToolOperation{
 	{"deprecate", "Soft-remove one revision; history keeps it.", []string{"tesseract"}},
+	{"delete", "Delete mutable workspace content and retain its identity tombstone.", []string{"workspace"}},
 	{"embed", "Compute and store an embedding vector for a record.", []string{"context"}},
 	{"estimate", "Size what a selector would return, without returning it.", []string{"context"}},
 	{"get", "Fetch the current entry at one identity.", []string{"tesseract"}},
@@ -82,7 +84,7 @@ var ToolVerbTable = []ToolOperation{
 	{"set", "Move a record to a named value of a closed field.", []string{"context"}},
 	{"touch", "Report deliberate use, so it counts toward activation.", []string{"tesseract"}},
 	{"view", "Evaluate a view or selector and return what it matches.", []string{"context"}},
-	{"write", "Append a revision or record.", []string{"context", "event", "knowledge", "memory"}},
+	{"write", "Write content; append in revisioned domains and replace current authored state in workspace.", []string{"context", "event", "knowledge", "memory", "workspace"}},
 }
 
 // ToolNameExemptions are registered names that do NOT match the vocabulary,

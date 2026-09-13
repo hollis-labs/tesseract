@@ -1,8 +1,8 @@
 # Tesseract architecture
 
-Tesseract is one local revision service with three information domains and
-multiple adapters. The implementation favors explicit authority, deterministic
-selection, and append-only history over hidden mutation or inference.
+Tesseract is one local service with five information domains and multiple
+adapters. The revisioned domains favor explicit authority, deterministic
+selection, and append-only history; workspace is the bounded mutable domain.
 
 ## Domains
 
@@ -11,6 +11,8 @@ selection, and append-only history over hidden mutation or inference.
 | Context | General JSON records, types, views, packets, and application state | Tesseract record revisions and deterministic head |
 | Memory | Durable observations, decisions, outcomes, and other recallable experience | Tesseract memory revisions plus lifecycle/activation state |
 | Knowledge | Durable summaries and pointers to external material | Tesseract owns the revision and pointer metadata; the external resource remains authoritative for its own content |
+| Event | Append-only narrative log | Tesseract revision and chronological log state |
+| Workspace | Project-owned scratch and replaceable working state | Tesseract current item, concurrency token, and deletion tombstone |
 
 The domains share policy, audit, recall, and revision concepts, but their write
 shapes are intentionally distinct. MCP and HTTP can also use different request
@@ -23,7 +25,8 @@ The resolved XDG layout contains:
 
 - a main SQLite database for metadata, context indexes, revision rows for every
   domain (memory, knowledge, event), namespace policy, audit, auth-token
-  hashes, embeddings, and derived indexes
+  hashes, mutable workspace items and tombstones, create retry receipts,
+  embeddings, and derived indexes
 - a `records/` tree containing append-only context payload files
 - a separate `queue.db` for background embedding jobs
 - `config.yaml` in the config root
@@ -33,6 +36,12 @@ the deterministic `(namespace, key)` head. Memory, knowledge and event bodies
 are immutable revision rows in one shared table discriminated by a `domain`
 column. Supersession/deprecation is represented as lifecycle state and new
 facts rather than editing old content.
+
+Workspace content lives in `workspace_items`. Edits replace that row only when
+the caller supplies its current `version_token`; no old content is retained.
+Deletion removes the content and inserts a minimal `workspace_tombstones` row.
+`workspace_creation_receipts` binds a caller retry key to the originally
+allocated identity without retaining payload content or a stale version token.
 
 The `domain` column selects **storage policy**, not merely a label: namespace
 grammar, whether the rows take part in activation (decay and reinforcement),
@@ -52,7 +61,7 @@ Go library / CLI / HTTP + web UI / MCP stdio
                     |
            validation and policy
                     |
-    context store + memory/knowledge/event store
+    context store + memory/knowledge/event store + workspace store
              |                    |
      SQLite + records/       queue.db workers
              |
@@ -74,8 +83,9 @@ request, approve, and apply. Capability scopes and namespace globs are checked
 at mutation boundaries. Audit rows link the promotion records and resulting
 revision.
 
-Namespace registrations carry owner metadata and optional policy. Writes remain
-append-only even when an item changes status or becomes the current head.
+Namespace registrations carry owner metadata and optional policy. Revisioned
+writes remain append-only even when an item changes status or becomes the
+current head. Workspace edits are guarded in-place replacements.
 
 ## Retrieval
 
@@ -86,6 +96,10 @@ can use:
 - local lexical/BM25 ranking
 - OpenAI-backed query embeddings and local cosine ranking
 - a hybrid of the two
+
+Workspace joins recall only when explicitly selected. It supports lexical,
+activation, and chronological ordering, and contributes typed `item` results
+instead of fabricated revisions.
 
 The event log has a second, non-ranked read path alongside these: a
 chronological, keyset-paged range read. Ranking a log is the wrong question —
@@ -130,6 +144,7 @@ rename sequence. See [Operations](OPERATIONS.md).
 ## Invariants
 
 - revisions are immutable and heads are explicit projections
+- workspace content has one version-token-guarded current value and deletion retains identity only
 - identical deterministic selectors over the same store state have stable order
 - protected namespace mutations require the relevant policy/capability path
 - provider-backed work is explicit and disclosed

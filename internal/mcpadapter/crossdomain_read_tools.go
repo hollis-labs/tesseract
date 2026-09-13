@@ -8,7 +8,9 @@ import (
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -34,6 +36,7 @@ func readDomainVocabulary() []string {
 	for _, d := range domains.All() {
 		out = append(out, string(d))
 	}
+	out = append(out, workspace.Domain)
 	return out
 }
 
@@ -164,6 +167,8 @@ func (a *Adapter) itemDomainAvailable(domain domains.Domain) bool {
 		return a.KnowledgeStore != nil
 	case domains.Event:
 		return a.EventStore != nil
+	case domains.Domain(workspace.Domain):
+		return a.WorkspaceStore != nil
 	default:
 		return false
 	}
@@ -210,18 +215,18 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_get",
 		mcp.WithDescription(
 			"**Fetch a current entry** by stable `item_id`, or by `(domain, namespace, key)`.\n"+
-				"• **Kind of content:** the latest revision for a memory, knowledge or event entry, or the head record for a context record.\n"+
-				"• **Result shape:** `memory`, `knowledge` and `event` answer a revision object whose `domain` identifies the resolved store; `context` answers a record object and remains available only through the legacy selector.\n"+
-				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token, matching the rest of the context read surface.\n"+
-				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state, and neither does `event`, which opts out of activation so a journal cannot fade for going unread.\n"+
+				"• **Kind of content:** the latest revision for a memory, knowledge or event entry; the current value for workspace; or the head record for context.\n"+
+				"• **Result shape:** `memory`, `knowledge` and `event` answer a revision object; `workspace` answers a current item with `version_token` and no revision fields; `context` answers a record object and remains available only through the legacy selector.\n"+
+				"• **Scope:** `memory:read` for `memory`, `knowledge`, `event` and `workspace`; `context` needs no token, matching the rest of the context read surface.\n"+
+				"• **Side effect:** `memory`, `knowledge` and `workspace` reinforce activation/access_count. `context` does not reinforce, and neither does `event`, which opts out of activation.\n"+
 				"• **Selectors:** pass exactly one of `item_id`, or the complete legacy `domain` + `namespace` + `key` form. `item_id` resolves its domain and namespace from storage and works for keyless items.\n"+
 				"• **Use this when:** you know exactly which current item you want. Prefer `item_id` for stable references; key lookup remains supported.\n"+
 				"• **Don't use this for:** revision history (`tesseract_history`), ranked search (`tesseract_recall`), or a specific revision by ID (`tesseract_get_revision`).\n"+
-				"• **Errors:** `validation_error` (mixed, partial or empty selector), `namespace_not_permitted`, `domain_unavailable`, `not_found`.\n"+
-				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills knowledge`, `tesseract_skills event`.",
+				"• **Errors:** `validation_error` (mixed, partial or empty selector), `namespace_not_permitted`, `domain_unavailable`, `deleted`, `not_found`.\n"+
+				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills knowledge`, `tesseract_skills event`, `tesseract_skills workspace`.",
 		),
 		mcp.WithString("item_id", mcp.Description(
-			"Stable Tesseract item ID. Preferred for current-item reads; it needs no domain, namespace or key. This is the same value existing responses also expose as memory_id.")),
+			"Stable Tesseract item ID. Preferred for current-item reads; it needs no domain, namespace or key. Revisioned responses also expose it as memory_id; workspace does not.")),
 		mcp.WithString("domain", mcp.Description(
 			"Which store to read: "+domainList+". Legacy key selector; supply together with namespace and key, and omit all three when using item_id.")),
 		mcp.WithString("namespace", mcp.Description(
@@ -241,13 +246,13 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_history",
 		mcp.WithDescription(
 			"**Fetch an item's revision history** by stable `item_id`, or by `(domain, namespace, key)`, newest first.\n"+
-				"• **Kind of content:** every revision under the key, including superseded and deprecated ones.\n"+
+				"• **Kind of content:** every revision under the key, including superseded and deprecated ones. Workspace has no revisions and returns history_unavailable.\n"+
 				"• **Result shape:** domain-dependent. `memory`, `knowledge` and `event` answer a bare array; pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and they answer `{results, manifest}` instead. `context` always answers its own budget envelope and honors `limit` only.\n"+
 				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token.\n"+
 				"• **Selectors:** pass exactly one of `item_id`, or the complete legacy `domain` + `namespace` + `key` form. `item_id` works for keyless entries.\n"+
 				"• **Use this when:** you need to trace how an item evolved, or read superseded content. Under `event` this is also where a retracted log entry stays findable — `event_list` excludes deprecated revisions, this does not.\n"+
 				"• **Don't use this for:** just the current value (`tesseract_get`).\n"+
-				"• **Errors:** `validation_error` (mixed or partial selector, unusable cursor), `namespace_not_permitted`, `domain_unavailable`, `not_found`.\n"+
+				"• **Errors:** `validation_error` (mixed or partial selector, unusable cursor), `namespace_not_permitted`, `domain_unavailable`, `history_unavailable`, `not_found`.\n"+
 				"• **Deeper:** `tesseract_skills revisions`.",
 		),
 		mcp.WithString("item_id", mcp.Description("Stable Tesseract item ID. Preferred for item history and required for keyless entries.")),
@@ -317,22 +322,25 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 	a.addTool(s, mcp.NewTool("tesseract_touch",
 		mcp.WithDescription(
 			"**Report which recalled entries actually informed your work.** The closing step of `tesseract_recall` → use → touch.\n"+
-				"• **Kind of content:** none returned. Answers `{touched, not_found, not_reinforced}` — `touched` is how many distinct memories the store actually reinforced, `not_found` lists revision IDs that resolved to nothing, and `not_reinforced` lists IDs that resolved to a real entry in a domain outside activation (event, today). Every distinct ID you send lands in exactly one of the three.\n"+
+				"• **Kind of content:** none returned. Answers `{touched, not_found, not_reinforced, deleted}`. Every distinct ID lands in one bucket.\n"+
 				"• **Scope:** `memory:read`. It writes, but what it writes is the deliberate-read signal `tesseract_get` already emits on every memory-domain call; a read-only agent that could not close the loop would leave the loop open.\n"+
 				"• **Use this when:** you have finished reasoning over a recall result and know which hits shaped the turn. **Call it after the work, not after the search.** Recall deliberately does not reinforce a hit merely for returning it. Touch supplies the use signal for projected hits you did not deliberately fetch, and may add an intentional second reinforcement for a hit already fetched through `tesseract_get` or `tesseract_get_revision`.\n"+
 				"• **Touch only what genuinely shaped the turn.** Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.\n"+
 				"• **Don't use this for:** everything you recalled, everything you skimmed, anything you merely saw in a result list, or as a way to pin a memory you want ranked highly. Reinforcement has diminishing returns — each touch closes a fraction of the remaining distance to a ceiling, so the tenth touch moves a memory far less than the first and no amount of touching passes the ceiling. Inflating a report buys very little ranking and costs the ranking its ability to tell signal from noise.\n"+
 				"• **Effect per distinct memory:** `activation` moves a fixed fraction of the way toward its ceiling, `access_count` increments, `last_accessed_at` is set. Naming a revision twice, or naming two revisions of the same memory, reinforces it once.\n"+
-				"• **Works across domains:** any domain's revision ID resolves, so a mixed `tesseract_recall` result can be reported in one call. An event ID comes back under `not_reinforced` rather than counting — that domain opts out of activation, so touching it is a well-formed request with no effect, and saying so beats returning a number that is not true.\n"+
-				"• **Deeper:** `tesseract_skills memory` for the worked loop; `tesseract_skills recall-and-ranking` for how activation ranks.",
+				"• **Works across domains:** pass revision hits as `revision_ids`, or current typed hits as `item_ids`. Workspace items reinforce directly; deleted workspace IDs return under `deleted`; event item IDs return under `not_reinforced`.\n"+
+				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills workspace`, and `tesseract_skills recall-and-ranking`.",
 		),
-		mcp.WithString("revision_ids", mcp.Required(), mcp.Description(
+		mcp.WithString("revision_ids", mcp.Description(
 			"JSON array of `revision_id` strings from a recall, lookup, or history result "+
 				"(e.g. [\"01HX...\",\"01HY...\"]). Every result carries `revision_id` under every `payload_mode`, "+
 				"so this is always available without a full read. "+
 				"Unknown IDs come back in `not_found` rather than failing the call, so a partly-stale set is safe to send. "+
 				"At most "+strconv.Itoa(memory.MaxTouchRevisions)+" per call — a request-size bound, not a budget to spend: "+
 				"a turn that genuinely used that many memories is rare, and the guidance above still applies well below the cap.")),
+		mcp.WithString("item_ids", mcp.Description(
+			"JSON array of stable item IDs. Workspace items are reinforced directly; revisioned items resolve through their current state. "+
+				"Choose exactly one of item_ids or revision_ids. At most "+strconv.Itoa(memory.MaxTouchRevisions)+" per call.")),
 		mcp.WithReadOnlyHintAnnotation(false),
 		// Not idempotent: each call is a fresh report of use, and reinforcement
 		// accumulates across calls even though it collapses within one.
@@ -374,23 +382,24 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 		return res, nil
 	}
 	if selector.ByItemID() {
-		store, state, itemErrRes, err := a.resolveItemRead(ctx, selector.ItemID, claims)
-		if itemErrRes != nil || err != nil {
-			return itemErrRes, err
-		}
-		var rev memory.Revision
-		if state.Domain == domains.Event {
-			rev, err = store.GetCurrentByItemID(ctx, selector.ItemID)
-		} else {
-			rev, err = store.GetCurrentByItemIDReinforced(ctx, selector.ItemID)
-		}
+		meta, err := a.itemService().LookupMetadata(ctx, selector.ItemID)
 		if err != nil {
-			if errors.Is(err, memory.ErrNotFound) {
-				return toolError(codeNotFound, err.Error()), nil
-			}
-			return nil, err
+			return workspaceToolError(err), nil
 		}
-		return toolJSON(rev), nil
+		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+		}
+		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
+			return domainUnavailable(meta.Domain), nil
+		}
+		read, err := a.itemService().ReadCurrent(ctx, meta)
+		if err != nil {
+			return workspaceToolError(err), nil
+		}
+		if read.Item != nil {
+			return toolJSON(*read.Item), nil
+		}
+		return toolJSON(*read.Revision), nil
 	}
 	domain := selector.Domain
 	namespace := selector.Namespace
@@ -433,6 +442,18 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 		// entries are keyless, so they have no (namespace, key) to fetch; the
 		// linear read is event_list.
 		rev, err = a.EventStore.GetCurrent(ctx, namespace, key)
+	case workspace.Domain:
+		if a.WorkspaceStore == nil {
+			return domainUnavailable(domain), nil
+		}
+		if !globsPermit(claims.NamespaceGlobs, namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+namespace), nil
+		}
+		item, readErr := a.itemService().ReadWorkspaceByKey(ctx, namespace, key)
+		if readErr != nil {
+			return workspaceToolError(readErr), nil
+		}
+		return toolJSON(item), nil
 	default:
 		// resolveReadDomain accepts whatever readDomainVocabulary offers, and
 		// that is derived from domains.All(). A domain added to the registry
@@ -473,12 +494,21 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 		return errRes, nil
 	}
 	if selector.ByItemID() {
-		store, _, itemErrRes, err := a.resolveItemRead(ctx, selector.ItemID, claims)
-		if itemErrRes != nil || err != nil {
-			return itemErrRes, err
-		}
-		revs, err := store.GetHistoryByItemID(ctx, selector.ItemID)
+		meta, err := a.itemService().LookupMetadata(ctx, selector.ItemID)
 		if err != nil {
+			return workspaceToolError(err), nil
+		}
+		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+		}
+		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
+			return domainUnavailable(meta.Domain), nil
+		}
+		revs, err := a.itemService().History(ctx, meta)
+		if err != nil {
+			if errors.Is(err, itemservice.ErrHistoryUnavailable) {
+				return toolError(codeHistoryUnavailable, err.Error()), nil
+			}
 			if errors.Is(err, memory.ErrNotFound) {
 				return toolError(codeNotFound, err.Error()), nil
 			}
@@ -525,6 +555,14 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRe
 		// is how a log entry is retracted, and this is where the retracted
 		// entry remains findable.
 		revs, err = a.EventStore.GetHistory(ctx, namespace, key)
+	case workspace.Domain:
+		if a.WorkspaceStore == nil {
+			return domainUnavailable(domain), nil
+		}
+		if !globsPermit(claims.NamespaceGlobs, namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+namespace), nil
+		}
+		return toolError(codeHistoryUnavailable, "workspace items do not retain revision history"), nil
 	default:
 		// See handleTesseractGet: without this, an accepted-but-unhandled
 		// domain answers a bare `null` instead of saying it has no arm.

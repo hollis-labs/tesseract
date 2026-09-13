@@ -11,6 +11,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 )
 
 // newMCPAdapter is the production MCP assembly boundary. In particular, it
@@ -20,6 +21,7 @@ import (
 // answer with embedding_unavailable when called.
 func newMCPAdapter(store *contextstore.Store, token string, mem *memorySubsystem, cfg config.Config, logWriter io.Writer) *mcpadapter.Adapter {
 	adapter := mcpadapter.New(store, token)
+	adapter.WorkspaceStore = workspace.NewStore(store.DB())
 	// One source of version truth: the handshake reports what --version reports.
 	adapter.Version = buildVersion()
 	if mem != nil {

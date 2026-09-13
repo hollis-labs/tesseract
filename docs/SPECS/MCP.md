@@ -7,7 +7,7 @@ stdio. The adapter is intentionally thin: tools call the same stores and domain
 services as the HTTP and CLI surfaces. It does not introduce a second
 persistence model.
 
-The authoritative, complete catalog of all 28 registered tools—including
+The authoritative, complete catalog of all 30 registered tools—including
 arguments, scopes, HTTP peers, merged-tool selectors, and worked calls—is
 [MCP_TOOLS.md](../MCP_TOOLS.md). Keeping that information in one agent-facing
 catalog avoids duplicating schemas here.
@@ -96,15 +96,15 @@ narrowest useful scopes and namespace globs.
   placed in tool arguments, record payloads, or log messages.
 
 HTTP peers share behavior, but their wire shape is not assumed to be identical.
-In particular, the MCP memory, knowledge and event writes use flat scalar
+In particular, the MCP memory, knowledge, event, and workspace writes use flat scalar
 arguments while HTTP uses nested objects. Follow the examples for the surface being called;
 see [the HTTP API contract](API.md) for HTTP bodies.
 
 ## Compatibility and determinism
 
-- Read/view tools do not mutate context records. Deliberate memory fetch and
-  touch operations may update memory activation state as documented in the
-  tool catalog.
+- Read/view tools do not mutate revisioned content. Deliberate memory,
+  knowledge, and workspace fetches and touch operations may update activation
+  state as documented in the tool catalog.
 - Selector fallback ordering is deterministic, and limits are applied after
   ordering.
 - Merged tools use explicit discriminators such as `domain`, `stage`, `shape`,

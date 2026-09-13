@@ -103,10 +103,12 @@ var rawMessageCatalogPackages = []string{
 // by construction. Each entry is a claim; the reason is stated because an entry
 // added carelessly is a hole in the invariant.
 var allowedRawMessageBuilders = map[string]string{
-	"fmt.Sprintf":   "builds a whole object from a format string; the literal supplies both braces",
-	"json.Marshal":  "produces a complete document or an error, never a fragment",
-	"quoteJSON":     "contextapi helper: renders one Go string as a complete JSON string literal",
-	"strconv.Quote": "renders one Go string as a complete quoted literal",
+	"bytes.Clone":     "copies all bytes of an already complete JSON document",
+	"fmt.Sprintf":     "builds a whole object from a format string; the literal supplies both braces",
+	"json.Marshal":    "produces a complete document or an error, never a fragment",
+	"wholeRawMessage": "copies a complete request document already accepted by decodeRequestBody",
+	"quoteJSON":       "contextapi helper: renders one Go string as a complete JSON string literal",
+	"strconv.Quote":   "renders one Go string as a complete quoted literal",
 }
 
 // rawMessageSite is one place a json.RawMessage value is constructed.

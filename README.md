@@ -1,9 +1,11 @@
 # Tesseract
 
-Tesseract is a local-first context, memory, and knowledge service for people,
-tools, and AI agents. It keeps append-only revision history, applies namespace
-and capability policy, and exposes the same store through a Go library, CLI,
-HTTP API, embedded web UI, and MCP server.
+Tesseract is a local-first context, memory, knowledge, event, and workspace
+service for people, tools, and AI agents. Its revisioned domains keep
+append-only history; workspace holds one mutable current value with optimistic
+concurrency and identity tombstones. Tesseract applies namespace and capability
+policy and exposes the store through a Go library, CLI, HTTP API, embedded web
+UI, and MCP server.
 
 Tesseract is currently a public preview. Its contracts are documented and
 tested, but pre-1.0 releases may contain breaking changes. Read
@@ -13,6 +15,7 @@ tested, but pre-1.0 releases may contain breaking changes. Read
 
 - revisioned context records with deterministic heads and history
 - separate memory and pointer-backed knowledge domains
+- mutable project workspace items with stable IDs and version tokens
 - namespace ownership and scoped capability tokens
 - explicit request, approval, and apply stages for cross-namespace promotion
 - lexical recall plus optional OpenAI-backed embeddings and synthesis

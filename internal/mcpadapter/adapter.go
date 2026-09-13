@@ -15,6 +15,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/trace"
@@ -40,6 +41,7 @@ type Adapter struct {
 	MemoryStore       *memory.Store           // optional; nil disables memory_write / memory_promote
 	KnowledgeStore    *knowledge.Store        // optional; nil disables knowledge_write
 	EventStore        *event.Store            // optional; nil disables event_write / event_list
+	WorkspaceStore    *workspace.Store        // optional; nil disables workspace mutations and reads
 	Logger            *slog.Logger            // optional; nil falls back to slog.Default()
 
 	// Version is reported to the client in the MCP initialize handshake. The
@@ -197,9 +199,9 @@ func resolveSimilarityMin(req mcp.CallToolRequest) (*float64, *mcp.CallToolResul
 // facets is `any` and skipped when nil so the two tools' differently-shaped
 // histograms both pass through unchanged; the caller builds it exactly as it
 // would for a real response, so the estimate cannot compute it differently.
-func estimateEnvelope(page memory.PagedRecall, facets any) map[string]any {
+func estimateEnvelope(manifest memory.Manifest, facets any) map[string]any {
 	out := map[string]any{
-		"manifest":      page.Manifest,
+		"manifest":      manifest,
 		"estimate_only": true,
 	}
 	if facets != nil {
@@ -428,6 +430,9 @@ func (a *Adapter) RegisterAllTools(srv *server.MCPServer) {
 	}
 	if a.EventStore != nil {
 		a.registerEventTools(s)
+	}
+	if a.WorkspaceStore != nil {
+		a.registerWorkspaceTools(s)
 	}
 	// The cross-domain reads are gated on what they actually need, not on which
 	// field happens to be set. tesseract_recall needs some revision store;
