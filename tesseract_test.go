@@ -9,7 +9,9 @@ import (
 
 	queue "github.com/hollis-labs/go-queue"
 	memdriver "github.com/hollis-labs/go-queue/driver/memory"
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/embedding"
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 func TestOpen_MinimalConfig(t *testing.T) {
@@ -28,6 +30,29 @@ func TestOpen_MinimalConfig(t *testing.T) {
 	}
 	if c.embedder != nil {
 		t.Error("expected embedder to be nil without WithEmbedder")
+	}
+}
+
+func TestResolveReferencePublicFacade(t *testing.T) {
+	c, err := Open(context.Background(), Config{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	rev, err := c.WriteMemory(context.Background(), memory.WriteInput{
+		Domain: domains.Memory, Namespace: "project/tesseract/memory/notes", MemoryKey: "facade.resolve",
+		Summary: "secret", Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+		Trigger: memory.TriggerManual, DerivedFrom: memory.DerivedFromProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ResolveReference(context.Background(), ReferenceSelector{RevisionID: rev.RevisionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "resolved" || got.Ref == nil || got.Ref.RefID != rev.RevisionID || got.ItemID != rev.ItemID {
+		t.Fatalf("resolution=%+v", got)
 	}
 }
 

@@ -106,6 +106,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `promote` | Move an entry across scope or ownership. | `context`, `memory` |
 | `recall` | Ranked multi-result retrieval across domains. | `tesseract` |
 | `register` | Add an entry to a registry. | `context` |
+| `resolve` | Normalize a reference to Tesseract-owned object identity. | `tesseract` |
 | `search` | Rank records of the context store by vector similarity. | `context` |
 | `set` | Move a record to a named value of a closed field. | `context` |
 | `touch` | Report deliberate use, so it counts toward activation. | `tesseract` |
@@ -186,6 +187,10 @@ The preferred selector is `item_id`, supplied alone. It is the stable identity r
 
 The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was. `revision_id` remains the exact immutable-version selector; it is not interchangeable with `item_id`.
 
+`tesseract_ref_resolve` is the metadata-only bridge for stored references. It accepts exactly one of `item_id`, `revision_id`, the complete current-key triple, or `uri`. Canonical URIs are `tesseract://item/<item_id>` and `tesseract://revision/<revision_id>`. The result preserves the distinction between current-item and exact-revision identity and returns one of `resolved`, `deleted`, `not_found`, `ambiguous`, or `unsupported_reference`. The v1 selectors are unique by construction, so `ambiguous` is part of the result model but has no emitting selector yet. Resolution does not load content, reinforce activation, rotate a workspace token, or create a revision.
+
+Legacy key resolution means the item that owns that exact key now. A renamed or deleted workspace item is no longer reachable through its former key; its `item_id` remains authoritative, and a later reuse of the key identifies the new item. Tesseract does not infer historical key ownership or rewrite unsupported locator classes.
+
 `domain` is a **filter**, not a hint. A namespace does not identify a domain: `memory_state` *does* carry a `domain` column, but it is stamped once at creation and the head pointer it holds addresses `memory_revisions`, which memory and knowledge share — so resolving `(namespace, key)` returns whatever was written at that key, whichever domain wrote it. The `not_found` is therefore an explicit check on the **resolved revision's** domain (`GetCurrentInDomain`), not a property of the schema. Only a matching read reinforces, and the check runs *before* the reinforcement write — bumping a row that is then withheld would teach the ranking that a memory mattered on the strength of a read that never returned it.
 
 Each tool covers the item-ID routes and the existing keyed HTTP routes; the parity catalog carries one row per (tool, route) pair.
@@ -197,6 +202,7 @@ Each tool covers the item-ID routes and the existing keyed HTTP routes; the pari
 | `tesseract_get` | `memory:read` for item/`memory`/`knowledge`/`event`/`workspace`; none for `context` | `GET /v1/items/{item_id}`, `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current`, `GET /v1/workspace/current` | `tesseract_skills memory`, `workspace` | Current item by `item_id`, or current entry by the complete legacy `(domain, namespace, key)` selector. Item IDs reach keyless entries. Reinforces memory, knowledge, and workspace after authorization; event and context do not. |
 | `tesseract_history` | as above | `GET /v1/items/{item_id}/history`, `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history newest first by `item_id`, including keyless items, or by the complete legacy keyed selector. Workspace returns `history_unavailable`. History never reinforces. |
 | `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Typed recall. The default remains memory + knowledge. Use `domains` to opt in workspace or event; workspace supports lexical relevance, activation, and chronological ordering but has no semantic embeddings or timeline. |
+| `tesseract_ref_resolve` | `memory:read` | `POST /v1/refs/resolve` | `tesseract_skills revisions` | Metadata-only normalization from one typed ID, complete current key, or canonical Tesseract URI. Exact revisions stay revision references; unknown and unsupported references are successful outcomes. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
 | `tesseract_touch` | `memory:read` | `POST /v1/memory/touch` | `tesseract_skills memory`, `workspace` | Pass exactly one of `revision_ids` or `item_ids`. Item IDs reinforce mutable/revisioned current items; event IDs return under `not_reinforced`, deleted workspace IDs under `deleted`, and unknown IDs under `not_found`. |
@@ -325,6 +331,16 @@ mcp__tesseract__tesseract_get {
 ```
 
 ### 6. Resolve a revision id
+
+Normalize a reference without fetching content or recording use:
+
+```json
+mcp__tesseract__tesseract_ref_resolve { "revision_id": "01HXYZ…" }
+```
+
+The same operation accepts `{ "item_id": "01HITEM…" }`, a complete
+`domain` + `namespace` + `key` selector, or a canonical URI. Use
+`tesseract_get_revision` when you then need the revision content:
 
 ```json
 mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }

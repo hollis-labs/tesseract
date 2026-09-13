@@ -212,6 +212,24 @@ func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims con
 func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 	domainList := strings.Join(readDomainVocabulary(), " | ")
 
+	a.addTool(s, mcp.NewTool("tesseract_ref_resolve",
+		mcp.WithDescription(
+			"Normalize one supported reference to stable Tesseract object identity without reading content or recording use. "+
+				"Pass exactly one complete selector: item_id; revision_id; domain + namespace + key; or a canonical tesseract://item/... or tesseract://revision/... URI. "+
+				"Successful outcomes are resolved, deleted, not_found, ambiguous, and unsupported_reference. The current v1 selector set is unique by construction, so it does not emit ambiguous. "+
+				"Unknown IDs and unsupported URI classes are outcomes; malformed selectors, authorization failures, and unavailable stores are errors. Requires memory:read. See tesseract_skills revisions."),
+		mcp.WithString("item_id", mcp.Description("Stable current-item identity. Supply alone.")),
+		mcp.WithString("revision_id", mcp.Description("Exact immutable revision identity. Supply alone; the result preserves revision kind.")),
+		mcp.WithString("domain", mcp.Description("Legacy key selector domain: memory, knowledge, event, or workspace. Supply with namespace and key.")),
+		mcp.WithString("namespace", mcp.Description("Legacy key selector namespace. Supply with domain and key.")),
+		mcp.WithString("key", mcp.Description("Exact current key, preserved byte-for-byte. Supply with domain and namespace.")),
+		mcp.WithString("uri", mcp.Description("Canonical tesseract://item/<item_id> or tesseract://revision/<revision_id> URI. Other URI classes return unsupported_reference.")),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
+	), a.handleReferenceResolve)
+
 	a.addTool(s, mcp.NewTool("tesseract_get",
 		mcp.WithDescription(
 			"**Fetch a current entry** by stable `item_id`, or by `(domain, namespace, key)`.\n"+
@@ -348,6 +366,73 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleTesseractTouch)
+}
+
+func referenceSelectorFromMCP(req mcp.CallToolRequest) (itemservice.ReferenceSelector, *mcp.CallToolResult) {
+	args := req.GetArguments()
+	_, hasItem := args["item_id"]
+	_, hasRevision := args["revision_id"]
+	_, hasURI := args["uri"]
+	_, hasDomain := args["domain"]
+	_, hasNamespace := args["namespace"]
+	_, hasKey := args["key"]
+	keyParts := 0
+	for _, present := range []bool{hasDomain, hasNamespace, hasKey} {
+		if present {
+			keyParts++
+		}
+	}
+	selectors := 0
+	for _, present := range []bool{hasItem, hasRevision, hasURI, keyParts > 0} {
+		if present {
+			selectors++
+		}
+	}
+	if selectors != 1 || (keyParts > 0 && keyParts != 3) {
+		return itemservice.ReferenceSelector{}, toolError(codeValidationError,
+			"choose exactly one of item_id, revision_id, domain + namespace + key, or uri")
+	}
+	selector := itemservice.ReferenceSelector{
+		ItemID: req.GetString("item_id", ""), RevisionID: req.GetString("revision_id", ""),
+		Domain: req.GetString("domain", ""), Namespace: req.GetString("namespace", ""),
+		Key: req.GetString("key", ""), URI: req.GetString("uri", ""),
+	}
+	if (hasItem && selector.ItemID == "") || (hasRevision && selector.RevisionID == "") ||
+		(hasURI && selector.URI == "") || (keyParts > 0 && (selector.Domain == "" || selector.Namespace == "" || selector.Key == "")) {
+		return itemservice.ReferenceSelector{}, toolError(codeValidationError, "the selected reference fields must be non-empty")
+	}
+	return selector, nil
+}
+
+func (a *Adapter) handleReferenceResolve(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	selector, errResult := referenceSelectorFromMCP(req)
+	if errResult != nil {
+		return errResult, nil
+	}
+	res, claims := a.checkScope(ctx, "memory:read")
+	if res != nil {
+		return res, nil
+	}
+	result, err := a.itemService().ResolveReference(ctx, selector)
+	if err != nil {
+		switch {
+		case errors.Is(err, itemservice.ErrInvalidReference):
+			return toolError(codeValidationError, err.Error()), nil
+		case errors.Is(err, itemservice.ErrBackendUnavailable):
+			return domainUnavailable("required reference backend"), nil
+		default:
+			return toolError(codeInternalError, err.Error()), nil
+		}
+	}
+	if result.Status == itemservice.ResolutionResolved || result.Status == itemservice.ResolutionDeleted {
+		if !globsPermit(claims.NamespaceGlobs, result.Namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit resolving this reference"), nil
+		}
+		if !a.itemDomainAvailable(domains.Domain(result.Domain)) {
+			return domainUnavailable("resolved reference domain"), nil
+		}
+	}
+	return toolJSON(result), nil
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────

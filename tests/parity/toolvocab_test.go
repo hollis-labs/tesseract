@@ -120,6 +120,7 @@ var anchorMustAccept = []anchorName{
 	{"tesseract_get_revision", "two-segment verb; must beat the shorter `revision` suffix"},
 	{"tesseract_history", "cross-domain revision history"},
 	{"tesseract_recall", "cross-domain ranked retrieval"},
+	{"tesseract_ref_resolve", "cross-domain identity normalization"},
 	{"tesseract_touch", "cross-domain reinforcement"},
 	{"tesseract_deprecate", "cross-domain soft-remove"},
 	{"memory_write", "per-domain write"},

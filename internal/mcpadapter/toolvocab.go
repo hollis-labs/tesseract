@@ -80,6 +80,7 @@ var ToolVerbTable = []ToolOperation{
 	{"promote", "Move an entry across scope or ownership.", []string{"context", "memory"}},
 	{"recall", "Ranked multi-result retrieval across domains.", []string{"tesseract"}},
 	{"register", "Add an entry to a registry.", []string{"context"}},
+	{"resolve", "Normalize a reference to Tesseract-owned object identity.", []string{"tesseract"}},
 	{"search", "Rank records of the context store by vector similarity.", []string{"context"}},
 	{"set", "Move a record to a named value of a closed field.", []string{"context"}},
 	{"touch", "Report deliberate use, so it counts toward activation.", []string{"tesseract"}},

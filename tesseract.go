@@ -254,8 +254,41 @@ type PagedItemRecall = itemservice.PagedRecall
 // ItemTouchResult reports item identities that moved or could not be reinforced.
 type ItemTouchResult = itemservice.TouchResult
 
+// ReferenceSelector accepts one typed object ID, one complete legacy key, or
+// one canonical Tesseract URI.
+type ReferenceSelector = itemservice.ReferenceSelector
+
+// ReferenceResolution is the identity-only normalization result.
+type ReferenceResolution = itemservice.ReferenceResolution
+
+type CanonicalReference = itemservice.CanonicalReference
+
+type ReferenceResolutionStatus = itemservice.ResolutionStatus
+
+type ReferenceKind = itemservice.ReferenceKind
+
+const (
+	ReferenceResolved     = itemservice.ResolutionResolved
+	ReferenceDeleted      = itemservice.ResolutionDeleted
+	ReferenceNotFound     = itemservice.ResolutionNotFound
+	ReferenceAmbiguous    = itemservice.ResolutionAmbiguous
+	ReferenceUnsupported  = itemservice.ResolutionUnsupportedReference
+	ReferenceKindItem     = itemservice.ReferenceKindItem
+	ReferenceKindRevision = itemservice.ReferenceKindRevision
+)
+
 // ErrItemHistoryUnavailable reports that a mutable item retains no revisions.
 var ErrItemHistoryUnavailable = itemservice.ErrHistoryUnavailable
+
+var ErrInvalidReference = itemservice.ErrInvalidReference
+
+var ErrReferenceBackendUnavailable = itemservice.ErrBackendUnavailable
+
+// ResolveReference normalizes a supported reference without reading content,
+// reinforcing access, or changing stored state.
+func (c *Tesseract) ResolveReference(ctx context.Context, selector ReferenceSelector) (ReferenceResolution, error) {
+	return c.items.ResolveReference(ctx, selector)
+}
 
 func (c *Tesseract) ReadItem(ctx context.Context, itemID string) (ItemReadResult, error) {
 	meta, err := c.items.LookupMetadata(ctx, itemID)

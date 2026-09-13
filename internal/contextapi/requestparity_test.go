@@ -95,11 +95,12 @@ func descendsIntoJSONObject(t reflect.Type) bool {
 // struct a door names. Keeping them separate keeps the production map free of
 // test-only entries.
 var requestStructs = map[string]any{
-	"memory.write":     memoryWriteRequest{},
-	"knowledge.write":  knowledgeWriteRequest{},
-	"event.write":      eventWriteRequest{},
-	"workspace.write":  workspaceWriteRequest{},
-	"workspace.delete": workspaceDeleteRequest{},
+	"memory.write":      memoryWriteRequest{},
+	"knowledge.write":   knowledgeWriteRequest{},
+	"event.write":       eventWriteRequest{},
+	"workspace.write":   workspaceWriteRequest{},
+	"workspace.delete":  workspaceDeleteRequest{},
+	"reference.resolve": referenceResolveRequest{},
 }
 
 func registeredToolArgs(t *testing.T) map[string]map[string]any {

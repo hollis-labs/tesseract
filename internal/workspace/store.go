@@ -455,6 +455,23 @@ func (s *Store) LookupMetadata(ctx context.Context, itemID string) (Metadata, er
 	return Metadata{ItemID: itemID, Domain: Domain, Namespace: namespace, Deleted: true, DeletedAt: &deletedAt}, nil
 }
 
+// LookupMetadataByKey resolves the live owner of one exact legacy key without
+// loading content or recording use. Tombstones intentionally carry no key, so
+// a deleted old key is not resolvable unless a new live item owns it.
+func (s *Store) LookupMetadataByKey(ctx context.Context, namespace, key string) (Metadata, error) {
+	var itemID string
+	err := s.db.QueryRowContext(ctx, `
+SELECT item_id FROM workspace_items
+WHERE namespace = ? AND key_name = ?`, namespace, key).Scan(&itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Metadata{}, fmt.Errorf("%w: no live item at exact key", ErrNotFound)
+	}
+	if err != nil {
+		return Metadata{}, err
+	}
+	return Metadata{ItemID: itemID, Domain: Domain, Namespace: namespace}, nil
+}
+
 func (s *Store) GetCurrent(ctx context.Context, itemID string) (Item, error) {
 	item, err := getLive(ctx, s.db, itemID)
 	if errors.Is(err, sql.ErrNoRows) {

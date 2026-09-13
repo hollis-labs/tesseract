@@ -203,6 +203,7 @@ creation and recovery.
 | `GET /v1/memory/revisions/{id}` | — | Read one exact revision by `revision_id`. |
 | `GET /v1/items/{item_id}` | resolved namespace | Read a current revision or workspace item by stable identity; works for keyless items. Workspace returns its current item shape and reinforces use. |
 | `GET /v1/items/{item_id}/history` | resolved namespace | Read a revisioned item's immutable chain newest first; accepts history paging and budget query parameters. Workspace returns `400 history_unavailable`. |
+| `POST /v1/refs/resolve` | resolved namespace | Normalize one typed ID, complete current key, or canonical Tesseract URI to identity metadata. Returns resolution outcomes without content or reinforcement. |
 | `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `key`. |
 | `GET /v1/memory/history` | namespace | Memory history for `namespace` + `key`. |
 | `POST /v1/memory/touch` | resolved namespace for `item_ids` | Reinforce deliberately used `revision_ids` or current `item_ids`; pass exactly one selector. Deleted workspace IDs are reported under `deleted`. |
@@ -302,6 +303,24 @@ The target write requires `actor=user` when its namespace starts with
 `promote`.
 
 ### Stable item read
+
+Resolve a stored reference without reading its content:
+
+```bash
+curl -sS -X POST "$TESSERACT_URL/v1/refs/resolve" \
+  -H "Authorization: Bearer $TESSERACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"revision_id":"01HREVISION..."}'
+```
+
+The body must contain exactly one complete selector: `item_id`, `revision_id`,
+`domain` + `namespace` + `key`, or `uri`. The two canonical URI forms are
+`tesseract://item/<item_id>` and `tesseract://revision/<revision_id>`.
+`resolved`, `deleted`, `not_found`, `ambiguous`, and `unsupported_reference`
+are response statuses returned with HTTP 200; malformed selectors,
+authorization failures, and unavailable stores remain HTTP errors. Current v1
+selectors cannot produce `ambiguous`. A successful result never carries
+content, a key, namespace, activation state, or workspace version token.
 
 ```bash
 curl -sS "$TESSERACT_URL/v1/items/01HITEM..." \

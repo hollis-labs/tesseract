@@ -20,6 +20,47 @@ Every write in Tesseract creates a new revision. The service never mutates exist
 - `tesseract_get` — returns the current revision for `item_id`, including keyless items. The complete legacy `(domain, namespace, key)` selector remains supported and domain-filtered.
 - `tesseract_history` — returns the item's revision chain newest first by `item_id`, or by the complete legacy keyed selector. It is a **bare array** when no paging or budget argument is present.
 - `tesseract_recall` with `revision_scope=timeline` — includes superseded revisions in ranking.
+- `tesseract_ref_resolve` — normalizes a typed ID, complete current key, or canonical Tesseract URI to identity metadata without content or reinforcement.
+
+## Reference resolution
+
+Use `tesseract_ref_resolve` when another system needs a stable Tesseract
+reference rather than the stored content. Pass exactly one complete selector:
+
+```json
+{"item_id":"01HITEM..."}
+```
+
+```json
+{"revision_id":"01HREVISION..."}
+```
+
+```json
+{"domain":"knowledge","namespace":"user/chrispian/knowledge/contracts","key":"resolver-contract"}
+```
+
+```json
+{"uri":"tesseract://revision/01HREVISION..."}
+```
+
+An item selector returns `ref.kind=tesseract_item`; an exact revision selector
+returns `ref.kind=tesseract_revision` and stays pinned to that revision. The
+canonical URI forms are `tesseract://item/<item_id>` and
+`tesseract://revision/<revision_id>`.
+
+The successful outcome vocabulary is `resolved`, `deleted`, `not_found`,
+`ambiguous`, and `unsupported_reference`. Current v1 selectors are unique, so
+none emits `ambiguous`; the status remains in the response model for a future
+supported legacy form that can honestly have several candidates. An unknown
+ID has no invented canonical reference. An unsupported URI or opaque locator
+is not guessed or fetched over the network.
+
+Legacy keys resolve the item that owns the exact key now. A key rename keeps
+the item ID but the former key stops resolving. Deletion leaves the item ID as
+a tombstone, and recreating the same key creates and resolves a new identity.
+Resolution reads metadata only: it returns no content, does not reinforce
+activation or access counts, does not rotate workspace version tokens, and
+does not create revisions.
 
 To bound a history read, pass `limit`, `cursor`, `budget_bytes`, or `budget_tokens`. Any of them switches the response from the bare array to `{results, manifest}`, with the same manifest and cursor semantics `tesseract_skills recall-and-ranking` documents. Chains are shallow in practice, so this is a ceiling against unbounded growth rather than a routine knob.
 

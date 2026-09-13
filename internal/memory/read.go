@@ -143,6 +143,58 @@ FROM memory_state WHERE memory_id = ?`, memoryID)
 	return st, nil
 }
 
+// ReferenceMetadata is the content-free identity and authorization projection
+// used by reference resolution. It deliberately excludes mutable activation
+// state as well as revision payload fields.
+type ReferenceMetadata struct {
+	RevisionID string
+	ItemID     string
+	Domain     domains.Domain
+	Namespace  string
+}
+
+// LookupRevisionMetadata resolves one exact immutable revision without loading
+// its content or recording use of its parent item.
+func (s *Store) LookupRevisionMetadata(ctx context.Context, revisionID string) (ReferenceMetadata, error) {
+	var meta ReferenceMetadata
+	var domain string
+	err := s.db.QueryRowContext(ctx, `
+SELECT revision_id, memory_id, domain, namespace
+FROM memory_revisions WHERE revision_id = ?`, revisionID).Scan(
+		&meta.RevisionID, &meta.ItemID, &domain, &meta.Namespace,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReferenceMetadata{}, fmt.Errorf("%w: revision_id %s", ErrNotFound, revisionID)
+	}
+	if err != nil {
+		return ReferenceMetadata{}, err
+	}
+	meta.Domain = domains.Domain(domain)
+	return meta, nil
+}
+
+// LookupCurrentMetadataByKey resolves the current owner of one exact legacy
+// key without loading revision content or changing activation/access state.
+func (s *Store) LookupCurrentMetadataByKey(ctx context.Context, domain domains.Domain, namespace, key string) (ReferenceMetadata, error) {
+	var meta ReferenceMetadata
+	var storedDomain string
+	err := s.db.QueryRowContext(ctx, `
+SELECT current_revision, memory_id, domain, namespace
+FROM memory_state
+WHERE domain = ? AND namespace = ? AND memory_key = ?
+  AND current_revision IS NOT NULL`, domain, namespace, key).Scan(
+		&meta.RevisionID, &meta.ItemID, &storedDomain, &meta.Namespace,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReferenceMetadata{}, fmt.Errorf("%w: no current %s entry at exact key", ErrNotFound, domain)
+	}
+	if err != nil {
+		return ReferenceMetadata{}, err
+	}
+	meta.Domain = domains.Domain(storedDomain)
+	return meta, nil
+}
+
 // GetRevisionByID reads a single memory_revisions row by revision_id.
 func (s *Store) GetRevisionByID(ctx context.Context, revisionID string) (Revision, error) {
 	row := s.db.QueryRowContext(ctx,

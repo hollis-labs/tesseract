@@ -146,6 +146,7 @@ var surfaceCatalog = []parityOp{
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/history"},
 	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/recall"},
 	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/tesseract/lookup"},
+	{MCP: "tesseract_ref_resolve", HTTPMethod: http.MethodPost, HTTPPath: "/v1/refs/resolve"},
 
 	// ── Reinforcement ──────────────────────────────────────────────────
 	// Cross-domain like tesseract_recall: a revision ID resolves whether it
@@ -240,6 +241,7 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/touch"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/write"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/namespaces/register"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/refs/resolve"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/delete"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/write"},

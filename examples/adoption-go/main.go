@@ -18,7 +18,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer func() {
 		if removeErr := os.RemoveAll(root); removeErr != nil {
 			log.Printf("remove temporary Tesseract root: %v", removeErr)
@@ -63,6 +62,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	resolved, err := db.ResolveReference(ctx, tesseract.ReferenceSelector{RevisionID: rev.RevisionID})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resolved.Status != tesseract.ReferenceResolved || resolved.Ref == nil {
+		log.Fatalf("unexpected reference resolution: %+v", resolved)
+	}
 
 	current, err := db.GetCurrentItem(ctx, rev.ItemID)
 	if err != nil {
@@ -83,6 +89,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s); workspace item %s",
-		current.ItemID, current.RevisionID, len(history), len(hits), draft.ItemID)
+	log.Printf("item %s current revision %s; canonical revision ref %s; %d revision(s), %d recalled result(s); workspace item %s",
+		current.ItemID, current.RevisionID, resolved.Ref.URI, len(history), len(hits), draft.ItemID)
 }

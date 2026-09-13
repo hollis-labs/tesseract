@@ -471,6 +471,7 @@ var apiRoutes = []apiRoute{
 	// One prefix handler serves both /v1/items/{item_id} and its /history
 	// suffix. The item resolves its own domain and namespace from storage.
 	{http.MethodGet, "/v1/items/", true, authRequired, (*Server).handleItemRead},
+	{http.MethodPost, "/v1/refs/resolve", false, authRequired, (*Server).handleReferenceResolve},
 
 	// --- knowledge ---
 	{http.MethodPost, "/v1/knowledge/write", false, authRequired, (*Server).handleKnowledgeWrite},

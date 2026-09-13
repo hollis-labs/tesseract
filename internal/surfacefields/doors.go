@@ -194,6 +194,18 @@ var Doors = []Door{
 			{Concept: "version_token", MCP: "version_token", HTTP: "version_token"},
 		},
 	},
+	{
+		Name: "reference.resolve", MCPTool: "tesseract_ref_resolve",
+		HTTPMethod: "POST", HTTPPath: "/v1/refs/resolve", Derived: true,
+		Fields: []Field{
+			{Concept: "item_id", MCP: "item_id", HTTP: "item_id"},
+			{Concept: "revision_id", MCP: "revision_id", HTTP: "revision_id"},
+			{Concept: "domain", MCP: "domain", HTTP: "domain"},
+			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
+			{Concept: "key", MCP: "key", HTTP: "key"},
+			{Concept: "uri", MCP: "uri", HTTP: "uri"},
+		},
+	},
 
 	// ── Read doors (HTTP column declared, behavior asserted) ────────────
 	//

@@ -127,6 +127,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	resolved, err := db.ResolveReference(ctx, tesseract.ReferenceSelector{
+		RevisionID: rev.RevisionID,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resolved.Status != tesseract.ReferenceResolved || resolved.Ref == nil {
+		log.Fatalf("unexpected reference resolution: %+v", resolved)
+	}
 
 	current, err := db.GetCurrentItem(ctx, rev.ItemID)
 	if err != nil {
@@ -147,8 +156,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s)",
-		current.ItemID, current.RevisionID, len(history), len(hits))
+	log.Printf("item %s current revision %s; canonical revision ref %s; %d revision(s), %d recalled result(s)",
+		current.ItemID, current.RevisionID, resolved.Ref.URI, len(history), len(hits))
 }
 ```
 
@@ -203,6 +212,7 @@ The current domain writes are `context_write`, `memory_write`, and `knowledge_wr
 | `tesseract_history` | Item history by `item_id`, or by legacy `domain`, `namespace`, and `key` |
 | `tesseract_recall` | Ranked recall across selected memory/knowledge `domains` |
 | `tesseract_get_revision` | Full revision by `revision_id` |
+| `tesseract_ref_resolve` | Metadata-only identity normalization by typed ID, current key, or canonical Tesseract URI |
 | `tesseract_deprecate` | Deprecate a revision by `revision_id` |
 | `tesseract_touch` | Reinforce recalled revisions that actually informed work |
 
