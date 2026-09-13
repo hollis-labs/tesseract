@@ -214,7 +214,7 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 	where := []string{"r.domain = ?"}
 	args := []any{string(domains.Event)}
 
-	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces)
+	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces, []string{string(domains.Event)})
 	where = append(where, nsFrag)
 	args = append(args, nsArgs...)
 

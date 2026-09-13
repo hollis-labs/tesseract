@@ -181,7 +181,7 @@ func requireNamespaceSelectorAccess(w http.ResponseWriter, r *http.Request, sele
 	}
 	effective := recallAuthorizationSelectorsHTTP(selector, domainNames)
 	for _, scoped := range effective {
-		if namespaceSelectorPermitted(claims.NamespaceGlobs, scoped) {
+		if namespaceSelectorPermitted(claims.NamespaceGlobs, scoped, domainNames) {
 			continue
 		}
 		writeError(w, http.StatusForbidden, "namespace_not_permitted",
@@ -193,8 +193,8 @@ func requireNamespaceSelectorAccess(w http.ResponseWriter, r *http.Request, sele
 	return true
 }
 
-func namespaceSelectorPermitted(globs []string, selector string) bool {
-	prefix, isPrefix := recallNamespacePrefix(selector)
+func namespaceSelectorPermitted(globs []string, selector string, domainNames []string) bool {
+	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
 	if !isPrefix {
 		for _, glob := range globs {
 			glob = strings.TrimSpace(glob)
@@ -212,7 +212,7 @@ func namespaceSelectorPermitted(globs []string, selector string) bool {
 	}
 	for _, glob := range globs {
 		glob = strings.TrimSpace(glob)
-		if glob == "*" || glob == selector {
+		if glob == "*" {
 			return true
 		}
 		if !strings.HasSuffix(glob, "/*") {
@@ -230,7 +230,7 @@ func namespaceSelectorPermitted(globs []string, selector string) bool {
 }
 
 func recallAuthorizationSelectorsHTTP(selector string, domainNames []string) []string {
-	prefix, isPrefix := recallNamespacePrefix(selector)
+	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
 	if !isPrefix || !isRecallScopeHead(prefix) {
 		return []string{selector}
 	}
@@ -260,16 +260,6 @@ func isRecallScopeHead(prefix string) bool {
 	}
 	return len(parts) == 4 && parts[0] == "user" && parts[1] != "" &&
 		(parts[2] == "project" || parts[2] == "session") && parts[3] != ""
-}
-
-func recallNamespacePrefix(selector string) (string, bool) {
-	if strings.HasSuffix(selector, "/*") {
-		return strings.TrimSuffix(selector, "/*"), true
-	}
-	if strings.HasSuffix(selector, "/memory") || strings.HasSuffix(selector, "/event") {
-		return selector, true
-	}
-	return "", false
 }
 
 // Server exposes HTTP handlers for the context API.

@@ -87,7 +87,7 @@ func TestCrossProjectPrefix_TheCW20260909_0002Probe(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sql, args := buildNamespaceClause([]string{tc.probe})
+			sql, args := buildNamespaceClause([]string{tc.probe}, scopedNamespaceSegments)
 			if sql != tc.wantSQL {
 				t.Errorf("SQL for %q = %q, want %q (%s)", tc.probe, sql, tc.wantSQL, tc.why)
 			}
@@ -212,7 +212,7 @@ func TestBuildNamespaceClause_DepthAgainstTheRealRegistry(t *testing.T) {
 		namespaces = append(namespaces, fmt.Sprintf("project/p%d/memory", i))
 	}
 
-	sql, args := buildNamespaceClause(namespaces)
+	sql, args := buildNamespaceClause(namespaces, scopedNamespaceSegments)
 	if len(args) != count {
 		t.Fatalf("bind args = %d, want %d", len(args), count)
 	}
@@ -240,7 +240,7 @@ func TestBuildNamespaceClause_DepthAgainstTheRealRegistry(t *testing.T) {
 			mixed = append(mixed, fmt.Sprintf("project/p%d/memory", i))
 		}
 	}
-	mixedSQL, _ := buildNamespaceClause(mixed)
+	mixedSQL, _ := buildNamespaceClause(mixed, scopedNamespaceSegments)
 	t.Logf("%d mixed terms → parse depth %d", count, maxParenDepth(mixedSQL))
 }
 

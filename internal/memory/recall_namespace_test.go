@@ -59,7 +59,7 @@ func TestBuildNamespaceClause(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sql, args := buildNamespaceClause(tc.input)
+			sql, args := buildNamespaceClause(tc.input, scopedNamespaceSegments)
 			if sql != tc.wantSQL {
 				t.Errorf("sql = %q, want %q", sql, tc.wantSQL)
 			}
@@ -102,7 +102,7 @@ func TestBuildNamespaceClause_ManyNamespacesStaysShallow(t *testing.T) {
 				for i := range input {
 					input[i] = tc.make(i)
 				}
-				sql, args := buildNamespaceClause(input)
+				sql, args := buildNamespaceClause(input, scopedNamespaceSegments)
 				if got := strings.Count(sql, "?"); got != n {
 					t.Fatalf("n=%d: %d placeholders, want %d", n, got, n)
 				}
@@ -122,7 +122,7 @@ func TestBuildNamespaceClause_GroupsExactIntoINList(t *testing.T) {
 		"user/x/memory/notes",
 		"user/y/memory",
 		"user/z/knowledge/framework",
-	})
+	}, scopedNamespaceSegments)
 	// Exact matches collapse into one IN list and are bound first; prefixes
 	// keep their own literal prefix term.
 	wantSQL := "(r.namespace IN (?,?) OR instr(r.namespace, ?) = 1)"
@@ -177,7 +177,7 @@ func TestBuildNamespaceClause_DocumentedShapes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, _ := buildNamespaceClause(tc.input)
+			got, _ := buildNamespaceClause(tc.input, scopedNamespaceSegments)
 			if got != tc.want {
 				t.Errorf("sql = %q, want %q", got, tc.want)
 			}
@@ -237,5 +237,37 @@ func TestScopedPrefix(t *testing.T) {
 					tc.input, got, ok, tc.want, tc.wantOk)
 			}
 		})
+	}
+}
+
+func TestRecallNamespacePrefixRespectsDomainAndSelectorShape(t *testing.T) {
+	for _, tc := range []struct {
+		name, selector string
+		domains        []string
+		wantPrefix     string
+		wantOK         bool
+	}{
+		{"explicit workspace", "project/tesseract/workspace/private/*", []string{"workspace"}, "project/tesseract/workspace/private", true},
+		{"bare memory selected", "project/tesseract/memory", []string{"memory"}, "project/tesseract/memory", true},
+		{"bare memory not selected", "project/tesseract/memory", []string{"knowledge"}, "", false},
+		{"bare legacy event selected", "user/chrispian/session/s1/event", []string{"event"}, "user/chrispian/session/s1/event", true},
+		{"knowledge tail named memory", "project/tesseract/knowledge/archive/memory", []string{"memory", "knowledge"}, "", false},
+		{"workspace tail named event", "project/tesseract/workspace/event", []string{"event", "workspace"}, "", false},
+		{"typed memory namespace", "project/tesseract/memory/notes", []string{"memory"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := RecallNamespacePrefix(tc.selector, tc.domains)
+			if got != tc.wantPrefix || ok != tc.wantOK {
+				t.Fatalf("RecallNamespacePrefix(%q, %v) = (%q, %v), want (%q, %v)", tc.selector, tc.domains, got, ok, tc.wantPrefix, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestBuildNamespaceClauseKeepsOtherDomainTailExact(t *testing.T) {
+	selector := "project/tesseract/knowledge/archive/memory"
+	sql, args := buildNamespaceClause([]string{selector}, []string{"memory", "knowledge"})
+	if sql != "(r.namespace = ?)" || len(args) != 1 || args[0] != selector {
+		t.Fatalf("clause=%q args=%v, want exact selector", sql, args)
 	}
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/hollis-labs/go-mcp/budget"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -1396,14 +1397,14 @@ func globsPermit(globs []string, namespace string) bool {
 // Exact selectors use the ordinary namespace check. Explicit /* selectors and
 // the grandfathered bare memory/event forms denote every descendant, so one
 // configured token glob must contain that whole prefix before recall begins.
-func globsPermitRecallSelector(globs []string, selector string) bool {
-	prefix, isPrefix := recallSelectorPrefix(selector)
+func globsPermitRecallSelector(globs []string, selector string, domainNames []string) bool {
+	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
 	if len(globs) == 0 {
 		return true
 	}
 	for _, glob := range globs {
 		glob = strings.TrimSpace(glob)
-		if glob == "*" || glob == selector {
+		if glob == "*" || (!isPrefix && glob == selector) {
 			return true
 		}
 		if !isPrefix {
@@ -1420,7 +1421,7 @@ func globsPermitRecallSelector(globs []string, selector string) bool {
 		}
 		allowedPrefix := strings.TrimSuffix(glob, "/*")
 		// Interior wildcard containment is not generally provable. Exact
-		// equality was handled above; otherwise fail closed.
+		// prefix equality is handled below; otherwise fail closed.
 		if strings.ContainsAny(allowedPrefix, "*?[") {
 			continue
 		}
@@ -1434,7 +1435,7 @@ func globsPermitRecallSelector(globs []string, selector string) bool {
 func globsPermitRecallScope(globs []string, selector string, domainNames []string) bool {
 	effective := recallAuthorizationSelectors(selector, domainNames)
 	for _, scoped := range effective {
-		if !globsPermitRecallSelector(globs, scoped) {
+		if !globsPermitRecallSelector(globs, scoped, domainNames) {
 			return false
 		}
 	}
@@ -1442,7 +1443,7 @@ func globsPermitRecallScope(globs []string, selector string, domainNames []strin
 }
 
 func recallAuthorizationSelectors(selector string, domainNames []string) []string {
-	prefix, isPrefix := recallSelectorPrefix(selector)
+	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
 	if !isPrefix || !isScopeHead(prefix) {
 		return []string{selector}
 	}
@@ -1472,16 +1473,6 @@ func isScopeHead(prefix string) bool {
 	}
 	return len(parts) == 4 && parts[0] == "user" && parts[1] != "" &&
 		(parts[2] == "project" || parts[2] == "session") && parts[3] != ""
-}
-
-func recallSelectorPrefix(selector string) (string, bool) {
-	if strings.HasSuffix(selector, "/*") {
-		return strings.TrimSuffix(selector, "/*"), true
-	}
-	if strings.HasSuffix(selector, "/memory") || strings.HasSuffix(selector, "/event") {
-		return selector, true
-	}
-	return "", false
 }
 
 // filterByGlobs returns only the records whose namespace is permitted by globs.

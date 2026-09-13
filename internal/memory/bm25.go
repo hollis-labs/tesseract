@@ -95,7 +95,7 @@ func buildRecallFilters(in RecallInput) ([]string, []interface{}, error) {
 	var where []string
 	var args []interface{}
 
-	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces)
+	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces, recallDomainNames(in.Filters.Domains))
 	where = append(where, nsFrag)
 	args = append(args, nsArgs...)
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
@@ -148,6 +149,122 @@ func TestWorkspaceRecallMCPPrefixQueryIsCaseSensitiveAcrossProjections(t *testin
 	if got, _ := manifest["results_total"].(float64); int(got) != 1 {
 		t.Fatalf("case-sensitive estimate results_total=%v, want 1: %v", manifest["results_total"], estimate)
 	}
+}
+
+func TestRecallSelectorGrantBoundaryMatrixMCP(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		globs     []string
+		selector  string
+		domains   []string
+		permitted bool
+	}{
+		{"exact selector exact grant", []string{"project/tesseract/knowledge/archive"}, "project/tesseract/knowledge/archive", []string{"knowledge"}, true},
+		{"explicit descendants exact grant", []string{"project/tesseract/workspace/private"}, "project/tesseract/workspace/private/*", []string{"workspace"}, false},
+		{"explicit descendants descendant grant", []string{"project/tesseract/workspace/private/*"}, "project/tesseract/workspace/private/*", []string{"workspace"}, true},
+		{"legacy memory exact grant", []string{"project/tesseract/memory"}, "project/tesseract/memory", []string{"memory"}, false},
+		{"legacy memory descendant grant", []string{"project/tesseract/memory/*"}, "project/tesseract/memory", []string{"memory"}, true},
+		{"legacy event exact grant", []string{"project/tesseract/event"}, "project/tesseract/event", []string{"event"}, false},
+		{"legacy event descendant grant", []string{"project/tesseract/event/*"}, "project/tesseract/event", []string{"event"}, true},
+		{"project domain narrowing", []string{"project/tesseract/workspace/*"}, "project/tesseract/*", []string{"workspace"}, true},
+		{"other domain memory tail exact", []string{"project/tesseract/knowledge/archive/memory"}, "project/tesseract/knowledge/archive/memory", []string{"knowledge"}, true},
+		{"mixed domains complete", []string{"project/tesseract/memory/*", "project/tesseract/workspace/*"}, "project/tesseract/*", []string{"memory", "workspace"}, true},
+		{"mixed domains incomplete", []string{"project/tesseract/workspace/*"}, "project/tesseract/*", []string{"memory", "workspace"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := globsPermitRecallScope(tc.globs, tc.selector, tc.domains); got != tc.permitted {
+				t.Fatalf("globsPermitRecallScope(%v, %q, %v)=%v, want %v", tc.globs, tc.selector, tc.domains, got, tc.permitted)
+			}
+		})
+	}
+}
+
+func TestWorkspaceRecallMCPDescendantGrantExcludesParent(t *testing.T) {
+	cs := newTestStore(t)
+	store := workspace.NewStore(cs.DB())
+	const parentNamespace = "project/tesseract/workspace/boundary"
+	parent, err := store.Create(context.Background(), workspace.CreateInput{
+		Namespace: parentNamespace, Key: "parent", Summary: "parent",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.Create(context.Background(), workspace.CreateInput{
+		Namespace: parentNamespace + "/child", Key: "child", Summary: "child",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	descendant := workspaceReviewAdapter(t, cs, store, "workspace-descendants", []string{parentNamespace + "/*"})
+	wantErrorCode(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": parent.ItemID}), "namespace_not_permitted")
+	wantNoError(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": child.ItemID}))
+	body := wantNoError(t, mustCallRegistered(t, descendant, "tesseract_recall", map[string]any{
+		"namespaces": `["` + parentNamespace + `/*"]`, "domains": `["workspace"]`, "payload_mode": "full",
+	}))
+	if rendered := fmt.Sprint(body); !strings.Contains(rendered, child.ItemID) || strings.Contains(rendered, parent.ItemID) {
+		t.Fatalf("descendant recall returned the wrong boundary set: %v", body)
+	}
+	estimate := wantNoError(t, mustCallRegistered(t, descendant, "tesseract_recall", map[string]any{
+		"namespaces": `["` + parentNamespace + `/*"]`, "domains": `["workspace"]`, "estimate_only": true,
+	}))
+	if got := int(estimate["manifest"].(map[string]any)["results_total"].(float64)); got != 1 {
+		t.Fatalf("descendant estimate total=%d, want 1: %v", got, estimate)
+	}
+
+	exact := workspaceReviewAdapter(t, cs, store, "workspace-parent", []string{parentNamespace})
+	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_recall", map[string]any{
+		"namespaces": `["` + parentNamespace + `/*"]`, "domains": `["workspace"]`,
+	}), "namespace_not_permitted")
+	exactBody := wantNoError(t, mustCallRegistered(t, exact, "tesseract_recall", map[string]any{
+		"namespaces": `["` + parentNamespace + `"]`, "domains": `["workspace"]`, "payload_mode": "keys",
+	}))
+	if rendered := fmt.Sprint(exactBody); !strings.Contains(rendered, parent.ItemID) || strings.Contains(rendered, child.ItemID) {
+		t.Fatalf("exact recall returned the wrong boundary set: %v", exactBody)
+	}
+}
+
+func TestMemoryRecallMCPLegacyPrefixRequiresDescendantGrant(t *testing.T) {
+	cs := newTestStore(t)
+	store := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	const root = "project/tesseract/memory"
+	child, err := store.WriteRevision(context.Background(), memory.WriteInput{
+		Domain: domains.Memory, Namespace: root + "/notes", MemoryKey: "boundary.memory",
+		Summary: "memory child", Author: memory.Author{AgentID: "review"}, SessionID: "review",
+		Trigger: memory.TriggerManual, DerivedFrom: memory.DerivedFromProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := workspaceReviewAdapter(t, cs, workspace.NewStore(cs.DB()), "memory-root", []string{root})
+	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_get", map[string]any{"item_id": child.ItemID}), "namespace_not_permitted")
+	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_recall", map[string]any{
+		"namespaces": `["` + root + `"]`, "domains": `["memory"]`, "payload_mode": "full",
+	}), "namespace_not_permitted")
+
+	descendant := workspaceReviewAdapter(t, cs, workspace.NewStore(cs.DB()), "memory-children", []string{root + "/*"})
+	wantNoError(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": child.ItemID}))
+	body := wantNoError(t, mustCallRegistered(t, descendant, "tesseract_recall", map[string]any{
+		"namespaces": `["` + root + `"]`, "domains": `["memory"]`, "payload_mode": "full",
+	}))
+	if !strings.Contains(fmt.Sprint(body), child.ItemID) {
+		t.Fatalf("descendant grant did not preserve legacy bare recall: %v", body)
+	}
+}
+
+func workspaceReviewAdapter(t *testing.T, cs *contextstore.Store, store *workspace.Store, label string, globs []string) *Adapter {
+	t.Helper()
+	token, _, err := cs.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{
+		Label: label, Scopes: []string{"memory:read"}, NamespaceGlobs: globs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(cs, token)
+	a.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
+	a.WorkspaceStore = store
+	return a
 }
 
 func TestWorkspaceCreateRejectsEditOnlyClearFieldsBeforeWriting(t *testing.T) {

@@ -1,6 +1,10 @@
 package memory
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/hollis-labs/tesseract/domains"
+)
 
 // buildNamespaceClause produces a WHERE fragment + bind args matching any of
 // the supplied namespaces. Each entry is matched as either an exact value or
@@ -38,7 +42,7 @@ import "strings"
 // is too large". Two things keep the depth bounded: exact matches collapse
 // into one `IN (...)` list regardless of count, and the remaining terms are
 // OR'd as a balanced tree whose height grows as log2(n).
-func buildNamespaceClause(namespaces []string) (string, []interface{}) {
+func buildNamespaceClause(namespaces, domainNames []string) (string, []interface{}) {
 	if len(namespaces) == 0 {
 		return "1=0", nil
 	}
@@ -46,7 +50,7 @@ func buildNamespaceClause(namespaces []string) (string, []interface{}) {
 	exact := make([]string, 0, len(namespaces))
 	prefixes := make([]string, 0, len(namespaces))
 	for _, ns := range namespaces {
-		if pfx, ok := scopedPrefix(ns); ok {
+		if pfx, ok := RecallNamespacePrefix(ns, domainNames); ok {
 			prefixes = append(prefixes, pfx+"/")
 		} else {
 			exact = append(exact, ns)
@@ -95,8 +99,9 @@ func orTree(conds []string) string {
 	return "(" + orTree(conds[:mid]) + " OR " + orTree(conds[mid:]) + ")"
 }
 
-// scopedPrefix returns (prefix-without-trailing-slash, true) if ns is a prefix
-// REQUEST, and ("", false) if it names an exact namespace.
+// RecallNamespacePrefix returns (prefix-without-trailing-slash, true) if ns is
+// a prefix request for the selected domains, and ("", false) if it names an
+// exact namespace.
 //
 // Two ways to ask, and the asymmetry between them is the decision
 // (CW-20260912-0078):
@@ -105,9 +110,9 @@ func orTree(conds []string) string {
 //     `project/*`, `project/tether/*`, `project/tether/knowledge/*`,
 //     `user/chrispian/memory/*`. This is the universal rule, and the one an
 //     agent should learn.
-//   - A BARE form ending in `/memory` or `/event` is ALSO read as a prefix.
-//     This is inference, it is grandfathered, and it is not extended to
-//     anything else — see below.
+//   - A supported BARE memory or event domain head is ALSO read as a prefix
+//     when that domain participates in the query. This is inference, it is
+//     grandfathered, and it is not extended to anything else — see below.
 //
 // WHY INFERENCE WAS GRANDFATHERED RATHER THAN EXTENDED.
 //
@@ -145,17 +150,56 @@ func orTree(conds []string) string {
 // is that registration is a side effect of writing, so the registry holds
 // namespaces at every depth — which N4 mitigates but does not remove.
 //
-// Intentionally lenient about shape: a malformed prefix returns nothing from
-// the SQL match, which is the right outcome — a graceful no-op rather than a
-// parser error at recall time.
-func scopedPrefix(ns string) (string, bool) {
+// Explicit /* remains intentionally lenient about shape: a malformed prefix
+// returns nothing from the SQL match, a graceful no-op rather than a parser
+// error at recall time. Inferred bare selectors are shape-checked so a
+// knowledge or workspace tail merely named "memory" or "event" stays exact.
+func RecallNamespacePrefix(ns string, domainNames []string) (string, bool) {
 	if strings.HasSuffix(ns, "/*") {
 		return strings.TrimSuffix(ns, "/*"), true
 	}
-	for _, seg := range scopedNamespaceSegments {
-		if strings.HasSuffix(ns, "/"+seg) {
+	for _, domain := range scopedNamespaceSegments {
+		if recallDomainSelected(domainNames, domain) && isBareRecallDomainHead(ns, domain) {
 			return ns, true
 		}
 	}
 	return "", false
+}
+
+func scopedPrefix(ns string) (string, bool) {
+	return RecallNamespacePrefix(ns, scopedNamespaceSegments)
+}
+
+func recallDomainSelected(domainNames []string, want string) bool {
+	if len(domainNames) == 0 {
+		return want == memoryNamespaceSegment
+	}
+	for _, domain := range domainNames {
+		if domain == want {
+			return true
+		}
+	}
+	return false
+}
+
+func recallDomainNames(values []domains.Domain) []string {
+	names := make([]string, len(values))
+	for i, domain := range values {
+		names[i] = string(domain)
+	}
+	return names
+}
+
+func isBareRecallDomainHead(namespace, domain string) bool {
+	parts := strings.Split(namespace, "/")
+	if len(parts) == 2 {
+		_, scope := scopeKeywords[parts[0]]
+		return scope && parts[1] == domain
+	}
+	if len(parts) == 3 {
+		_, scope := scopeKeywords[parts[0]]
+		return scope && parts[0] != "system" && parts[1] != "" && parts[2] == domain
+	}
+	return len(parts) == 5 && parts[0] == "user" && parts[1] != "" &&
+		(parts[2] == "project" || parts[2] == "session") && parts[3] != "" && parts[4] == domain
 }

@@ -178,6 +178,134 @@ func TestWorkspaceRecallHTTPPrefixQueryIsCaseSensitiveAcrossRoutes(t *testing.T)
 	}
 }
 
+func TestRecallSelectorGrantBoundaryMatrixHTTP(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		globs     []string
+		selector  string
+		domains   []string
+		permitted bool
+	}{
+		{"exact selector exact grant", []string{"project/tesseract/knowledge/archive"}, "project/tesseract/knowledge/archive", []string{"knowledge"}, true},
+		{"explicit descendants exact grant", []string{"project/tesseract/workspace/private"}, "project/tesseract/workspace/private/*", []string{"workspace"}, false},
+		{"explicit descendants descendant grant", []string{"project/tesseract/workspace/private/*"}, "project/tesseract/workspace/private/*", []string{"workspace"}, true},
+		{"legacy memory exact grant", []string{"project/tesseract/memory"}, "project/tesseract/memory", []string{"memory"}, false},
+		{"legacy memory descendant grant", []string{"project/tesseract/memory/*"}, "project/tesseract/memory", []string{"memory"}, true},
+		{"legacy event exact grant", []string{"project/tesseract/event"}, "project/tesseract/event", []string{"event"}, false},
+		{"legacy event descendant grant", []string{"project/tesseract/event/*"}, "project/tesseract/event", []string{"event"}, true},
+		{"project domain narrowing", []string{"project/tesseract/workspace/*"}, "project/tesseract/*", []string{"workspace"}, true},
+		{"other domain memory tail exact", []string{"project/tesseract/knowledge/archive/memory"}, "project/tesseract/knowledge/archive/memory", []string{"knowledge"}, true},
+		{"mixed domains complete", []string{"project/tesseract/memory/*", "project/tesseract/workspace/*"}, "project/tesseract/*", []string{"memory", "workspace"}, true},
+		{"mixed domains incomplete", []string{"project/tesseract/workspace/*"}, "project/tesseract/*", []string{"memory", "workspace"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := true
+			for _, selector := range recallAuthorizationSelectorsHTTP(tc.selector, tc.domains) {
+				if !namespaceSelectorPermitted(tc.globs, selector, tc.domains) {
+					got = false
+					break
+				}
+			}
+			if got != tc.permitted {
+				t.Fatalf("namespaceSelectorPermitted(%v, %q, %v)=%v, want %v", tc.globs, tc.selector, tc.domains, got, tc.permitted)
+			}
+		})
+	}
+}
+
+func TestWorkspaceRecallHTTPDescendantGrantExcludesParent(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	srv.ManagedAuth = true
+	const parentNamespace = "project/tesseract/workspace/boundary-http"
+	parent, err := srv.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: parentNamespace, Key: "parent", Summary: "parent",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := srv.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: parentNamespace + "/child", Key: "child", Summary: "child",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := issueTokenWithScopes(t, srv, "workspace-descendants", []string{"memory:read"}, []string{parentNamespace + "/*"})
+	headers := map[string]string{"Authorization": "Bearer " + token}
+	if res := getItemRoute(t, srv, "/v1/items/"+parent.ItemID, headers); res.Code != http.StatusForbidden {
+		t.Fatalf("parent current read status=%d body=%s", res.Code, res.Body.String())
+	}
+	if res := getItemRoute(t, srv, "/v1/items/"+child.ItemID, headers); res.Code != http.StatusOK {
+		t.Fatalf("child current read status=%d body=%s", res.Code, res.Body.String())
+	}
+	for _, tc := range []struct {
+		name, method, path string
+		body               any
+	}{
+		{"lookup full", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{parentNamespace + "/*"}, "domains": []string{"workspace"}, "payload_mode": "full"}},
+		{"memory summary", http.MethodPost, "/v1/memory/recall", map[string]any{"namespaces": []string{parentNamespace + "/*"}, "filters": map[string]any{"domains": []string{"workspace"}}, "payload_mode": "summary"}},
+		{"legacy keys", http.MethodGet, "/v1/recall?namespace=" + parentNamespace + "/*&domains=workspace&format=brief", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := performJSONWithHeaders(t, srv, tc.method, tc.path, tc.body, headers)
+			if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), child.ItemID) || strings.Contains(res.Body.String(), parent.ItemID) {
+				t.Fatalf("status=%d returned the wrong boundary set: %s", res.Code, res.Body.String())
+			}
+		})
+	}
+	estimate := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/tesseract/lookup", map[string]any{
+		"namespaces": []string{parentNamespace + "/*"}, "domains": []string{"workspace"}, "estimate_only": true,
+	}, headers)
+	manifest := decodeHTTPJSON(t, estimate.Body.Bytes())["manifest"].(map[string]any)
+	if estimate.Code != http.StatusOK || int(manifest["results_total"].(float64)) != 1 {
+		t.Fatalf("estimate status=%d manifest=%v", estimate.Code, manifest)
+	}
+}
+
+func TestMemoryRecallHTTPLegacyPrefixRequiresDescendantGrant(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	srv.ManagedAuth = true
+	const root = "project/tesseract/memory"
+	child, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
+		Domain: domains.Memory, Namespace: root + "/notes", MemoryKey: "boundary.http.memory",
+		Summary: "memory child", Author: memory.Author{AgentID: "review"}, SessionID: "review",
+		Trigger: memory.TriggerManual, DerivedFrom: memory.DerivedFromProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactToken := issueTokenWithScopes(t, srv, "memory-root", []string{"memory:read"}, []string{root})
+	exactHeaders := map[string]string{"Authorization": "Bearer " + exactToken}
+	if res := getItemRoute(t, srv, "/v1/items/"+child.ItemID, exactHeaders); res.Code != http.StatusForbidden {
+		t.Fatalf("child current read status=%d body=%s", res.Code, res.Body.String())
+	}
+	for _, tc := range []struct {
+		name, method, path string
+		body               any
+	}{
+		{"lookup", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{root}, "domains": []string{"memory"}, "payload_mode": "full"}},
+		{"memory recall", http.MethodPost, "/v1/memory/recall", map[string]any{"namespaces": []string{root}, "filters": map[string]any{"domains": []string{"memory"}}, "payload_mode": "summary"}},
+		{"legacy get", http.MethodGet, "/v1/recall?namespace=" + root + "&domains=memory&format=full", nil},
+	} {
+		t.Run("exact grant "+tc.name, func(t *testing.T) {
+			res := performJSONWithHeaders(t, srv, tc.method, tc.path, tc.body, exactHeaders)
+			body := decodeHTTPJSON(t, res.Body.Bytes())
+			if res.Code != http.StatusForbidden || body["code"] != "namespace_not_permitted" {
+				t.Fatalf("status=%d body=%v", res.Code, body)
+			}
+		})
+	}
+
+	descendantToken := issueTokenWithScopes(t, srv, "memory-children", []string{"memory:read"}, []string{root + "/*"})
+	allowed := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/tesseract/lookup", map[string]any{
+		"namespaces": []string{root}, "domains": []string{"memory"}, "payload_mode": "full",
+	}, map[string]string{"Authorization": "Bearer " + descendantToken})
+	if allowed.Code != http.StatusOK || !strings.Contains(allowed.Body.String(), child.ItemID) {
+		t.Fatalf("descendant grant did not preserve legacy bare recall: status=%d body=%s", allowed.Code, allowed.Body.String())
+	}
+}
+
 func TestWorkspaceHTTPCreateRejectsClearFieldsBeforeWriting(t *testing.T) {
 	srv := newWorkspaceTestServer(t)
 	for i, clearFields := range []any{[]string{}, []string{"body"}, []string{"unknown"}, nil, map[string]any{"bad": true}} {

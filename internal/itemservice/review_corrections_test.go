@@ -13,8 +13,9 @@ import (
 func TestWorkspaceRecallPrefixesIncludeBroadDeepAndLiteralPaths(t *testing.T) {
 	_, _, ws, svc := newService(t)
 	ctx := context.Background()
+	literalPrefix := itemWorkspaceNS + `/literal_%\part`
 	targetInput := wsInput("prefix-target", "prefix target")
-	targetInput.Namespace = itemWorkspaceNS + `/literal_%\part`
+	targetInput.Namespace = literalPrefix + "/child"
 	target, err := ws.Create(ctx, targetInput)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +28,7 @@ func TestWorkspaceRecallPrefixesIncludeBroadDeepAndLiteralPaths(t *testing.T) {
 	}
 
 	selectors := []string{
-		targetInput.Namespace + "/*",
+		literalPrefix + "/*",
 		itemWorkspaceNS + "/*",
 		"project/tesseract/workspace/*",
 		"project/tesseract/*",
@@ -47,7 +48,7 @@ func TestWorkspaceRecallPrefixesIncludeBroadDeepAndLiteralPaths(t *testing.T) {
 				if result.Item != nil && result.Item.ItemID == target.ItemID {
 					seenTarget = true
 				}
-				if selector == targetInput.Namespace+"/*" && result.Item != nil && result.Item.ItemID == neighbor.ItemID {
+				if selector == literalPrefix+"/*" && result.Item != nil && result.Item.ItemID == neighbor.ItemID {
 					t.Fatalf("literal prefix included similarly named neighbor: %+v", result.Item)
 				}
 			}

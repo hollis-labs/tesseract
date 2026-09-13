@@ -35,6 +35,8 @@ func TestRecallPrefixMatchesCaseAndLiteralSegments(t *testing.T) {
 	write("project/tesseract/knowledge/Private/secret", "prefix.case.forbidden")
 	literal := write(`project/tesseract/knowledge/literal_%\part/child`, "prefix.literal.allowed")
 	write(`project/tesseract/knowledge/literal_AX\part/child`, "prefix.literal.forbidden")
+	exactTail := write("project/tesseract/knowledge/archive/memory", "prefix.exact.allowed")
+	write("project/tesseract/knowledge/archive/memory/child", "prefix.exact.forbidden")
 
 	for _, tc := range []struct {
 		name      string
@@ -43,11 +45,13 @@ func TestRecallPrefixMatchesCaseAndLiteralSegments(t *testing.T) {
 	}{
 		{"case sensitive", "project/tesseract/knowledge/private/*", lower.RevisionID},
 		{"literal metacharacters", `project/tesseract/knowledge/literal_%\part/*`, literal.RevisionID},
+		{"other domain tail stays exact", "project/tesseract/knowledge/archive/memory", exactTail.RevisionID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			results, err := ms.Recall(ctx, memory.RecallInput{
 				Namespaces: []string{tc.selector},
 				Ranking:    memory.RankingChronological,
+				Filters:    memory.RecallFilters{Domains: []domains.Domain{domains.Knowledge}},
 			})
 			if err != nil {
 				t.Fatalf("Recall(%q): %v", tc.selector, err)

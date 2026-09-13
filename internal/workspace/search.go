@@ -114,8 +114,8 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 			if err := memory.ValidateWorkspaceRecallNamespace(ns); err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 			}
-			namespaceClauses = append(namespaceClauses, `(w.namespace = ? OR instr(w.namespace, ?) = 1)`)
-			args = append(args, prefix, prefix+"/")
+			namespaceClauses = append(namespaceClauses, `instr(w.namespace, ?) = 1`)
+			args = append(args, prefix+"/")
 			continue
 		}
 		if err := memory.ValidateWorkspaceNamespace(ns); err != nil {
