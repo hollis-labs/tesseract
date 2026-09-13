@@ -129,3 +129,44 @@ tesseract_touch item_ids='["01HITEM..."]'
 Pass exactly one of `item_ids` or `revision_ids`. Deleted workspace identities
 are listed under `deleted`, unknown IDs under `not_found`, and event item IDs
 under `not_reinforced`.
+
+## Promote reviewed workspace content
+
+`workspace_promote` copies the live workspace `summary`, `body`, and `data`
+into a revisioned memory, knowledge, or event item. The workspace item remains
+unchanged. Run all three explicit stages:
+
+```text
+workspace_promote stage=request source_item_id=<workspace-id> \
+  source_version_token=<token> actor=agent:reviewer \
+  target_domain=memory target_namespace=user/example/memory/notes \
+  target_key=reviewed.note target_author_agent_id=agent:reviewer \
+  target_session_id=session-1 target_trigger=promotion \
+  target_derived_from=project
+
+workspace_promote stage=request source_item_id=<workspace-id> \
+  source_version_token=<token> actor=agent:reviewer \
+  target_domain=knowledge target_namespace=project/tesseract/knowledge/contracts \
+  target_key=workspace-promotion target_author_agent_id=agent:reviewer \
+  target_session_id=session-1 target_kind=doc target_source=manual \
+  target_pointer_scheme=nil target_pointer_locator=workspace-promotion
+
+workspace_promote stage=request source_item_id=<workspace-id> \
+  source_version_token=<token> actor=agent:reviewer \
+  target_domain=event target_namespace=project/tesseract/event/reasoning \
+  target_author_agent_id=agent:reviewer target_session_id=session-1 \
+  target_trigger=promotion target_derived_from=observation
+
+workspace_promote stage=approve request_id=<request-id> actor=user
+workspace_promote stage=apply request_id=<request-id> actor=agent:reviewer
+```
+
+HTTP uses the same fields with destination fields nested under `target`, at
+`POST /v1/workspace/promote/request`, `/approve`, and `/apply`. A request for an
+existing revisioned item supplies `target_item_id` and
+`expected_target_revision_id` and omits target domain, namespace, and key.
+Apply verifies the reviewed source version and destination preconditions in
+the same transaction as the new revision and its receipt. Repeating a committed
+apply returns that receipt without writing another revision.
+The receipt links `source_item_id` and `source_version_token` to the exact
+`target_item_id` and `target_revision_id`; it never contains source content.

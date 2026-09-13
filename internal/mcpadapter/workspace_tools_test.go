@@ -7,6 +7,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
+	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -46,15 +47,85 @@ func workspaceAdapter(t *testing.T) *Adapter {
 	t.Helper()
 	cs := newTestStore(t)
 	token, _, err := cs.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{
-		Label: "workspace", Scopes: []string{"memory:read", "memory:write"}, NamespaceGlobs: []string{"project/tesseract/workspace/*"},
+		Label: "workspace", Scopes: []string{"memory:read", "memory:write", "promote.request", "promote.approve", "promote.apply"}, NamespaceGlobs: []string{"project/tesseract/workspace/*", "user/chrispian/memory/*"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return workspaceAdapterOnStore(cs, token)
+}
+
+func workspaceAdapterOnStore(cs *contextstore.Store, token string) *Adapter {
 	a := New(cs, token)
 	a.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	a.WorkspaceStore = workspace.NewStore(cs.DB())
+	a.WorkspacePromotionStore = workspacepromotion.NewStore(cs, a.MemoryStore)
 	return a
+}
+
+func workspacePromotionToken(t *testing.T, cs *contextstore.Store, label string, scopes, globs []string) string {
+	t.Helper()
+	token, _, err := cs.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{Label: label, Scopes: scopes, NamespaceGlobs: globs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func TestWorkspacePromoteMCPFlatStages(t *testing.T) {
+	a := workspaceAdapter(t)
+	source, err := a.WorkspaceStore.Create(context.Background(), workspace.CreateInput{Namespace: mcpWorkspaceNS, Key: "promote-source", Summary: "MCP reviewed", Data: []byte(`{"large":90071992547409931234}`), Author: memory.Author{AgentID: "draft"}, SessionID: "draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested := wantNoError(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{
+		"stage": "request", "source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "requester",
+		"target_domain": "memory", "target_namespace": "user/chrispian/memory/notes", "target_key": "mcp.promoted",
+		"target_author_agent_id": "reviewer", "target_session_id": "review", "target_trigger": "promotion", "target_derived_from": "project",
+	}))
+	requestID, _ := requested["request_id"].(string)
+	if requestID == "" {
+		t.Fatalf("request=%v", requested)
+	}
+	wantNoError(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "approve", "request_id": requestID, "actor": "approver"}))
+	applied := wantNoError(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "apply", "request_id": requestID, "actor": "applier"}))
+	if applied["target_revision_id"] == "" || applied["status"] != "applied" {
+		t.Fatalf("apply=%v", applied)
+	}
+	if applied["source_item_id"] != source.ItemID || applied["source_version_token"] != source.VersionToken {
+		t.Fatalf("apply receipt lost source identity=%v", applied)
+	}
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "approve", "request_id": requestID, "actor": "approver", "target_key": "ignored"}), "validation_error")
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"source_item_id": source.ItemID}), "validation_error")
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "request ", "source_item_id": source.ItemID}), "validation_error")
+}
+
+func TestWorkspacePromoteMCPEachStageUsesItsOwnScope(t *testing.T) {
+	for _, stage := range []string{"request", "approve", "apply"} {
+		t.Run(stage, func(t *testing.T) {
+			cs := newTestStore(t)
+			full := workspaceAdapterOnStore(cs, workspacePromotionToken(t, cs, "full-"+stage, []string{"memory:read", "promote.request", "promote.approve", "promote.apply"}, []string{"*"}))
+			source, err := full.WorkspaceStore.Create(context.Background(), workspace.CreateInput{Namespace: mcpWorkspaceNS, Key: "scope-" + stage, Summary: "scope", Author: memory.Author{AgentID: "draft"}, SessionID: "draft"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			requestArgs := map[string]any{"stage": "request", "source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "requester",
+				"target_domain": "memory", "target_namespace": "user/chrispian/memory/notes", "target_key": "scope." + stage,
+				"target_author_agent_id": "reviewer", "target_session_id": "review", "target_trigger": "promotion", "target_derived_from": "project"}
+			args := requestArgs
+			if stage != "request" {
+				requested := wantNoError(t, mustCallRegistered(t, full, "workspace_promote", requestArgs))
+				requestID := requested["request_id"].(string)
+				args = map[string]any{"stage": stage, "request_id": requestID, "actor": "actor"}
+				if stage == "apply" {
+					wantNoError(t, mustCallRegistered(t, full, "workspace_promote", map[string]any{"stage": "approve", "request_id": requestID, "actor": "approver"}))
+				}
+			}
+			wrongScope := map[string]string{"request": "promote.approve", "approve": "promote.apply", "apply": "promote.request"}[stage]
+			attacker := workspaceAdapterOnStore(cs, workspacePromotionToken(t, cs, "attacker-"+stage, []string{wrongScope}, []string{"*"}))
+			wantErrorCode(t, mustCallRegistered(t, attacker, "workspace_promote", args), "insufficient_scope")
+		})
+	}
 }
 
 func TestWorkspaceMCPMutationAndTypedReadContract(t *testing.T) {

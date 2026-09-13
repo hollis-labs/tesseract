@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
-	"github.com/hollis-labs/tesseract/internal/memorylinks"
 )
 
 // Sentinels for the memory write path.
@@ -61,31 +60,15 @@ type WriteInput struct {
 func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, error) {
 	// The input is flat; stored revisions and every read projection retain Payload.
 	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
-	if err := validateWriteInput(in); err != nil {
-		return Revision{}, err
-	}
-	// Consumer state is validated after validateWriteInput rather than inside
-	// it, because the required-fields half needs a type declaration and
-	// resolving one needs a namespace that has already been proven well-formed.
-	// Handing a malformed namespace to the registry lookup would report a
-	// missing required field for a type nobody named.
-	if err := validateConsumerStateFor(in); err != nil {
-		return Revision{}, err
-	}
-	// payload.data's two structural facts. Deliberately NOT routed through the
-	// type registry the way consumer state's required_fields are: data has no
-	// declared shape and acquiring one is the thing this field refuses.
-	if err := validatePayloadData(payload); err != nil {
+	if err := ValidateWriteInput(in); err != nil {
 		return Revision{}, err
 	}
 
 	// Make sure the namespace is in the policy registry before we write data
 	// for it. Idempotent — only inserts the first time the namespace is seen.
 	// See CW-20260428-0005 for the bug this closes (registry-vs-data drift).
-	if s.namespaceRegistrar != nil {
-		if err := s.namespaceRegistrar.EnsureNamespaceRegistered(ctx, in.Namespace); err != nil {
-			return Revision{}, fmt.Errorf("ensure namespace registered: %w", err)
-		}
+	if err := s.EnsureNamespaceRegistered(ctx, in.Namespace); err != nil {
+		return Revision{}, err
 	}
 
 	// Semantic dedup: if requested, search for similar existing revisions.
@@ -116,6 +99,9 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 				in.Supersedes = matchID
 			}
 		}
+		// Dedup has been resolved before the transaction. The transaction-aware
+		// writer deliberately accepts only concrete revision writes.
+		in.Dedup = "none"
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -124,269 +110,17 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	memoryID, err := resolveOrCreateMemory(ctx, tx, in.Domain, in.Namespace, in.MemoryKey)
-	if err != nil {
-		return Revision{}, fmt.Errorf("resolve memory: %w", err)
-	}
-	workstreamID, err := resolveRevisionWorkstream(ctx, tx, memoryID, in.WorkstreamID)
+	rev, err := s.WriteRevisionInTx(ctx, tx, in)
 	if err != nil {
 		return Revision{}, err
-	}
-	writeContextValue, provenance, err := EncodeWriteContext(ctx)
-	if err != nil {
-		return Revision{}, err
-	}
-
-	status := in.Status
-	if status == "" {
-		status = StatusDraft
-	}
-
-	revisionID := NewULID()
-	now := time.Now().UTC()
-
-	var expiresAt *time.Time
-	var ttlSeconds int64
-	if in.TTL > 0 {
-		ttlSeconds = int64(in.TTL.Seconds())
-		exp := now.Add(in.TTL)
-		expiresAt = &exp
-	}
-
-	tags := in.Tags
-	if tags == nil {
-		tags = []string{}
-	}
-	tagsJSON, err := json.Marshal(tags)
-	if err != nil {
-		return Revision{}, fmt.Errorf("marshal tags: %w", err)
-	}
-
-	// Nullable string helpers for the INSERT.
-	nullStr := func(s string) sql.NullString {
-		if s == "" {
-			return sql.NullString{}
-		}
-		return sql.NullString{String: s, Valid: true}
-	}
-	nullTime := func(t *time.Time) sql.NullString {
-		if t == nil {
-			return sql.NullString{}
-		}
-		return sql.NullString{String: t.UTC().Format(memoryTimeFormat), Valid: true}
-	}
-	nullInt := func(v int64) sql.NullInt64 {
-		if v == 0 {
-			return sql.NullInt64{}
-		}
-		return sql.NullInt64{Int64: v, Valid: true}
-	}
-
-	var pointerScheme, pointerLocator string
-	var pointerResolvedAt *time.Time
-	if in.Facets.Pointer != nil {
-		pointerScheme = in.Facets.Pointer.Scheme
-		pointerLocator = in.Facets.Pointer.Locator
-		pointerResolvedAt = in.Facets.Pointer.ResolvedAt
-	}
-
-	_, err = tx.ExecContext(ctx, `
-INSERT INTO memory_revisions (
-    revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
-    created_at, author_agent_id, author_version, trigger, session_id, derived_from,
-    confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
-    payload_data, payload_data_schema_hash,
-    facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
-    consumer_state, workstream_id, write_context
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		revisionID,
-		memoryID,
-		string(in.Domain),
-		in.Namespace,
-		nullStr(in.MemoryKey),
-		string(status),
-		nullStr(in.Supersedes),
-		now.Format(memoryTimeFormat),
-		in.Author.AgentID,
-		in.Author.AgentVersion,
-		string(in.Trigger),
-		in.SessionID,
-		string(in.DerivedFrom),
-		in.Confidence,
-		string(tagsJSON),
-		nullInt(ttlSeconds),
-		nullTime(expiresAt),
-		nullStr(payload.Summary),
-		nullStr(payload.Body),
-		// Bound as bytes, never re-marshaled. Round-tripping through a Go map
-		// would reorder keys and coerce numbers, and "stored verbatim" has to
-		// mean the bytes the caller sent.
-		nullStr(string(payload.Data)),
-		nullStr(payload.DataSchemaHash),
-		nullStr(in.Facets.Kind),
-		nullStr(in.Facets.Source),
-		nullStr(pointerScheme),
-		nullStr(pointerLocator),
-		nullTime(pointerResolvedAt),
-		nullStr(string(in.ConsumerState)),
-		optionalWorkstream(workstreamID),
-		writeContextValue,
-	)
-	if err != nil {
-		return Revision{}, fmt.Errorf("insert revision: %w", err)
-	}
-
-	// If supersedes is set, verify it belongs to the same logical memory
-	// and auto-deprecate it. Cross-memory deprecation is rejected to prevent
-	// corrupting unrelated memory_state.current_revision pointers.
-	if in.Supersedes != "" {
-		var supersededMemID string
-		supErr := tx.QueryRowContext(ctx,
-			`SELECT memory_id FROM memory_revisions WHERE revision_id = ?`,
-			in.Supersedes,
-		).Scan(&supersededMemID)
-		if supErr != nil {
-			if errors.Is(supErr, sql.ErrNoRows) {
-				return Revision{}, fmt.Errorf("%w: supersedes revision %s not found", ErrInvalidInput, in.Supersedes)
-			}
-			return Revision{}, fmt.Errorf("verify supersedes: %w", supErr)
-		}
-		if supersededMemID != memoryID {
-			return Revision{}, fmt.Errorf("%w: supersedes revision %s belongs to a different memory", ErrInvalidInput, in.Supersedes)
-		}
-		if depErr := deprecateRevisionTx(ctx, tx, in.Supersedes); depErr != nil {
-			return Revision{}, fmt.Errorf("deprecate superseded: %w", depErr)
-		}
-	}
-
-	// Parse this revision's `[[links]]` into the edge table (CW-20260825-0017).
-	//
-	// Inside the same transaction as the revision, so a committed revision
-	// always has its edges and a rolled-back one leaves none behind. It runs
-	// AFTER the insert above because the edge rows carry from_revision_id as a
-	// foreign key, and after resolveOrCreateMemory because a revision that
-	// cites its own key resolves against the memory_state row that call
-	// created.
-	//
-	// A link whose target names nothing is stored unresolved rather than
-	// dropped, and that is not a degraded case: 15% of the corpus's links
-	// point at keys renamed away years of revisions ago, and the graph is
-	// more useful knowing they were written than pretending they were not.
-	if err = memorylinks.WriteReferences(ctx, tx, memorylinks.TxResolver{Tx: tx},
-		memorylinks.RevisionRef{
-			RevisionID: revisionID,
-			MemoryID:   memoryID,
-			Namespace:  in.Namespace,
-			CreatedAt:  now.Format(memoryTimeFormat),
-		},
-		memorylinks.LinkText(payload.Summary, payload.Body),
-	); err != nil {
-		return Revision{}, fmt.Errorf("index links: %w", err)
-	}
-
-	// Bind edges that were written pointing at this key before anything
-	// carried it. Resolution is otherwise forward-only, and the ordinary
-	// authoring order writes the citing record first.
-	if err = memorylinks.ResolvePending(ctx, tx, memorylinks.TxResolver{Tx: tx}, in.MemoryKey); err != nil {
-		return Revision{}, fmt.Errorf("resolve pending links: %w", err)
-	}
-
-	// Point the memory_state current_revision to this new revision.
-	_, err = tx.ExecContext(ctx,
-		`UPDATE memory_state SET current_revision = ? WHERE memory_id = ?`,
-		revisionID, memoryID,
-	)
-	if err != nil {
-		return Revision{}, fmt.Errorf("update state: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return Revision{}, fmt.Errorf("commit: %w", err)
 	}
 
-	// Everything below this line is post-commit work: the revision is durable
-	// and the caller is going to be told so no matter what happens next. It
-	// therefore runs on a context detached from the caller's cancellation. An
-	// HTTP client that disconnects — or an MCP call that is canceled —
-	// between the commit above and the enqueue below would otherwise drop the
-	// embed job permanently, leaving a committed revision that no worker will
-	// ever see. WithoutCancel keeps trace state and request values and drops
-	// only the cancellation. CW-20260826-0018.
-	postCommitCtx := context.WithoutCancel(ctx)
-
-	// The enqueue stays best-effort — a queue outage must not roll back a
-	// durable write — but it is no longer silent. A failure increments the
-	// store's enqueue-failure counter (read back via DeferredEmbeddingStatus)
-	// and logs the identity needed to recover, mirroring the shape
-	// contextstore uses for audit emit. Recovery is POST
-	// /v1/admin/queue/backfill, which only helps if someone knows to run it.
-	if err := s.queue.Enqueue(postCommitCtx, Job{
-		Kind:    EmbedJobKind,
-		Payload: []byte(fmt.Sprintf(`{"revision_id":%q}`, revisionID)),
-	}); err != nil {
-		s.enqueueFailures.Add(1)
-		// Identity only. This line may name the memory that failed to embed;
-		// it must never carry the memory's contents.
-		s.log().WarnContext(postCommitCtx, "embed enqueue failed",
-			"job_kind", EmbedJobKind,
-			"revision_id", revisionID,
-			"memory_id", memoryID,
-			"namespace", in.Namespace,
-			"domain", string(in.Domain),
-			"queue", fmt.Sprintf("%T", s.queue),
-			"err", err,
-		)
-	}
-
-	if s.auditSink != nil {
-		actor := in.Author.AgentID
-		key := in.MemoryKey
-		if key == "" {
-			key = memoryID // logical memory identity for keyless writes
-		}
-		// Same post-commit reasoning as the enqueue above: the audit record of
-		// a committed write must not be lost because the caller hung up. The
-		// errors stay discarded here because contextstore's emit path
-		// structured-logs every failure itself.
-		//
-		// The domain rides along as an argument rather than selecting a
-		// method name. The four-arm switch this replaced ended in a default
-		// that emitted memory.write, so a domain without an arm produced an
-		// audit row naming the wrong domain — a log that lies is worse than
-		// one that is missing, and it was the last silent default in the
-		// domain-dispatch set (CW-20260909-0033).
-		op := auditOpWrite
-		if in.Supersedes != "" {
-			op = auditOpSupersede
-		}
-		_ = s.auditSink.EmitRevision(postCommitCtx, string(in.Domain), op, actor, in.Namespace, key, revisionID, nil)
-	}
-
-	rev := Revision{
-		RevisionID:    revisionID,
-		ItemID:        memoryID,
-		MemoryID:      memoryID,
-		Domain:        in.Domain,
-		Namespace:     in.Namespace,
-		MemoryKey:     in.MemoryKey,
-		WorkstreamID:  workstreamID,
-		Provenance:    provenance,
-		Status:        status,
-		Supersedes:    in.Supersedes,
-		CreatedAt:     now,
-		Author:        in.Author,
-		Trigger:       in.Trigger,
-		SessionID:     in.SessionID,
-		DerivedFrom:   in.DerivedFrom,
-		Confidence:    in.Confidence,
-		Tags:          tags,
-		TTLSeconds:    ttlSeconds,
-		ExpiresAt:     expiresAt,
-		Payload:       payload,
-		Facets:        in.Facets,
-		ConsumerState: in.ConsumerState,
-		DedupMatch:    dedupMatch,
-	}
+	rev.DedupMatch = dedupMatch
+	s.FinishRevisionWrite(ctx, rev, in)
 	return rev, nil
 }
 

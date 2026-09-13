@@ -57,11 +57,12 @@ func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 // dotted paths, so it could only ever say "nest it" — it had no way to tell a
 // caller that /v1/knowledge/write takes the same fact flat, under `data`.
 var requestDoors = map[reflect.Type]string{
-	reflect.TypeOf(memoryWriteRequest{}):      "memory.write",
-	reflect.TypeOf(knowledgeWriteRequest{}):   "knowledge.write",
-	reflect.TypeOf(eventWriteRequest{}):       "event.write",
-	reflect.TypeOf(workspaceWriteRequest{}):   "workspace.write",
-	reflect.TypeOf(referenceResolveRequest{}): "reference.resolve",
+	reflect.TypeOf(memoryWriteRequest{}):            "memory.write",
+	reflect.TypeOf(knowledgeWriteRequest{}):         "knowledge.write",
+	reflect.TypeOf(eventWriteRequest{}):             "event.write",
+	reflect.TypeOf(workspaceWriteRequest{}):         "workspace.write",
+	reflect.TypeOf(workspacePromotionRequestHTTP{}): "workspace.promote",
+	reflect.TypeOf(referenceResolveRequest{}):       "reference.resolve",
 }
 
 // doorFor resolves the door a decode target belongs to, or false for a request

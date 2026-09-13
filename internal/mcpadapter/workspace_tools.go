@@ -2,12 +2,19 @@ package mcpadapter
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
+	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
+	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -45,6 +52,246 @@ func (a *Adapter) registerWorkspaceTools(s *toolRegistrar) {
 		mcp.WithReadOnlyHintAnnotation(false), mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(true), mcp.WithOpenWorldHintAnnotation(false),
 	), a.handleWorkspaceDelete)
+
+	a.addTool(s, mcp.NewTool("workspace_promote",
+		mcp.WithDescription("Promote reviewed live workspace content to a memory, knowledge, or event item through request, approve, and apply. The request freezes destination metadata and association; apply atomically verifies the source version and target preconditions, writes one revision, and records a replay receipt."),
+		mcp.WithString("stage", mcp.Required(), mcp.Description("Required stage: request | approve | apply. Each stage checks only its matching promote.request, promote.approve, or promote.apply scope.")),
+		mcp.WithString("source_item_id"), mcp.WithString("source_version_token"),
+		mcp.WithString("request_id"), mcp.WithString("actor"), mcp.WithString("reason"), mcp.WithString("notes"),
+		mcp.WithString("target_domain"), mcp.WithString("target_namespace"), mcp.WithString("target_key"),
+		mcp.WithString("target_item_id"), mcp.WithString("expected_target_revision_id"),
+		mcp.WithString("target_author_agent_id"), mcp.WithString("target_author_version"), mcp.WithString("target_session_id"),
+		mcp.WithString("target_tags", mcp.Description("JSON array of destination tags.")),
+		mcp.WithString("target_consumer_state", mcp.Description("JSON object stored as destination consumer_state.")),
+		mcp.WithNumber("target_confidence"), mcp.WithNumber("target_ttl_seconds"),
+		mcp.WithString("target_data_schema_hash"), mcp.WithString("target_workstream_id"),
+		mcp.WithString("target_status"), mcp.WithString("target_trigger"), mcp.WithString("target_derived_from"),
+		mcp.WithString("target_kind"), mcp.WithString("target_source"),
+		mcp.WithString("target_pointer_scheme"), mcp.WithString("target_pointer_locator"), mcp.WithString("target_pointer_resolved_at"),
+		mcp.WithReadOnlyHintAnnotation(false), mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false), mcp.WithOpenWorldHintAnnotation(false),
+	), a.handleWorkspacePromote)
+}
+
+func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	stage := req.GetString("stage", "")
+	if stage != "request" && stage != "approve" && stage != "apply" {
+		return toolError(codeValidationError, "stage is required and must be request, approve, or apply"), nil
+	}
+	if a.WorkspacePromotionStore == nil {
+		return toolError(codeDomainUnavailable, "workspace promotion store is not wired"), nil
+	}
+	res, claims := a.checkScope(ctx, "promote."+stage)
+	if res != nil {
+		return res, nil
+	}
+	args := req.GetArguments()
+	for name, value := range args {
+		if value == nil {
+			return toolError(codeValidationError, name+" must not be null; omit it instead"), nil
+		}
+	}
+
+	if stage == "request" {
+		if _, ok := args["request_id"]; ok {
+			return toolError(codeValidationError, "request_id is valid only for approve or apply"), nil
+		}
+		if _, ok := args["notes"]; ok {
+			return toolError(codeValidationError, "notes is valid only for approve"), nil
+		}
+		sourceID, token, actor := req.GetString("source_item_id", ""), req.GetString("source_version_token", ""), req.GetString("actor", "")
+		if strings.TrimSpace(sourceID) == "" || strings.TrimSpace(token) == "" || strings.TrimSpace(actor) == "" {
+			return toolError(codeValidationError, "source_item_id, source_version_token, and actor are required for request"), nil
+		}
+		source, err := a.itemService().LookupMetadata(ctx, sourceID)
+		if err != nil {
+			return workspacePromotionToolError(err), nil
+		}
+		if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", source.Namespace); denied != nil {
+			return denied, nil
+		}
+		if source.Domain != workspace.Domain {
+			return toolError(codeValidationError, "source_item_id must identify a workspace item"), nil
+		}
+
+		target, parseErr := workspacePromotionTarget(req)
+		if parseErr != nil {
+			return parseErr, nil
+		}
+		targetNamespace := target.Namespace
+		if target.ItemID != "" {
+			targetMeta, targetErr := a.itemService().LookupMetadata(ctx, target.ItemID)
+			if targetErr != nil {
+				return workspacePromotionToolError(targetErr), nil
+			}
+			if targetMeta.Domain == workspace.Domain || targetMeta.Domain == "context" {
+				return toolError(codeValidationError, "target item must be revisioned"), nil
+			}
+			targetNamespace = targetMeta.Namespace
+		}
+		if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", targetNamespace); denied != nil {
+			return denied, nil
+		}
+		receipt, err := a.WorkspacePromotionStore.Request(ctx, workspacepromotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: req.GetString("reason", ""), Target: target})
+		if err != nil {
+			return workspacePromotionToolError(err), nil
+		}
+		return toolJSON(receipt), nil
+	}
+
+	for name := range args {
+		allowed := name == "stage" || name == "request_id" || name == "actor" || stage == "approve" && name == "notes"
+		if !allowed {
+			return toolError(codeValidationError, name+" is not valid for stage="+stage), nil
+		}
+	}
+	requestID, actor := req.GetString("request_id", ""), req.GetString("actor", "")
+	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(actor) == "" {
+		return toolError(codeValidationError, "request_id and actor are required for "+stage), nil
+	}
+	meta, err := a.WorkspacePromotionStore.LookupMetadata(ctx, requestID)
+	if err != nil {
+		return workspacePromotionToolError(err), nil
+	}
+	if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote."+stage, meta.SourceNamespace, meta.TargetNamespace); denied != nil {
+		return denied, nil
+	}
+	if stage == "approve" {
+		approvalReceipt, approvalErr := a.WorkspacePromotionStore.Approve(ctx, workspacepromotion.ApproveInput{RequestID: requestID, Actor: actor, Notes: req.GetString("notes", "")})
+		if approvalErr != nil {
+			return workspacePromotionToolError(approvalErr), nil
+		}
+		return toolJSON(approvalReceipt), nil
+	}
+	receipt, err := a.WorkspacePromotionStore.Apply(ctx, workspacepromotion.ApplyInput{RequestID: requestID, Actor: actor})
+	if err != nil {
+		return workspacePromotionToolError(err), nil
+	}
+	return toolJSON(receipt), nil
+}
+
+func workspacePromotionTarget(req mcp.CallToolRequest) (workspacepromotion.Target, *mcp.CallToolResult) {
+	args := req.GetArguments()
+	if _, hasItem := args["target_item_id"]; hasItem {
+		for _, redundant := range []string{"target_domain", "target_namespace", "target_key"} {
+			if _, ok := args[redundant]; ok {
+				return workspacepromotion.Target{}, toolError(codeValidationError, "target_item_id cannot be combined with "+redundant)
+			}
+		}
+	}
+	target := workspacepromotion.Target{
+		Domain: domains.Domain(req.GetString("target_domain", "")), Namespace: req.GetString("target_namespace", ""), Key: req.GetString("target_key", ""),
+		ItemID: req.GetString("target_item_id", ""), ExpectedRevisionID: req.GetString("expected_target_revision_id", ""),
+		Author:    memory.Author{AgentID: req.GetString("target_author_agent_id", ""), AgentVersion: req.GetString("target_author_version", "")},
+		SessionID: req.GetString("target_session_id", ""), Confidence: req.GetFloat("target_confidence", 0),
+		DataSchemaHash: req.GetString("target_data_schema_hash", ""), Status: memory.Status(req.GetString("target_status", "")),
+		Trigger: memory.Trigger(req.GetString("target_trigger", "")), DerivedFrom: memory.DerivedFrom(req.GetString("target_derived_from", "")),
+		Kind: req.GetString("target_kind", ""), Source: req.GetString("target_source", ""),
+	}
+	tags, _, err := parseStringArrayArg(req, "target_tags")
+	if err != nil {
+		return target, toolError(codeValidationError, "target_tags "+err.Error())
+	}
+	target.Tags = tags
+	if _, ok := args["target_consumer_state"]; ok {
+		raw := args["target_consumer_state"]
+		if raw == nil {
+			target.ConsumerState = []byte("null")
+		} else if value, ok := raw.(string); ok {
+			target.ConsumerState = []byte(value)
+		} else if encoded, err := json.Marshal(raw); err == nil {
+			target.ConsumerState = encoded
+		} else {
+			target.ConsumerState = []byte("null")
+		}
+	}
+	if _, ok := args["target_workstream_id"]; ok {
+		value, errResult := workstreamWriteArgFor(req, "target_workstream_id")
+		if errResult != nil {
+			return target, errResult
+		}
+		target.WorkstreamID = value
+	}
+	if _, ok := args["target_ttl_seconds"]; ok {
+		seconds, err := wholeNumberArg(req, "target_ttl_seconds", 0)
+		if err != nil {
+			return target, toolError(codeValidationError, err.Error())
+		}
+		target.TTLSeconds = int64(seconds)
+	}
+	scheme, schemeOK := args["target_pointer_scheme"]
+	locator, locatorOK := args["target_pointer_locator"]
+	resolved, resolvedOK := args["target_pointer_resolved_at"]
+	if schemeOK || locatorOK || resolvedOK {
+		_ = scheme
+		_ = locator
+		_ = resolved
+		target.Pointer = &memory.Pointer{Scheme: req.GetString("target_pointer_scheme", ""), Locator: req.GetString("target_pointer_locator", "")}
+		if resolvedOK {
+			parsed, err := time.Parse(time.RFC3339Nano, req.GetString("target_pointer_resolved_at", ""))
+			if err != nil {
+				return target, toolError(codeValidationError, "target_pointer_resolved_at must be RFC3339")
+			}
+			target.Pointer.ResolvedAt = &parsed
+		}
+	}
+	return target, nil
+}
+
+func workstreamWriteArgFor(req mcp.CallToolRequest, key string) (*string, *mcp.CallToolResult) {
+	raw, ok := req.GetArguments()[key]
+	if !ok {
+		return nil, nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return nil, toolError(codeValidationError, key+" must be a string; null is not omission")
+	}
+	if err := memory.ValidateWorkstreamID(value); err != nil {
+		return nil, toolError(codeValidationError, err.Error())
+	}
+	return &value, nil
+}
+
+func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contextstore.AuthToken, op string, namespaces ...string) *mcp.CallToolResult {
+	for _, namespace := range namespaces {
+		if namespace == "" {
+			return toolError(codeValidationError, "source and target namespaces are required")
+		}
+		if !globsPermit(claims.NamespaceGlobs, namespace) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit one of the promotion namespaces")
+		}
+		entry, err := a.Store.GetNamespacePolicy(ctx, namespace)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return toolError(codePromoteFailed, err.Error())
+		}
+		if !contextpolicy.ParseTierPolicy(entry.Policy).HasOp(op) {
+			return toolError(codeNamespaceNotPermitted, "promotion namespace policy denies "+op)
+		}
+	}
+	return nil
+}
+
+func workspacePromotionToolError(err error) *mcp.CallToolResult {
+	switch {
+	case errors.Is(err, workspacepromotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
+		return toolError(codeValidationError, err.Error())
+	case errors.Is(err, workspacepromotion.ErrNotFound), errors.Is(err, workspacepromotion.ErrSourceNotFound), errors.Is(err, memory.ErrNotFound):
+		return toolError(codeNotFound, err.Error())
+	case errors.Is(err, workspacepromotion.ErrSourceDeleted):
+		return toolError(codeDeleted, err.Error())
+	case errors.Is(err, workspacepromotion.ErrSourceStale), errors.Is(err, workspacepromotion.ErrTargetStale):
+		return toolError(codeVersionConflict, err.Error())
+	case errors.Is(err, workspacepromotion.ErrTargetKeyOccupied):
+		return toolError(codeKeyConflict, err.Error())
+	case errors.Is(err, workspacepromotion.ErrNotApproved):
+		return toolError(codeInvalidState, err.Error())
+	default:
+		return toolError(codePromoteFailed, err.Error())
+	}
 }
 
 func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -77,7 +77,7 @@ var ToolVerbTable = []ToolOperation{
 	{"list", "Enumerate the entries of a registry or a log.", []string{"context", "event"}},
 	{"pack", "Assemble a budget-bounded bundle of records.", []string{"context"}},
 	{"plan", "Produce a fetch plan for an intent, and optionally run it.", []string{"context"}},
-	{"promote", "Move an entry across scope or ownership.", []string{"context", "memory"}},
+	{"promote", "Move or copy an entry into a reviewed destination.", []string{"context", "memory", "workspace"}},
 	{"recall", "Ranked multi-result retrieval across domains.", []string{"tesseract"}},
 	{"register", "Add an entry to a registry.", []string{"context"}},
 	{"resolve", "Normalize a reference to Tesseract-owned object identity.", []string{"tesseract"}},

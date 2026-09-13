@@ -13,6 +13,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/hollis-labs/tesseract/workspace"
 )
 
@@ -81,6 +82,7 @@ type Tesseract struct {
 	store          *contextstore.Store
 	memoryStore    *memory.Store
 	workspaceStore *workspace.Store
+	promotionStore *workspacepromotion.Store
 	items          *itemservice.Service
 	embedder       embedcontracts.Embedder
 	embeddingModel string
@@ -146,6 +148,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 	memStore.SetAuditSink(store)
 	memStore.SetNamespaceRegistrar(store)
 	workspaceStore := workspace.NewStore(store.DB())
+	promotionStore := workspacepromotion.NewStore(store, memStore)
 
 	// Reconcile any namespaces that have data but no policy row. Idempotent —
 	// only writes the first time a divergence is observed. CW-20260428-0005.
@@ -163,6 +166,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 		store:          store,
 		memoryStore:    memStore,
 		workspaceStore: workspaceStore,
+		promotionStore: promotionStore,
 		items:          &itemservice.Service{Revisions: memStore, Workspace: workspaceStore},
 		embedder:       o.embedder,
 		embeddingModel: o.embeddingModel,
@@ -210,6 +214,38 @@ func (c *Tesseract) MemoryStore() *memory.Store { return c.memoryStore }
 
 // WorkspaceStore returns the mutable workspace store.
 func (c *Tesseract) WorkspaceStore() *workspace.Store { return c.workspaceStore }
+
+type WorkspacePromotionTarget = workspacepromotion.Target
+type WorkspacePromotionRequest = workspacepromotion.RequestInput
+type WorkspacePromotionApproval = workspacepromotion.ApproveInput
+type WorkspacePromotionApply = workspacepromotion.ApplyInput
+type WorkspacePromotionRequestReceipt = workspacepromotion.RequestReceipt
+type WorkspacePromotionTargetReference = workspacepromotion.TargetReference
+type WorkspacePromotionApprovalReceipt = workspacepromotion.ApprovalReceipt
+type WorkspacePromotionApplyReceipt = workspacepromotion.ApplyReceipt
+
+var (
+	ErrWorkspacePromotionInvalidInput      = workspacepromotion.ErrInvalidInput
+	ErrWorkspacePromotionNotFound          = workspacepromotion.ErrNotFound
+	ErrWorkspacePromotionSourceNotFound    = workspacepromotion.ErrSourceNotFound
+	ErrWorkspacePromotionSourceDeleted     = workspacepromotion.ErrSourceDeleted
+	ErrWorkspacePromotionSourceStale       = workspacepromotion.ErrSourceStale
+	ErrWorkspacePromotionTargetStale       = workspacepromotion.ErrTargetStale
+	ErrWorkspacePromotionTargetKeyOccupied = workspacepromotion.ErrTargetKeyOccupied
+	ErrWorkspacePromotionNotApproved       = workspacepromotion.ErrNotApproved
+)
+
+func (c *Tesseract) RequestWorkspacePromotion(ctx context.Context, in WorkspacePromotionRequest) (WorkspacePromotionRequestReceipt, error) {
+	return c.promotionStore.Request(ctx, in)
+}
+
+func (c *Tesseract) ApproveWorkspacePromotion(ctx context.Context, in WorkspacePromotionApproval) (WorkspacePromotionApprovalReceipt, error) {
+	return c.promotionStore.Approve(ctx, in)
+}
+
+func (c *Tesseract) ApplyWorkspacePromotion(ctx context.Context, in WorkspacePromotionApply) (WorkspacePromotionApplyReceipt, error) {
+	return c.promotionStore.Apply(ctx, in)
+}
 
 // WriteMemory writes a new memory revision.
 func (c *Tesseract) WriteMemory(ctx context.Context, in memory.WriteInput) (memory.Revision, error) {

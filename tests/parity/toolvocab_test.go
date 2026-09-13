@@ -128,6 +128,7 @@ var anchorMustAccept = []anchorName{
 	{"context_write", "per-domain write"},
 	{"workspace_write", "workspace create and conditional edit"},
 	{"workspace_delete", "workspace content deletion with an identity tombstone"},
+	{"workspace_promote", "reviewed workspace content promotion"},
 	{"memory_promote", "promote is scoped to memory and context"},
 	{"context_typed_write", "subject `typed` between prefix and verb"},
 	{"context_registry_list", "subject `registry`"},

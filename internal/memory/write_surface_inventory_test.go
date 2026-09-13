@@ -21,7 +21,9 @@ import (
 var revisionWriteSurfaces = []struct {
 	class, file, function, delegatesTo string
 }{
-	{"persistence", "internal/memory/write.go", "WriteRevision", "ExecContext"},
+	{"ordinary persistence", "internal/memory/write.go", "WriteRevision", "WriteRevisionInTx"},
+	{"transactional persistence", "internal/memory/write_tx.go", "WriteRevisionInTx", "writeRevisionInTx"},
+	{"physical persistence", "internal/memory/write_tx.go", "writeRevisionInTx", "ExecContext"},
 	{"derived store API", "internal/memory/promote.go", "Promote", "WriteRevision"},
 	{"knowledge store API", "internal/knowledge/store.go", "Write", "WriteRevision"},
 	{"root public facade", "tesseract.go", "WriteMemory", "WriteRevision"},
@@ -32,7 +34,7 @@ var revisionWriteSurfaces = []struct {
 }
 
 func TestRevisionWriteSurfacesReachAuthoritativeBoundary(t *testing.T) {
-	if len(revisionWriteSurfaces) < 8 {
+	if len(revisionWriteSurfaces) < 10 {
 		t.Fatalf("write surface inventory has only %d entries; it is vacuous or incomplete", len(revisionWriteSurfaces))
 	}
 	root := repositoryRoot(t)
@@ -90,8 +92,8 @@ func TestMemoryRevisionsHasOneProductionInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk production Go files: %v", err)
 	}
-	if len(found) != 1 || found[0] != "internal/memory/write.go" {
-		t.Fatalf("production memory_revisions inserts = %v, want only internal/memory/write.go", found)
+	if len(found) != 1 || found[0] != "internal/memory/write_tx.go" {
+		t.Fatalf("production memory_revisions inserts = %v, want only internal/memory/write_tx.go", found)
 	}
 }
 

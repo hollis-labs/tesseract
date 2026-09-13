@@ -100,7 +100,21 @@ var requestStructs = map[string]any{
 	"event.write":       eventWriteRequest{},
 	"workspace.write":   workspaceWriteRequest{},
 	"workspace.delete":  workspaceDeleteRequest{},
+	"workspace.promote": workspacePromotionSurfaceRequest{},
 	"reference.resolve": referenceResolveRequest{},
+}
+
+// workspacePromotionSurfaceRequest is the union of the three staged HTTP
+// request structs. HTTP selects the stage by route while MCP selects it with
+// `stage`, so request-shape parity compares their accepted field union.
+type workspacePromotionSurfaceRequest struct {
+	SourceItemID       string                          `json:"source_item_id"`
+	SourceVersionToken string                          `json:"source_version_token"`
+	RequestID          string                          `json:"request_id"`
+	Actor              string                          `json:"actor"`
+	Reason             string                          `json:"reason"`
+	Notes              string                          `json:"notes"`
+	Target             workspacePromotionTargetRequest `json:"target"`
 }
 
 func registeredToolArgs(t *testing.T) map[string]map[string]any {

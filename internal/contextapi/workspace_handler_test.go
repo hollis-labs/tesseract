@@ -10,6 +10,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
+	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 )
 
 const httpWorkspaceNS = "project/tesseract/workspace/http-tests"
@@ -24,6 +25,7 @@ func newWorkspaceTestServer(t *testing.T) *Server {
 	srv := NewServer(cs, contextpolicy.New())
 	srv.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	srv.WorkspaceStore = workspace.NewStore(cs.DB())
+	srv.WorkspacePromotionStore = workspacepromotion.NewStore(cs, srv.MemoryStore)
 	return srv
 }
 

@@ -217,6 +217,9 @@ creation and recovery.
 | `POST /v1/workspace/write` | `write` + namespace | Create by `namespace`, or edit by `item_id` + `version_token`. Keyless create requires `idempotency_key`; an exact retry returns the original identity without returning a stale token. |
 | `POST /v1/workspace/delete` | `write` + resolved namespace | Conditionally delete current content and retain an identity tombstone. Repeated delete returns the same successful deleted receipt. |
 | `GET /v1/workspace/current` | namespace | Read and reinforce one keyed workspace item by `namespace` + `key`. |
+| `POST /v1/workspace/promote/request` | `promote.request` + source and target namespaces | Freeze a reviewed source version, destination selector, metadata, and association. |
+| `POST /v1/workspace/promote/approve` | `promote.approve` + retained source and target namespaces | Approve a pending request. Actor is audit attribution, not authority. |
+| `POST /v1/workspace/promote/apply` | `promote.apply` + retained source and target namespaces | Atomically verify preconditions, append one target revision, and record an idempotent receipt. |
 
 Here, `namespace` means a `namespace_globs` authorization check when managed or
 static authentication is active. The item routes resolve the stored namespace first and
@@ -379,6 +382,51 @@ A stale token returns `409 version_conflict`. Delete uses
 the item's namespace identity in a tombstone, and returns `{status:"deleted", item_id,
 deleted_at}`. Repeating delete is successful even though the old version token is no
 longer usable for content mutation.
+
+### Workspace promotion
+
+Promotion copies the current workspace `summary`, `body`, and `data` into a
+revisioned domain without deleting or redirecting the workspace item. Request
+names the exact reviewed source version and nests destination fields:
+
+```json
+{
+  "source_item_id": "01HWORKSPACE...",
+  "source_version_token": "01HVERSION...",
+  "actor": "agent:reviewer",
+  "reason": "reviewed",
+  "target": {
+    "domain": "memory",
+    "namespace": "user/alex/memory/notes",
+    "key": "reviewed.release_notes",
+    "author": {"agent_id": "assistant", "agent_version": "1"},
+    "session_id": "session-42",
+    "trigger": "promotion",
+    "derived_from": "project"
+  }
+}
+```
+
+The response supplies `request_id`. Approve with `{request_id, actor, notes}`
+at `/approve`, then apply with `{request_id, actor}` at `/apply`. An existing
+target uses `target.item_id` and `target.expected_revision_id` and omits target
+domain, namespace, and key. Apply rejects a changed or deleted source, an
+advanced existing target, or a newly occupied target key before writing. Its
+target revision, current-state and link-index changes commit in the same
+transaction as the applied receipt; retrying a committed apply returns that
+receipt without another revision.
+
+The applied receipt contains `request_id`, `status`, `source_item_id`,
+`source_version_token`, `target_item_id`, and `target_revision_id`, plus the
+frozen target domain, namespace and optional key. The same typed receipt is
+returned by the Go library, HTTP, and MCP.
+
+Destination metadata is reviewed independently of workspace metadata. Omitted
+association copies the source workstream for a new target and preserves the
+current association for an existing target; an explicit empty string clears
+it. Knowledge uses its canonical/reference/manual defaults. Event is canonical
+and defaults to observation/manual. Memory requires `trigger` and
+`derived_from` and defaults status to draft.
 
 ### Memory write shape
 

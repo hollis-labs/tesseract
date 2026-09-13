@@ -107,6 +107,9 @@ var surfaceCatalog = []parityOp{
 
 	// ── Workspace domain ────────────────────────────────────────────────
 	{MCP: "workspace_delete", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/delete"},
+	{MCP: "workspace_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/apply"},
+	{MCP: "workspace_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/approve"},
+	{MCP: "workspace_promote", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/request"},
 	{MCP: "workspace_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/write"},
 
 	// ── Knowledge domain ───────────────────────────────────────────────
@@ -244,6 +247,9 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/refs/resolve"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/views/evaluate"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/delete"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/apply"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/approve"},
+	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/promote/request"},
 	{HTTPMethod: http.MethodPost, HTTPPath: "/v1/workspace/write"},
 }
 

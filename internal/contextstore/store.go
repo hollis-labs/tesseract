@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 26
+	schemaVersion = 27
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1480,6 +1480,45 @@ CREATE TABLE IF NOT EXISTS workspace_creation_receipts (
 					return err
 				}
 			}
+		case 27:
+			// Workspace promotion workflow rows retain selectors, normalized
+			// destination metadata and immutable receipts. Source content is never
+			// stored here: apply re-reads the live workspace row and proves its
+			// version and digest inside the target-write transaction.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS workspace_promotion_requests (
+	request_id                    TEXT PRIMARY KEY,
+	status                        TEXT NOT NULL CHECK (status IN ('pending','approved','applied')),
+	source_item_id                TEXT NOT NULL,
+	source_version_token          TEXT NOT NULL,
+	source_namespace              TEXT NOT NULL,
+	source_digest                 TEXT NOT NULL,
+	target_domain                 TEXT NOT NULL CHECK (target_domain IN ('memory','knowledge','event')),
+	target_namespace              TEXT NOT NULL,
+	target_key                    TEXT NULL,
+	target_item_id                TEXT NULL,
+	expected_target_revision_id   TEXT NULL,
+	target_spec_json              TEXT NOT NULL,
+	requested_by                  TEXT NOT NULL,
+	reason                        TEXT NOT NULL DEFAULT '',
+	requested_at                  TEXT NOT NULL,
+	approval_id                   TEXT NULL UNIQUE,
+	approved_by                   TEXT NULL,
+	approval_notes                TEXT NULL,
+	approved_at                   TEXT NULL,
+	applied_by                    TEXT NULL,
+	applied_at                    TEXT NULL,
+	result_item_id                TEXT NULL,
+	result_revision_id            TEXT NULL UNIQUE
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_promotion_source ON workspace_promotion_requests(source_item_id)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_promotion_target ON workspace_promotion_requests(target_item_id)`); err != nil {
+				return err
+			}
 		}
 
 		version++
@@ -2926,6 +2965,34 @@ func (s *Store) EnsureNamespaceRegistered(ctx context.Context, namespace string)
 // to the INSERT. INSERT OR IGNORE + RowsAffected() is the sole idempotency
 // gate — no preliminary SELECT.
 func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source string) (bool, error) {
+	inserted, err := insertNamespaceRegistration(ctx, s.db, namespace, source)
+	if err != nil || !inserted {
+		return inserted, err
+	}
+	s.FinishNamespaceRegistration(ctx, namespace, source)
+	return true, nil
+}
+
+// FinishNamespaceRegistration emits the established best-effort audit record
+// after a caller-owned transaction has committed a new registry row.
+func (s *Store) FinishNamespaceRegistration(ctx context.Context, namespace, source string) {
+	ns := strings.TrimSpace(namespace)
+	ownerType, ownerID := DeriveNamespaceOwner(ns)
+	meta, err := json.Marshal(map[string]any{
+		"source":     source,
+		"owner_type": ownerType,
+		"owner_id":   ownerID,
+	})
+	if err == nil {
+		_ = s.EmitNamespaceRegister(context.WithoutCancel(ctx), "system", ns, meta)
+	}
+}
+
+type namespaceRegistrationExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertNamespaceRegistration(ctx context.Context, exec namespaceRegistrationExecutor, namespace, source string) (bool, error) {
 	ns := strings.TrimSpace(namespace)
 	if ns == "" {
 		return false, errors.New("namespace required")
@@ -2937,7 +3004,7 @@ func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source
 		return false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx, `
+	res, err := exec.ExecContext(ctx, `
 INSERT OR IGNORE INTO namespace_policies (namespace, owner_type, owner_id, policy_json, updated_at)
 VALUES (?, ?, ?, ?, ?)`,
 		ns, ownerType, ownerID, string(policyJSON), now)
@@ -2945,19 +3012,15 @@ VALUES (?, ?, ?, ?, ?)`,
 		return false, err
 	}
 	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		return false, nil
-	}
+	return rows != 0, nil
+}
 
-	meta, err := json.Marshal(map[string]any{
-		"source":     source,
-		"owner_type": ownerType,
-		"owner_id":   ownerID,
-	})
-	if err == nil {
-		_ = s.EmitNamespaceRegister(ctx, "system", ns, meta)
-	}
-	return true, nil
+// EnsureNamespaceRegisteredTx inserts an inferred namespace row in the
+// caller's transaction. The caller may emit the best-effort registration audit
+// after commit; rolling back the caller transaction rolls back registration.
+func (s *Store) EnsureNamespaceRegisteredTx(ctx context.Context, tx *sql.Tx, namespace, source string) (bool, error) {
+	inserted, err := insertNamespaceRegistration(ctx, tx, namespace, source)
+	return inserted, err
 }
 
 // DeriveNamespaceOwner returns the (owner_type, owner_id) pair derived from a

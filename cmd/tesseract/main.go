@@ -36,6 +36,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/webui"
 	"github.com/hollis-labs/tesseract/internal/workspace"
+	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	_ "modernc.org/sqlite"
 )
 
@@ -800,6 +801,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.KnowledgeStore = knowledge.New(mem.Store)
 	srv.EventStore = event.New(mem.Store)
 	srv.WorkspaceStore = workspace.NewStore(store.DB())
+	srv.WorkspacePromotionStore = workspacepromotion.NewStore(store, mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
 	srv.EnableMetrics = cfg.EnableMetrics

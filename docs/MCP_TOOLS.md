@@ -103,7 +103,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | `list` | Enumerate the entries of a registry or a log. | `context`, `event` |
 | `pack` | Assemble a budget-bounded bundle of records. | `context` |
 | `plan` | Produce a fetch plan for an intent, and optionally run it. | `context` |
-| `promote` | Move an entry across scope or ownership. | `context`, `memory` |
+| `promote` | Move or copy an entry into a reviewed destination. | `context`, `memory`, `workspace` |
 | `recall` | Ranked multi-result retrieval across domains. | `tesseract` |
 | `register` | Add an entry to a registry. | `context` |
 | `resolve` | Normalize a reference to Tesseract-owned object identity. | `tesseract` |
@@ -178,6 +178,7 @@ revision history. See `tesseract_skills workspace`.
 |---|---|---|---|---|
 | `workspace_write` | `memory:write` | `POST /v1/workspace/write` | `tesseract_skills workspace` | Create by `namespace`, or conditionally edit by `item_id` + `version_token`. Keyless creates require `idempotency_key`; an exact retry returns the original identity without a stale token. |
 | `workspace_delete` | `memory:write` | `POST /v1/workspace/delete` | `tesseract_skills workspace` | Delete current content and retain an identity tombstone. Repeated delete returns the original deleted receipt. |
+| `workspace_promote` | stage-specific | `POST /v1/workspace/promote/{request,approve,apply}` | `tesseract_skills workspace` | Copy reviewed live workspace content into memory, knowledge, or event. `stage` is required and checks the matching `promote.request`, `promote.approve`, or `promote.apply` scope. |
 
 ### Cross-domain
 
