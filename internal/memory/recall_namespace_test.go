@@ -29,26 +29,26 @@ func TestBuildNamespaceClause(t *testing.T) {
 		{
 			name:     "single legacy-flat treated as prefix",
 			input:    []string{"user/x/memory"},
-			wantSQL:  "(r.namespace LIKE ?)",
-			wantArgs: []interface{}{"user/x/memory/%"},
+			wantSQL:  "(instr(r.namespace, ?) = 1)",
+			wantArgs: []interface{}{"user/x/memory/"},
 		},
 		{
 			name:     "session legacy-flat treated as prefix",
 			input:    []string{"user/x/session/s1/memory"},
-			wantSQL:  "(r.namespace LIKE ?)",
-			wantArgs: []interface{}{"user/x/session/s1/memory/%"},
+			wantSQL:  "(instr(r.namespace, ?) = 1)",
+			wantArgs: []interface{}{"user/x/session/s1/memory/"},
 		},
 		{
 			name:     "explicit wildcard treated as prefix",
 			input:    []string{"user/x/memory/*"},
-			wantSQL:  "(r.namespace LIKE ?)",
-			wantArgs: []interface{}{"user/x/memory/%"},
+			wantSQL:  "(instr(r.namespace, ?) = 1)",
+			wantArgs: []interface{}{"user/x/memory/"},
 		},
 		{
 			name:     "mixed exact + prefix",
 			input:    []string{"user/x/memory/notes", "user/y/memory"},
-			wantSQL:  "(r.namespace = ? OR r.namespace LIKE ?)",
-			wantArgs: []interface{}{"user/x/memory/notes", "user/y/memory/%"},
+			wantSQL:  "(r.namespace = ? OR instr(r.namespace, ?) = 1)",
+			wantArgs: []interface{}{"user/x/memory/notes", "user/y/memory/"},
 		},
 		{
 			name:     "knowledge namespace stays exact",
@@ -124,12 +124,12 @@ func TestBuildNamespaceClause_GroupsExactIntoINList(t *testing.T) {
 		"user/z/knowledge/framework",
 	})
 	// Exact matches collapse into one IN list and are bound first; prefixes
-	// keep their own LIKE term.
-	wantSQL := "(r.namespace IN (?,?) OR r.namespace LIKE ?)"
+	// keep their own literal prefix term.
+	wantSQL := "(r.namespace IN (?,?) OR instr(r.namespace, ?) = 1)"
 	if sql != wantSQL {
 		t.Errorf("sql = %q, want %q", sql, wantSQL)
 	}
-	wantArgs := []interface{}{"user/x/memory/notes", "user/z/knowledge/framework", "user/y/memory/%"}
+	wantArgs := []interface{}{"user/x/memory/notes", "user/z/knowledge/framework", "user/y/memory/"}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Errorf("args = %v, want %v", args, wantArgs)
 	}
@@ -166,14 +166,14 @@ func TestBuildNamespaceClause_DocumentedShapes(t *testing.T) {
 		{"several exact, no prefixes", []string{
 			"user/x/memory/notes", "user/y/memory/decisions", "user/z/knowledge/f",
 		}, "(r.namespace IN (?,?,?))"},
-		{"one prefix", []string{"user/x/memory"}, "(r.namespace LIKE ?)"},
+		{"one prefix", []string{"user/x/memory"}, "(instr(r.namespace, ?) = 1)"},
 		{"mixed", []string{
 			"user/x/memory/notes", "user/y/memory/decisions", "user/z/memory",
-		}, "(r.namespace IN (?,?) OR r.namespace LIKE ?)"},
+		}, "(r.namespace IN (?,?) OR instr(r.namespace, ?) = 1)"},
 		{"many prefixes, balanced", []string{
 			"user/a/memory", "user/b/memory", "user/c/memory", "user/d/memory",
-		}, "((r.namespace LIKE ? OR r.namespace LIKE ?) OR " +
-			"(r.namespace LIKE ? OR r.namespace LIKE ?))"},
+		}, "((instr(r.namespace, ?) = 1 OR instr(r.namespace, ?) = 1) OR " +
+			"(instr(r.namespace, ?) = 1 OR instr(r.namespace, ?) = 1))"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

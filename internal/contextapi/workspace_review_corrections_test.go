@@ -93,6 +93,91 @@ func TestWorkspaceRecallHTTPRejectsSelectorsWiderThanToken(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRecallHTTPRejectsLegacyNestedHeadOutsideGrant(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	srv.ManagedAuth = true
+	legacy, err := srv.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: "user/chrispian/project/secret/workspace/private", Key: "legacy-private", Summary: "legacy private",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowToken := issueTokenWithScopes(t, srv, "legacy-narrow", []string{"memory:read"}, []string{"user/chrispian/workspace/*"})
+	narrowHeaders := map[string]string{"Authorization": "Bearer " + narrowToken}
+	for _, tc := range []struct {
+		name, method, path string
+		body               any
+	}{
+		{"lookup full", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{"user/chrispian/*"}, "domains": []string{"workspace"}, "payload_mode": "full"}},
+		{"memory summary", http.MethodPost, "/v1/memory/recall", map[string]any{"namespaces": []string{"user/chrispian/*"}, "filters": map[string]any{"domains": []string{"workspace"}}, "payload_mode": "summary"}},
+		{"legacy get", http.MethodGet, "/v1/recall?namespace=user/chrispian/*&domains=workspace&format=full", nil},
+		{"estimate", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{"user/chrispian/*"}, "domains": []string{"workspace"}, "estimate_only": true}},
+		{"mixed domains", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{"user/chrispian/*"}, "domains": []string{"memory", "workspace"}, "payload_mode": "keys"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := performJSONWithHeaders(t, srv, tc.method, tc.path, tc.body, narrowHeaders)
+			body := decodeHTTPJSON(t, res.Body.Bytes())
+			if res.Code != http.StatusForbidden || body["code"] != "namespace_not_permitted" {
+				t.Fatalf("status=%d body=%v", res.Code, body)
+			}
+		})
+	}
+
+	broadToken := issueTokenWithScopes(t, srv, "legacy-broad", []string{"memory:read"}, []string{"user/chrispian/*"})
+	broad := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/tesseract/lookup", map[string]any{
+		"namespaces": []string{"user/chrispian/*"}, "domains": []string{"workspace"}, "payload_mode": "keys",
+	}, map[string]string{"Authorization": "Bearer " + broadToken})
+	if broad.Code != http.StatusOK || !strings.Contains(broad.Body.String(), legacy.ItemID) {
+		t.Fatalf("broader user grant did not retain legacy nested recall: status=%d body=%s", broad.Code, broad.Body.String())
+	}
+}
+
+func TestWorkspaceRecallHTTPPrefixQueryIsCaseSensitiveAcrossRoutes(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	srv.ManagedAuth = true
+	allowed, err := srv.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: "project/tesseract/workspace/private/allowed", Key: "allowed", Summary: "allowed",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden, err := srv.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: "project/tesseract/workspace/Private/secret", Key: "forbidden", Summary: "forbidden",
+		Author: memory.Author{AgentID: "review"}, SessionID: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := issueTokenWithScopes(t, srv, "case-sensitive", []string{"memory:read"}, []string{"project/tesseract/workspace/private/*"})
+	headers := map[string]string{"Authorization": "Bearer " + token}
+	for _, tc := range []struct {
+		name, method, path string
+		body               any
+	}{
+		{"lookup keys", http.MethodPost, "/v1/tesseract/lookup", map[string]any{"namespaces": []string{"project/tesseract/workspace/private/*"}, "domains": []string{"workspace"}, "payload_mode": "keys"}},
+		{"memory summary", http.MethodPost, "/v1/memory/recall", map[string]any{"namespaces": []string{"project/tesseract/workspace/private/*"}, "filters": map[string]any{"domains": []string{"workspace"}}, "payload_mode": "summary"}},
+		{"legacy full", http.MethodGet, "/v1/recall?namespace=project/tesseract/workspace/private/*&domains=workspace&format=full", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := performJSONWithHeaders(t, srv, tc.method, tc.path, tc.body, headers)
+			if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), allowed.ItemID) || strings.Contains(res.Body.String(), forbidden.ItemID) {
+				t.Fatalf("status=%d returned the wrong case-sensitive set: %s", res.Code, res.Body.String())
+			}
+		})
+	}
+
+	estimate := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/tesseract/lookup", map[string]any{
+		"namespaces": []string{"project/tesseract/workspace/private/*"}, "domains": []string{"workspace"}, "estimate_only": true,
+	}, headers)
+	body := decodeHTTPJSON(t, estimate.Body.Bytes())
+	manifest, _ := body["manifest"].(map[string]any)
+	if estimate.Code != http.StatusOK || int(manifest["results_total"].(float64)) != 1 {
+		t.Fatalf("case-sensitive estimate status=%d body=%v", estimate.Code, body)
+	}
+}
+
 func TestWorkspaceHTTPCreateRejectsClearFieldsBeforeWriting(t *testing.T) {
 	srv := newWorkspaceTestServer(t)
 	for i, clearFields := range []any{[]string{}, []string{"body"}, []string{"unknown"}, nil, map[string]any{"bad": true}} {

@@ -4,7 +4,7 @@ import "strings"
 
 // buildNamespaceClause produces a WHERE fragment + bind args matching any of
 // the supplied namespaces. Each entry is matched as either an exact value or
-// a prefix (LIKE 'ns/%') depending on its shape.
+// a literal, case-sensitive descendant prefix depending on its shape.
 //
 // Prefix forms (CW-20260519-0030):
 //   - `user/{id}/memory`                       (legacy flat / "all my user memory")
@@ -22,8 +22,8 @@ import "strings"
 //
 //	(r.namespace = ?)                            one exact namespace
 //	(r.namespace IN (?,?,?))                     several exact, no prefixes
-//	(r.namespace LIKE ?)                         one prefix
-//	(r.namespace IN (?,?) OR r.namespace LIKE ?) mixed
+//	(instr(r.namespace, ?) = 1)                         one prefix
+//	(r.namespace IN (?,?) OR instr(r.namespace, ?) = 1) mixed
 //	((a OR b) OR (c OR d))                       many prefixes, balanced
 //
 // An empty list returns `1=0` (matches nothing) rather than an empty string,
@@ -47,7 +47,7 @@ func buildNamespaceClause(namespaces []string) (string, []interface{}) {
 	prefixes := make([]string, 0, len(namespaces))
 	for _, ns := range namespaces {
 		if pfx, ok := scopedPrefix(ns); ok {
-			prefixes = append(prefixes, pfx+"/%")
+			prefixes = append(prefixes, pfx+"/")
 		} else {
 			exact = append(exact, ns)
 		}
@@ -72,7 +72,7 @@ func buildNamespaceClause(namespaces []string) (string, []interface{}) {
 	}
 
 	for _, pfx := range prefixes {
-		conds = append(conds, "r.namespace LIKE ?")
+		conds = append(conds, "instr(r.namespace, ?) = 1")
 		args = append(args, pfx)
 	}
 

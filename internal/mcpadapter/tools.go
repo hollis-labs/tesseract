@@ -1461,9 +1461,12 @@ func isScopeHead(prefix string) bool {
 	if len(parts) == 1 {
 		return parts[0] == "system"
 	}
+	// A user head can also contain retained legacy project and session paths.
+	// A domain filter therefore cannot prove user/{id}/* is contained by a
+	// direct user/{id}/{domain}/* grant.
 	if len(parts) == 2 {
 		switch parts[0] {
-		case "user", "project", "app", "org", "session":
+		case "project", "app", "org", "session":
 			return parts[1] != ""
 		}
 	}

@@ -114,8 +114,8 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 			if err := memory.ValidateWorkspaceRecallNamespace(ns); err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 			}
-			namespaceClauses = append(namespaceClauses, `(w.namespace = ? OR w.namespace LIKE ? ESCAPE '\')`)
-			args = append(args, prefix, escapeLike(prefix)+"/%")
+			namespaceClauses = append(namespaceClauses, `(w.namespace = ? OR instr(w.namespace, ?) = 1)`)
+			args = append(args, prefix, prefix+"/")
 			continue
 		}
 		if err := memory.ValidateWorkspaceNamespace(ns); err != nil {
@@ -290,9 +290,4 @@ func placeholders(n int) string {
 		return ""
 	}
 	return strings.TrimRight(strings.Repeat("?,", n), ",")
-}
-
-func escapeLike(value string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(value)
 }
