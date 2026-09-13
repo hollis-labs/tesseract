@@ -69,9 +69,35 @@ func TestReferenceResolveMCPContract(t *testing.T) {
 	if notFound["status"] != "not_found" || notFound["ref"] != nil {
 		t.Fatalf("wrong-kind=%v", notFound)
 	}
-	for _, args := range []map[string]any{{}, {"item_id": rev.ItemID, "uri": "tesseract://item/" + rev.ItemID}, {"domain": "memory", "namespace": rev.Namespace}, {"memory_key": rev.MemoryKey}} {
+	for _, args := range []map[string]any{
+		{}, {"item_id": rev.ItemID, "uri": "tesseract://item/" + rev.ItemID},
+		{"domain": "memory", "namespace": rev.Namespace}, {"memory_key": rev.MemoryKey},
+		{"domain": "unknown", "namespace": rev.Namespace, "key": rev.MemoryKey},
+	} {
 		wantErrorCode(t, mustCallRegistered(t, a, "tesseract_ref_resolve", args), "validation_error")
 	}
+}
+
+func TestReferenceResolveMCPRequiresReadScope(t *testing.T) {
+	a := referenceAdapter(t, []string{"*"})
+	readToken := a.Token
+	item, err := a.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: "project/tesseract/workspace/resolver-scope", Key: "current", Summary: "secret",
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOnly, _, err := a.Store.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{
+		Label: "resolver-write-only", Scopes: []string{"memory:write"}, NamespaceGlobs: []string{"*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Token = writeOnly
+	wantErrorCode(t, mustCallRegistered(t, a, "tesseract_ref_resolve", map[string]any{"item_id": item.ItemID}), "insufficient_scope")
+	a.Token = readToken
+	wantNoError(t, mustCallRegistered(t, a, "tesseract_ref_resolve", map[string]any{"item_id": item.ItemID}))
 }
 
 func TestReferenceResolveMCPAuthorizesLiveAndDeletedNamespace(t *testing.T) {
@@ -95,5 +121,24 @@ func TestReferenceResolveMCPAuthorizesLiveAndDeletedNamespace(t *testing.T) {
 	wantErrorCode(t, deleted, "namespace_not_permitted")
 	if strings.Contains(deleted["message"].(string), "deleted") {
 		t.Fatalf("authorization error leaked tombstone: %v", deleted)
+	}
+}
+
+func TestReferenceResolveMCPUnavailableExplicitDomainBeforeNegativeAnswer(t *testing.T) {
+	a := referenceAdapter(t, []string{"*"})
+	rev, err := a.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
+		Namespace: "project/tesseract/knowledge/resolver", Key: "present", Summary: "secret",
+		Kind: "doc", Source: "test", Pointer: memory.Pointer{Scheme: "nil", Locator: "test"},
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.KnowledgeStore = nil
+	for _, key := range []string{rev.MemoryKey, "absent"} {
+		result := mustCallRegistered(t, a, "tesseract_ref_resolve", map[string]any{
+			"domain": "knowledge", "namespace": rev.Namespace, "key": key,
+		})
+		wantErrorCode(t, result, "domain_unavailable")
 	}
 }

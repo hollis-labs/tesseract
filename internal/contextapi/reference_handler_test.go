@@ -118,10 +118,24 @@ func TestReferenceResolveHTTPValidationAuthorizationAndAvailability(t *testing.T
 	for _, body := range []map[string]any{
 		{}, {"item_id": item.ItemID, "revision_id": "x"}, {"domain": "workspace", "namespace": item.Namespace},
 		{"uri": "tesseract://item/"}, {"item_id": ""}, {"memory_key": "private"},
+		{"domain": "unknown", "namespace": item.Namespace, "key": item.Key},
 	} {
 		rr := performJSON(t, srv, http.MethodPost, "/v1/refs/resolve", body)
 		if rr.Code != http.StatusBadRequest || decodeHTTPJSON(t, rr.Body.Bytes())["code"] != "validation_error" {
 			t.Fatalf("body=%v status=%d response=%s", body, rr.Code, rr.Body.String())
+		}
+	}
+	for _, field := range []string{"revision_id", "uri", "domain", "namespace", "key"} {
+		body := map[string]any{"item_id": item.ItemID, field: nil}
+		rr := performJSON(t, srv, http.MethodPost, "/v1/refs/resolve", body)
+		if rr.Code != http.StatusBadRequest || decodeHTTPJSON(t, rr.Body.Bytes())["code"] != "validation_error" {
+			t.Fatalf("null field=%s status=%d response=%s", field, rr.Code, rr.Body.String())
+		}
+	}
+	for _, field := range []string{"item_id", "revision_id", "uri", "domain", "namespace", "key"} {
+		rr := performJSON(t, srv, http.MethodPost, "/v1/refs/resolve", map[string]any{field: 7})
+		if rr.Code != http.StatusBadRequest || decodeHTTPJSON(t, rr.Body.Bytes())["code"] != "validation_error" {
+			t.Fatalf("non-string field=%s status=%d response=%s", field, rr.Code, rr.Body.String())
 		}
 	}
 
@@ -174,5 +188,129 @@ func TestReferenceResolveHTTPValidationAuthorizationAndAvailability(t *testing.T
 	unavailable := performJSON(t, unwired, http.MethodPost, "/v1/refs/resolve", map[string]any{"item_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
 	if unavailable.Code != http.StatusServiceUnavailable || decodeHTTPJSON(t, unavailable.Body.Bytes())["code"] != "domain_unavailable" {
 		t.Fatalf("unavailable=%s", unavailable.Body.String())
+	}
+}
+
+func TestReferenceResolveHTTPRequiresReadScopeBeforeEverySelector(t *testing.T) {
+	srv := referenceHTTPServer(t)
+	ctx := context.Background()
+	rev, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{
+		Domain: domains.Memory, Namespace: "project/tesseract/memory/notes", MemoryKey: "scope.reference",
+		Summary: "secret", Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+		Trigger: memory.TriggerManual, DerivedFrom: memory.DerivedFromProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{
+		Namespace: "project/tesseract/workspace/scope", Key: "current", Summary: "secret",
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{
+		Namespace: current.Namespace, Key: "deleted", Summary: "secret",
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, deleteErr := srv.WorkspaceStore.Delete(ctx, workspace.DeleteInput{ItemID: deleted.ItemID, VersionToken: deleted.VersionToken}); deleteErr != nil {
+		t.Fatal(deleteErr)
+	}
+
+	requests := []map[string]any{
+		{"item_id": current.ItemID},
+		{"revision_id": rev.RevisionID},
+		{"domain": "workspace", "namespace": current.Namespace, "key": current.Key},
+		{"uri": "tesseract://revision/" + rev.RevisionID},
+		{"item_id": deleted.ItemID},
+	}
+	writeOnly, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label: "resolver-write-only", TTL: time.Hour, Scopes: []string{"memory:write"}, NamespaceGlobs: []string{"*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readToken, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label: "resolver-reader", TTL: time.Hour, Scopes: []string{"memory:read"}, NamespaceGlobs: []string{"*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.ManagedAuth = true
+	for i, request := range requests {
+		denied := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/refs/resolve", request,
+			map[string]string{"Authorization": "Bearer " + writeOnly})
+		if denied.Code != http.StatusForbidden || decodeHTTPJSON(t, denied.Body.Bytes())["code"] != "insufficient_scope" {
+			t.Fatalf("request %d escaped read scope: status=%d body=%s", i, denied.Code, denied.Body.String())
+		}
+		allowed := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/refs/resolve", request,
+			map[string]string{"Authorization": "Bearer " + readToken})
+		if allowed.Code != http.StatusOK {
+			t.Fatalf("request %d with read scope: status=%d body=%s", i, allowed.Code, allowed.Body.String())
+		}
+	}
+}
+
+func TestReferenceResolveHTTPAuthorizesConcreteNamespaceBytes(t *testing.T) {
+	srv := referenceHTTPServer(t)
+	ctx := context.Background()
+	namespace := "project/tesseract/workspace/literal/*"
+	item, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{
+		Namespace: namespace, Key: " ", Summary: "secret",
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label: "resolver-literal", TTL: time.Hour, Scopes: []string{"memory:read"},
+		NamespaceGlobs: []string{"project/tesseract/workspace/literal/\\*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	descendants, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label: "resolver-descendants", TTL: time.Hour, Scopes: []string{"memory:read"},
+		NamespaceGlobs: []string{"project/tesseract/workspace/literal/\\*/child/*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.ManagedAuth = true
+	request := map[string]any{"domain": "workspace", "namespace": namespace, "key": item.Key}
+	allowed := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/refs/resolve", request,
+		map[string]string{"Authorization": "Bearer " + exact})
+	if allowed.Code != http.StatusOK || decodeHTTPJSON(t, allowed.Body.Bytes())["status"] != "resolved" {
+		t.Fatalf("literal namespace/key bytes were not resolved: status=%d body=%s", allowed.Code, allowed.Body.String())
+	}
+	denied := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/refs/resolve", request,
+		map[string]string{"Authorization": "Bearer " + descendants})
+	if denied.Code != http.StatusForbidden || decodeHTTPJSON(t, denied.Body.Bytes())["code"] != "namespace_not_permitted" ||
+		strings.Contains(denied.Body.String(), item.ItemID) || strings.Contains(denied.Body.String(), namespace) {
+		t.Fatalf("descendant-only grant response: status=%d body=%s", denied.Code, denied.Body.String())
+	}
+}
+
+func TestReferenceResolveHTTPUnavailableExplicitDomainBeforeNegativeAnswer(t *testing.T) {
+	srv := referenceHTTPServer(t)
+	rev, err := srv.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
+		Namespace: "project/tesseract/knowledge/resolver", Key: "present", Summary: "secret",
+		Kind: "doc", Source: "test", Pointer: memory.Pointer{Scheme: "nil", Locator: "test"},
+		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.KnowledgeStore = nil
+	for _, key := range []string{rev.MemoryKey, "absent"} {
+		rr := performJSON(t, srv, http.MethodPost, "/v1/refs/resolve", map[string]any{
+			"domain": "knowledge", "namespace": rev.Namespace, "key": key,
+		})
+		if rr.Code != http.StatusServiceUnavailable || decodeHTTPJSON(t, rr.Body.Bytes())["code"] != "domain_unavailable" {
+			t.Fatalf("key=%q status=%d body=%s", key, rr.Code, rr.Body.String())
+		}
 	}
 }

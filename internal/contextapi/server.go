@@ -143,7 +143,21 @@ func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace st
 		}
 		return true
 	}
-	for _, glob := range claims.NamespaceGlobs {
+	if namespacePermitted(claims.NamespaceGlobs, namespace) {
+		return true
+	}
+	writeError(w, http.StatusForbidden, "namespace_not_permitted",
+		"token is not permitted to access this namespace", map[string]any{
+			"namespace":   namespace,
+			"token_globs": claims.NamespaceGlobs,
+		})
+	return false
+}
+
+// namespacePermitted authorizes one concrete stored namespace. Unlike recall
+// selector authorization, a namespace ending in /* is still literal data here.
+func namespacePermitted(globs []string, namespace string) bool {
+	for _, glob := range globs {
 		if glob == "*" || glob == namespace {
 			return true
 		}
@@ -158,11 +172,6 @@ func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace st
 			}
 		}
 	}
-	writeError(w, http.StatusForbidden, "namespace_not_permitted",
-		"token is not permitted to access this namespace", map[string]any{
-			"namespace":   namespace,
-			"token_globs": claims.NamespaceGlobs,
-		})
 	return false
 }
 

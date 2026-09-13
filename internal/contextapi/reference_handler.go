@@ -1,6 +1,7 @@
 package contextapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -9,27 +10,52 @@ import (
 )
 
 type referenceResolveRequest struct {
-	ItemID     *string `json:"item_id,omitempty"`
-	RevisionID *string `json:"revision_id,omitempty"`
-	Domain     *string `json:"domain,omitempty"`
-	Namespace  *string `json:"namespace,omitempty"`
-	Key        *string `json:"key,omitempty"`
-	URI        *string `json:"uri,omitempty"`
+	ItemID     json.RawMessage `json:"item_id,omitempty"`
+	RevisionID json.RawMessage `json:"revision_id,omitempty"`
+	Domain     json.RawMessage `json:"domain,omitempty"`
+	Namespace  json.RawMessage `json:"namespace,omitempty"`
+	Key        json.RawMessage `json:"key,omitempty"`
+	URI        json.RawMessage `json:"uri,omitempty"`
 }
 
 func (req referenceResolveRequest) selector() (itemservice.ReferenceSelector, error) {
+	itemID, hasItemID, err := referenceString(req.ItemID)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+	revisionID, hasRevisionID, err := referenceString(req.RevisionID)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+	domain, hasDomain, err := referenceString(req.Domain)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+	namespace, hasNamespace, err := referenceString(req.Namespace)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+	key, hasKey, err := referenceString(req.Key)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+	uri, hasURI, err := referenceString(req.URI)
+	if err != nil {
+		return itemservice.ReferenceSelector{}, err
+	}
+
 	selectors := 0
-	if req.ItemID != nil {
+	if hasItemID {
 		selectors++
 	}
-	if req.RevisionID != nil {
+	if hasRevisionID {
 		selectors++
 	}
-	if req.URI != nil {
+	if hasURI {
 		selectors++
 	}
 	keyParts := 0
-	for _, present := range []bool{req.Domain != nil, req.Namespace != nil, req.Key != nil} {
+	for _, present := range []bool{hasDomain, hasNamespace, hasKey} {
 		if present {
 			keyParts++
 		}
@@ -40,20 +66,24 @@ func (req referenceResolveRequest) selector() (itemservice.ReferenceSelector, er
 	if selectors != 1 || (keyParts > 0 && keyParts != 3) {
 		return itemservice.ReferenceSelector{}, itemservice.ErrInvalidReference
 	}
-	selector := itemservice.ReferenceSelector{}
-	if req.ItemID != nil {
-		selector.ItemID = *req.ItemID
+	return itemservice.ReferenceSelector{
+		ItemID: itemID, RevisionID: revisionID, Domain: domain,
+		Namespace: namespace, Key: key, URI: uri,
+	}, nil
+}
+
+// referenceString keeps wire presence distinct from value. In particular,
+// JSON null is a supplied selector field and must not collapse into absence.
+// Values are not trimmed because keys and namespaces are exact locators.
+func referenceString(raw json.RawMessage) (string, bool, error) {
+	if len(raw) == 0 {
+		return "", false, nil
 	}
-	if req.RevisionID != nil {
-		selector.RevisionID = *req.RevisionID
+	var value *string
+	if err := json.Unmarshal(raw, &value); err != nil || value == nil || *value == "" {
+		return "", true, itemservice.ErrInvalidReference
 	}
-	if req.URI != nil {
-		selector.URI = *req.URI
-	}
-	if keyParts == 3 {
-		selector.Domain, selector.Namespace, selector.Key = *req.Domain, *req.Namespace, *req.Key
-	}
-	return selector, nil
+	return *value, true, nil
 }
 
 func (s *Server) handleReferenceResolve(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +97,9 @@ func (s *Server) handleReferenceResolve(w http.ResponseWriter, r *http.Request) 
 			"choose exactly one of item_id, revision_id, domain + namespace + key, or uri", nil)
 		return
 	}
+	if !requireScope(w, r, "memory:read") {
+		return
+	}
 	result, err := s.itemService().ResolveReference(r.Context(), selector)
 	if err != nil {
 		switch {
@@ -78,6 +111,11 @@ func (s *Server) handleReferenceResolve(w http.ResponseWriter, r *http.Request) 
 		default:
 			writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
 		}
+		return
+	}
+	if selector.Domain != "" && !s.itemDomainAvailable(domains.Domain(selector.Domain)) {
+		writeError(w, http.StatusServiceUnavailable, "domain_unavailable",
+			"the selected reference domain is not available on this deployment", nil)
 		return
 	}
 	if result.Status == itemservice.ResolutionResolved || result.Status == itemservice.ResolutionDeleted {
@@ -100,5 +138,5 @@ func referenceNamespacePermitted(r *http.Request, namespace string) bool {
 	if !ok {
 		return !authModeConfigured(r)
 	}
-	return namespaceSelectorPermitted(claims.NamespaceGlobs, namespace, nil)
+	return namespacePermitted(claims.NamespaceGlobs, namespace)
 }

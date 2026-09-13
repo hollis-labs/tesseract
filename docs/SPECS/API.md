@@ -203,7 +203,7 @@ creation and recovery.
 | `GET /v1/memory/revisions/{id}` | — | Read one exact revision by `revision_id`. |
 | `GET /v1/items/{item_id}` | resolved namespace | Read a current revision or workspace item by stable identity; works for keyless items. Workspace returns its current item shape and reinforces use. |
 | `GET /v1/items/{item_id}/history` | resolved namespace | Read a revisioned item's immutable chain newest first; accepts history paging and budget query parameters. Workspace returns `400 history_unavailable`. |
-| `POST /v1/refs/resolve` | resolved namespace | Normalize one typed ID, complete current key, or canonical Tesseract URI to identity metadata. Returns resolution outcomes without content or reinforcement. |
+| `POST /v1/refs/resolve` | `memory:read` + resolved namespace | Normalize one typed ID, complete current key, or canonical Tesseract URI to identity metadata. Returns resolution outcomes without content or reinforcement. |
 | `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `key`. |
 | `GET /v1/memory/history` | namespace | Memory history for `namespace` + `key`. |
 | `POST /v1/memory/touch` | resolved namespace for `item_ids` | Reinforce deliberately used `revision_ids` or current `item_ids`; pass exactly one selector. Deleted workspace IDs are reported under `deleted`. |
@@ -221,8 +221,9 @@ creation and recovery.
 Here, `namespace` means a `namespace_globs` authorization check when managed or
 static authentication is active. The item routes resolve the stored namespace first and
 apply the same policy before returning revision content or reinforcing activation. HTTP
-memory, knowledge and event routes currently do not require the MCP-only `memory:read` or
-`memory:write` scopes.
+memory, knowledge and event content routes currently do not require the MCP-only
+`memory:read` or `memory:write` scopes. Reference resolution is the exception shown above:
+it requires `memory:read` before resolving metadata.
 
 `item_id` is the stable identity of any Tesseract-owned item. Revisioned domains retain
 the same value as `memory_id`; revision and state responses carry both fields for

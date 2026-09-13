@@ -424,6 +424,9 @@ func (a *Adapter) handleReferenceResolve(ctx context.Context, req mcp.CallToolRe
 			return toolError(codeInternalError, err.Error()), nil
 		}
 	}
+	if selector.Domain != "" && !a.itemDomainAvailable(domains.Domain(selector.Domain)) {
+		return domainUnavailable(selector.Domain), nil
+	}
 	if result.Status == itemservice.ResolutionResolved || result.Status == itemservice.ResolutionDeleted {
 		if !globsPermit(claims.NamespaceGlobs, result.Namespace) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit resolving this reference"), nil
