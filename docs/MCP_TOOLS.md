@@ -1,6 +1,6 @@
 # Tesseract — MCP Tools (agent reference)
 
-This is the agent-facing catalog for Tesseract's 28-tool MCP surface. Every
+This is the agent-facing catalog for Tesseract's MCP surface. Every
 tool here is registered by `tesseract mcp` and has an HTTP peer under `/v1/*`
 unless the row is marked **MCP-only**.
 
@@ -111,6 +111,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | Tool | Why |
 |---|---|
 | `context_rag_query` | `rag_query` is not an operation in the vocabulary, and it is the one name on the surface that does not fit. It remains unchanged for compatibility; the related `search` and `embed` operation names are part of the public vocabulary. |
+| `tesseract_runtime_get` | — | — (MCP-only process observation) | [Runtime observation](MCP_RUNTIME.md) | No arguments. Verified running/replacement image comparison with owner context; always observation-only. |
 | `tesseract_skills` | Named for what it serves rather than for a verb, and both its arms — the catalog and one skill body — are covered by the plural noun. Kept because it is the most-referenced identifier on the surface (every tool description ends in a `tesseract_skills <name>` pointer) and no verb form read better than the noun: it neither purely lists nor purely gets. |
 <!-- END GENERATED: tool-naming -->
 
@@ -193,6 +194,7 @@ the intended result.
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
+| `tesseract_runtime_get` | — | — (MCP-only process observation) | [Runtime observation](MCP_RUNTIME.md) | No arguments. Verified running/replacement image comparison with owner context; always observation-only. |
 | `tesseract_skills` | — | — (MCP-only meta-tool) | self-documenting | Call with no args for the index; with `name` for the full skill body |
 
 ## Playbooks

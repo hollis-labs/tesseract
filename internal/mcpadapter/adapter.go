@@ -31,6 +31,7 @@ import (
 // context_pack is read-only; under shape=packet it respects namespace_globs
 // from the token when present.
 type Adapter struct {
+	runtime           *runtimeObserver
 	Store             *contextstore.Store
 	Token             string                  // capability token for mutating ops; may be empty
 	TypeRegistry      *typeregistry.Registry  // optional; nil uses the process registry (types.yaml)
@@ -379,16 +380,19 @@ const (
 
 // New creates an Adapter for the given store and optional capability token.
 func New(store *contextstore.Store, token string) *Adapter {
-	return &Adapter{Store: store, Token: token}
+	return &Adapter{Store: store, Token: token, runtime: newRuntimeObserver()}
 }
 
 // Run registers all tools and starts the MCP stdio server. Blocks until ctx is
 // canceled or the client disconnects.
 func (a *Adapter) Run(ctx context.Context) error {
+	hooks := &server.Hooks{}
+	hooks.AddBeforeInitialize(a.acceptRuntimeContext)
 	s := server.NewMCPServer(
 		"tesseract",
 		a.version(),
 		server.WithToolCapabilities(true),
+		server.WithHooks(hooks),
 	)
 	a.RegisterAllTools(s)
 	ctxFunc := func(_ context.Context) context.Context { return ctx }
@@ -411,6 +415,7 @@ func (a *Adapter) version() string {
 // toolRegistrar instead — see that type for why.
 func (a *Adapter) RegisterAllTools(srv *server.MCPServer) {
 	s := &toolRegistrar{adapter: a, server: srv}
+	a.registerRuntimeTool(s)
 	a.registerTools(s)
 	a.registerTypedTools(s)
 	a.registerEmbeddingTools(s)
