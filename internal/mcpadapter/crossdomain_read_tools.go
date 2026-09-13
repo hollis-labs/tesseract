@@ -102,8 +102,8 @@ func resolveReadSelector(req mcp.CallToolRequest) (readSelector, *mcp.CallToolRe
 	if errRes != nil {
 		return readSelector{}, errRes
 	}
-	namespace := strings.TrimSpace(req.GetString("namespace", ""))
-	key := strings.TrimSpace(req.GetString("key", ""))
+	namespace := req.GetString("namespace", "")
+	key := req.GetString("key", "")
 	if namespace == "" || key == "" {
 		return readSelector{}, toolError(codeValidationError,
 			"domain, namespace and key must all be non-empty in the legacy selector")
@@ -211,7 +211,7 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 		mcp.WithDescription(
 			"**Fetch a current entry** by stable `item_id`, or by `(domain, namespace, key)`.\n"+
 				"• **Kind of content:** the latest revision for a memory, knowledge or event entry, or the head record for a context record.\n"+
-				"• **Result shape:** domain-dependent, because the underlying rows are. `memory`, `knowledge` and `event` answer a revision object; `context` answers a record object. Read `domain` back off your own call, not off the response.\n"+
+				"• **Result shape:** `memory`, `knowledge` and `event` answer a revision object whose `domain` identifies the resolved store; `context` answers a record object and remains available only through the legacy selector.\n"+
 				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token, matching the rest of the context read surface.\n"+
 				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state, and neither does `event`, which opts out of activation so a journal cannot fade for going unread.\n"+
 				"• **Selectors:** pass exactly one of `item_id`, or the complete legacy `domain` + `namespace` + `key` form. `item_id` resolves its domain and namespace from storage and works for keyless items.\n"+

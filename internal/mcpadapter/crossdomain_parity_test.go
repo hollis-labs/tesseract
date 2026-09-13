@@ -1136,6 +1136,151 @@ func TestCrossDomainHistory_RefusesTheOtherDomainsRows(t *testing.T) {
 	}
 }
 
+func TestLegacySelectorPreservesExactKnowledgeKey(t *testing.T) {
+	a, _, ms, ks := crossDomainSurfaces(t)
+	ctx := context.Background()
+
+	write := func(key string) memory.Revision {
+		t.Helper()
+		rev, err := ks.Write(ctx, knowledge.WriteInput{
+			Namespace: xdKnowNS,
+			Key:       key,
+			Kind:      "note",
+			Source:    "manual",
+			Pointer:   memory.Pointer{Scheme: "nil", Locator: "legacy-selector-regression"},
+			Summary:   "entry for " + key,
+			Author:    memory.Author{AgentID: "test"},
+			SessionID: "session:legacy-selector-regression",
+		})
+		if err != nil {
+			t.Fatalf("write key %q: %v", key, err)
+		}
+		return rev
+	}
+
+	padded := write(" padded_key ")
+	trimmed := write("padded_key")
+	whitespace := write(" ")
+	trimmedBefore, err := ms.GetState(ctx, trimmed.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	currentRaw := xdMCP(t, a.handleTesseractGet, map[string]any{
+		"domain": "knowledge", "namespace": xdKnowNS, "key": " padded_key ",
+	})
+	var current memory.Revision
+	if decodeErr := json.Unmarshal([]byte(currentRaw), &current); decodeErr != nil {
+		t.Fatalf("decode current: %v; raw=%s", decodeErr, currentRaw)
+	}
+	if current.ItemID != padded.ItemID || current.ItemID == trimmed.ItemID {
+		t.Fatalf("current item_id = %q, want padded item %q and not trimmed item %q; raw=%s",
+			current.ItemID, padded.ItemID, trimmed.ItemID, currentRaw)
+	}
+	if current.MemoryKey != " padded_key " {
+		t.Fatalf("current memory_key = %q, want exact padded key", current.MemoryKey)
+	}
+
+	historyRaw := xdMCP(t, a.handleTesseractHistory, map[string]any{
+		"domain": "knowledge", "namespace": xdKnowNS, "key": " padded_key ",
+	})
+	var history []memory.Revision
+	if decodeErr := json.Unmarshal([]byte(historyRaw), &history); decodeErr != nil {
+		t.Fatalf("decode history: %v; raw=%s", decodeErr, historyRaw)
+	}
+	if len(history) != 1 || history[0].ItemID != padded.ItemID || history[0].MemoryKey != " padded_key " {
+		t.Fatalf("history = %#v, want only padded item %q", history, padded.ItemID)
+	}
+
+	trimmedAfter, err := ms.GetState(ctx, trimmed.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trimmedAfter.AccessCount != trimmedBefore.AccessCount {
+		t.Fatalf("padded lookup reinforced trimmed item: access_count %d -> %d",
+			trimmedBefore.AccessCount, trimmedAfter.AccessCount)
+	}
+
+	whitespaceCurrentRaw := xdMCP(t, a.handleTesseractGet, map[string]any{
+		"domain": "knowledge", "namespace": xdKnowNS, "key": " ",
+	})
+	var whitespaceCurrent memory.Revision
+	if err := json.Unmarshal([]byte(whitespaceCurrentRaw), &whitespaceCurrent); err != nil {
+		t.Fatalf("decode whitespace-key current: %v; raw=%s", err, whitespaceCurrentRaw)
+	}
+	if whitespaceCurrent.ItemID != whitespace.ItemID || whitespaceCurrent.MemoryKey != " " {
+		t.Fatalf("whitespace-key current = %#v, want item %q with exact key", whitespaceCurrent, whitespace.ItemID)
+	}
+	whitespaceHistoryRaw := xdMCP(t, a.handleTesseractHistory, map[string]any{
+		"domain": "knowledge", "namespace": xdKnowNS, "key": " ",
+	})
+	var whitespaceHistory []memory.Revision
+	if err := json.Unmarshal([]byte(whitespaceHistoryRaw), &whitespaceHistory); err != nil {
+		t.Fatalf("decode whitespace-key history: %v; raw=%s", err, whitespaceHistoryRaw)
+	}
+	if len(whitespaceHistory) != 1 || whitespaceHistory[0].ItemID != whitespace.ItemID || whitespaceHistory[0].MemoryKey != " " {
+		t.Fatalf("whitespace-key history = %#v, want only item %q", whitespaceHistory, whitespace.ItemID)
+	}
+}
+
+func TestLegacySelectorDoesNotResolveTrimmedKnowledgeIdentity(t *testing.T) {
+	a, _, ms, ks := crossDomainSurfaces(t)
+	ctx := context.Background()
+	trimmed, err := ks.Write(ctx, knowledge.WriteInput{
+		Namespace: xdKnowNS,
+		Key:       "unpaired_key",
+		Kind:      "note",
+		Source:    "manual",
+		Pointer:   memory.Pointer{Scheme: "nil", Locator: "legacy-selector-regression"},
+		Summary:   "only the unpadded key exists",
+		Author:    memory.Author{AgentID: "test"},
+		SessionID: "session:legacy-selector-regression",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := ms.GetState(ctx, trimmed.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selectors := []struct {
+		name      string
+		namespace string
+		key       string
+	}{
+		{"absent padded key", xdKnowNS, " unpaired_key "},
+		{"absent padded namespace", " " + xdKnowNS + " ", "unpaired_key"},
+	}
+	for _, selector := range selectors {
+		for _, handler := range []struct {
+			name string
+			call func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		}{
+			{"current", a.handleTesseractGet},
+			{"history", a.handleTesseractHistory},
+		} {
+			t.Run(selector.name+"/"+handler.name, func(t *testing.T) {
+				raw := xdMCP(t, handler.call, map[string]any{
+					"domain": "knowledge", "namespace": selector.namespace, "key": selector.key,
+				})
+				if !strings.Contains(raw, `"code":"not_found"`) {
+					t.Fatalf("nonexistent exact selector returned %s, want not_found", raw)
+				}
+			})
+		}
+	}
+
+	after, err := ms.GetState(ctx, trimmed.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.AccessCount != before.AccessCount {
+		t.Fatalf("nonexistent exact lookup reinforced trimmed item: access_count %d -> %d",
+			before.AccessCount, after.AccessCount)
+	}
+}
+
 // TestHTTPMemoryRoutes_RefuseTheOtherDomainsRows is the same rule on the other
 // door. It gets its own test rather than riding the byte-parity table because
 // both doors carried the defect: an assertion that they AGREE would have passed
