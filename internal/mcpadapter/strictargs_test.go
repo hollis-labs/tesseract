@@ -1,7 +1,9 @@
 package mcpadapter
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"reflect"
 	"sort"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/trace"
@@ -19,6 +22,89 @@ import (
 // sampled. Stated as a literal rather than built from the propagator, so the
 // test still fails if the parsing changes to agree with itself.
 const sampledTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+func TestTetherProvenanceIsNormalizedBeforeArgumentEarlyReturns(t *testing.T) {
+	for _, args := range []any{nil, map[string]any{}, map[string]any{"_traceparent": sampledTraceparent}} {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = args
+		req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+			"unrelated":         "preserved",
+			tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": "tether-session", "workstream_id": "ws-12"},
+		}}
+		handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, got mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			wc := memory.WriteContextFromContext(ctx)
+			if wc == nil || wc.Issuer != "tether" || wc.Verification != "unverified" || wc.SessionID != "tether-session" || wc.WorkstreamID != "ws-12" {
+				t.Fatalf("normalized context = %#v", wc)
+			}
+			if got.Params.Meta.AdditionalFields["unrelated"] != "preserved" {
+				t.Fatalf("unrelated _meta changed: %#v", got.Params.Meta)
+			}
+			return &mcp.CallToolResult{}, nil
+		})
+		if _, err := handler(context.Background(), req); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestMalformedTetherProvenanceIsDiscardedWithBoundedDiagnostic(t *testing.T) {
+	secret := strings.Repeat("sensitive-", 200)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	req := mcp.CallToolRequest{}
+	req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+		tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": secret},
+	}}
+	handler := gatewayMetadataMiddleware(logger, func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if wc := memory.WriteContextFromContext(ctx); wc != nil {
+			t.Fatalf("malformed context reached handler: %#v", wc)
+		}
+		return &mcp.CallToolResult{}, nil
+	})
+	if _, err := handler(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if got := logs.String(); !strings.Contains(got, "reason=oversized_or_unencodable") || strings.Contains(got, secret) || len(got) > 512 {
+		t.Fatalf("diagnostic was not bounded and content-free: %q", got)
+	}
+}
+
+func TestTetherProvenanceParserIsClosedAndOptional(t *testing.T) {
+	tests := []struct {
+		name     string
+		envelope any
+		reason   string
+	}{
+		{"not object", "x", "not_object"},
+		{"unknown version", map[string]any{"schema_version": float64(2), "session_id": "s"}, "unsupported_schema_version"},
+		{"unknown field", map[string]any{"schema_version": float64(1), "session_id": "s", "claimed_verified": true}, "unknown_field"},
+		{"missing session", map[string]any{"schema_version": float64(1)}, "invalid_session_id"},
+		{"padded workstream", map[string]any{"schema_version": float64(1), "session_id": "s", "workstream_id": " ws"}, "invalid_workstream_id"},
+		{"null workstream", map[string]any{"schema_version": float64(1), "session_id": "s", "workstream_id": nil}, "invalid_workstream_id"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reason := parseTetherProvenance(&mcp.Meta{AdditionalFields: map[string]any{tetherProvenanceKey: tc.envelope}})
+			if reason != tc.reason || got.SessionID != "" {
+				t.Fatalf("got context=%#v reason=%q, want discarded reason=%q", got, reason, tc.reason)
+			}
+		})
+	}
+}
+
+func TestWriteToolsRefuseForgedProvenanceArguments(t *testing.T) {
+	srv := registeredSurface(t)
+	for _, name := range []string{"memory_write", "knowledge_write", "event_write", "workspace_write"} {
+		for _, argument := range []string{"provenance", "verification"} {
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{argument: "verified"}
+			res, err := srv.ListTools()[name].Handler(context.Background(), req)
+			if err != nil || !strings.Contains(resultText(t, res), argument) {
+				t.Fatalf("%s accepted %s: result=%#v err=%v", name, argument, res, err)
+			}
+		}
+	}
+}
 
 // registeredSurface returns a server carrying every tool this adapter exposes,
 // wired against a throwaway store.
@@ -30,6 +116,7 @@ func registeredSurface(t *testing.T) *server.MCPServer {
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
 	a.EventStore = event.New(ms)
+	a.WorkspaceStore = workspace.NewStore(cs.DB())
 
 	srv := server.NewMCPServer("strictargs", "0.0.0", server.WithToolCapabilities(true))
 	a.RegisterAllTools(srv)
@@ -164,7 +251,7 @@ func TestUnknownUnderscoreKeyIsStillRefused(t *testing.T) {
 func TestGatewayMetadataCarriesTheUpstreamTraceForward(t *testing.T) {
 	var seen gatewayMetadata
 	var remote trace.SpanContext
-	handler := gatewayMetadataMiddleware(func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		seen = gatewayMetadataFromContext(ctx)
 		remote = trace.SpanContextFromContext(ctx)
 		return mcp.NewToolResultText("{}"), nil
@@ -202,7 +289,7 @@ func TestGatewayMetadataCarriesTheUpstreamTraceForward(t *testing.T) {
 func TestGatewayMetadataLeavesOrdinaryCallsAlone(t *testing.T) {
 	want := map[string]any{"namespace": "user/chrispian/memory/notes", "limit": 5}
 	var got map[string]any
-	handler := gatewayMetadataMiddleware(func(_ context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	handler := gatewayMetadataMiddleware(slog.Default(), func(_ context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		got = r.GetArguments()
 		return mcp.NewToolResultText("{}"), nil
 	})

@@ -17,7 +17,8 @@ const maxSearchLimit = 200
 
 const recallItemColumns = `w.item_id, w.version_token, w.namespace, w.key_name, w.summary, w.body,
 	w.data, w.data_schema_hash, w.tags, w.consumer_state, w.author_agent_id, w.author_version,
-	w.session_id, w.created_at, w.updated_at, w.activation, w.access_count, w.last_used_at, w.last_decayed_at`
+	w.session_id, w.created_at, w.updated_at, w.activation, w.access_count, w.last_used_at, w.last_decayed_at,
+	w.workstream_id, w.write_context`
 
 // SearchLexical searches one exact workspace namespace without recording use.
 func (s *Store) SearchLexical(ctx context.Context, namespace, query string, limit int) ([]SearchResult, error) {
@@ -95,6 +96,9 @@ func (s *Store) RecallAll(ctx context.Context, in RecallInput) ([]RecallResult, 
 }
 
 func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]RecallResult, error) {
+	if err := memory.ValidateWorkstreamID(in.WorkstreamID); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
 	if len(in.Namespaces) == 0 {
 		return nil, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
 	}
@@ -125,6 +129,10 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 		args = append(args, ns)
 	}
 	where = append(where, "("+strings.Join(namespaceClauses, " OR ")+")")
+	if in.WorkstreamID != "" {
+		where = append(where, "w.workstream_id = ?")
+		args = append(args, in.WorkstreamID)
+	}
 
 	if len(in.Tags) > 0 {
 		where = append(where, `w.tags IS NOT NULL AND EXISTS (
@@ -197,16 +205,24 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 
 func scanItemWithScore(row scanner, score *sql.NullFloat64) (Item, error) {
 	var item Item
-	var key, body, data, dataHash, tags, consumer sql.NullString
+	var key, body, data, dataHash, tags, consumer, workstreamID, writeContext sql.NullString
 	var createdRaw, updatedRaw, usedRaw, decayedRaw string
 	err := row.Scan(&item.ItemID, &item.VersionToken, &item.Namespace, &key, &item.Summary, &body,
 		&data, &dataHash, &tags, &consumer, &item.Author.AgentID, &item.Author.AgentVersion,
-		&item.SessionID, &createdRaw, &updatedRaw, &item.Activation, &item.AccessCount, &usedRaw, &decayedRaw, score)
+		&item.SessionID, &createdRaw, &updatedRaw, &item.Activation, &item.AccessCount, &usedRaw, &decayedRaw,
+		&workstreamID, &writeContext, score)
 	if err != nil {
 		return Item{}, err
 	}
 	item.Domain = Domain
 	item.Key, item.Body, item.DataSchemaHash = key.String, body.String, dataHash.String
+	item.WorkstreamID = workstreamID.String
+	if writeContext.Valid {
+		item.Provenance, err = memory.DecodeWriteContext(writeContext.String)
+		if err != nil {
+			return Item{}, err
+		}
+	}
 	if data.Valid {
 		item.Data = json.RawMessage(data.String)
 	}

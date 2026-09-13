@@ -1748,3 +1748,57 @@ INSERT INTO memory_revisions (
 		t.Fatalf("neighboring revision changed during workspace migration: %q", summary)
 	}
 }
+
+func TestMigration26AddsWorkstreamAndWriteContextWithoutBackfill(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, Config{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	db := store.DB()
+	if _, err := db.ExecContext(ctx, `INSERT INTO memory_state (memory_id, domain, namespace, memory_key) VALUES ('mem-26', 'memory', 'user/test/memory/notes', 'migration.26')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO memory_revisions (revision_id, memory_id, domain, namespace, memory_key, status, author_agent_id, author_version, "trigger", session_id, derived_from, confidence, tags, payload_summary) VALUES ('rev-26', 'mem-26', 'memory', 'user/test/memory/notes', 'migration.26', 'canonical', 'test', '', 'manual', 'session', 'observation', 1, '[]', 'before migration')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO workspace_items (item_id, version_token, namespace, key_name, summary, author_agent_id, author_version, session_id, created_at, updated_at, last_used_at, last_decayed_at) VALUES ('item-26', 'token-26', 'project/test/workspace/scratch', 'migration/26', 'before migration', 'test', '', 'session', '2026-09-13T00:00:00.000000000Z', '2026-09-13T00:00:00.000000000Z', '2026-09-13T00:00:00.000000000Z', '2026-09-13T00:00:00.000000000Z')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`DROP INDEX idx_memory_revisions_workstream`, `DROP INDEX idx_workspace_items_workstream`,
+		`ALTER TABLE memory_revisions DROP COLUMN write_context`, `ALTER TABLE memory_revisions DROP COLUMN workstream_id`,
+		`ALTER TABLE workspace_items DROP COLUMN write_context`, `ALTER TABLE workspace_items DROP COLUMN workstream_id`,
+		`DELETE FROM schema_version WHERE version >= 26`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare schema-25 store with %q: %v", statement, err)
+		}
+	}
+	if err := store.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct{ table, query, id string }{
+		{"memory_revisions", `SELECT workstream_id, write_context FROM memory_revisions WHERE revision_id = ?`, "rev-26"},
+		{"workspace_items", `SELECT workstream_id, write_context FROM workspace_items WHERE item_id = ?`, "item-26"},
+	} {
+		var workstream, receipt sql.NullString
+		if err := db.QueryRowContext(ctx, check.query, check.id).Scan(&workstream, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		if workstream.Valid || receipt.Valid {
+			t.Fatalf("%s preexisting row was backfilled: workstream=%#v receipt=%#v", check.table, workstream, receipt)
+		}
+	}
+	for _, index := range []string{"idx_memory_revisions_workstream", "idx_workspace_items_workstream"} {
+		var name string
+		if err := db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, index).Scan(&name); err != nil {
+			t.Fatalf("missing workstream index %s: %v", index, err)
+		}
+	}
+	var summary string
+	if err := db.QueryRowContext(ctx, `SELECT payload_summary FROM memory_revisions WHERE revision_id = 'rev-26'`).Scan(&summary); err != nil || summary != "before migration" {
+		t.Fatalf("preexisting content changed: summary=%q err=%v", summary, err)
+	}
+}

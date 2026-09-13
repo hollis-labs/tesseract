@@ -43,8 +43,9 @@ func New(ms *memory.Store) *Store {
 // than left to caller discipline. Source remains a free-form-but-controlled
 // string; upstream callers are expected to pick from a conventional set.
 type WriteInput struct {
-	Namespace string
-	Key       string
+	Namespace    string
+	Key          string
+	WorkstreamID *string
 
 	// Facets are required on every knowledge write.
 	Kind    string
@@ -97,12 +98,13 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 	}
 
 	memIn := memory.WriteInput{
-		Domain:     domains.Knowledge,
-		Namespace:  in.Namespace,
-		MemoryKey:  in.Key,
-		Supersedes: in.Supersedes,
-		Status:     memory.StatusCanonical,
-		Author:     in.Author,
+		Domain:       domains.Knowledge,
+		Namespace:    in.Namespace,
+		MemoryKey:    in.Key,
+		WorkstreamID: in.WorkstreamID,
+		Supersedes:   in.Supersedes,
+		Status:       memory.StatusCanonical,
+		Author:       in.Author,
 		// Knowledge writes originate from indexers or manual capture; use
 		// `reference` as the closest derived_from bucket and `manual` as the
 		// generic trigger. Indexer plugins will refine this later.

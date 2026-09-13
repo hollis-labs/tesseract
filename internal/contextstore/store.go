@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 25
+	schemaVersion = 26
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1450,6 +1450,35 @@ CREATE TABLE IF NOT EXISTS workspace_creation_receipts (
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_creation_receipts_item ON workspace_creation_receipts(item_id)`); err != nil {
 				return err
+			}
+		case 26:
+			// Workstream association and bounded receiver provenance are additive,
+			// nullable facts. Existing revisions and workspace items remain absent;
+			// there is deliberately no inferred or synthetic backfill.
+			for _, col := range []struct{ table, name, ddl string }{
+				{"memory_revisions", "workstream_id", `ALTER TABLE memory_revisions ADD COLUMN workstream_id TEXT NULL`},
+				{"memory_revisions", "write_context", `ALTER TABLE memory_revisions ADD COLUMN write_context TEXT NULL`},
+				{"workspace_items", "workstream_id", `ALTER TABLE workspace_items ADD COLUMN workstream_id TEXT NULL`},
+				{"workspace_items", "write_context", `ALTER TABLE workspace_items ADD COLUMN write_context TEXT NULL`},
+			} {
+				var present bool
+				present, err = columnExists(ctx, tx, col.table, col.name)
+				if err != nil {
+					return err
+				}
+				if !present {
+					if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
+						return err
+					}
+				}
+			}
+			for _, ddl := range []string{
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_workstream ON memory_revisions(workstream_id) WHERE workstream_id IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_workspace_items_workstream ON workspace_items(workstream_id) WHERE workstream_id IS NOT NULL`,
+			} {
+				if _, err = tx.ExecContext(ctx, ddl); err != nil {
+					return err
+				}
 			}
 		}
 

@@ -229,13 +229,14 @@ func jsonFieldNames(dst any) []string {
 // decodeRequestBody refuses the other surface's spelling with a useful hint,
 // rather than dropping it and reporting a missing facet later.
 type knowledgeWriteRequest struct {
-	Namespace string         `json:"namespace"`
-	Key       string         `json:"key,omitempty"`
-	Kind      string         `json:"kind"`
-	Source    string         `json:"source"`
-	Pointer   memory.Pointer `json:"pointer"`
-	Summary   string         `json:"summary"`
-	Body      string         `json:"body,omitempty"`
+	Namespace    string         `json:"namespace"`
+	Key          string         `json:"key,omitempty"`
+	WorkstreamID presentString  `json:"workstream_id,omitempty"`
+	Kind         string         `json:"kind"`
+	Source       string         `json:"source"`
+	Pointer      memory.Pointer `json:"pointer"`
+	Summary      string         `json:"summary"`
+	Body         string         `json:"body,omitempty"`
 	// The record's own fields, stored verbatim and never interpreted. Nested
 	// here where MCP takes a JSON-encoded string, the way `tags` already
 	// differs. See internal/memory/payloaddata.go.
@@ -269,6 +270,7 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 	rev, err := s.KnowledgeStore.Write(r.Context(), knowledge.WriteInput{
 		Namespace:      req.Namespace,
 		Key:            req.Key,
+		WorkstreamID:   req.WorkstreamID.Pointer(),
 		Kind:           req.Kind,
 		Source:         req.Source,
 		Pointer:        req.Pointer,

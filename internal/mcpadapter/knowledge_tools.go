@@ -43,6 +43,7 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
 		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
 			"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.")),
+		mcp.WithString("workstream_id", mcp.Description("Optional opaque workstream association. Omit to preserve; send an empty string to clear.")),
 		// The allowed set is rendered from the enforced vocabulary rather than
 		// restated, so this description cannot advertise a set the write path
 		// does not accept.
@@ -95,10 +96,15 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
+	workstreamID, workstreamErr := workstreamWriteArg(req)
+	if workstreamErr != nil {
+		return workstreamErr, nil
+	}
 
 	in := knowledge.WriteInput{
 		Namespace:      req.GetString("namespace", ""),
 		Key:            req.GetString("key", ""),
+		WorkstreamID:   workstreamID,
 		Kind:           req.GetString("kind", ""),
 		Source:         req.GetString("source", ""),
 		Pointer:        pointer,

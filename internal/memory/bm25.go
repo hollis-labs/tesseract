@@ -94,10 +94,17 @@ func buildBM25RankExpr() string {
 func buildRecallFilters(in RecallInput) ([]string, []interface{}, error) {
 	var where []string
 	var args []interface{}
+	if err := ValidateWorkstreamID(in.Filters.WorkstreamID); err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
 
 	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces, recallDomainNames(in.Filters.Domains))
 	where = append(where, nsFrag)
 	args = append(args, nsArgs...)
+	if in.Filters.WorkstreamID != "" {
+		where = append(where, "r.workstream_id = ?")
+		args = append(args, in.Filters.WorkstreamID)
+	}
 
 	if len(in.Filters.Statuses) > 0 {
 		where = append(where, "r.status IN ("+placeholders(len(in.Filters.Statuses))+")")

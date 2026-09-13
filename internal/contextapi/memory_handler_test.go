@@ -65,6 +65,38 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 	}
 }
 
+func TestMemoryHTTPWorkstreamWriteFilterAndNullRejection(t *testing.T) {
+	srv := newMemoryTestServer(t)
+	writeBody := `{
+		"namespace":"user/chrispian/memory/notes", "memory_key":"workstream.http",
+		"workstream_id":"ws-http", "author":{"agent_id":"test"}, "trigger":"manual",
+		"session_id":"http-session", "derived_from":"observation", "confidence":0.9,
+		"summary":"workstream http"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(writeBody))
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"workstream_id":"ws-http"`) {
+		t.Fatalf("write status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	recall := httptest.NewRequest(http.MethodPost, "/v1/memory/recall", bytes.NewBufferString(`{
+		"namespaces":["user/chrispian/memory/notes"], "workstream_id":"ws-http", "payload_mode":"full"
+	}`))
+	recallResult := httptest.NewRecorder()
+	srv.ServeHTTP(recallResult, recall)
+	if recallResult.Code != http.StatusOK || !strings.Contains(recallResult.Body.String(), "workstream.http") {
+		t.Fatalf("recall status=%d body=%s", recallResult.Code, recallResult.Body.String())
+	}
+
+	nullBody := strings.Replace(writeBody, `"workstream_id":"ws-http"`, `"workstream_id":null`, 1)
+	nullReq := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(nullBody))
+	nullResult := httptest.NewRecorder()
+	srv.ServeHTTP(nullResult, nullReq)
+	if nullResult.Code != http.StatusBadRequest || !strings.Contains(nullResult.Body.String(), "null is not omission") {
+		t.Fatalf("null status=%d body=%s", nullResult.Code, nullResult.Body.String())
+	}
+}
+
 func TestMemoryWrite_NoStoreReturns503(t *testing.T) {
 	root := t.TempDir()
 	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: root})

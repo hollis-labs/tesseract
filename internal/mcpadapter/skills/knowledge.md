@@ -67,7 +67,12 @@ From the `knowledge_write` MCP declaration:
 - `author_agent_id` (required)
 - `session_id` (required)
 
-Optional: `key` (logical slug), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `data`, `data_schema_hash`, `consumer_state`.
+Optional: `key` (logical slug), `workstream_id` (opaque exact association), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `data`, `data_schema_hash`, `consumer_state`.
+
+`workstream_id` follows the shared revision rule: omission preserves an existing
+item's association, an explicit empty string clears it, and exact filtering is
+available through `tesseract_recall`. A valid Tether metadata envelope is recorded
+separately as the revision's unverified `provenance.write_context` receipt.
 
 **`data`** carries the entry's own fields as a JSON object — stored verbatim, never interpreted, not indexed and not searched. The contract, the `consumer_state` distinction and the limits of "verbatim" are stated once in `tesseract_skills memory`; they are identical here and are not repeated.
 

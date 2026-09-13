@@ -48,6 +48,7 @@ var Doors = []Door{
 			{Concept: "dedup", MCP: "dedup", HTTP: "dedup"},
 			{Concept: "dedup_threshold", MCP: "dedup_threshold", HTTP: "dedup_threshold"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
+			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
 
 			{Concept: "author_agent_id", MCP: "author_agent_id", HTTP: "author.agent_id"},
 			{
@@ -101,6 +102,7 @@ var Doors = []Door{
 			{Concept: "confidence", MCP: "confidence", HTTP: "confidence"},
 			{Concept: "supersedes", MCP: "supersedes", HTTP: "supersedes"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
+			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
 
 			{Concept: "pointer_scheme", MCP: "pointer_scheme", HTTP: "pointer.scheme"},
 			{Concept: "pointer_locator", MCP: "pointer_locator", HTTP: "pointer.locator"},
@@ -135,6 +137,7 @@ var Doors = []Door{
 			{Concept: "confidence", MCP: "confidence", HTTP: "confidence"},
 			{Concept: "supersedes", MCP: "supersedes", HTTP: "supersedes"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
+			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
 
 			{Concept: "author_agent_id", MCP: "author_agent_id", HTTP: "author.agent_id"},
 			{
@@ -180,6 +183,7 @@ var Doors = []Door{
 			{Concept: "data_schema_hash", MCP: "data_schema_hash", HTTP: "data_schema_hash"},
 			{Concept: "tags", MCP: "tags", HTTP: "tags"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
+			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
 			{Concept: "clear_fields", MCP: "clear_fields", HTTP: "clear_fields"},
 			{Concept: "author_agent_id", MCP: "author_agent_id", HTTP: "author.agent_id"},
 			{Concept: "author_version", MCP: "author_version", HTTP: "author.agent_version", Why: "MCP flattens and shortens the structured HTTP author field consistently with the other write doors."},

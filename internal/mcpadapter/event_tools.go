@@ -31,6 +31,7 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 		mcp.WithString("key", mcp.Description(
 			"Optional logical key. Usually omit: a keyless write appends a new entry, which is what a log does. "+
 				"When present it is held to the memory domain's lowercase dot-notation vocabulary, and a later write at the same key supersedes the earlier entry.")),
+		mcp.WithString("workstream_id", mcp.Description("Optional opaque workstream association. Omit to preserve; send an empty string to clear.")),
 		mcp.WithString("summary", mcp.Required(), mcp.Description("One-line statement of what happened (feeds embeddings)")),
 		mcp.WithString("body", mcp.Description(
 			"The reasoning itself, in prose (feeds embeddings). This is the field the domain exists for — a summary alone is a log line, which is what a trace already gives you.")),
@@ -77,6 +78,7 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 			"Opaque resume token from the previous response's `manifest.next_cursor`. Omit for the first page; "+
 				"`next_cursor: null` means there is nothing left.")),
 		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
+		mcp.WithString("workstream_id", mcp.Description("Exact opaque workstream association filter.")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -95,10 +97,15 @@ func (a *Adapter) handleEventWrite(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
+	workstreamID, workstreamErr := workstreamWriteArg(req)
+	if workstreamErr != nil {
+		return workstreamErr, nil
+	}
 
 	in := event.WriteInput{
 		Namespace:      req.GetString("namespace", ""),
 		Key:            req.GetString("key", ""),
+		WorkstreamID:   workstreamID,
 		Summary:        req.GetString("summary", ""),
 		Body:           req.GetString("body", ""),
 		Data:           payloadDataArg(req),
@@ -139,10 +146,11 @@ func (a *Adapter) handleEventList(ctx context.Context, req mcp.CallToolRequest) 
 	}
 
 	in := memory.EventLogInput{
-		Namespaces: namespaces,
-		Direction:  memory.LogDirection(req.GetString("direction", "")),
-		Limit:      int(req.GetFloat("limit", 0)),
-		Cursor:     req.GetString("cursor", ""),
+		Namespaces:   namespaces,
+		WorkstreamID: req.GetString("workstream_id", ""),
+		Direction:    memory.LogDirection(req.GetString("direction", "")),
+		Limit:        int(req.GetFloat("limit", 0)),
+		Cursor:       req.GetString("cursor", ""),
 	}
 	if raw := req.GetString("since", ""); raw != "" {
 		t, parseErr := time.Parse(time.RFC3339, raw)

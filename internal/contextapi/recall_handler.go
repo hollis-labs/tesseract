@@ -15,26 +15,30 @@ import (
 // domain, tags, confidence, summary, and created_at. The full Revision is
 // available via /v1/memory/revisions/{id} when needed.
 type recallBriefItem struct {
-	RevisionID string   `json:"revision_id"`
-	ItemID     string   `json:"item_id"`
-	MemoryID   string   `json:"memory_id"`
-	Domain     string   `json:"domain"`
-	Namespace  string   `json:"namespace"`
-	MemoryKey  string   `json:"memory_key,omitempty"`
-	Tags       []string `json:"tags"`
-	Confidence float64  `json:"confidence"`
-	Summary    string   `json:"summary"`
-	CreatedAt  string   `json:"created_at"`
+	RevisionID   string             `json:"revision_id"`
+	ItemID       string             `json:"item_id"`
+	MemoryID     string             `json:"memory_id"`
+	Domain       string             `json:"domain"`
+	Namespace    string             `json:"namespace"`
+	MemoryKey    string             `json:"memory_key,omitempty"`
+	WorkstreamID string             `json:"workstream_id,omitempty"`
+	Provenance   *memory.Provenance `json:"provenance,omitempty"`
+	Tags         []string           `json:"tags"`
+	Confidence   float64            `json:"confidence"`
+	Summary      string             `json:"summary"`
+	CreatedAt    string             `json:"created_at"`
 }
 
 type recallBriefWorkspaceItem struct {
-	ItemID    string   `json:"item_id"`
-	Domain    string   `json:"domain"`
-	Namespace string   `json:"namespace"`
-	Key       string   `json:"key,omitempty"`
-	Tags      []string `json:"tags"`
-	Summary   string   `json:"summary"`
-	UpdatedAt string   `json:"updated_at"`
+	ItemID       string             `json:"item_id"`
+	Domain       string             `json:"domain"`
+	Namespace    string             `json:"namespace"`
+	Key          string             `json:"key,omitempty"`
+	WorkstreamID string             `json:"workstream_id,omitempty"`
+	Provenance   *memory.Provenance `json:"provenance,omitempty"`
+	Tags         []string           `json:"tags"`
+	Summary      string             `json:"summary"`
+	UpdatedAt    string             `json:"updated_at"`
 }
 
 // recallResponse is the envelope returned by GET /v1/recall.
@@ -128,7 +132,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		RevisionScope: memory.RevisionScopeCurrent,
 		Limit:         limit,
 		Filters: memory.RecallFilters{
-			Tags: tags, Domains: requestedDomains,
+			Tags: tags, Domains: requestedDomains, WorkstreamID: q.Get("workstream_id"),
 		},
 	}
 
@@ -160,6 +164,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 				brief = append(brief, recallBriefItem{
 					RevisionID: rev.RevisionID, ItemID: rev.MemoryID, MemoryID: rev.MemoryID,
 					Domain: string(rev.Domain), Namespace: rev.Namespace, MemoryKey: rev.MemoryKey,
+					WorkstreamID: rev.WorkstreamID, Provenance: rev.Provenance,
 					Tags: rev.Tags, Confidence: rev.Confidence, Summary: rev.Payload.Summary,
 					CreatedAt: rev.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 				})
@@ -194,21 +199,23 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		brief := make([]any, 0, len(page.Kept))
 		for _, rr := range page.Kept {
 			if rr.Item != nil {
-				brief = append(brief, recallBriefWorkspaceItem{ItemID: rr.Item.ItemID, Domain: rr.Item.Domain, Namespace: rr.Item.Namespace, Key: rr.Item.Key, Tags: rr.Item.Tags, Summary: rr.Item.Payload.Summary, UpdatedAt: rr.Item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z")})
+				brief = append(brief, recallBriefWorkspaceItem{ItemID: rr.Item.ItemID, Domain: rr.Item.Domain, Namespace: rr.Item.Namespace, Key: rr.Item.Key, WorkstreamID: rr.Item.WorkstreamID, Provenance: rr.Item.Provenance, Tags: rr.Item.Tags, Summary: rr.Item.Payload.Summary, UpdatedAt: rr.Item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z")})
 				continue
 			}
 			rev := *rr.Revision
 			brief = append(brief, recallBriefItem{
-				RevisionID: rev.RevisionID,
-				ItemID:     rev.MemoryID,
-				MemoryID:   rev.MemoryID,
-				Domain:     string(rev.Domain),
-				Namespace:  rev.Namespace,
-				MemoryKey:  rev.MemoryKey,
-				Tags:       rev.Tags,
-				Confidence: rev.Confidence,
-				Summary:    rev.Payload.Summary,
-				CreatedAt:  rev.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+				RevisionID:   rev.RevisionID,
+				ItemID:       rev.MemoryID,
+				MemoryID:     rev.MemoryID,
+				Domain:       string(rev.Domain),
+				Namespace:    rev.Namespace,
+				MemoryKey:    rev.MemoryKey,
+				WorkstreamID: rev.WorkstreamID,
+				Provenance:   rev.Provenance,
+				Tags:         rev.Tags,
+				Confidence:   rev.Confidence,
+				Summary:      rev.Payload.Summary,
+				CreatedAt:    rev.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 			})
 		}
 		items = brief

@@ -23,14 +23,16 @@ type RecallResult struct {
 }
 
 type ProjectedWorkspaceItem struct {
-	ItemID        string            `json:"item_id"`
-	Domain        string            `json:"domain"`
-	Namespace     string            `json:"namespace"`
-	Key           string            `json:"key,omitempty"`
-	UpdatedAt     time.Time         `json:"updated_at"`
-	Payload       *WorkspacePayload `json:"payload,omitempty"`
-	Tags          []string          `json:"tags,omitempty"`
-	ConsumerState json.RawMessage   `json:"consumer_state,omitempty"`
+	ItemID        string             `json:"item_id"`
+	Domain        string             `json:"domain"`
+	Namespace     string             `json:"namespace"`
+	Key           string             `json:"key,omitempty"`
+	WorkstreamID  string             `json:"workstream_id,omitempty"`
+	Provenance    *memory.Provenance `json:"provenance,omitempty"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	Payload       *WorkspacePayload  `json:"payload,omitempty"`
+	Tags          []string           `json:"tags,omitempty"`
+	ConsumerState json.RawMessage    `json:"consumer_state,omitempty"`
 }
 
 type ProjectedResult struct {
@@ -100,7 +102,8 @@ func (s *Service) RecallPaged(ctx context.Context, in memory.RecallInput, pr mem
 	if len(workspaceNamespaces) > 0 {
 		workspaceResults, err = s.Workspace.RecallAll(ctx, workspace.RecallInput{
 			Namespaces: workspaceNamespaces, Query: queryForWorkspace(in, ranking), Ranking: ranking,
-			Tags: in.Filters.Tags, StateFilters: in.Filters.StateFilters,
+			WorkstreamID: in.Filters.WorkstreamID,
+			Tags:         in.Filters.Tags, StateFilters: in.Filters.StateFilters,
 			Since: in.Filters.Since, Until: in.Filters.Until,
 		})
 		if err != nil {
@@ -337,7 +340,7 @@ func projectResults(results []RecallResult, mode memory.PayloadMode) any {
 			p.Revision = &projected.Revision
 			p.PointerHealth = projected.PointerHealth
 		} else {
-			item := &ProjectedWorkspaceItem{ItemID: r.Item.ItemID, Domain: workspace.Domain, Namespace: r.Item.Namespace, Key: r.Item.Key, UpdatedAt: r.Item.UpdatedAt}
+			item := &ProjectedWorkspaceItem{ItemID: r.Item.ItemID, Domain: workspace.Domain, Namespace: r.Item.Namespace, Key: r.Item.Key, WorkstreamID: r.Item.WorkstreamID, Provenance: r.Item.Provenance, UpdatedAt: r.Item.UpdatedAt}
 			if mode == memory.PayloadModeSummary {
 				item.Payload = &WorkspacePayload{Summary: r.Item.Payload.Summary}
 				item.Tags = r.Item.Tags

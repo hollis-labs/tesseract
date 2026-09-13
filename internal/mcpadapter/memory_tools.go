@@ -32,6 +32,7 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 			"At most 6 segments, 64 characters per segment, 256 characters total. "+
 			"Hyphens, uppercase and spaces are REJECTED with a validation_error, not normalized away: `user.prefs-style` and `User.Prefs.Style` both fail. "+
 			"This rule is memory-domain only; `knowledge_write` keys are free-form slugs.")),
+		mcp.WithString("workstream_id", mcp.Description("Optional opaque workstream association. Omit to preserve an existing item's association; send an empty string to clear it.")),
 		mcp.WithString("supersedes", mcp.Description("Revision ID this revision supersedes (e.g. 01HX...)")),
 		mcp.WithString("status", mcp.Description("Status: draft|reviewed|canonical (default: draft)")),
 		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the author (e.g. claude, nanite)")),
@@ -92,17 +93,22 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 	}
 
 	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
+	workstreamID, workstreamErr := workstreamWriteArg(req)
+	if workstreamErr != nil {
+		return workstreamErr, nil
+	}
 
 	in := memory.WriteInput{
 		// `memory_write` is the memory surface and declares no `domain`
 		// argument, so the caller has nothing to fill in. The domain is a
 		// property of the TOOL, and it is set here rather than defaulted in
 		// the store — see errDomainRequired in internal/memory/write.go.
-		Domain:     domains.Memory,
-		Namespace:  req.GetString("namespace", ""),
-		MemoryKey:  req.GetString("memory_key", ""),
-		Supersedes: req.GetString("supersedes", ""),
-		Status:     memory.Status(req.GetString("status", "")),
+		Domain:       domains.Memory,
+		Namespace:    req.GetString("namespace", ""),
+		MemoryKey:    req.GetString("memory_key", ""),
+		WorkstreamID: workstreamID,
+		Supersedes:   req.GetString("supersedes", ""),
+		Status:       memory.Status(req.GetString("status", "")),
 		Author: memory.Author{
 			AgentID:      req.GetString("author_agent_id", ""),
 			AgentVersion: req.GetString("author_version", ""),

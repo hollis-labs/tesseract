@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
+	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/propagation"
@@ -156,10 +158,9 @@ type gatewayMetadata struct {
 	UpstreamTrace trace.SpanContext
 }
 
-// gatewayMetadataContextKey is unexported and uniquely typed, so nothing
-// outside this package can write the channel by guessing a key. That is the
-// property a provenance stamp will depend on: what arrives here arrived from
-// the middleware, never from a caller's arguments.
+// gatewayMetadataContextKey is unexported and uniquely typed. Provenance is
+// recorded separately as an unverified receiver receipt; this key remains the
+// compatibility channel for upstream tracing only.
 type gatewayMetadataContextKey struct{}
 
 // contextWithGatewayMetadata attaches one call's parsed transport metadata.
@@ -173,6 +174,82 @@ func contextWithGatewayMetadata(ctx context.Context, meta gatewayMetadata) conte
 func gatewayMetadataFromContext(ctx context.Context) gatewayMetadata {
 	meta, _ := ctx.Value(gatewayMetadataContextKey{}).(gatewayMetadata)
 	return meta
+}
+
+const (
+	tetherProvenanceKey        = "tether.provenance"
+	maxProvenanceEnvelopeBytes = 1024
+)
+
+// parseTetherProvenance accepts exactly the version-one bounded envelope. A
+// malformed optional envelope is discarded; callers still reach the handler.
+func parseTetherProvenance(meta *mcp.Meta) (memory.WriteContext, string) {
+	if meta == nil || meta.AdditionalFields == nil {
+		return memory.WriteContext{}, ""
+	}
+	raw, present := meta.AdditionalFields[tetherProvenanceKey]
+	if !present {
+		return memory.WriteContext{}, ""
+	}
+	object, ok := raw.(map[string]any)
+	if !ok {
+		return memory.WriteContext{}, "not_object"
+	}
+	if len(object) > 3 {
+		return memory.WriteContext{}, "unknown_field"
+	}
+	for key := range object {
+		if key != "schema_version" && key != "session_id" && key != "workstream_id" {
+			return memory.WriteContext{}, "unknown_field"
+		}
+	}
+	encoded, err := json.Marshal(object)
+	if err != nil || len(encoded) > maxProvenanceEnvelopeBytes {
+		return memory.WriteContext{}, "oversized_or_unencodable"
+	}
+	if !isSchemaVersionOne(object["schema_version"]) {
+		return memory.WriteContext{}, "unsupported_schema_version"
+	}
+	sessionID, ok := object["session_id"].(string)
+	if !ok || sessionID == "" || len(sessionID) > memory.ProvenanceSessionIDMaxBytes {
+		return memory.WriteContext{}, "invalid_session_id"
+	}
+	workstreamID := ""
+	if value, supplied := object["workstream_id"]; supplied {
+		var stringOK bool
+		workstreamID, stringOK = value.(string)
+		if !stringOK || workstreamID == "" || memory.ValidateWorkstreamID(workstreamID) != nil {
+			return memory.WriteContext{}, "invalid_workstream_id"
+		}
+	}
+	return memory.WriteContext{Issuer: "tether", Verification: "unverified", SessionID: sessionID, WorkstreamID: workstreamID}, ""
+}
+
+func isSchemaVersionOne(value any) bool {
+	switch v := value.(type) {
+	case float64:
+		return v == 1
+	case int:
+		return v == 1
+	case int64:
+		return v == 1
+	case json.Number:
+		return v.String() == "1"
+	default:
+		return false
+	}
+}
+
+func provenanceContext(ctx context.Context, req mcp.CallToolRequest, logger *slog.Logger) context.Context {
+	writeContext, reason := parseTetherProvenance(req.Params.Meta)
+	if reason != "" {
+		logger.WarnContext(ctx, "discarded optional tether provenance", "reason", reason)
+		return ctx
+	}
+	if writeContext.SessionID == "" {
+		return ctx
+	}
+	return memory.ContextWithWriteContext(ctx, writeContext)
 }
 
 // stripGatewayMetadata removes the accepted keys from a call's arguments and

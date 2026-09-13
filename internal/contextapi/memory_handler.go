@@ -34,6 +34,7 @@ type memoryWriteRequest struct {
 	Domain         domains.Domain     `json:"domain,omitempty"`
 	Namespace      string             `json:"namespace"`
 	MemoryKey      string             `json:"memory_key,omitempty"`
+	WorkstreamID   presentString      `json:"workstream_id,omitempty"`
 	Supersedes     string             `json:"supersedes,omitempty"`
 	Status         memory.Status      `json:"status,omitempty"`
 	Author         memory.Author      `json:"author"`
@@ -88,6 +89,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		Domain:         req.Domain,
 		Namespace:      req.Namespace,
 		MemoryKey:      req.MemoryKey,
+		WorkstreamID:   req.WorkstreamID.Pointer(),
 		Supersedes:     req.Supersedes,
 		Status:         req.Status,
 		Author:         req.Author,
@@ -120,6 +122,7 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 }
 
 type memoryRecallRequest struct {
+	WorkstreamID  string               `json:"workstream_id,omitempty"`
 	Namespaces    []string             `json:"namespaces"`
 	RevisionScope memory.RevisionScope `json:"revision_scope,omitempty"`
 	Ranking       memory.Ranking       `json:"ranking,omitempty"`
@@ -224,6 +227,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		Query:         req.Query,
 		Filters:       filters,
 	}
+	in.Filters.WorkstreamID = req.WorkstreamID
 	page, err := s.itemService().RecallPaged(r.Context(), in, pr)
 	if err != nil {
 		writeRecallError(w, err, "recall_failed")

@@ -39,6 +39,7 @@ func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 			"The bare forms {scope}/{id}/memory and {scope}/{id}/event also match every type, as a grandfathered shorthand — but a bare knowledge namespace is EXACT, not a prefix, so use the explicit /* there. "+
 			"e.g. [\"project/tesseract/memory/decisions\",\"project/tesseract/knowledge/*\"].")),
 		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
+		mcp.WithString("workstream_id", mcp.Description("Exact opaque workstream association filter, applied before ranking and limits.")),
 		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation). "+
 			"`activation` is defined only over domains that take part in activation, so asking for it over `event` is a validation_error rather than an ordering by a constant; an event-only recall that names no ranking resolves to `chronological`.")),
 		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
@@ -238,6 +239,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
 		Query:      req.GetString("query", ""),
 		Filters: memory.RecallFilters{
+			WorkstreamID:  req.GetString("workstream_id", ""),
 			DerivedFrom:   derivedFrom,
 			Statuses:      statuses,
 			Tags:          tags,

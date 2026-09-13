@@ -40,22 +40,24 @@ type WorkspacePayload struct {
 // WorkspaceItem is the public current-read shape. Content remains nested under
 // payload, matching existing revision reads.
 type WorkspaceItem struct {
-	ItemID        string           `json:"item_id"`
-	Domain        string           `json:"domain"`
-	VersionToken  string           `json:"version_token"`
-	Namespace     string           `json:"namespace"`
-	Key           string           `json:"key,omitempty"`
-	Payload       WorkspacePayload `json:"payload"`
-	Tags          []string         `json:"tags,omitempty"`
-	ConsumerState json.RawMessage  `json:"consumer_state,omitempty"`
-	Author        memory.Author    `json:"author"`
-	SessionID     string           `json:"session_id"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
-	Activation    float64          `json:"activation"`
-	AccessCount   int64            `json:"access_count"`
-	LastUsedAt    time.Time        `json:"last_used_at"`
-	LastDecayedAt time.Time        `json:"last_decayed_at"`
+	ItemID        string             `json:"item_id"`
+	Domain        string             `json:"domain"`
+	VersionToken  string             `json:"version_token"`
+	Namespace     string             `json:"namespace"`
+	Key           string             `json:"key,omitempty"`
+	WorkstreamID  string             `json:"workstream_id,omitempty"`
+	Provenance    *memory.Provenance `json:"provenance,omitempty"`
+	Payload       WorkspacePayload   `json:"payload"`
+	Tags          []string           `json:"tags,omitempty"`
+	ConsumerState json.RawMessage    `json:"consumer_state,omitempty"`
+	Author        memory.Author      `json:"author"`
+	SessionID     string             `json:"session_id"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	Activation    float64            `json:"activation"`
+	AccessCount   int64              `json:"access_count"`
+	LastUsedAt    time.Time          `json:"last_used_at"`
+	LastDecayedAt time.Time          `json:"last_decayed_at"`
 }
 
 type ReadResult struct {
@@ -66,7 +68,7 @@ type ReadResult struct {
 func PublicWorkspaceItem(item workspace.Item) WorkspaceItem {
 	return WorkspaceItem{
 		ItemID: item.ItemID, Domain: workspace.Domain, VersionToken: item.VersionToken,
-		Namespace: item.Namespace, Key: item.Key,
+		Namespace: item.Namespace, Key: item.Key, WorkstreamID: item.WorkstreamID, Provenance: item.Provenance,
 		Payload: WorkspacePayload{Summary: item.Summary, Body: item.Body, Data: item.Data, DataSchemaHash: item.DataSchemaHash},
 		Tags:    item.Tags, ConsumerState: item.ConsumerState, Author: item.Author, SessionID: item.SessionID,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Activation: item.Activation,

@@ -14,7 +14,7 @@ Tesseract domain that updates content in place. Every live item has a stable
 
 Use a namespace shaped like `{scope}/{id}/workspace/{anything}/...`, normally
 `project/<project-id>/workspace/<purpose>`. A `workstream_id`, when useful, is
-content or consumer state rather than another namespace tier.
+an item attribute rather than another namespace tier.
 
 ## Create and retry safely
 
@@ -25,6 +25,7 @@ create also requires `idempotency_key`; keyed creates may provide one.
 ```text
 workspace_write namespace="project/example/workspace/scratch" \
   idempotency_key="session-42-draft-1" \
+  workstream_id="CW-20260912-0128" \
   summary="Current draft" body="Working content" \
   consumer_state='{"phase":"draft"}' \
   author_agent_id="assistant" session_id="session-42"
@@ -69,6 +70,7 @@ level:
   "domain":"workspace",
   "version_token":"01HTOKEN...",
   "namespace":"project/example/workspace/scratch",
+  "workstream_id":"CW-20260912-0128",
   "key":"release-notes",
   "payload":{"summary":"Current draft","body":"Working content"}
 }
@@ -76,7 +78,7 @@ level:
 
 Edit through `workspace_write` with `item_id` and the current `version_token`.
 Only supplied fields change. `clear_fields` removes optional `key`, `body`,
-`data`, `tags`, or `consumer_state`. A stale token returns
+`data`, `tags`, `consumer_state`, or `workstream_id`. A stale token returns
 `version_conflict`; a rename to an occupied live key returns `key_conflict`.
 An edit returns a fresh token.
 
@@ -104,10 +106,16 @@ tesseract_recall \
 
 Workspace supports lexical relevance, activation, and chronological ordering.
 It has no embeddings, so semantic/similarity modes are rejected. It has no
-timeline, revision status, confidence, provenance, knowledge facets, pointers,
-or link graph; filters for those revision-only fields are rejected when
-workspace is included. Tags, `state_filters`, and `since`/`until` apply before
-the result limit.
+timeline, revision status, confidence, knowledge facets, pointers, or link graph;
+filters for those revision-only fields are rejected when workspace is included.
+Tags, `workstream_id`, `state_filters`, and `since`/`until` apply before the
+result limit.
+
+Workspace returns the current association as top-level `workstream_id`. Its
+`provenance.write_context` is the latest successful authored edit's bounded
+receiver receipt. A later unstamped edit removes an older receipt so current
+state never presents stale transport context. Create retries return the original
+receipt and never rewrite association or provenance from the retrying request.
 
 Recall returns a typed alternative: a revision result has `revision`, while a
 workspace result has `item`. Projected workspace results retain `item_id`, so

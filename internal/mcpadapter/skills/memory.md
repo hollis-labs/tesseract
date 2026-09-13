@@ -243,6 +243,21 @@ the near-miss and accepted set, and HTTP gives the accepted top-level fields.
 trace context into the arguments map; every other `_name` is refused exactly
 like any other undeclared name.
 
+## Workstream association and write receipts
+
+Pass optional `workstream_id` to associate a revisioned item with one workstream.
+The value is opaque and exact. Omission preserves the current association; an
+explicit empty string clears it. A new item written through Tether may initialize
+the association from `_meta["tether.provenance"]`, but later omitted writes do not
+follow a different transport workstream.
+
+Results keep the association at top level. When Tether supplied a valid bounded
+version-one envelope, the individual revision also carries
+`provenance.write_context` with `issuer="tether"`, `verification="unverified"`,
+the receiver session, and optional workstream. This is a receipt of what the
+receiver was handed, not authentication. Filter exact associations with
+`tesseract_recall workstream_id=...`.
+
 **The `derived_from` section is the same rule, not a different one.** A retired
 spelling such as `origin` is refused because it is undeclared — the same check
 refuses a typo, a guess, or an argument borrowed from the wrong tool. What a

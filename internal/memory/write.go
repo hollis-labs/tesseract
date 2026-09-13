@@ -23,9 +23,12 @@ type WriteInput struct {
 	// Domain selects the revision's policy bucket. REQUIRED — there is no
 	// default, and an empty value is a validation error carrying
 	// errDomainRequired. See that message for why the default was removed.
-	Domain         domains.Domain
-	Namespace      string
-	MemoryKey      string
+	Domain    domains.Domain
+	Namespace string
+	MemoryKey string
+	// WorkstreamID is presence-capable: nil preserves the current association,
+	// a nonempty value sets it, and a pointer to empty clears it.
+	WorkstreamID   *string
 	Supersedes     string
 	Status         Status
 	Author         Author
@@ -125,6 +128,14 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	if err != nil {
 		return Revision{}, fmt.Errorf("resolve memory: %w", err)
 	}
+	workstreamID, err := resolveRevisionWorkstream(ctx, tx, memoryID, in.WorkstreamID)
+	if err != nil {
+		return Revision{}, err
+	}
+	writeContextValue, provenance, err := EncodeWriteContext(ctx)
+	if err != nil {
+		return Revision{}, err
+	}
 
 	status := in.Status
 	if status == "" {
@@ -186,8 +197,8 @@ INSERT INTO memory_revisions (
     confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
     payload_data, payload_data_schema_hash,
     facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
-    consumer_state
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    consumer_state, workstream_id, write_context
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID,
 		memoryID,
 		string(in.Domain),
@@ -218,6 +229,8 @@ INSERT INTO memory_revisions (
 		nullStr(pointerLocator),
 		nullTime(pointerResolvedAt),
 		nullStr(string(in.ConsumerState)),
+		optionalWorkstream(workstreamID),
+		writeContextValue,
 	)
 	if err != nil {
 		return Revision{}, fmt.Errorf("insert revision: %w", err)
@@ -356,6 +369,8 @@ INSERT INTO memory_revisions (
 		Domain:        in.Domain,
 		Namespace:     in.Namespace,
 		MemoryKey:     in.MemoryKey,
+		WorkstreamID:  workstreamID,
+		Provenance:    provenance,
 		Status:        status,
 		Supersedes:    in.Supersedes,
 		CreatedAt:     now,
@@ -373,6 +388,34 @@ INSERT INTO memory_revisions (
 		DedupMatch:    dedupMatch,
 	}
 	return rev, nil
+}
+
+func optionalWorkstream(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func resolveRevisionWorkstream(ctx context.Context, tx *sql.Tx, memoryID string, explicit *string) (string, error) {
+	if explicit != nil {
+		return *explicit, nil
+	}
+	var currentRevision sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT current_revision FROM memory_state WHERE memory_id = ?`, memoryID).Scan(&currentRevision); err != nil {
+		return "", fmt.Errorf("read current workstream association: %w", err)
+	}
+	if currentRevision.Valid && currentRevision.String != "" {
+		var current sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT workstream_id FROM memory_revisions WHERE revision_id = ?`, currentRevision.String).Scan(&current); err != nil {
+			return "", fmt.Errorf("read current workstream association: %w", err)
+		}
+		return current.String, nil
+	}
+	if received := WriteContextFromContext(ctx); received != nil {
+		return received.WorkstreamID, nil
+	}
+	return "", nil
 }
 
 // resolveOrCreateMemory finds an existing memory_state by (namespace, key)
@@ -455,6 +498,11 @@ It is required rather than defaulted because a default is indistinguishable ` +
 	`inference through this default rather than by construction.`
 
 func validateWriteInput(in WriteInput) error {
+	if in.WorkstreamID != nil {
+		if err := ValidateWorkstreamID(*in.WorkstreamID); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		}
+	}
 	if in.Domain == "" {
 		return fmt.Errorf("%w: %s", ErrInvalidInput, errDomainRequired)
 	}

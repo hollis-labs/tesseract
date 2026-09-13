@@ -30,10 +30,11 @@ import (
 // rest of the HTTP API to match another protocol's ergonomics would be a worse
 // inconsistency than the one it removed.
 type eventWriteRequest struct {
-	Namespace string `json:"namespace"`
-	Key       string `json:"key,omitempty"`
-	Summary   string `json:"summary"`
-	Body      string `json:"body,omitempty"`
+	Namespace    string        `json:"namespace"`
+	Key          string        `json:"key,omitempty"`
+	WorkstreamID presentString `json:"workstream_id,omitempty"`
+	Summary      string        `json:"summary"`
+	Body         string        `json:"body,omitempty"`
 	// The record's own fields, stored verbatim and never interpreted.
 	// See internal/memory/payloaddata.go.
 	Data           json.RawMessage    `json:"data,omitempty"`
@@ -78,6 +79,7 @@ func (s *Server) handleEventWrite(w http.ResponseWriter, r *http.Request) {
 	rev, err := s.EventStore.Write(r.Context(), event.WriteInput{
 		Namespace:      req.Namespace,
 		Key:            req.Key,
+		WorkstreamID:   req.WorkstreamID.Pointer(),
 		Summary:        req.Summary,
 		Body:           req.Body,
 		Data:           req.Data,
@@ -144,9 +146,10 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := memory.EventLogInput{
-		Namespaces: namespaces,
-		Direction:  memory.LogDirection(q.Get("direction")),
-		Cursor:     q.Get("cursor"),
+		Namespaces:   namespaces,
+		WorkstreamID: q.Get("workstream_id"),
+		Direction:    memory.LogDirection(q.Get("direction")),
+		Cursor:       q.Get("cursor"),
 	}
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)

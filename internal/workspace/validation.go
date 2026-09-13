@@ -13,6 +13,11 @@ const maxJSONBytes = 1 << 20
 var schemaHashRE = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func validateCreate(in CreateInput) error {
+	if in.WorkstreamID != nil {
+		if err := memory.ValidateWorkstreamID(*in.WorkstreamID); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		}
+	}
 	if err := memory.ValidateWorkspaceNamespace(in.Namespace); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
@@ -51,7 +56,7 @@ func validateEdit(in EditInput) (map[ClearField]bool, error) {
 	clears := make(map[ClearField]bool, len(in.ClearFields))
 	for _, field := range in.ClearFields {
 		switch field {
-		case ClearKey, ClearBody, ClearData, ClearTags, ClearConsumerState:
+		case ClearKey, ClearBody, ClearData, ClearTags, ClearConsumerState, ClearWorkstreamID:
 		default:
 			return nil, fmt.Errorf("%w: field %q cannot be cleared", ErrInvalidInput, field)
 		}
@@ -91,6 +96,11 @@ func validateEdit(in EditInput) (map[ClearField]bool, error) {
 			return nil, err
 		}
 	}
+	if in.WorkstreamID != nil {
+		if err := memory.ValidateWorkstreamID(*in.WorkstreamID); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		}
+	}
 
 	for field, supplied := range map[ClearField]bool{
 		ClearKey:           in.Key != nil,
@@ -98,6 +108,7 @@ func validateEdit(in EditInput) (map[ClearField]bool, error) {
 		ClearData:          in.Data != nil || in.DataSchemaHash != nil,
 		ClearTags:          in.Tags != nil,
 		ClearConsumerState: in.ConsumerState != nil,
+		ClearWorkstreamID:  in.WorkstreamID != nil,
 	} {
 		if supplied && clears[field] {
 			return nil, fmt.Errorf("%w: field %q cannot be supplied and cleared", ErrInvalidInput, field)
@@ -105,7 +116,7 @@ func validateEdit(in EditInput) (map[ClearField]bool, error) {
 	}
 
 	if in.Key == nil && in.Summary == nil && in.Body == nil && in.Data == nil &&
-		in.DataSchemaHash == nil && in.Tags == nil && in.ConsumerState == nil && len(clears) == 0 {
+		in.DataSchemaHash == nil && in.Tags == nil && in.ConsumerState == nil && in.WorkstreamID == nil && len(clears) == 0 {
 		return nil, fmt.Errorf("%w: edit has no editable fields", ErrInvalidInput)
 	}
 	return clears, nil

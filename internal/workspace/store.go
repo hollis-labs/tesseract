@@ -17,7 +17,8 @@ import (
 
 const itemColumns = `item_id, version_token, namespace, key_name, summary, body,
 	data, data_schema_hash, tags, consumer_state, author_agent_id, author_version,
-	session_id, created_at, updated_at, activation, access_count, last_used_at, last_decayed_at`
+	session_id, created_at, updated_at, activation, access_count, last_used_at, last_decayed_at,
+	workstream_id, write_context`
 
 var errRetryReceiptRace = errors.New("retry workspace receipt race")
 
@@ -161,13 +162,23 @@ func (s *Store) createInTx(ctx context.Context, tx *sql.Tx, in CreateInput) (Ite
 	if err != nil {
 		return Item{}, err
 	}
+	workstreamID := ""
+	if in.WorkstreamID != nil {
+		workstreamID = *in.WorkstreamID
+	} else if received := memory.WriteContextFromContext(ctx); received != nil {
+		workstreamID = received.WorkstreamID
+	}
+	writeContextValue, _, err := memory.EncodeWriteContext(ctx)
+	if err != nil {
+		return Item{}, err
+	}
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO workspace_items (`+itemColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, 0, ?, ?, ?, ?)`,
 		itemID, versionToken, in.Namespace, key, in.Summary, optionalText(in.Body), optionalJSON(in.Data),
 		optionalText(in.DataSchemaHash), tags, optionalJSON(in.ConsumerState), in.Author.AgentID,
 		in.Author.AgentVersion, in.SessionID, memorytime.Format(now), memorytime.Format(now),
-		memorytime.Format(now), memorytime.Format(now))
+		memorytime.Format(now), memorytime.Format(now), optionalText(workstreamID), writeContextValue)
 	if err != nil {
 		if isLiveKeyConstraint(err) {
 			return Item{}, fmt.Errorf("%w: live key is already occupied", ErrKeyConflict)
@@ -195,7 +206,8 @@ func createDigest(in CreateInput) (string, error) {
 		ConsumerState  json.RawMessage `json:"consumer_state"`
 		Author         memory.Author   `json:"author"`
 		SessionID      string          `json:"session_id"`
-	}{in.Namespace, in.Key, in.Summary, in.Body, in.Data, in.DataSchemaHash, in.Tags, in.ConsumerState, in.Author, in.SessionID})
+		WorkstreamID   *string         `json:"workstream_id,omitempty"`
+	}{in.Namespace, in.Key, in.Summary, in.Body, in.Data, in.DataSchemaHash, in.Tags, in.ConsumerState, in.Author, in.SessionID, in.WorkstreamID})
 	if err != nil {
 		return "", fmt.Errorf("encode workspace create digest: %w", err)
 	}
@@ -242,10 +254,14 @@ func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearFiel
 	defer func() { _ = tx.Rollback() }()
 	sets := []string{
 		"version_token = ?", "updated_at = ?", "author_agent_id = ?", "author_version = ?", "session_id = ?",
-		"access_count = access_count + 1", "last_used_at = ?",
+		"access_count = access_count + 1", "last_used_at = ?", "write_context = ?",
 	}
 	now := s.now().UTC()
-	args := []any{newToken, memorytime.Format(now), in.Author.AgentID, in.Author.AgentVersion, in.SessionID, memorytime.Format(now)}
+	writeContextValue, _, err := memory.EncodeWriteContext(ctx)
+	if err != nil {
+		return Item{}, err
+	}
+	args := []any{newToken, memorytime.Format(now), in.Author.AgentID, in.Author.AgentVersion, in.SessionID, memorytime.Format(now), writeContextValue}
 	if in.Key != nil {
 		sets = append(sets, "key_name = ?")
 		args = append(args, *in.Key)
@@ -288,6 +304,12 @@ func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearFiel
 		args = append(args, string(*in.ConsumerState))
 	} else if clears[ClearConsumerState] {
 		sets = append(sets, "consumer_state = NULL")
+	}
+	if in.WorkstreamID != nil {
+		sets = append(sets, "workstream_id = ?")
+		args = append(args, optionalText(*in.WorkstreamID))
+	} else if clears[ClearWorkstreamID] {
+		sets = append(sets, "workstream_id = NULL")
 	}
 	args = append(args, in.ItemID, in.VersionToken)
 	// #nosec G202 -- every SET clause above is a fixed internal literal; only
@@ -558,16 +580,24 @@ func getLiveByKey(ctx context.Context, q interface {
 
 func scanItem(row scanner) (Item, error) {
 	var item Item
-	var key, body, data, dataHash, tags, consumer sql.NullString
+	var key, body, data, dataHash, tags, consumer, workstreamID, writeContext sql.NullString
 	var createdRaw, updatedRaw, usedRaw, decayedRaw string
 	err := row.Scan(&item.ItemID, &item.VersionToken, &item.Namespace, &key, &item.Summary, &body,
 		&data, &dataHash, &tags, &consumer, &item.Author.AgentID, &item.Author.AgentVersion,
-		&item.SessionID, &createdRaw, &updatedRaw, &item.Activation, &item.AccessCount, &usedRaw, &decayedRaw)
+		&item.SessionID, &createdRaw, &updatedRaw, &item.Activation, &item.AccessCount, &usedRaw, &decayedRaw,
+		&workstreamID, &writeContext)
 	if err != nil {
 		return Item{}, err
 	}
 	item.Domain = Domain
 	item.Key, item.Body, item.DataSchemaHash = key.String, body.String, dataHash.String
+	item.WorkstreamID = workstreamID.String
+	if writeContext.Valid {
+		item.Provenance, err = memory.DecodeWriteContext(writeContext.String)
+		if err != nil {
+			return Item{}, err
+		}
+	}
 	if data.Valid {
 		item.Data = json.RawMessage(data.String)
 	}

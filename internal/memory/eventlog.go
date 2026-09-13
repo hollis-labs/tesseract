@@ -84,6 +84,7 @@ const (
 // the same transaction, so the log shows exactly one row per logical entry
 // without needing a join through memory_state.current_revision.
 type EventLogInput struct {
+	WorkstreamID string
 	// Namespaces selects which logs to read, exact or by prefix — the same
 	// vocabulary recall accepts, so `user/chrispian/event` reads every stream
 	// and `user/chrispian/event/journal` reads one. Required: a log read with
@@ -178,6 +179,9 @@ func ProjectEventLogPage(page EventLogPage, mode PayloadMode) EventLogResponse {
 // and knowledge are curated corpora read by relevance, and a log read over
 // them would be a second door onto the same rows with no question behind it.
 func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPage, error) {
+	if err := ValidateWorkstreamID(in.WorkstreamID); err != nil {
+		return EventLogPage{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
 	if len(in.Namespaces) == 0 {
 		return EventLogPage{}, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
 	}
@@ -217,6 +221,10 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces, []string{string(domains.Event)})
 	where = append(where, nsFrag)
 	args = append(args, nsArgs...)
+	if in.WorkstreamID != "" {
+		where = append(where, "r.workstream_id = ?")
+		args = append(args, in.WorkstreamID)
+	}
 
 	// See EventLogInput: retraction is what deprecation means for a log entry.
 	where = append(where, "r.status != ?")
@@ -401,7 +409,7 @@ func decodeLogCursor(raw, fingerprint string) (*logPosition, error) {
 	}
 	if p.F != fingerprint {
 		return nil, fmt.Errorf("%w: cursor was issued for a different log read — "+
-			"namespaces, direction, since or until changed since it was issued; "+
+			"namespaces, direction, since, until, or workstream_id changed since it was issued; "+
 			"restart paging without a cursor", ErrInvalidCursor)
 	}
 	return &p.P, nil
@@ -419,14 +427,16 @@ func eventLogOrderingFingerprint(in EventLogInput) string {
 		direction = LogNewestFirst
 	}
 	return fingerprintOf(struct {
-		Namespaces []string `json:"ns"`
-		Direction  string   `json:"dir"`
-		Since      string   `json:"since"`
-		Until      string   `json:"until"`
+		Namespaces   []string `json:"ns"`
+		Direction    string   `json:"dir"`
+		Since        string   `json:"since"`
+		Until        string   `json:"until"`
+		WorkstreamID string   `json:"workstream_id"`
 	}{
-		Namespaces: sortedCopy(in.Namespaces),
-		Direction:  string(direction),
-		Since:      formatTimePtr(in.Since),
-		Until:      formatTimePtr(in.Until),
+		Namespaces:   sortedCopy(in.Namespaces),
+		Direction:    string(direction),
+		Since:        formatTimePtr(in.Since),
+		Until:        formatTimePtr(in.Until),
+		WorkstreamID: in.WorkstreamID,
 	})
 }

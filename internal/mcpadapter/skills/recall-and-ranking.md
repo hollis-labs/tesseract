@@ -72,11 +72,17 @@ Two more things `lexical` does differently from `hybrid`: `AND`, `OR` and `NOT` 
 
 `tesseract_recall` answers with an envelope: `{results, facets, manifest}`. Inside `results`, every entry carries exactly one typed alternative: `{revision, score}` or `{item, score}` for workspace. `facets` counts the rows this page returned, not the whole match set.
 
+Pass `workstream_id` for an exact association filter across revisioned domains and
+opt-in workspace. It runs in each store before ranking, totals, limits, fusion,
+projection, and pagination. Current scope tests the current revision's association;
+timeline scope tests each immutable revision's own association. An unknown value
+returns an empty authorized result.
+
 How much of each result you get is set by `payload_mode`:
 
 | `payload_mode` | Each result carries |
 |---|---|
-| `keys` | `revision.{revision_id, item_id, memory_id, domain, namespace, memory_key, created_at}` + `score`. The browse/enumerate shape. |
+| `keys` | `revision.{revision_id, item_id, memory_id, domain, namespace, memory_key, workstream_id?, provenance?, created_at}` + `score`. The browse/enumerate shape. |
 | `summary` | `keys` + `revision.{status, tags, confidence}` + `revision.payload.summary`. The default. |
 | `full` | The whole revision including `revision.payload.body`, plus `state`. |
 

@@ -26,25 +26,27 @@ var (
 
 // Item is the one current authored state of a live workspace object.
 type Item struct {
-	ItemID         string          `json:"item_id"`
-	Domain         string          `json:"domain"`
-	VersionToken   string          `json:"version_token"`
-	Namespace      string          `json:"namespace"`
-	Key            string          `json:"key,omitempty"`
-	Summary        string          `json:"summary"`
-	Body           string          `json:"body,omitempty"`
-	Data           json.RawMessage `json:"data,omitempty"`
-	DataSchemaHash string          `json:"data_schema_hash,omitempty"`
-	Tags           []string        `json:"tags,omitempty"`
-	ConsumerState  json.RawMessage `json:"consumer_state,omitempty"`
-	Author         memory.Author   `json:"author"`
-	SessionID      string          `json:"session_id"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	Activation     float64         `json:"activation"`
-	AccessCount    int64           `json:"access_count"`
-	LastUsedAt     time.Time       `json:"last_used_at"`
-	LastDecayedAt  time.Time       `json:"last_decayed_at"`
+	ItemID         string             `json:"item_id"`
+	Domain         string             `json:"domain"`
+	VersionToken   string             `json:"version_token"`
+	Namespace      string             `json:"namespace"`
+	Key            string             `json:"key,omitempty"`
+	WorkstreamID   string             `json:"workstream_id,omitempty"`
+	Provenance     *memory.Provenance `json:"provenance,omitempty"`
+	Summary        string             `json:"summary"`
+	Body           string             `json:"body,omitempty"`
+	Data           json.RawMessage    `json:"data,omitempty"`
+	DataSchemaHash string             `json:"data_schema_hash,omitempty"`
+	Tags           []string           `json:"tags,omitempty"`
+	ConsumerState  json.RawMessage    `json:"consumer_state,omitempty"`
+	Author         memory.Author      `json:"author"`
+	SessionID      string             `json:"session_id"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	Activation     float64            `json:"activation"`
+	AccessCount    int64              `json:"access_count"`
+	LastUsedAt     time.Time          `json:"last_used_at"`
+	LastDecayedAt  time.Time          `json:"last_decayed_at"`
 }
 
 // Metadata is safe to resolve before namespace authorization. Tombstones carry
@@ -69,6 +71,7 @@ type CreateInput struct {
 	ConsumerState  json.RawMessage
 	Author         memory.Author
 	SessionID      string
+	WorkstreamID   *string
 }
 
 // CreateRequest adds retry identity to the authored create arguments. Keyless
@@ -107,6 +110,7 @@ const (
 	ClearData          ClearField = "data"
 	ClearTags          ClearField = "tags"
 	ClearConsumerState ClearField = "consumer_state"
+	ClearWorkstreamID  ClearField = "workstream_id"
 )
 
 // EditInput is a conditional partial mutation. A nil pointer means omitted;
@@ -121,6 +125,7 @@ type EditInput struct {
 	DataSchemaHash *string
 	Tags           *[]string
 	ConsumerState  *json.RawMessage
+	WorkstreamID   *string
 	ClearFields    []ClearField
 	Author         memory.Author
 	SessionID      string
@@ -146,6 +151,7 @@ type SearchResult struct {
 // in SQL before Limit so a selective query cannot be sampled from an unrelated
 // truncated result set.
 type RecallInput struct {
+	WorkstreamID string
 	Namespaces   []string
 	Query        string
 	Ranking      memory.Ranking

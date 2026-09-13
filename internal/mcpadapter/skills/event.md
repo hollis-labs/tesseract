@@ -65,9 +65,15 @@ A bare `user/chrispian/event` reads every stream under that scope — the same p
 
 `event_write` takes flat arguments. Required: `namespace`, `summary`, `author_agent_id`, `session_id`.
 
+Optional `workstream_id` associates the log item with an opaque exact workstream.
+Filter the ordered log with the same argument on `event_list`; the filter is
+applied before the keyset page limit. A valid Tether provenance envelope is stored
+separately on the revision as an unverified `provenance.write_context` receipt.
+
 ```json
 {
   "namespace": "user/chrispian/session/session-20260910-85916030/event/reasoning",
+  "workstream_id": "CW-20260912-0128",
   "summary": "Chose a dedicated log read over ranking=chronological",
   "body": "Recall's fetchCandidates issues no ORDER BY and no LIMIT — it loads every matching row into Go before windowing. Fine at 2k revisions, quadratic-feeling at log volumes. Also its cursor is an offset, and a log is appended at the head, so page 2 would repeat rows written between pages. Went with keyset pagination pushed into SQL. Rejected: adding a LIMIT to fetchCandidates, which would have changed recall's Total semantics for every caller.",
   "author_agent_id": "claude-code",
@@ -117,6 +123,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/event/write" \
 ```json
 {
   "namespaces": ["user/chrispian/session/session-20260910-85916030/event/reasoning"],
+  "workstream_id": "CW-20260912-0128",
   "direction": "oldest_first",
   "limit": 50
 }
@@ -127,6 +134,7 @@ It answers `{entries: [...], manifest: {returned, limit, direction, has_more, ne
 - **`direction`** — `newest_first` (default: what just happened) or `oldest_first` (replay, in the order it was reasoned).
 - **`since` / `until`** — RFC3339 bounds on `created_at`, inclusive. This is why namespaces carry no date segments.
 - **`payload_mode`** — `keys` | `summary` | `full`, as on recall. Under `keys` and `summary` an absent `payload.body` means **withheld, never empty**; the manifest says which mode you got.
+- **`workstream_id`** — exact association filter, applied before the page limit.
 
 ### Paging is by position, not offset
 

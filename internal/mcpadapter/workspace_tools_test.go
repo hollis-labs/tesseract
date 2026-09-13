@@ -7,7 +7,38 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
+
+func TestRegisteredWorkspaceWriteCapturesTetherProvenance(t *testing.T) {
+	a := workspaceAdapter(t)
+	srv := server.NewMCPServer("provenance-test", "0.0.0", server.WithToolCapabilities(true))
+	a.RegisterAllTools(srv)
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "workspace_write"
+	req.Params.Arguments = map[string]any{
+		"namespace": mcpWorkspaceNS, "idempotency_key": "provenance-create", "summary": "received",
+		"author_agent_id": "mcp-test", "session_id": "author-session",
+	}
+	req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+		tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": "tether-session", "workstream_id": "ws-received"},
+	}}
+	res, err := srv.ListTools()["workspace_write"].Handler(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := wantNoError(t, parseResult(t, res))
+	read := wantNoError(t, mustCallRegistered(t, a, "tesseract_get", map[string]any{"item_id": created["item_id"]}))
+	if read["workstream_id"] != "ws-received" {
+		t.Fatalf("context-derived association = %v", read)
+	}
+	provenance, _ := read["provenance"].(map[string]any)
+	writeContext, _ := provenance["write_context"].(map[string]any)
+	if writeContext["issuer"] != "tether" || writeContext["verification"] != "unverified" || writeContext["session_id"] != "tether-session" {
+		t.Fatalf("normalized receipt = %v", read)
+	}
+}
 
 const mcpWorkspaceNS = "project/tesseract/workspace/mcp-tests"
 

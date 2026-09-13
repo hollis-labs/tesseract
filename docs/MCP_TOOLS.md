@@ -228,6 +228,7 @@ the intended result.
 mcp__tesseract__memory_write {
   "namespace": "user/alex/memory/feedback",
   "memory_key": "boot_prompt_preference",
+  "workstream_id": "CW-20260912-0128",
   "author_agent_id": "claude-code",
   "trigger": "explicit",
   "session_id": "2026-04-15:backend",
@@ -246,6 +247,10 @@ Returns the created `memory.Revision`. Semantic dedup: same-key matches auto-sup
 **`data`** is an optional JSON object on every write door, holding the record's own fields in the caller's shape. Tesseract checks that it parses, is an object, and is under the global 1 MiB ceiling; it does not interpret, index, embed or search its contents. All three HTTP write routes take top-level `summary`, `body`, `data` and `data_schema_hash`, with `author` and `pointer` remaining structured. All three MCP tools take `data` and `data_schema_hash`; send data as a JSON-encoded string when exact bytes matter. The retired MCP names `payload_data` and `payload_data_schema_hash` are refused with migration guidance, including when sent alongside the new names. HTTP memory writes likewise refuse the old `payload` object and explain the top-level fields. On read every domain still returns content under `payload`. The optional `data_schema_hash` records a schema claim; Tesseract never validates against that schema. See `tesseract_skills memory`.
 
 **`consumer_state`** is an optional JSON object on any write door, holding the caller's own lifecycle data for that revision (CW-20260909-0036). Tesseract validates well-formed JSON, object-ness and the type's declared `required_fields`, and never reads a value out of it — no vocabulary, no transition checking. It is **not** the `state` block on a full-mode recall result, which is Tesseract's activation bookkeeping and is not writable. Filter on it with `state_filters` on `tesseract_recall` (HTTP: `POST /v1/tesseract/lookup`). `user/{id}/memory/todos` is the first type built on it; see `tesseract_skills memory`.
+
+**`workstream_id`** is an optional opaque association on memory, knowledge, event, and workspace writes. It is exact and case-sensitive; surrounding whitespace is rejected. On a revisioned keyed item, omission preserves the current association and an explicit empty string clears it. Workspace edits clear it through `clear_fields: ["workstream_id"]`. Filter exact associations with `workstream_id` on `tesseract_recall`, `event_list`, and their HTTP peers; filtering happens before ranking and limits.
+
+When an MCP request carries `_meta["tether.provenance"]` at schema version 1, Tesseract stores only the bounded normalized receipt under `provenance.write_context`: `issuer: "tether"`, `verification: "unverified"`, the received `session_id`, and optional `workstream_id`. The envelope is limited to 1,024 encoded bytes; each ID is limited to 256 bytes. It never stores the raw envelope or arbitrary `_meta`. Malformed optional provenance is discarded without failing an otherwise valid write. A valid envelope may initialize a new item's association; it never overrides an explicit value or changes an existing association when the write omits one.
 
 ### 2. Write a knowledge entry
 
@@ -271,6 +276,7 @@ Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are req
 ```json
 mcp__tesseract__workspace_write {
   "namespace": "project/example/workspace/scratch",
+  "workstream_id": "CW-20260912-0128",
   "idempotency_key": "session-42-draft-1",
   "summary": "Current draft",
   "body": "Working content",
@@ -296,6 +302,8 @@ mcp__tesseract__tesseract_recall {
 ```
 
 Searches memory + knowledge. Returns ranked results with a uniform shape so the agent doesn't need to know which domain a hit came from.
+
+To narrow the same call to one association, add `"workstream_id": "CW-20260912-0128"`.
 
 ### 4. Pack context at boot
 

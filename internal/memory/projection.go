@@ -64,13 +64,15 @@ func (m PayloadMode) Valid() bool {
 // the fields stay nested under `revision`, matching full mode, and that
 // `status` is carried (a triage signal: draft vs canonical vs deprecated).
 type ProjectedRevision struct {
-	RevisionID string         `json:"revision_id"`
-	ItemID     string         `json:"item_id"`
-	MemoryID   string         `json:"memory_id"`
-	Domain     domains.Domain `json:"domain"`
-	Namespace  string         `json:"namespace"`
-	MemoryKey  string         `json:"memory_key,omitempty"`
-	CreatedAt  time.Time      `json:"created_at"`
+	RevisionID   string         `json:"revision_id"`
+	ItemID       string         `json:"item_id"`
+	MemoryID     string         `json:"memory_id"`
+	Domain       domains.Domain `json:"domain"`
+	Namespace    string         `json:"namespace"`
+	MemoryKey    string         `json:"memory_key,omitempty"`
+	WorkstreamID string         `json:"workstream_id,omitempty"`
+	Provenance   *Provenance    `json:"provenance,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
 
 	// Present under summary mode only.
 	//
@@ -172,13 +174,15 @@ func ProjectResults(results []RecallResult, mode PayloadMode) any {
 	for _, r := range results {
 		pr := ProjectedResult{
 			Revision: ProjectedRevision{
-				RevisionID: r.Revision.RevisionID,
-				ItemID:     r.Revision.MemoryID,
-				MemoryID:   r.Revision.MemoryID,
-				Domain:     r.Revision.Domain,
-				Namespace:  r.Revision.Namespace,
-				MemoryKey:  r.Revision.MemoryKey,
-				CreatedAt:  r.Revision.CreatedAt,
+				RevisionID:   r.Revision.RevisionID,
+				ItemID:       r.Revision.MemoryID,
+				MemoryID:     r.Revision.MemoryID,
+				Domain:       r.Revision.Domain,
+				Namespace:    r.Revision.Namespace,
+				MemoryKey:    r.Revision.MemoryKey,
+				WorkstreamID: r.Revision.WorkstreamID,
+				Provenance:   r.Revision.Provenance,
+				CreatedAt:    r.Revision.CreatedAt,
 			},
 			Score:       r.Score,
 			PayloadMode: mode,
@@ -229,13 +233,15 @@ func ProjectRevisions(revs []Revision, mode PayloadMode) any {
 	out := make([]ProjectedRevision, 0, len(revs))
 	for _, r := range revs {
 		pr := ProjectedRevision{
-			RevisionID: r.RevisionID,
-			ItemID:     r.MemoryID,
-			MemoryID:   r.MemoryID,
-			Domain:     r.Domain,
-			Namespace:  r.Namespace,
-			MemoryKey:  r.MemoryKey,
-			CreatedAt:  r.CreatedAt,
+			RevisionID:   r.RevisionID,
+			ItemID:       r.MemoryID,
+			MemoryID:     r.MemoryID,
+			Domain:       r.Domain,
+			Namespace:    r.Namespace,
+			MemoryKey:    r.MemoryKey,
+			WorkstreamID: r.WorkstreamID,
+			Provenance:   r.Provenance,
+			CreatedAt:    r.CreatedAt,
 		}
 		if mode == PayloadModeSummary {
 			confidence := r.Confidence

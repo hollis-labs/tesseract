@@ -23,13 +23,14 @@ func (a *Adapter) registerWorkspaceTools(s *toolRegistrar) {
 		mcp.WithString("version_token", mcp.Description("Edit selector: current concurrency token.")),
 		mcp.WithString("idempotency_key", mcp.Description("Opaque retry key; required for keyless create and optional for keyed create.")),
 		mcp.WithString("key", mcp.Description("Optional exact human key. On edit, use clear_fields to remove it.")),
+		mcp.WithString("workstream_id", mcp.Description("Optional opaque association. On edit, use clear_fields to remove it.")),
 		mcp.WithString("summary", mcp.Description("Required non-empty summary on create; optional replacement on edit.")),
 		mcp.WithString("body", mcp.Description("Optional body. On edit, use clear_fields to remove it.")),
 		mcp.WithString("data", mcp.Description(payloadDataArgDescription)),
 		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
 		mcp.WithString("tags", mcp.Description("JSON array of strings. Supplying it replaces the full tag list.")),
 		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
-		mcp.WithString("clear_fields", mcp.Description("Edit only: JSON array drawn from key, body, data, tags, consumer_state.")),
+		mcp.WithString("clear_fields", mcp.Description("Edit only: JSON array drawn from key, body, data, tags, consumer_state, workstream_id.")),
 		mcp.WithString("author_agent_id", mcp.Description("Required author agent ID.")),
 		mcp.WithString("author_version", mcp.Description("Optional author version.")),
 		mcp.WithString("session_id", mcp.Description("Required authoring session ID.")),
@@ -70,8 +71,12 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 		if err != nil {
 			return toolError(codeValidationError, "tags "+err.Error()), nil //nolint:nilerr // MCP application errors are tool results
 		}
+		workstreamID, workstreamErr := workstreamWriteArg(req)
+		if workstreamErr != nil {
+			return workstreamErr, nil
+		}
 		create := workspace.CreateRequest{CreateInput: workspace.CreateInput{
-			Namespace: ns, Key: req.GetString("key", ""), Summary: req.GetString("summary", ""), Body: req.GetString("body", ""),
+			Namespace: ns, Key: req.GetString("key", ""), WorkstreamID: workstreamID, Summary: req.GetString("summary", ""), Body: req.GetString("body", ""),
 			Data: payloadDataArg(req), DataSchemaHash: req.GetString("data_schema_hash", ""), Tags: tags,
 			ConsumerState: consumerStateArg(req), Author: memory.Author{AgentID: req.GetString("author_agent_id", ""), AgentVersion: req.GetString("author_version", "")}, SessionID: req.GetString("session_id", ""),
 		}, IdempotencyKey: req.GetString("idempotency_key", "")}
@@ -126,6 +131,13 @@ func workspaceEditInput(req mcp.CallToolRequest) (workspace.EditInput, *mcp.Call
 	if _, ok := args["consumer_state"]; ok {
 		raw := consumerStateArg(req)
 		in.ConsumerState = &raw
+	}
+	if _, ok := args["workstream_id"]; ok {
+		value, errResult := workstreamWriteArg(req)
+		if errResult != nil {
+			return in, errResult
+		}
+		in.WorkstreamID = value
 	}
 	if _, ok := args["tags"]; ok {
 		tags, _, err := parseStringArrayArg(req, "tags")

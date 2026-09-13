@@ -422,6 +422,20 @@ segments, each using lowercase letters, digits, and underscore, with 64
 characters per segment and 256 total. Hyphens, uppercase letters, and spaces
 are rejected.
 
+Every ordinary memory, knowledge, event, and workspace write accepts an optional
+top-level `workstream_id`. The value is opaque, exact, and limited to 256 bytes;
+leading/trailing whitespace and whitespace-only values are rejected. Revisioned
+writes preserve the current association when omitted and clear it with an explicit
+empty string. Workspace edits preserve on omission and clear through
+`clear_fields: ["workstream_id"]`; supplying and clearing it together is invalid.
+HTTP `null` is invalid rather than an alias for omission.
+
+Read results expose the association as top-level `workstream_id`. A receiver
+receipt, when present, is separate under `provenance.write_context` and makes no
+authentication claim (`verification` is `unverified`). `workstream_id` is an exact
+filter on recall/lookup and event-log reads and is applied before limits. Existing
+rows are not backfilled.
+
 ### Knowledge write shape
 
 ```json

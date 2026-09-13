@@ -37,7 +37,7 @@ const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(mem
        COALESCE(embedding_model, ''), embedding_vector,
        facet_kind, facet_source,
        facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
-       consumer_state`
+       consumer_state, workstream_id, write_context`
 
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
@@ -50,6 +50,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 	var facetKind, facetSource sql.NullString
 	var pointerScheme, pointerLocator, pointerResolvedAt sql.NullString
 	var consumerState sql.NullString
+	var workstreamID, writeContext sql.NullString
 	var payloadData, payloadDataSchemaHash sql.NullString
 	err := r.Scan(
 		&rev.RevisionID, &rev.MemoryID, &domain, &rev.Namespace, &rev.MemoryKey,
@@ -61,7 +62,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 		&rev.EmbeddingModel, &embeddingBlob,
 		&facetKind, &facetSource,
 		&pointerScheme, &pointerLocator, &pointerResolvedAt,
-		&consumerState,
+		&consumerState, &workstreamID, &writeContext,
 	)
 	if err != nil {
 		return Revision{}, err
@@ -107,6 +108,16 @@ func scanRevision(r rowScanner) (Revision, error) {
 	}
 	if payloadDataSchemaHash.Valid {
 		rev.Payload.DataSchemaHash = payloadDataSchemaHash.String
+	}
+	if workstreamID.Valid {
+		rev.WorkstreamID = workstreamID.String
+	}
+	if writeContext.Valid {
+		var err error
+		rev.Provenance, err = DecodeWriteContext(writeContext.String)
+		if err != nil {
+			return Revision{}, err
+		}
 	}
 	return rev, nil
 }

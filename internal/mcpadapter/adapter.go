@@ -500,7 +500,7 @@ func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc
 	}
 	handler := strict(h)
 	handler = mcpsanitize.Middleware(logger)(handler)
-	r.server.AddTool(t, gatewayMetadataMiddleware(handler))
+	r.server.AddTool(t, gatewayMetadataMiddleware(logger, handler))
 }
 
 // gatewayMetadataMiddleware removes the gateway's transport keys from the
@@ -508,8 +508,9 @@ func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc
 //
 // A call carrying none of them is passed through untouched, which is every call
 // that did not come through a mux old enough to inject into arguments.
-func gatewayMetadataMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+func gatewayMetadataMiddleware(logger *slog.Logger, next server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx = provenanceContext(ctx, req, logger)
 		args := req.GetArguments()
 		if len(args) == 0 {
 			return next(ctx, req)

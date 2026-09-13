@@ -55,8 +55,9 @@ func New(ms *memory.Store) *Store {
 // it is held to memory's dot-notation vocabulary rather than waved through the
 // way knowledge's externally-sourced slugs are.
 type WriteInput struct {
-	Namespace string
-	Key       string
+	Namespace    string
+	Key          string
+	WorkstreamID *string
 
 	// Summary is required; Body optional. Both feed embeddings.
 	//
@@ -124,10 +125,11 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 	}
 
 	memIn := memory.WriteInput{
-		Domain:     domains.Event,
-		Namespace:  in.Namespace,
-		MemoryKey:  in.Key,
-		Supersedes: in.Supersedes,
+		Domain:       domains.Event,
+		Namespace:    in.Namespace,
+		MemoryKey:    in.Key,
+		WorkstreamID: in.WorkstreamID,
+		Supersedes:   in.Supersedes,
 		// StatusCanonical, not the StatusDraft every other write path defaults
 		// to. The draft → reviewed → canonical ladder is an EPISTEMIC one: it
 		// tracks how settled a claim is. A log entry makes no claim to settle —

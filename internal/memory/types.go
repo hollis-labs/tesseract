@@ -195,25 +195,27 @@ func (f Facets) IsZero() bool {
 // Revision is an immutable memory revision. The only field that may be
 // mutated after write is Status, and only via the deprecation code path.
 type Revision struct {
-	RevisionID  string         `json:"revision_id"`
-	ItemID      string         `json:"item_id"`
-	MemoryID    string         `json:"memory_id"`
-	Domain      domains.Domain `json:"domain"`
-	Namespace   string         `json:"namespace"`
-	MemoryKey   string         `json:"memory_key,omitempty"`
-	Status      Status         `json:"status"`
-	Supersedes  string         `json:"supersedes,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	Author      Author         `json:"author"`
-	Trigger     Trigger        `json:"trigger"`
-	SessionID   string         `json:"session_id"`
-	DerivedFrom DerivedFrom    `json:"derived_from"`
-	Confidence  float64        `json:"confidence"`
-	Tags        []string       `json:"tags"`
-	TTLSeconds  int64          `json:"ttl_seconds,omitempty"`
-	ExpiresAt   *time.Time     `json:"expires_at,omitempty"`
-	Payload     Payload        `json:"payload"`
-	Facets      Facets         `json:"facets,omitempty"`
+	RevisionID   string         `json:"revision_id"`
+	ItemID       string         `json:"item_id"`
+	MemoryID     string         `json:"memory_id"`
+	Domain       domains.Domain `json:"domain"`
+	Namespace    string         `json:"namespace"`
+	MemoryKey    string         `json:"memory_key,omitempty"`
+	WorkstreamID string         `json:"workstream_id,omitempty"`
+	Provenance   *Provenance    `json:"provenance,omitempty"`
+	Status       Status         `json:"status"`
+	Supersedes   string         `json:"supersedes,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
+	Author       Author         `json:"author"`
+	Trigger      Trigger        `json:"trigger"`
+	SessionID    string         `json:"session_id"`
+	DerivedFrom  DerivedFrom    `json:"derived_from"`
+	Confidence   float64        `json:"confidence"`
+	Tags         []string       `json:"tags"`
+	TTLSeconds   int64          `json:"ttl_seconds,omitempty"`
+	ExpiresAt    *time.Time     `json:"expires_at,omitempty"`
+	Payload      Payload        `json:"payload"`
+	Facets       Facets         `json:"facets,omitempty"`
 
 	// ConsumerState is the consumer's own operational bag, stored as JSON in
 	// memory_revisions.consumer_state (CW-20260909-0036).

@@ -23,6 +23,7 @@ type workspaceWriteRequest struct {
 	VersionToken   *string          `json:"version_token,omitempty"`
 	IdempotencyKey *string          `json:"idempotency_key,omitempty"`
 	Key            *string          `json:"key,omitempty"`
+	WorkstreamID   presentString    `json:"workstream_id,omitempty"`
 	Summary        *string          `json:"summary,omitempty"`
 	Body           *string          `json:"body,omitempty"`
 	Data           *json.RawMessage `json:"data,omitempty"`
@@ -65,7 +66,7 @@ func (s *Server) handleWorkspaceWrite(w http.ResponseWriter, r *http.Request) {
 		if req.ConsumerState != nil {
 			consumerState = wholeRawMessage(req.ConsumerState)
 		}
-		create := workspace.CreateRequest{CreateInput: workspace.CreateInput{Namespace: *req.Namespace, Key: stringValue(req.Key), Summary: stringValue(req.Summary), Body: stringValue(req.Body), Data: data, DataSchemaHash: stringValue(req.DataSchemaHash), Tags: sliceValue(req.Tags), ConsumerState: consumerState, Author: req.Author, SessionID: req.SessionID}, IdempotencyKey: stringValue(req.IdempotencyKey)}
+		create := workspace.CreateRequest{CreateInput: workspace.CreateInput{Namespace: *req.Namespace, Key: stringValue(req.Key), WorkstreamID: req.WorkstreamID.Pointer(), Summary: stringValue(req.Summary), Body: stringValue(req.Body), Data: data, DataSchemaHash: stringValue(req.DataSchemaHash), Tags: sliceValue(req.Tags), ConsumerState: consumerState, Author: req.Author, SessionID: req.SessionID}, IdempotencyKey: stringValue(req.IdempotencyKey)}
 		receipt, err := s.WorkspaceStore.CreateWithReceipt(r.Context(), create)
 		if err != nil {
 			writeWorkspaceError(w, err, "workspace_write_failed")
@@ -99,7 +100,7 @@ func (s *Server) handleWorkspaceWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
-	edit := workspace.EditInput{ItemID: *req.ItemID, VersionToken: *req.VersionToken, Key: req.Key, Summary: req.Summary, Body: req.Body, Data: req.Data, DataSchemaHash: req.DataSchemaHash, Tags: req.Tags, ConsumerState: req.ConsumerState, ClearFields: clearFields, Author: req.Author, SessionID: req.SessionID}
+	edit := workspace.EditInput{ItemID: *req.ItemID, VersionToken: *req.VersionToken, Key: req.Key, WorkstreamID: req.WorkstreamID.Pointer(), Summary: req.Summary, Body: req.Body, Data: req.Data, DataSchemaHash: req.DataSchemaHash, Tags: req.Tags, ConsumerState: req.ConsumerState, ClearFields: clearFields, Author: req.Author, SessionID: req.SessionID}
 	item, err := s.WorkspaceStore.Edit(r.Context(), edit)
 	if err != nil {
 		writeWorkspaceError(w, err, "workspace_write_failed")

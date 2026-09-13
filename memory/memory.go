@@ -21,6 +21,12 @@ type Store = internal.Store
 // Revision is an immutable memory revision.
 type Revision = internal.Revision
 
+// Provenance is the receiver-owned receipt attached to a stored write.
+type Provenance = internal.Provenance
+
+// WriteContext is the bounded normalized context captured by a receiver.
+type WriteContext = internal.WriteContext
+
 // State is the mutable per-memory state.
 type State = internal.State
 

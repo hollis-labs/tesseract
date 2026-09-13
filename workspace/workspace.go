@@ -29,6 +29,7 @@ const (
 	ClearData          = internal.ClearData
 	ClearTags          = internal.ClearTags
 	ClearConsumerState = internal.ClearConsumerState
+	ClearWorkstreamID  = internal.ClearWorkstreamID
 )
 
 var (
