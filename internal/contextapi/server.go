@@ -166,6 +166,109 @@ func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace st
 	return false
 }
 
+// requireNamespaceSelectorAccess applies namespace authorization to the whole
+// scope selected by recall. A prefix request is allowed only when one token
+// glob contains every namespace it could match.
+func requireNamespaceSelectorAccess(w http.ResponseWriter, r *http.Request, selector string, domainNames ...string) bool {
+	claims, ok := getTokenClaims(r)
+	if !ok {
+		if authModeConfigured(r) {
+			writeError(w, http.StatusForbidden, "namespace_not_permitted",
+				"request carries no token claims", map[string]any{"namespace": selector})
+			return false
+		}
+		return true
+	}
+	effective := recallAuthorizationSelectorsHTTP(selector, domainNames)
+	for _, scoped := range effective {
+		if namespaceSelectorPermitted(claims.NamespaceGlobs, scoped) {
+			continue
+		}
+		writeError(w, http.StatusForbidden, "namespace_not_permitted",
+			"token is not permitted to access this namespace selector", map[string]any{
+				"namespace": selector, "token_globs": claims.NamespaceGlobs,
+			})
+		return false
+	}
+	return true
+}
+
+func namespaceSelectorPermitted(globs []string, selector string) bool {
+	prefix, isPrefix := recallNamespacePrefix(selector)
+	if !isPrefix {
+		for _, glob := range globs {
+			glob = strings.TrimSpace(glob)
+			if glob == "*" || glob == selector {
+				return true
+			}
+			if matched, err := path.Match(glob, selector); err == nil && matched {
+				return true
+			}
+			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, glob := range globs {
+		glob = strings.TrimSpace(glob)
+		if glob == "*" || glob == selector {
+			return true
+		}
+		if !strings.HasSuffix(glob, "/*") {
+			continue
+		}
+		allowedPrefix := strings.TrimSuffix(glob, "/*")
+		if strings.ContainsAny(allowedPrefix, "*?[") {
+			continue
+		}
+		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func recallAuthorizationSelectorsHTTP(selector string, domainNames []string) []string {
+	prefix, isPrefix := recallNamespacePrefix(selector)
+	if !isPrefix || !isRecallScopeHead(prefix) {
+		return []string{selector}
+	}
+	if len(domainNames) == 0 {
+		domainNames = []string{"memory", "knowledge"}
+	}
+	out := make([]string, 0, len(domainNames))
+	for _, domain := range domainNames {
+		out = append(out, prefix+"/"+domain+"/*")
+	}
+	return out
+}
+
+func isRecallScopeHead(prefix string) bool {
+	parts := strings.Split(prefix, "/")
+	if len(parts) == 1 {
+		return parts[0] == "system"
+	}
+	if len(parts) == 2 {
+		switch parts[0] {
+		case "user", "project", "app", "org", "session":
+			return parts[1] != ""
+		}
+	}
+	return len(parts) == 4 && parts[0] == "user" && parts[1] != "" &&
+		(parts[2] == "project" || parts[2] == "session") && parts[3] != ""
+}
+
+func recallNamespacePrefix(selector string) (string, bool) {
+	if strings.HasSuffix(selector, "/*") {
+		return strings.TrimSuffix(selector, "/*"), true
+	}
+	if strings.HasSuffix(selector, "/memory") || strings.HasSuffix(selector, "/event") {
+		return selector, true
+	}
+	return "", false
+}
+
 // Server exposes HTTP handlers for the context API.
 type Server struct {
 	Store  *contextstore.Store

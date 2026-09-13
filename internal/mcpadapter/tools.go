@@ -1392,6 +1392,95 @@ func globsPermit(globs []string, namespace string) bool {
 	return false
 }
 
+// globsPermitRecallSelector verifies the complete scope of a recall selector.
+// Exact selectors use the ordinary namespace check. Explicit /* selectors and
+// the grandfathered bare memory/event forms denote every descendant, so one
+// configured token glob must contain that whole prefix before recall begins.
+func globsPermitRecallSelector(globs []string, selector string) bool {
+	prefix, isPrefix := recallSelectorPrefix(selector)
+	if len(globs) == 0 {
+		return true
+	}
+	for _, glob := range globs {
+		glob = strings.TrimSpace(glob)
+		if glob == "*" || glob == selector {
+			return true
+		}
+		if !isPrefix {
+			if matched, err := path.Match(glob, selector); err == nil && matched {
+				return true
+			}
+			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
+				return true
+			}
+			continue
+		}
+		if !strings.HasSuffix(glob, "/*") {
+			continue
+		}
+		allowedPrefix := strings.TrimSuffix(glob, "/*")
+		// Interior wildcard containment is not generally provable. Exact
+		// equality was handled above; otherwise fail closed.
+		if strings.ContainsAny(allowedPrefix, "*?[") {
+			continue
+		}
+		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func globsPermitRecallScope(globs []string, selector string, domainNames []string) bool {
+	effective := recallAuthorizationSelectors(selector, domainNames)
+	for _, scoped := range effective {
+		if !globsPermitRecallSelector(globs, scoped) {
+			return false
+		}
+	}
+	return true
+}
+
+func recallAuthorizationSelectors(selector string, domainNames []string) []string {
+	prefix, isPrefix := recallSelectorPrefix(selector)
+	if !isPrefix || !isScopeHead(prefix) {
+		return []string{selector}
+	}
+	if len(domainNames) == 0 {
+		domainNames = []string{"memory", "knowledge"}
+	}
+	out := make([]string, 0, len(domainNames))
+	for _, domain := range domainNames {
+		out = append(out, prefix+"/"+domain+"/*")
+	}
+	return out
+}
+
+func isScopeHead(prefix string) bool {
+	parts := strings.Split(prefix, "/")
+	if len(parts) == 1 {
+		return parts[0] == "system"
+	}
+	if len(parts) == 2 {
+		switch parts[0] {
+		case "user", "project", "app", "org", "session":
+			return parts[1] != ""
+		}
+	}
+	return len(parts) == 4 && parts[0] == "user" && parts[1] != "" &&
+		(parts[2] == "project" || parts[2] == "session") && parts[3] != ""
+}
+
+func recallSelectorPrefix(selector string) (string, bool) {
+	if strings.HasSuffix(selector, "/*") {
+		return strings.TrimSuffix(selector, "/*"), true
+	}
+	if strings.HasSuffix(selector, "/memory") || strings.HasSuffix(selector, "/event") {
+		return selector, true
+	}
+	return "", false
+}
+
 // filterByGlobs returns only the records whose namespace is permitted by globs.
 func filterByGlobs(records []contextstore.Record, globs []string) []contextstore.Record {
 	if len(globs) == 0 {

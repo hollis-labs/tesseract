@@ -188,8 +188,12 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequestBody(w, r, &req) {
 		return
 	}
+	domainNames := make([]string, len(req.Filters.Domains))
+	for i, domain := range req.Filters.Domains {
+		domainNames[i] = string(domain)
+	}
 	for _, ns := range req.Namespaces {
-		if !requireNamespaceAccess(w, r, ns) {
+		if !requireNamespaceSelectorAccess(w, r, ns, domainNames...) {
 			return
 		}
 	}

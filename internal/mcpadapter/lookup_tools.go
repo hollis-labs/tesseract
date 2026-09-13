@@ -103,7 +103,8 @@ func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 }
 
 func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+	res, claims := a.checkScope(ctx, "memory:read")
+	if res != nil {
 		return res, nil
 	}
 
@@ -128,7 +129,6 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	if errRes != nil {
 		return errRes, nil
 	}
-
 	domainStrs, errRes := unmarshalStrings("domains")
 	if errRes != nil {
 		return errRes, nil
@@ -136,6 +136,11 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	var doms []domains.Domain
 	for _, d := range domainStrs {
 		doms = append(doms, domains.Domain(d))
+	}
+	for _, namespace := range namespaces {
+		if !globsPermitRecallScope(claims.NamespaceGlobs, namespace, domainStrs) {
+			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit recalling: "+namespace), nil
+		}
 	}
 
 	kinds, errRes := unmarshalStrings("facet_kinds")

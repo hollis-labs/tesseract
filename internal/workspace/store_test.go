@@ -149,6 +149,74 @@ func TestConcurrentWritersWithOneTokenCommitOnce(t *testing.T) {
 	}
 }
 
+func TestConcurrentDeleteRetriesReturnTheSameTombstoneReceipt(t *testing.T) {
+	cs, store, _ := newWorkspaceStore(t)
+	ctx := context.Background()
+	item, err := store.Create(ctx, createInput("delete-race"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var blockOnce sync.Once
+	blockedStore := workspace.NewStore(cs.DB(), workspace.WithClock(func() time.Time {
+		blockOnce.Do(func() {
+			close(entered)
+			<-release
+		})
+		return time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
+	}))
+	type result struct {
+		receipt workspace.DeleteReceipt
+		err     error
+	}
+	firstDone := make(chan result, 1)
+	go func() {
+		receipt, deleteErr := blockedStore.DeleteWithReceipt(ctx, workspace.DeleteInput{
+			ItemID: item.ItemID, VersionToken: item.VersionToken,
+		})
+		firstDone <- result{receipt: receipt, err: deleteErr}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("first delete did not reach its transaction")
+	}
+	second, err := store.DeleteWithReceipt(ctx, workspace.DeleteInput{
+		ItemID: item.ItemID, VersionToken: item.VersionToken,
+	})
+	close(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := <-firstDone
+	if first.err != nil {
+		t.Fatalf("concurrent retry: %v", first.err)
+	}
+	if first.receipt.ItemID != second.ItemID || first.receipt.DeletedAt == nil || second.DeletedAt == nil || !first.receipt.DeletedAt.Equal(*second.DeletedAt) {
+		t.Fatalf("receipts differ: first=%+v second=%+v", first.receipt, second)
+	}
+	staleItem, err := store.Create(ctx, createInput("stale-delete"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedSummary := "new token"
+	if _, err := store.Edit(ctx, workspace.EditInput{
+		ItemID: staleItem.ItemID, VersionToken: staleItem.VersionToken, Summary: &updatedSummary,
+		Author: memory.Author{AgentID: "writer-a"}, SessionID: "session-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DeleteWithReceipt(ctx, workspace.DeleteInput{ItemID: staleItem.ItemID, VersionToken: staleItem.VersionToken}); !errors.Is(err, workspace.ErrVersionConflict) {
+		t.Fatalf("stale live delete error=%v, want version conflict", err)
+	}
+	if _, err := store.DeleteWithReceipt(ctx, workspace.DeleteInput{ItemID: "01MISSING", VersionToken: item.VersionToken}); !errors.Is(err, workspace.ErrNotFound) {
+		t.Fatalf("unknown delete error=%v, want not found", err)
+	}
+}
+
 func TestExactFreeFormKeysAndKeylessItems(t *testing.T) {
 	_, store, _ := newWorkspaceStore(t)
 	ctx := context.Background()

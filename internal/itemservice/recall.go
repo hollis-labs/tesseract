@@ -85,8 +85,7 @@ func (s *Service) RecallPaged(ctx context.Context, in memory.RecallInput, pr mem
 		revIn := in
 		revIn.Filters.Domains = revisionDomains
 		revIn.Offset = 0
-		revIn.Limit = memory.MaxRecallLimit
-		revPage, recallErr := s.Revisions.RecallPage(ctx, revIn)
+		revPage, recallErr := s.Revisions.RecallAll(ctx, revIn)
 		if recallErr != nil {
 			return PagedRecall{}, recallErr
 		}
@@ -99,10 +98,10 @@ func (s *Service) RecallPaged(ctx context.Context, in memory.RecallInput, pr mem
 	}
 	var workspaceResults []workspace.RecallResult
 	if len(workspaceNamespaces) > 0 {
-		workspaceResults, err = s.Workspace.Recall(ctx, workspace.RecallInput{
+		workspaceResults, err = s.Workspace.RecallAll(ctx, workspace.RecallInput{
 			Namespaces: workspaceNamespaces, Query: queryForWorkspace(in, ranking), Ranking: ranking,
 			Tags: in.Filters.Tags, StateFilters: in.Filters.StateFilters,
-			Since: in.Filters.Since, Until: in.Filters.Until, Limit: memory.MaxRecallLimit,
+			Since: in.Filters.Since, Until: in.Filters.Until,
 		})
 		if err != nil {
 			return PagedRecall{}, err
@@ -140,13 +139,12 @@ func (s *Service) RecallPaged(ctx context.Context, in memory.RecallInput, pr mem
 func selectWorkspaceNamespaces(requested []string) ([]string, error) {
 	out := make([]string, 0, len(requested))
 	for _, namespace := range requested {
-		candidate := strings.TrimSuffix(namespace, "/*")
-		validationErr := memory.ValidateWorkspaceNamespace(candidate)
+		validationErr := memory.ValidateWorkspaceRecallNamespace(namespace)
 		if validationErr == nil {
 			out = append(out, namespace)
 			continue
 		}
-		for _, segment := range strings.Split(candidate, "/") {
+		for _, segment := range strings.Split(strings.TrimSuffix(namespace, "/*"), "/") {
 			if segment == workspace.Domain {
 				return nil, fmt.Errorf("%w: %w", memory.ErrInvalidInput, validationErr)
 			}

@@ -84,13 +84,24 @@ var recallStateFieldRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // Recall returns current workspace items under lexical, activation, or
 // chronological ordering. It never records use.
 func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, error) {
+	return s.recall(ctx, in, true)
+}
+
+// RecallAll returns every matching current item in the requested ordering.
+// Public cross-store paging needs the complete sequence before it fuses ranks
+// and applies its own cursor, projection and budget window.
+func (s *Store) RecallAll(ctx context.Context, in RecallInput) ([]RecallResult, error) {
+	return s.recall(ctx, in, false)
+}
+
+func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]RecallResult, error) {
 	if len(in.Namespaces) == 0 {
 		return nil, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
 	}
-	if in.Limit <= 0 {
+	if bounded && in.Limit <= 0 {
 		in.Limit = maxSearchLimit
 	}
-	if in.Limit > maxSearchLimit {
+	if bounded && in.Limit > maxSearchLimit {
 		in.Limit = maxSearchLimit
 	}
 
@@ -100,10 +111,10 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 	for _, ns := range in.Namespaces {
 		if strings.HasSuffix(ns, "/*") {
 			prefix := strings.TrimSuffix(ns, "/*")
-			if err := memory.ValidateWorkspaceNamespace(prefix); err != nil {
+			if err := memory.ValidateWorkspaceRecallNamespace(ns); err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 			}
-			namespaceClauses = append(namespaceClauses, "(w.namespace = ? OR w.namespace LIKE ? ESCAPE '\\\\')")
+			namespaceClauses = append(namespaceClauses, `(w.namespace = ? OR w.namespace LIKE ? ESCAPE '\')`)
 			args = append(args, prefix, escapeLike(prefix)+"/%")
 			continue
 		}
@@ -154,11 +165,14 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 		order = "w.activation DESC, w.item_id"
 		scoreExpr = "w.activation"
 	}
-	args = append(args, in.Limit)
 	// #nosec G202 -- every SQL fragment is selected from constants above;
 	// caller values remain placeholders in args.
 	query := `SELECT ` + recallItemColumns + `, ` + scoreExpr + ` FROM ` + from +
-		` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY ` + order + ` LIMIT ?`
+		` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY ` + order
+	if bounded {
+		query += ` LIMIT ?`
+		args = append(args, in.Limit)
+	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("workspace recall: %w", err)
@@ -279,6 +293,6 @@ func placeholders(n int) string {
 }
 
 func escapeLike(value string) string {
-	replacer := strings.NewReplacer(`\\`, `\\\\`, `%`, `\\%`, `_`, `\\_`)
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return replacer.Replace(value)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -17,20 +18,20 @@ func (s *Server) itemService() *itemservice.Service {
 }
 
 type workspaceWriteRequest struct {
-	Namespace      *string                `json:"namespace,omitempty"`
-	ItemID         *string                `json:"item_id,omitempty"`
-	VersionToken   *string                `json:"version_token,omitempty"`
-	IdempotencyKey *string                `json:"idempotency_key,omitempty"`
-	Key            *string                `json:"key,omitempty"`
-	Summary        *string                `json:"summary,omitempty"`
-	Body           *string                `json:"body,omitempty"`
-	Data           *json.RawMessage       `json:"data,omitempty"`
-	DataSchemaHash *string                `json:"data_schema_hash,omitempty"`
-	Tags           *[]string              `json:"tags,omitempty"`
-	ConsumerState  *json.RawMessage       `json:"consumer_state,omitempty"`
-	ClearFields    []workspace.ClearField `json:"clear_fields,omitempty"`
-	Author         memory.Author          `json:"author"`
-	SessionID      string                 `json:"session_id"`
+	Namespace      *string          `json:"namespace,omitempty"`
+	ItemID         *string          `json:"item_id,omitempty"`
+	VersionToken   *string          `json:"version_token,omitempty"`
+	IdempotencyKey *string          `json:"idempotency_key,omitempty"`
+	Key            *string          `json:"key,omitempty"`
+	Summary        *string          `json:"summary,omitempty"`
+	Body           *string          `json:"body,omitempty"`
+	Data           *json.RawMessage `json:"data,omitempty"`
+	DataSchemaHash *string          `json:"data_schema_hash,omitempty"`
+	Tags           *[]string        `json:"tags,omitempty"`
+	ConsumerState  *json.RawMessage `json:"consumer_state,omitempty"`
+	ClearFields    json.RawMessage  `json:"clear_fields,omitempty"`
+	Author         memory.Author    `json:"author"`
+	SessionID      string           `json:"session_id"`
 }
 
 func (s *Server) handleWorkspaceWrite(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +49,10 @@ func (s *Server) handleWorkspaceWrite(w http.ResponseWriter, r *http.Request) {
 	if req.Namespace != nil {
 		if req.ItemID != nil || req.VersionToken != nil {
 			writeError(w, http.StatusBadRequest, "validation_error", "choose create by namespace or edit by item_id + version_token; do not mix selectors", nil)
+			return
+		}
+		if req.ClearFields != nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "clear_fields is valid only for edit", nil)
 			return
 		}
 		if !requireNamespaceAccess(w, r, *req.Namespace) {
@@ -89,7 +94,12 @@ func (s *Server) handleWorkspaceWrite(w http.ResponseWriter, r *http.Request) {
 	if !requireNamespaceAccess(w, r, meta.Namespace) {
 		return
 	}
-	edit := workspace.EditInput{ItemID: *req.ItemID, VersionToken: *req.VersionToken, Key: req.Key, Summary: req.Summary, Body: req.Body, Data: req.Data, DataSchemaHash: req.DataSchemaHash, Tags: req.Tags, ConsumerState: req.ConsumerState, ClearFields: req.ClearFields, Author: req.Author, SessionID: req.SessionID}
+	clearFields, err := parseWorkspaceClearFields(req.ClearFields)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
+	edit := workspace.EditInput{ItemID: *req.ItemID, VersionToken: *req.VersionToken, Key: req.Key, Summary: req.Summary, Body: req.Body, Data: req.Data, DataSchemaHash: req.DataSchemaHash, Tags: req.Tags, ConsumerState: req.ConsumerState, ClearFields: clearFields, Author: req.Author, SessionID: req.SessionID}
 	item, err := s.WorkspaceStore.Edit(r.Context(), edit)
 	if err != nil {
 		writeWorkspaceError(w, err, "workspace_write_failed")
@@ -202,4 +212,18 @@ func wholeRawMessage(v *json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return bytes.Clone(*v)
+}
+
+func parseWorkspaceClearFields(raw json.RawMessage) ([]workspace.ClearField, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var fields []workspace.ClearField
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, fmt.Errorf("clear_fields must be an array of strings: %w", err)
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("clear_fields must be an array of strings")
+	}
+	return fields, nil
 }

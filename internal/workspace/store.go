@@ -332,17 +332,62 @@ func (s *Store) DeleteWithReceipt(ctx context.Context, in DeleteInput) (DeleteRe
 	if strings.TrimSpace(in.ItemID) == "" || in.VersionToken == "" {
 		return DeleteReceipt{}, fmt.Errorf("%w: item_id and version_token are required", ErrInvalidInput)
 	}
-	meta, err := s.LookupMetadata(ctx, in.ItemID)
+	return retryMutation(ctx, "delete receipt", func() (DeleteReceipt, error) {
+		return s.deleteWithReceiptOnce(ctx, in)
+	})
+}
+
+func (s *Store) deleteWithReceiptOnce(ctx context.Context, in DeleteInput) (DeleteReceipt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return DeleteReceipt{}, err
+		return DeleteReceipt{}, fmt.Errorf("begin workspace delete receipt: %w", err)
 	}
-	if !meta.Deleted {
-		meta, err = s.Delete(ctx, in)
+	defer func() { _ = tx.Rollback() }()
+
+	var namespace, currentToken string
+	err = tx.QueryRowContext(ctx, `SELECT namespace, version_token FROM workspace_items WHERE item_id = ?`, in.ItemID).Scan(&namespace, &currentToken)
+	if errors.Is(err, sql.ErrNoRows) {
+		var deletedRaw string
+		err = tx.QueryRowContext(ctx, `SELECT namespace, deleted_at FROM workspace_tombstones WHERE item_id = ?`, in.ItemID).Scan(&namespace, &deletedRaw)
+		if errors.Is(err, sql.ErrNoRows) {
+			return DeleteReceipt{}, fmt.Errorf("%w: item_id %s", ErrNotFound, in.ItemID)
+		}
 		if err != nil {
 			return DeleteReceipt{}, err
 		}
+		deletedAt, parseErr := memorytime.Parse(deletedRaw)
+		if parseErr != nil {
+			return DeleteReceipt{}, fmt.Errorf("parse workspace deleted_at: %w", parseErr)
+		}
+		return DeleteReceipt{Status: "deleted", ItemID: in.ItemID, DeletedAt: &deletedAt}, nil
 	}
-	return DeleteReceipt{Status: "deleted", ItemID: meta.ItemID, DeletedAt: meta.DeletedAt}, nil
+	if err != nil {
+		return DeleteReceipt{}, fmt.Errorf("read workspace delete target: %w", err)
+	}
+	if currentToken != in.VersionToken {
+		return DeleteReceipt{}, fmt.Errorf("%w: item_id %s", ErrVersionConflict, in.ItemID)
+	}
+
+	deletedAt := s.now().UTC()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_tombstones (item_id, domain, namespace, deleted_at) VALUES (?, ?, ?, ?)`,
+		in.ItemID, Domain, namespace, memorytime.Format(deletedAt)); err != nil {
+		return DeleteReceipt{}, fmt.Errorf("create workspace tombstone: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM workspace_items WHERE item_id = ? AND version_token = ?`, in.ItemID, in.VersionToken)
+	if err != nil {
+		return DeleteReceipt{}, fmt.Errorf("remove workspace content: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return DeleteReceipt{}, fmt.Errorf("remove workspace content rows affected: %w", err)
+	}
+	if n != 1 {
+		return DeleteReceipt{}, fmt.Errorf("remove workspace content: affected %d rows, want 1", n)
+	}
+	if err := tx.Commit(); err != nil {
+		return DeleteReceipt{}, fmt.Errorf("commit workspace delete receipt: %w", err)
+	}
+	return DeleteReceipt{Status: "deleted", ItemID: in.ItemID, DeletedAt: &deletedAt}, nil
 }
 
 func (s *Store) deleteOnce(ctx context.Context, in DeleteInput) (Metadata, error) {

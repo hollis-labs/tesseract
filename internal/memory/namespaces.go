@@ -496,6 +496,32 @@ func ValidateWorkspaceNamespace(s string) error {
 	return err
 }
 
+// ValidateWorkspaceRecallNamespace accepts either one concrete workspace
+// namespace or an explicit namespace prefix that can contain workspace
+// namespaces. Recall prefixes use the service-wide /* convention and may stop
+// at a scope root, scope head, workspace root, or any deeper workspace path.
+// Concrete writes continue to use ValidateWorkspaceNamespace and therefore
+// still require a tail after the workspace segment.
+func ValidateWorkspaceRecallNamespace(s string) error {
+	if !strings.HasSuffix(s, "/*") {
+		return ValidateWorkspaceNamespace(s)
+	}
+	prefix := strings.TrimSuffix(s, "/*")
+	if prefix == "" {
+		return fmt.Errorf("%w: empty workspace recall prefix", ErrInvalidNamespace)
+	}
+	// A valid witness proves that this explicit prefix can contain a concrete
+	// workspace namespace. The alternatives cover the singleton system head,
+	// ordinary two-segment scope heads, legacy nested heads, the workspace root,
+	// and paths already below it.
+	for _, suffix := range []string{"/_", "/workspace/_", "/_/workspace/_", "/_/_/workspace/_"} {
+		if ValidateWorkspaceNamespace(prefix+suffix) == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q cannot contain a workspace namespace", ErrInvalidNamespace, s)
+}
+
 // parseHead parses the scope head and the domain segment, returning the parsed
 // Namespace and the remaining segments after the domain.
 //

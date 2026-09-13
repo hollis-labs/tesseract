@@ -81,10 +81,6 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace is required", nil)
 		return
 	}
-	if !requireNamespaceAccess(w, r, namespace) {
-		return
-	}
-
 	// Parse tags — comma-separated, skip blanks.
 	var tags []string
 	if raw := strings.TrimSpace(q.Get("tags")); raw != "" {
@@ -101,6 +97,13 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 				requestedDomains = append(requestedDomains, domains.Domain(d))
 			}
 		}
+	}
+	domainNames := make([]string, len(requestedDomains))
+	for i, domain := range requestedDomains {
+		domainNames[i] = string(domain)
+	}
+	if !requireNamespaceSelectorAccess(w, r, namespace, domainNames...) {
+		return
 	}
 
 	// Parse limit.
@@ -127,6 +130,47 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		Filters: memory.RecallFilters{
 			Tags: tags, Domains: requestedDomains,
 		},
+	}
+
+	if !recallIncludesWorkspace(requestedDomains) {
+		// Preserve the original GET contract for revision-only reads. This route
+		// has no cursor, and both brief and full historically accepted up to the
+		// revision store's 500-row ceiling; the additive workspace pager's full
+		// projection cap must not shorten that legacy response.
+		results, err := s.itemRevisionStore().Recall(r.Context(), in)
+		if err != nil {
+			if errors.Is(err, memory.ErrEmbedderUnavailable) {
+				writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
+				return
+			}
+			if errors.Is(err, memory.ErrInvalidInput) {
+				writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "recall_failed", err.Error(), nil)
+			return
+		}
+
+		facets := buildFacets(results)
+		var items any = results
+		if format == "brief" {
+			brief := make([]recallBriefItem, 0, len(results))
+			for _, rr := range results {
+				rev := rr.Revision
+				brief = append(brief, recallBriefItem{
+					RevisionID: rev.RevisionID, ItemID: rev.MemoryID, MemoryID: rev.MemoryID,
+					Domain: string(rev.Domain), Namespace: rev.Namespace, MemoryKey: rev.MemoryKey,
+					Tags: rev.Tags, Confidence: rev.Confidence, Summary: rev.Payload.Summary,
+					CreatedAt: rev.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+				})
+			}
+			items = brief
+		}
+		writeJSON(w, http.StatusOK, recallResponse{
+			Results: items, Facets: facets,
+			Meta: recallMeta{Namespace: namespace, Limit: limit, Returned: len(results), Format: format},
+		})
+		return
 	}
 
 	page, err := s.itemService().RecallPaged(r.Context(), in, memory.PageRequest{Limit: limit, PayloadMode: memory.PayloadModeFull})
@@ -182,4 +226,13 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 			Format:    format,
 		},
 	})
+}
+
+func recallIncludesWorkspace(requested []domains.Domain) bool {
+	for _, domain := range requested {
+		if string(domain) == "workspace" {
+			return true
+		}
+	}
+	return false
 }

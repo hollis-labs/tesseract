@@ -59,6 +59,9 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 		if hasItemID || hasVersion {
 			return toolError(codeValidationError, "choose create by namespace or edit by item_id + version_token; do not mix selectors"), nil
 		}
+		if _, ok := args["clear_fields"]; ok {
+			return toolError(codeValidationError, "clear_fields is valid only for edit"), nil
+		}
 		ns := req.GetString("namespace", "")
 		if !globsPermit(claims.NamespaceGlobs, ns) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+ns), nil

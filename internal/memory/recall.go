@@ -344,6 +344,18 @@ func (s *Store) Recall(ctx context.Context, in RecallInput) ([]RecallResult, err
 // whole set, matching the pre-paging behavior where it ran on the truncated
 // result.
 func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResult, error) {
+	return s.recallPage(ctx, in, true)
+}
+
+// RecallAll returns the complete ordered match set before a public page is
+// selected. Cross-store recall uses it to fuse revision and workspace ranks
+// without turning either store's page-size ceiling into a corpus ceiling.
+func (s *Store) RecallAll(ctx context.Context, in RecallInput) (RecallPageResult, error) {
+	in.Offset = 0
+	return s.recallPage(ctx, in, false)
+}
+
+func (s *Store) recallPage(ctx context.Context, in RecallInput, capLimit bool) (RecallPageResult, error) {
 	// 1. Validate namespaces — shape is domain-dependent (memory requires
 	// the legacy user/{id}[/project|session/{id}]/memory form; knowledge
 	// namespaces carry a 'knowledge' segment). Require non-empty here and
@@ -400,7 +412,7 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	if in.Limit <= 0 {
 		in.Limit = DefaultRecallLimit
 	}
-	if in.Limit > MaxRecallLimit {
+	if capLimit && in.Limit > MaxRecallLimit {
 		in.Limit = MaxRecallLimit
 	}
 
@@ -508,7 +520,10 @@ func (s *Store) RecallPage(ctx context.Context, in RecallInput) (RecallPageResul
 	if start > total {
 		start = total
 	}
-	end := start + in.Limit
+	end := total
+	if capLimit && start+in.Limit < end {
+		end = start + in.Limit
+	}
 	if end > total {
 		end = total
 	}
