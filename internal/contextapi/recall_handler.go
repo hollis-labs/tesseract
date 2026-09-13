@@ -79,6 +79,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
+	workstreamID := q.Get("workstream_id")
 
 	namespace := strings.TrimSpace(q.Get("namespace"))
 	if namespace == "" {
@@ -109,6 +110,12 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 	if !requireNamespaceSelectorAccess(w, r, namespace, domainNames...) {
 		return
 	}
+	if q.Has("workstream_id") {
+		if err := memory.ValidateWorkstreamFilter(workstreamID); err != nil {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+			return
+		}
+	}
 
 	// Parse limit.
 	limit := 15
@@ -132,7 +139,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		RevisionScope: memory.RevisionScopeCurrent,
 		Limit:         limit,
 		Filters: memory.RecallFilters{
-			Tags: tags, Domains: requestedDomains, WorkstreamID: q.Get("workstream_id"),
+			Tags: tags, Domains: requestedDomains, WorkstreamID: workstreamID,
 		},
 	}
 

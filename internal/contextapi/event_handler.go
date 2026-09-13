@@ -124,6 +124,7 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	workstreamID := q.Get("workstream_id")
 
 	namespaces := q["namespace"]
 	if len(namespaces) == 0 {
@@ -144,10 +145,16 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if q.Has("workstream_id") {
+		if err := memory.ValidateWorkstreamFilter(workstreamID); err != nil {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+			return
+		}
+	}
 
 	in := memory.EventLogInput{
 		Namespaces:   namespaces,
-		WorkstreamID: q.Get("workstream_id"),
+		WorkstreamID: workstreamID,
 		Direction:    memory.LogDirection(q.Get("direction")),
 		Cursor:       q.Get("cursor"),
 	}

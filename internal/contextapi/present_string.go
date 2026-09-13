@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // presentString distinguishes omission from an explicit empty string and
@@ -27,4 +29,17 @@ func (v presentString) Pointer() *string {
 	}
 	value := v.value
 	return &value
+}
+
+// FilterValue preserves omission while rejecting every supplied value that
+// cannot safely narrow a read. In particular, an explicit empty string cannot
+// collapse to the same behavior as an omitted filter.
+func (v presentString) FilterValue() (string, error) {
+	if !v.present {
+		return "", nil
+	}
+	if err := memory.ValidateWorkstreamFilter(v.value); err != nil {
+		return "", err
+	}
+	return v.value, nil
 }

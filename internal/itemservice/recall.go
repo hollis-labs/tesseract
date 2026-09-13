@@ -107,6 +107,9 @@ func (s *Service) RecallPaged(ctx context.Context, in memory.RecallInput, pr mem
 			Since: in.Filters.Since, Until: in.Filters.Until,
 		})
 		if err != nil {
+			if errors.Is(err, workspace.ErrInvalidInput) {
+				return PagedRecall{}, fmt.Errorf("%w: %w", memory.ErrInvalidInput, err)
+			}
 			return PagedRecall{}, err
 		}
 	}

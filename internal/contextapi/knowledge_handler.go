@@ -160,6 +160,9 @@ func writeDecodeError(w http.ResponseWriter, err error, dst any) {
 	if _, memoryWrite := dst.(*memoryWriteRequest); memoryWrite && field == "payload" {
 		details["expected_fields"] = []string{"summary", "body", "data", "data_schema_hash"}
 		message += "; memory write content is now flat: move payload.summary, payload.body, payload.data and payload.data_schema_hash to top-level summary, body, data and data_schema_hash. Send only the flat fields; read responses still use payload"
+	} else if _, memoryRecall := dst.(*memoryRecallRequest); memoryRecall && field == "workstream_id" {
+		details["expected_field"] = "workstream_id"
+		message += "; move filters.workstream_id to the top-level workstream_id field and send only the top-level selector"
 	} else if retired, hinted := retiredFieldHints[field]; hinted {
 		details["renamed_to"] = "derived_from"
 		message += "; " + retired

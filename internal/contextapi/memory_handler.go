@@ -1,8 +1,10 @@
 package contextapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -122,12 +124,12 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 }
 
 type memoryRecallRequest struct {
-	WorkstreamID  string               `json:"workstream_id,omitempty"`
+	WorkstreamID  presentString        `json:"workstream_id,omitempty"`
 	Namespaces    []string             `json:"namespaces"`
 	RevisionScope memory.RevisionScope `json:"revision_scope,omitempty"`
 	Ranking       memory.Ranking       `json:"ranking,omitempty"`
 	Query         string               `json:"query,omitempty"`
-	Filters       memory.RecallFilters `json:"filters,omitempty"`
+	Filters       memoryRecallFilters  `json:"filters,omitempty"`
 	Limit         int                  `json:"limit,omitempty"`
 
 	// SearchMode selects the retrieval arms under ranking=relevance:
@@ -183,6 +185,28 @@ type memoryRecallRequest struct {
 	pageArgs
 }
 
+// memoryRecallFilters preserves the legacy nested filters object while
+// reserving workstream_id for the request's canonical top-level field. The
+// domain type carries that field for library calls; this wire wrapper prevents
+// one HTTP body from supplying two selectors with ambiguous precedence.
+type memoryRecallFilters memory.RecallFilters
+
+func (f *memoryRecallFilters) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	for name := range fields {
+		if strings.EqualFold(strings.ReplaceAll(name, "_", ""), "workstreamid") {
+			return fmt.Errorf("json: unknown field %q", "workstream_id")
+		}
+	}
+	type wireFilters memoryRecallFilters
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	return dec.Decode((*wireFilters)(f))
+}
+
 func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 	if s.memoryStoreUnavailable(w) {
 		return
@@ -200,6 +224,11 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	workstreamID, err := req.WorkstreamID.FilterValue()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
 
 	payloadMode := s.defaultPayloadMode()
 	if req.PayloadMode != "" {
@@ -215,7 +244,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filters := req.Filters
+	filters := memory.RecallFilters(req.Filters)
 	if req.SimilarityMin != nil {
 		filters.SimilarityMin = req.SimilarityMin
 	}
@@ -227,7 +256,7 @@ func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		Query:         req.Query,
 		Filters:       filters,
 	}
-	in.Filters.WorkstreamID = req.WorkstreamID
+	in.Filters.WorkstreamID = workstreamID
 	page, err := s.itemService().RecallPaged(r.Context(), in, pr)
 	if err != nil {
 		writeRecallError(w, err, "recall_failed")

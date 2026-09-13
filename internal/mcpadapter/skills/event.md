@@ -73,7 +73,7 @@ separately on the revision as an unverified `provenance.write_context` receipt.
 ```json
 {
   "namespace": "user/chrispian/session/session-20260910-85916030/event/reasoning",
-  "workstream_id": "CW-20260912-0128",
+  "workstream_id": "ws-release-notes-42",
   "summary": "Chose a dedicated log read over ranking=chronological",
   "body": "Recall's fetchCandidates issues no ORDER BY and no LIMIT — it loads every matching row into Go before windowing. Fine at 2k revisions, quadratic-feeling at log volumes. Also its cursor is an offset, and a log is appended at the head, so page 2 would repeat rows written between pages. Went with keyset pagination pushed into SQL. Rejected: adding a LIMIT to fetchCandidates, which would have changed recall's Total semantics for every caller.",
   "author_agent_id": "claude-code",
@@ -123,7 +123,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/event/write" \
 ```json
 {
   "namespaces": ["user/chrispian/session/session-20260910-85916030/event/reasoning"],
-  "workstream_id": "CW-20260912-0128",
+  "workstream_id": "ws-release-notes-42",
   "direction": "oldest_first",
   "limit": 50
 }

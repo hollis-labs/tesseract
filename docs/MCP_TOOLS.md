@@ -228,7 +228,7 @@ the intended result.
 mcp__tesseract__memory_write {
   "namespace": "user/alex/memory/feedback",
   "memory_key": "boot_prompt_preference",
-  "workstream_id": "CW-20260912-0128",
+  "workstream_id": "ws-release-notes-42",
   "author_agent_id": "claude-code",
   "trigger": "explicit",
   "session_id": "2026-04-15:backend",
@@ -276,7 +276,7 @@ Namespace must contain a `knowledge` segment. Pointer `scheme`/`locator` are req
 ```json
 mcp__tesseract__workspace_write {
   "namespace": "project/example/workspace/scratch",
-  "workstream_id": "CW-20260912-0128",
+  "workstream_id": "ws-release-notes-42",
   "idempotency_key": "session-42-draft-1",
   "summary": "Current draft",
   "body": "Working content",
@@ -303,7 +303,7 @@ mcp__tesseract__tesseract_recall {
 
 Searches memory + knowledge. Returns ranked results with a uniform shape so the agent doesn't need to know which domain a hit came from.
 
-To narrow the same call to one association, add `"workstream_id": "CW-20260912-0128"`.
+To narrow the same call to one association, add `"workstream_id": "ws-release-notes-42"`.
 
 ### 4. Pack context at boot
 

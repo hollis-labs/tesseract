@@ -87,3 +87,13 @@ func ValidateWorkstreamID(value string) error {
 	}
 	return nil
 }
+
+// ValidateWorkstreamFilter validates an explicitly supplied association
+// selector. Unlike a write, an empty string cannot mean "clear": accepting it
+// would silently turn a supplied filter into an unfiltered read.
+func ValidateWorkstreamFilter(value string) error {
+	if value == "" {
+		return fmt.Errorf("workstream_id filter must be a non-empty string")
+	}
+	return ValidateWorkstreamID(value)
+}

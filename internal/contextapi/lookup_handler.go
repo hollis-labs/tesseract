@@ -15,7 +15,7 @@ import (
 // tesseractLookupRequest is the unified typed search payload. Thin wrapper
 // over memory.RecallInput that makes cross-domain filters explicit in JSON.
 type tesseractLookupRequest struct {
-	WorkstreamID  string               `json:"workstream_id,omitempty"`
+	WorkstreamID  presentString        `json:"workstream_id,omitempty"`
 	Namespaces    []string             `json:"namespaces"`
 	RevisionScope memory.RevisionScope `json:"revision_scope,omitempty"`
 	Ranking       memory.Ranking       `json:"ranking,omitempty"`
@@ -124,6 +124,11 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	workstreamID, err := req.WorkstreamID.FilterValue()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
+	}
 
 	payloadMode := s.defaultPayloadMode()
 	if req.PayloadMode != "" {
@@ -156,7 +161,7 @@ func (s *Server) handleTesseractLookup(w http.ResponseWriter, r *http.Request) {
 		SearchMode:    req.SearchMode,
 		Query:         req.Query,
 		Filters: memory.RecallFilters{
-			WorkstreamID:     req.WorkstreamID,
+			WorkstreamID:     workstreamID,
 			DerivedFrom:      req.DerivedFrom,
 			Statuses:         req.Statuses,
 			Tags:             req.Tags,

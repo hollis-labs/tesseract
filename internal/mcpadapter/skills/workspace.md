@@ -25,7 +25,7 @@ create also requires `idempotency_key`; keyed creates may provide one.
 ```text
 workspace_write namespace="project/example/workspace/scratch" \
   idempotency_key="session-42-draft-1" \
-  workstream_id="CW-20260912-0128" \
+  workstream_id="ws-release-notes-42" \
   summary="Current draft" body="Working content" \
   consumer_state='{"phase":"draft"}' \
   author_agent_id="assistant" session_id="session-42"
@@ -70,7 +70,7 @@ level:
   "domain":"workspace",
   "version_token":"01HTOKEN...",
   "namespace":"project/example/workspace/scratch",
-  "workstream_id":"CW-20260912-0128",
+  "workstream_id":"ws-release-notes-42",
   "key":"release-notes",
   "payload":{"summary":"Current draft","body":"Working content"}
 }

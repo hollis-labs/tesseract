@@ -229,6 +229,10 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	if errRes != nil {
 		return errRes, nil
 	}
+	workstreamID, errRes := workstreamReadArg(req)
+	if errRes != nil {
+		return errRes, nil
+	}
 
 	in := memory.RecallInput{
 		Namespaces:    namespaces,
@@ -239,7 +243,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
 		Query:      req.GetString("query", ""),
 		Filters: memory.RecallFilters{
-			WorkstreamID:  req.GetString("workstream_id", ""),
+			WorkstreamID:  workstreamID,
 			DerivedFrom:   derivedFrom,
 			Statuses:      statuses,
 			Tags:          tags,

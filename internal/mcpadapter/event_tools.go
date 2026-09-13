@@ -144,10 +144,14 @@ func (a *Adapter) handleEventList(ctx context.Context, req mcp.CallToolRequest) 
 	if len(namespaces) == 0 {
 		return toolError(codeValidationError, "namespaces is required and must name at least one event namespace"), nil
 	}
+	workstreamID, workstreamErr := workstreamReadArg(req)
+	if workstreamErr != nil {
+		return workstreamErr, nil
+	}
 
 	in := memory.EventLogInput{
 		Namespaces:   namespaces,
-		WorkstreamID: req.GetString("workstream_id", ""),
+		WorkstreamID: workstreamID,
 		Direction:    memory.LogDirection(req.GetString("direction", "")),
 		Limit:        int(req.GetFloat("limit", 0)),
 		Cursor:       req.GetString("cursor", ""),
