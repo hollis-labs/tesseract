@@ -28,6 +28,8 @@ The thread through those: a later session should **meet** it while working nearb
 
 ## The fields, and how to choose their values
 
+Every write response carries `item_id` and the retained `memory_id`; they are the same stable item identity. `revision_id` identifies only the immutable version returned by that write. Prefer `item_id` when saving a reference to the current item.
+
 From the `memory_write` MCP declaration. The vocabularies below are **closed** —
 a value outside them is a `validation_error`, not a new category.
 
@@ -40,7 +42,7 @@ a value outside them is a `validation_error`, not a new category.
 | `confidence` | yes | float in `[0, 1.0]`. **Weights recall** as a direct multiplier. |
 | `author_agent_id` | yes | who wrote it. |
 | `session_id` | yes | the session that produced it, for correlating a turn's writes. |
-| `memory_key` | no | a stable identity for an evolving concept; re-writing the key supersedes. See *Keyed vs. unkeyed*. |
+| `memory_key` | no | a descriptive lookup key for an evolving concept; re-writing the same key appends a revision to the item. See *Keyed vs. unkeyed*. |
 | `status` | no | `draft` (default) \| `reviewed` \| `canonical`. **Weights recall**: 0.6 / 0.9 / 1.0, and a deprecated revision drops to 0.1. |
 | `data` | no | the record's OWN fields as a JSON object, stored verbatim and never interpreted — not indexed, not embedded, not searched. See below. |
 | `data_schema_hash` | no | optional hex sha256 recording which schema `data` claims; stored, never validated. |
@@ -360,9 +362,9 @@ Note what step 3 does **not** contain. Ten revisions came back, two were read, o
 ## The other operations
 
 1. **Write** - `memory_write`.
-2. **Get head** - `tesseract_get domain="memory"` returns the current (non-deprecated) revision for `(namespace, key)`. Reinforces.
-3. **Get revision** - `tesseract_get_revision` fetches by `revision_id`. Reinforces.
-4. **Get history** - `tesseract_history domain="memory"` returns the full revision chain for a keyed memory, newest first.
+2. **Get head** - `tesseract_get item_id=<item_id>` returns the current revision, including for a keyless memory. The legacy `domain="memory"` + namespace + key selector remains supported. Reinforces.
+3. **Get revision** - `tesseract_get_revision` fetches one exact immutable version by `revision_id`. Reinforces.
+4. **Get history** - `tesseract_history item_id=<item_id>` returns the full revision chain newest first. The legacy keyed selector remains supported.
 5. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
 6. **Deprecate** - `tesseract_deprecate` when a revision is wrong or outdated. Soft; history survives.
 
@@ -370,10 +372,10 @@ Recall's ranking modes — `relevance` (the default when `query` is set), `activ
 
 ## Keyed vs. unkeyed
 
-- **Keyed memory** - a stable `memory_key` that represents an evolving concept (e.g. `user.prefs.style`). Re-writing the key creates a new revision; `tesseract_get` returns the current head.
+- **Keyed memory** - a descriptive `memory_key` for an evolving concept (e.g. `user.prefs.style`). Re-writing the key creates a new revision of the same item; `tesseract_get` returns the current head.
   - **The key format is enforced, not normalized.** Dot-separated segments, each matching `^[a-z0-9_]+$`; at most 6 segments, 64 characters per segment, 256 characters total. A hyphen, an uppercase letter or a space anywhere in the key is a `validation_error` — `user.prefs-style` and `User.Prefs.Style` are both rejected rather than lowercased or rewritten, so pick the key in that shape up front.
   - The rule is memory-domain only. `knowledge_write` keys are free-form slugs, because they usually come from an external source that does not obey it.
-- **Unkeyed memory** - no `memory_key`; each write stands alone. Use for observation streams where no stable identity exists. Note: `tesseract_get` / `tesseract_history` require a key; unkeyed memories are reachable via `tesseract_recall` and `tesseract_get_revision`.
+- **Unkeyed memory** - no `memory_key`; each write stands alone. Use for observation streams where no descriptive key is needed. Its `item_id` is stable identity: pass it alone to `tesseract_get` or `tesseract_history`. Recall and exact `revision_id` reads remain available.
 
 ## Promotion
 

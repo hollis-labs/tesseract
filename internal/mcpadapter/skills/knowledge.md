@@ -143,8 +143,8 @@ When the external artifact genuinely is the point, use a real scheme — and **v
 
 ## Reading
 
-- `tesseract_get domain="knowledge"` returns the current revision by `(namespace, key)`. Returns `not_found` if the entry exists but is not knowledge-domain (cross-domain reads are filtered).
-- `tesseract_history domain="knowledge"` returns the full chain, newest first; non-knowledge revisions are filtered out.
+- `tesseract_get item_id=<item_id>` returns the current revision without repeating domain, namespace, or key. The legacy `domain="knowledge"` + namespace + key selector remains supported and domain-filtered.
+- `tesseract_history item_id=<item_id>` returns the full chain newest first. The legacy keyed selector remains supported.
 - For search across memory + knowledge, use `tesseract_recall` with `facet_kinds` / `facet_sources` filters. See `tesseract_skills facets-and-kinds`.
 
 ## Pointer health

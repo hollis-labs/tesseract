@@ -166,8 +166,8 @@ For the same reason, `tesseract_touch` on an event revision reports it under `no
 
 `tesseract_deprecate` is how a log entry is retracted. `event_list` excludes deprecated revisions, so the linear read stops showing it; `tesseract_history` still returns it, because the store is append-only and nothing is destroyed.
 
-## Keyed reads
+## Item and keyed reads
 
-`tesseract_get domain="event"` and `tesseract_history domain="event"` work on the keyed minority. Most entries are keyless and have no `(namespace, key)` to fetch — `event_list` is how you read those, which is to say how you read the log.
+Every event has an `item_id`, including the keyless majority. `tesseract_get item_id=<item_id>` returns its current revision and `tesseract_history item_id=<item_id>` returns its history without changing activation. The legacy `domain="event"` + namespace + key selector still works on the keyed minority. Use `event_list` when you want the chronological log rather than one known item.
 
-There are no `/v1/event/current` or `/v1/event/history` HTTP routes for the same reason: they would mostly answer `not_found`.
+The HTTP equivalents are `GET /v1/items/{item_id}` and `/v1/items/{item_id}/history`. There are no `/v1/event/current` or `/v1/event/history` keyed routes.

@@ -229,7 +229,8 @@ func TestDoorsNameRealSurfaces(t *testing.T) {
 		if _, ok := toolArgs[door.MCPTool]; !ok {
 			t.Errorf("door %q names MCP tool %q, which no adapter registers", door.Name, door.MCPTool)
 		}
-		req := httptest.NewRequest(door.HTTPMethod, door.HTTPPath, nil)
+		path := strings.ReplaceAll(door.HTTPPath, "{item_id}", "probe-id")
+		req := httptest.NewRequest(door.HTTPMethod, path, nil)
 		rr := httptest.NewRecorder()
 		srv.ServeHTTP(rr, req)
 		if rr.Code == http.StatusNotFound {
@@ -269,6 +270,20 @@ func TestReadDoorsAcceptTheSpellingsTheyDeclare(t *testing.T) {
 			continue
 		}
 		keyField, ok := door.Field("key")
+		if !ok {
+			if _, itemDoor := door.Field("item_id"); itemDoor {
+				t.Run(door.Name, func(t *testing.T) {
+					path := strings.ReplaceAll(door.HTTPPath, "{item_id}", "probe-id")
+					req := httptest.NewRequest(http.MethodGet, path, nil)
+					rr := httptest.NewRecorder()
+					srv.ServeHTTP(rr, req)
+					if rr.Code == http.StatusBadRequest && strings.Contains(rr.Body.String(), "item_id is required") {
+						t.Errorf("%s did not accept item_id from its path", door.HTTPPath)
+					}
+				})
+				continue
+			}
+		}
 		if !ok {
 			t.Errorf("read door %q has no `key` row", door.Name)
 			continue

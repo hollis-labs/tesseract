@@ -255,7 +255,7 @@ func (a *Adapter) resolvePayloadMode(req mcp.CallToolRequest) (memory.PayloadMod
 // payloadModeArgDescription is the parameter blurb for the recall tool. One
 // string so the tool and its HTTP peers cannot drift apart.
 const payloadModeArgDescription = "How much of each result to return: " +
-	"`keys` (identity only: revision_id, memory_id, domain, namespace, memory_key, created_at — the browse/enumerate shape), " +
+	"`keys` (identity only: revision_id, item_id, memory_id, domain, namespace, memory_key, created_at — the browse/enumerate shape), " +
 	"`summary` (keys + status, tags, confidence, payload.summary), or " +
 	"`full` (everything, including payload.body and state). " +
 	"Default comes from server config (read.payload_mode). " +

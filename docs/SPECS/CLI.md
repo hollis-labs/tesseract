@@ -133,7 +133,9 @@ append path, so `context_write`, `context_typed_write`, `context_ingest`, the
 **The CLI cannot write the curated domains.** There is no `tesseract memory
 write`; memory, knowledge and event are reachable over MCP (`memory_write`,
 `knowledge_write`, `event_write`) and HTTP (`POST /v1/memory/write` and peers)
-only. The refusal names the surface that would have worked.
+only. The refusal names the surface that would have worked. The CLI also has no
+curated-domain item read command: use `tesseract_get item_id=<item_id>` over MCP
+or `GET /v1/items/{item_id}` (and `/history`) over HTTP.
 
 Entries that already exist under a reserved namespace keep accepting revisions,
 so records written before the guard can still be deprecated and superseded.

@@ -43,6 +43,7 @@ type synthesisAskRequest struct {
 type synthesisSource struct {
 	N          int     `json:"n"`
 	RevisionID string  `json:"revision_id"`
+	ItemID     string  `json:"item_id"`
 	MemoryID   string  `json:"memory_id"`
 	Domain     string  `json:"domain"`
 	Namespace  string  `json:"namespace"`
@@ -154,6 +155,7 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 		sources = append(sources, synthesisSource{
 			N:          n,
 			RevisionID: rr.Revision.RevisionID,
+			ItemID:     rr.Revision.MemoryID,
 			MemoryID:   rr.Revision.MemoryID,
 			Domain:     string(rr.Revision.Domain),
 			Namespace:  rr.Revision.Namespace,

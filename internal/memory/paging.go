@@ -386,6 +386,15 @@ func HistoryOrderingFingerprint(domain, namespace, memoryKey string) string {
 	}{domain, namespace, memoryKey})
 }
 
+// ItemHistoryOrderingFingerprint binds a history cursor to the stable item
+// selector that produced it. Domain and key need not be repeated because an
+// item_id resolves exactly one item and its domain from storage.
+func ItemHistoryOrderingFingerprint(itemID string) string {
+	return fingerprintOf(struct {
+		I string `json:"i"`
+	}{itemID})
+}
+
 // fingerprintOf hashes a canonical key to 16 hex characters. Truncating
 // SHA-256 to 8 bytes is ample here: the fingerprint guards against a caller
 // reusing a cursor across a changed query, not against an adversary

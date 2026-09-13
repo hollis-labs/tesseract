@@ -68,7 +68,7 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 	c := openTestTesseract(t)
 	defer c.Close()
 
-	_, err := c.WriteMemory(ctx, memory.WriteInput{
+	written, err := c.WriteMemory(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
 		Namespace:   "user/test/memory/notes",
 		MemoryKey:   "history_test",
@@ -100,6 +100,21 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 	}
 	if len(history) != 1 {
 		t.Fatalf("expected 1 history entry, got %d", len(history))
+	}
+
+	itemCurrent, err := c.GetCurrentItem(ctx, written.ItemID)
+	if err != nil {
+		t.Fatalf("GetCurrentItem: %v", err)
+	}
+	if itemCurrent.RevisionID != written.RevisionID || itemCurrent.ItemID != itemCurrent.MemoryID {
+		t.Fatalf("item current = %#v", itemCurrent)
+	}
+	itemHistory, err := c.GetItemHistory(ctx, written.ItemID)
+	if err != nil {
+		t.Fatalf("GetItemHistory: %v", err)
+	}
+	if len(itemHistory) != 1 || itemHistory[0].RevisionID != written.RevisionID {
+		t.Fatalf("item history = %#v", itemHistory)
 	}
 }
 

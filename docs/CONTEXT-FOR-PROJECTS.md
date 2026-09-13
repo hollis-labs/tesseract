@@ -63,7 +63,7 @@ Write resumable working state only beneath:
 `app/<agent-id>/session/<task-id>`
 
 Use `context_write` with a stable key and a JSON-string payload. Exact reads use
-`tesseract_get` and must name `domain`, `namespace`, and `key`.
+`tesseract_get`; prefer the stable `item_id`, or name the complete legacy `domain`, `namespace`, and `key` selector.
 
 ### Session end
 

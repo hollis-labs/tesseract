@@ -57,6 +57,9 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 	if rev.RevisionID == "" {
 		t.Error("empty revision_id")
 	}
+	if rev.ItemID == "" || rev.ItemID != rev.MemoryID {
+		t.Errorf("response aliases item_id=%q memory_id=%q", rev.ItemID, rev.MemoryID)
+	}
 	if rev.Domain != "memory" {
 		t.Errorf("domain = %q, want memory", rev.Domain)
 	}

@@ -20,3 +20,10 @@ test("keeps route context separate from top-level query flags", () => {
     "/?demo=1#memoryDetail?namespace=user%2Fdemo&key=favorite+color&domain=memory",
   );
 });
+
+test("encodes stable item navigation without a key", () => {
+  assert.equal(
+    buildRouteUrl("memoryDetail", { itemId: "01HITEMENCODED" }, ""),
+    "/#memoryDetail?item_id=01HITEMENCODED",
+  );
+});

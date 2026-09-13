@@ -1182,3 +1182,147 @@ func TestHTTPMemoryRoutes_RefuseTheOtherDomainsRows(t *testing.T) {
 		t.Fatalf("the matching-domain control failed (%d): %s", code, body)
 	}
 }
+
+func TestItemIDSelectorsReadKeylessEntriesAndPreserveAliases(t *testing.T) {
+	a, _, ms, _ := crossDomainSurfaces(t)
+	ctx := context.Background()
+	written, err := a.EventStore.Write(ctx, event.WriteInput{
+		Namespace: "user/chrispian/event/reasoning",
+		Summary:   "keyless item selector",
+		Author:    memory.Author{AgentID: "test"},
+		SessionID: "session:item-selector",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := ms.GetState(ctx, written.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	currentRaw := xdMCP(t, a.handleTesseractGet, map[string]any{"item_id": written.ItemID})
+	var current memory.Revision
+	if decodeErr := json.Unmarshal([]byte(currentRaw), &current); decodeErr != nil {
+		t.Fatalf("decode current: %v; raw=%s", decodeErr, currentRaw)
+	}
+	if current.ItemID != written.ItemID || current.MemoryID != written.ItemID || current.MemoryKey != "" || current.Domain != domains.Event {
+		t.Fatalf("current = %#v", current)
+	}
+
+	historyRaw := xdMCP(t, a.handleTesseractHistory, map[string]any{"item_id": written.ItemID})
+	var history []memory.Revision
+	if decodeErr := json.Unmarshal([]byte(historyRaw), &history); decodeErr != nil {
+		t.Fatalf("decode history: %v; raw=%s", decodeErr, historyRaw)
+	}
+	if len(history) != 1 || history[0].ItemID != written.ItemID || history[0].RevisionID != written.RevisionID {
+		t.Fatalf("history = %#v", history)
+	}
+
+	after, err := ms.GetState(ctx, written.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.AccessCount != before.AccessCount {
+		t.Fatalf("event item selector reinforced access_count: before=%d after=%d", before.AccessCount, after.AccessCount)
+	}
+}
+
+func TestItemIDSelectorRejectsMixedPartialAndEmptyForms(t *testing.T) {
+	a, _, _, _ := crossDomainSurfaces(t)
+	cases := []map[string]any{
+		{"item_id": "01ITEM", "domain": "memory", "namespace": xdMemNS, "key": xdMemKey},
+		{"item_id": ""},
+		{"domain": "memory", "namespace": xdMemNS},
+		{"namespace": xdMemNS, "key": xdMemKey},
+	}
+	for i, args := range cases {
+		for _, handler := range []struct {
+			name string
+			call func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		}{
+			{"get", a.handleTesseractGet},
+			{"history", a.handleTesseractHistory},
+		} {
+			raw := xdMCP(t, handler.call, args)
+			if !strings.Contains(raw, `"code":"validation_error"`) {
+				t.Errorf("case %d %s returned %s", i, handler.name, raw)
+			}
+		}
+	}
+}
+
+func TestItemIDSelectorChecksResolvedNamespaceBeforeReinforcement(t *testing.T) {
+	a, _, ms, _ := crossDomainSurfaces(t)
+	ctx := context.Background()
+	target, err := ms.GetCurrent(ctx, xdMemNS, xdMemKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := ms.GetState(ctx, target.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := a.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label:          "wrong namespace",
+		Scopes:         []string{"memory:read"},
+		NamespaceGlobs: []string{"app/other/*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restricted := New(a.Store, token)
+	restricted.MemoryStore = a.MemoryStore
+	restricted.KnowledgeStore = a.KnowledgeStore
+	restricted.EventStore = a.EventStore
+
+	raw := xdMCP(t, restricted.handleTesseractGet, map[string]any{"item_id": target.ItemID})
+	if !strings.Contains(raw, `"code":"namespace_not_permitted"`) {
+		t.Fatalf("denied item read returned %s", raw)
+	}
+	after, err := ms.GetState(ctx, target.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.AccessCount != before.AccessCount {
+		t.Fatalf("denied item read reinforced access_count: before=%d after=%d", before.AccessCount, after.AccessCount)
+	}
+}
+
+func TestItemIDSelectorHonorsDomainAvailabilityAfterResolution(t *testing.T) {
+	a, _, ms, _ := crossDomainSurfaces(t)
+	ctx := context.Background()
+	memoryRevision, err := ms.GetCurrent(ctx, xdMemNS, xdMemKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	knowledgeRevision, err := ms.GetCurrent(ctx, xdKnowNS, xdKnowKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	knowledgeOnly := *a
+	knowledgeOnly.MemoryStore = nil
+	knowledgeOnly.EventStore = nil
+	if raw := xdMCP(t, knowledgeOnly.handleTesseractGet, map[string]any{"item_id": knowledgeRevision.ItemID}); strings.Contains(raw, `"code":"`) {
+		t.Fatalf("knowledge-only deployment could not read knowledge item: %s", raw)
+	}
+	if raw := xdMCP(t, knowledgeOnly.handleTesseractGet, map[string]any{"item_id": memoryRevision.ItemID}); !strings.Contains(raw, `"code":"domain_unavailable"`) {
+		t.Fatalf("knowledge-only deployment exposed memory item: %s", raw)
+	}
+
+	eventRevision, err := a.EventStore.Write(ctx, event.WriteInput{
+		Namespace: "user/chrispian/event/reasoning",
+		Summary:   "event-only item",
+		Author:    memory.Author{AgentID: "test"},
+		SessionID: "session:item-selector",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventOnly := *a
+	eventOnly.MemoryStore = nil
+	eventOnly.KnowledgeStore = nil
+	if raw := xdMCP(t, eventOnly.handleTesseractGet, map[string]any{"item_id": eventRevision.ItemID}); strings.Contains(raw, `"code":"`) {
+		t.Fatalf("event-only deployment could not read event item: %s", raw)
+	}
+}

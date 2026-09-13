@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -56,6 +57,60 @@ func resolveReadDomain(req mcp.CallToolRequest) (string, *mcp.CallToolResult) {
 		"domain must be one of "+strings.Join(readDomainVocabulary(), ", ")+", got "+raw)
 }
 
+type readSelector struct {
+	ItemID    string
+	Domain    string
+	Namespace string
+	Key       string
+}
+
+func (s readSelector) ByItemID() bool { return s.ItemID != "" }
+
+// resolveReadSelector enforces the two public selector forms. Presence is
+// checked before value so an empty field cannot be silently ignored to turn a
+// mixed selector into an item-only call.
+func resolveReadSelector(req mcp.CallToolRequest) (readSelector, *mcp.CallToolResult) {
+	args := req.GetArguments()
+	_, hasItemID := args["item_id"]
+	_, hasDomain := args["domain"]
+	_, hasNamespace := args["namespace"]
+	_, hasKey := args["key"]
+	legacyCount := 0
+	for _, present := range []bool{hasDomain, hasNamespace, hasKey} {
+		if present {
+			legacyCount++
+		}
+	}
+
+	if hasItemID {
+		if legacyCount != 0 {
+			return readSelector{}, toolError(codeValidationError,
+				"choose exactly one selector: item_id, or domain + namespace + key; do not mix them")
+		}
+		itemID := strings.TrimSpace(req.GetString("item_id", ""))
+		if itemID == "" {
+			return readSelector{}, toolError(codeValidationError, "item_id must be non-empty")
+		}
+		return readSelector{ItemID: itemID}, nil
+	}
+	if legacyCount != 3 {
+		return readSelector{}, toolError(codeValidationError,
+			"choose exactly one selector: item_id, or the complete domain + namespace + key form")
+	}
+
+	domain, errRes := resolveReadDomain(req)
+	if errRes != nil {
+		return readSelector{}, errRes
+	}
+	namespace := strings.TrimSpace(req.GetString("namespace", ""))
+	key := strings.TrimSpace(req.GetString("key", ""))
+	if namespace == "" || key == "" {
+		return readSelector{}, toolError(codeValidationError,
+			"domain, namespace and key must all be non-empty in the legacy selector")
+	}
+	return readSelector{Domain: domain, Namespace: namespace, Key: key}, nil
+}
+
 // domainUnavailable is the answer when the vocabulary accepts a domain but this
 // deployment has no store wired for it. It is a distinct code from not_found on
 // purpose: "there is no knowledge store here" and "that key has no knowledge
@@ -101,13 +156,50 @@ func (a *Adapter) revisionStore() *memory.Store {
 	return nil
 }
 
+func (a *Adapter) itemDomainAvailable(domain domains.Domain) bool {
+	switch domain {
+	case domains.Memory:
+		return a.MemoryStore != nil
+	case domains.Knowledge:
+		return a.KnowledgeStore != nil
+	case domains.Event:
+		return a.EventStore != nil
+	default:
+		return false
+	}
+}
+
+// resolveItemRead resolves only the item's state row, then applies token
+// namespace policy before any revision content is loaded or reinforced.
+func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims contextstore.AuthToken) (*memory.Store, memory.State, *mcp.CallToolResult, error) {
+	store := a.revisionStore()
+	if store == nil {
+		return nil, memory.State{}, revisionStoreUnavailable(), nil
+	}
+	state, err := store.GetState(ctx, itemID)
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			return nil, memory.State{}, toolError(codeNotFound, "item_id not found: "+itemID), nil
+		}
+		return nil, memory.State{}, nil, err
+	}
+	if !globsPermit(claims.NamespaceGlobs, state.Namespace) {
+		return nil, memory.State{}, toolError(codeNamespaceNotPermitted,
+			"token namespace globs do not permit reading: "+state.Namespace), nil
+	}
+	if !a.itemDomainAvailable(state.Domain) {
+		return nil, memory.State{}, domainUnavailable(string(state.Domain)), nil
+	}
+	return store, state, nil, nil
+}
+
 // ── Registration ─────────────────────────────────────────────────────────────
 
 // registerCrossDomainReadTools registers the reads that span every domain.
 //
 // tesseract_get and tesseract_history register unconditionally: the context
 // store is always present on a built adapter, so `domain: "context"` always has
-// a backing store, and the two revision-store domains answer domain_unavailable
+// a backing store, and the three revision-store domains answer domain_unavailable
 // when their store is absent.
 //
 // tesseract_get_revision and tesseract_deprecate register whenever ANY backing
@@ -117,22 +209,25 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 
 	a.addTool(s, mcp.NewTool("tesseract_get",
 		mcp.WithDescription(
-			"**Fetch the current entry** at `(domain, namespace, key)` — one tool for every domain.\n"+
+			"**Fetch a current entry** by stable `item_id`, or by `(domain, namespace, key)`.\n"+
 				"• **Kind of content:** the latest revision for a memory, knowledge or event entry, or the head record for a context record.\n"+
 				"• **Result shape:** domain-dependent, because the underlying rows are. `memory`, `knowledge` and `event` answer a revision object; `context` answers a record object. Read `domain` back off your own call, not off the response.\n"+
 				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token, matching the rest of the context read surface.\n"+
 				"• **Side effect:** under `memory` and `knowledge`, reinforces the entry's activation/access_count — a deliberate read counts as use, unlike `tesseract_recall`. `context` does not reinforce, having no activation state, and neither does `event`, which opts out of activation so a journal cannot fade for going unread.\n"+
-				"• **Use this when:** you know exactly which entry you want.\n"+
+				"• **Selectors:** pass exactly one of `item_id`, or the complete legacy `domain` + `namespace` + `key` form. `item_id` resolves its domain and namespace from storage and works for keyless items.\n"+
+				"• **Use this when:** you know exactly which current item you want. Prefer `item_id` for stable references; key lookup remains supported.\n"+
 				"• **Don't use this for:** revision history (`tesseract_history`), ranked search (`tesseract_recall`), or a specific revision by ID (`tesseract_get_revision`).\n"+
-				"• **Errors:** `validation_error` (bad or missing `domain`, missing `namespace`/`key`), `domain_unavailable` (no store wired for that domain here), `not_found`.\n"+
+				"• **Errors:** `validation_error` (mixed, partial or empty selector), `namespace_not_permitted`, `domain_unavailable`, `not_found`.\n"+
 				"• **Deeper:** `tesseract_skills memory`, `tesseract_skills knowledge`, `tesseract_skills event`.",
 		),
-		mcp.WithString("domain", mcp.Required(), mcp.Description(
-			"Which store to read: "+domainList+". Required — there is no default, because guessing it from the namespace would answer the wrong question silently.")),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description(
+		mcp.WithString("item_id", mcp.Description(
+			"Stable Tesseract item ID. Preferred for current-item reads; it needs no domain, namespace or key. This is the same value existing responses also expose as memory_id.")),
+		mcp.WithString("domain", mcp.Description(
+			"Which store to read: "+domainList+". Legacy key selector; supply together with namespace and key, and omit all three when using item_id.")),
+		mcp.WithString("namespace", mcp.Description(
 			"Namespace. The first segment is the scope type ("+memory.ScopeList()+"), the second its id; `system` is a singleton with no id segment. "+
 				"Memory: {scope}/{id}/memory/{type}. Knowledge: {scope}/{id}/knowledge/... (free depth). Event: {scope}/{id}/event/{type}. Context: any registered namespace path.")),
-		mcp.WithString("key", mcp.Required(), mcp.Description(
+		mcp.WithString("key", mcp.Description(
 			"Entry key within the namespace. This is the field memory, knowledge and event revisions carry as `memory_key`. Most event entries are keyless and are read through `event_list` instead.")),
 		// The unified tool must advertise the strongest effect of any arm. The
 		// memory arm reinforces activation/access_count, so this is neither
@@ -145,19 +240,20 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 
 	a.addTool(s, mcp.NewTool("tesseract_history",
 		mcp.WithDescription(
-			"**Fetch the revision history** at `(domain, namespace, key)`, newest first — one tool for every domain.\n"+
+			"**Fetch an item's revision history** by stable `item_id`, or by `(domain, namespace, key)`, newest first.\n"+
 				"• **Kind of content:** every revision under the key, including superseded and deprecated ones.\n"+
 				"• **Result shape:** domain-dependent. `memory`, `knowledge` and `event` answer a bare array; pass `limit`, `cursor`, `budget_bytes` or `budget_tokens` and they answer `{results, manifest}` instead. `context` always answers its own budget envelope and honors `limit` only.\n"+
 				"• **Scope:** `memory:read` for `memory`, `knowledge` and `event`; `context` needs no token.\n"+
-				"• **Use this when:** you need to trace how an entry evolved, or read superseded content. Under `event` this is also where a retracted log entry stays findable — `event_list` excludes deprecated revisions, this does not.\n"+
+				"• **Selectors:** pass exactly one of `item_id`, or the complete legacy `domain` + `namespace` + `key` form. `item_id` works for keyless entries.\n"+
+				"• **Use this when:** you need to trace how an item evolved, or read superseded content. Under `event` this is also where a retracted log entry stays findable — `event_list` excludes deprecated revisions, this does not.\n"+
 				"• **Don't use this for:** just the current value (`tesseract_get`).\n"+
-				"• **Errors:** `validation_error` (bad or missing `domain`, missing `namespace`/`key`, unusable `cursor`), `domain_unavailable`, `not_found`.\n"+
+				"• **Errors:** `validation_error` (mixed or partial selector, unusable cursor), `namespace_not_permitted`, `domain_unavailable`, `not_found`.\n"+
 				"• **Deeper:** `tesseract_skills revisions`.",
 		),
-		mcp.WithString("domain", mcp.Required(), mcp.Description(
-			"Which store to read: "+domainList+". Required — there is no default.")),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace, as for `tesseract_get`.")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Entry key within the namespace.")),
+		mcp.WithString("item_id", mcp.Description("Stable Tesseract item ID. Preferred for item history and required for keyless entries.")),
+		mcp.WithString("domain", mcp.Description("Which store to read: "+domainList+". Legacy key selector; supply with namespace and key.")),
+		mcp.WithString("namespace", mcp.Description("Legacy key selector namespace, as for `tesseract_get`.")),
+		mcp.WithString("key", mcp.Description("Legacy key selector entry key.")),
 		mcp.WithNumber("limit", mcp.Description(historyLimitArgDescription+
 			" Under `domain: \"context\"` this is that domain's own record limit and does not change the response shape.")),
 		mcp.WithString("cursor", mcp.Description(cursorArgDescription+" Ignored under `domain: \"context\"`.")),
@@ -260,27 +356,45 @@ func (a *Adapter) registerCrossDomainReadTools(s *toolRegistrar) {
 //
 // What is preserved is everything that differs BETWEEN arms and would be
 // tempting to unify: the context arm performs no scope check (the context read
-// surface never has), and only the memory arm reinforces. Both are contracts
+// surface never has), and the memory and knowledge arms reinforce. Both are contracts
 // callers already depend on, so they are kept and documented rather than
 // smoothed.
 func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	domain, errRes := resolveReadDomain(req)
+	selector, errRes := resolveReadSelector(req)
 	if errRes != nil {
 		return errRes, nil
 	}
 
-	if domain == readDomainContext {
+	if selector.Domain == readDomainContext {
 		return a.handleContextHead(ctx, req)
 	}
 
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+	res, claims := a.checkScope(ctx, "memory:read")
+	if res != nil {
 		return res, nil
 	}
-	namespace := req.GetString("namespace", "")
-	key := req.GetString("key", "")
-	if namespace == "" || key == "" {
-		return toolError(codeValidationError, "namespace and key are required"), nil
+	if selector.ByItemID() {
+		store, state, itemErrRes, err := a.resolveItemRead(ctx, selector.ItemID, claims)
+		if itemErrRes != nil || err != nil {
+			return itemErrRes, err
+		}
+		var rev memory.Revision
+		if state.Domain == domains.Event {
+			rev, err = store.GetCurrentByItemID(ctx, selector.ItemID)
+		} else {
+			rev, err = store.GetCurrentByItemIDReinforced(ctx, selector.ItemID)
+		}
+		if err != nil {
+			if errors.Is(err, memory.ErrNotFound) {
+				return toolError(codeNotFound, err.Error()), nil
+			}
+			return nil, err
+		}
+		return toolJSON(rev), nil
 	}
+	domain := selector.Domain
+	namespace := selector.Namespace
+	key := selector.Key
 
 	var (
 		rev memory.Revision
@@ -340,28 +454,52 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req mcp.CallToolReques
 // handleTesseractHistory dispatches on `domain`. See handleTesseractGet on why
 // the arms are not unified.
 func (a *Adapter) handleTesseractHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	domain, errRes := resolveReadDomain(req)
+	selector, errRes := resolveReadSelector(req)
 	if errRes != nil {
 		return errRes, nil
 	}
 
-	if domain == readDomainContext {
+	if selector.Domain == readDomainContext {
 		return a.handleContextHistory(ctx, req)
 	}
 
-	if res, _ := a.checkScope(ctx, "memory:read"); res != nil {
+	res, claims := a.checkScope(ctx, "memory:read")
+	if res != nil {
 		return res, nil
-	}
-	namespace := req.GetString("namespace", "")
-	key := req.GetString("key", "")
-	if namespace == "" || key == "" {
-		return toolError(codeValidationError, "namespace and key are required"), nil
 	}
 
 	pr, errRes := a.resolveHistoryPageRequest(req)
 	if errRes != nil {
 		return errRes, nil
 	}
+	if selector.ByItemID() {
+		store, _, itemErrRes, err := a.resolveItemRead(ctx, selector.ItemID, claims)
+		if itemErrRes != nil || err != nil {
+			return itemErrRes, err
+		}
+		revs, err := store.GetHistoryByItemID(ctx, selector.ItemID)
+		if err != nil {
+			if errors.Is(err, memory.ErrNotFound) {
+				return toolError(codeNotFound, err.Error()), nil
+			}
+			return nil, err
+		}
+		if !pr.Engaged() {
+			return toolJSON(revs), nil
+		}
+		page, err := memory.PageRevisions(revs, pr,
+			memory.ItemHistoryOrderingFingerprint(selector.ItemID))
+		if err != nil {
+			if errors.Is(err, memory.ErrInvalidCursor) {
+				return toolError(codeValidationError, err.Error()), nil
+			}
+			return nil, err
+		}
+		return toolJSON(page), nil
+	}
+	domain := selector.Domain
+	namespace := selector.Namespace
+	key := selector.Key
 
 	var (
 		revs []memory.Revision

@@ -34,9 +34,7 @@ type Tab = "write" | "promote" | "deprecate";
 const STATUS_OPTIONS: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
 
 interface Props {
-  onOpenItem?:
-    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
-    | undefined;
+  onOpenItem?: ((itemId: string) => void) | undefined;
   onOpenReview?: (() => void) | undefined;
 }
 
@@ -85,13 +83,7 @@ export function MemoryWritePage({ onOpenItem, onOpenReview }: Props) {
   );
 }
 
-function WriteForm({
-  onOpenItem,
-}: {
-  onOpenItem?:
-    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
-    | undefined;
-}) {
+function WriteForm({ onOpenItem }: { onOpenItem?: ((itemId: string) => void) | undefined }) {
   const [namespace, setNamespace] = useState("");
   const [memoryKey, setMemoryKey] = useState("");
   const [supersedes, setSupersedes] = useState("");
@@ -159,12 +151,12 @@ function WriteForm({
                 {result.namespace} / {result.memory_key ?? "(no key)"} · status {result.status} ·
                 conf {result.confidence.toFixed(2)}
               </span>
-              {onOpenItem && result.memory_key ? (
+              {onOpenItem ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="xs"
-                  onClick={() => onOpenItem("memory", result.namespace, result.memory_key ?? "")}
+                  onClick={() => onOpenItem(result.item_id)}
                 >
                   Open detail
                 </Button>
@@ -289,13 +281,7 @@ function WriteForm({
   );
 }
 
-function PromoteForm({
-  onOpenItem,
-}: {
-  onOpenItem?:
-    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
-    | undefined;
-}) {
+function PromoteForm({ onOpenItem }: { onOpenItem?: ((itemId: string) => void) | undefined }) {
   const [srcNamespace, setSrcNamespace] = useState("");
   const [srcMemoryId, setSrcMemoryId] = useState("");
   const [tgtNamespace, setTgtNamespace] = useState("");
@@ -351,12 +337,12 @@ function PromoteForm({
               <span className="font-mono text-xs">
                 {result.namespace} · revision {result.revision_id}
               </span>
-              {onOpenItem && result.memory_key ? (
+              {onOpenItem ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="xs"
-                  onClick={() => onOpenItem("memory", result.namespace, result.memory_key ?? "")}
+                  onClick={() => onOpenItem(result.item_id)}
                 >
                   Open detail
                 </Button>

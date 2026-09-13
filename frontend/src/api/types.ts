@@ -502,6 +502,7 @@ export interface MetricsResponse {
 
 export interface RecallBriefItem {
   revision_id: string;
+  item_id: string;
   memory_id: string;
   domain: string;
   namespace: string;
@@ -559,8 +560,9 @@ export interface MemoryFacets {
 // `domain` discriminator says which store the revision lives in.
 export interface MemoryRevision {
   revision_id: string;
+  item_id: string;
   memory_id: string;
-  domain: "memory" | "knowledge";
+  domain: "memory" | "knowledge" | "event";
   namespace: string;
   memory_key?: string;
   status: MemoryStatus;
@@ -728,6 +730,7 @@ export type PayloadMode = "keys" | "summary" | "full";
 // only thing that catches a projection bug before it reaches a user.
 export interface ProjectedMemoryRevision {
   revision_id: string;
+  item_id: string;
   memory_id: string;
   domain: "memory" | "knowledge";
   namespace: string;
@@ -794,6 +797,7 @@ export interface SynthesisAskRequest {
 export interface SynthesisSource {
   n: number;
   revision_id: string;
+  item_id: string;
   memory_id: string;
   domain: "memory" | "knowledge";
   namespace: string;

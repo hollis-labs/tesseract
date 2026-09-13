@@ -57,6 +57,9 @@ func TestEventWrite_Success(t *testing.T) {
 	if rev.Domain != "event" {
 		t.Errorf("domain = %q, want event", rev.Domain)
 	}
+	if rev.ItemID == "" || rev.ItemID != rev.MemoryID {
+		t.Errorf("response aliases item_id=%q memory_id=%q", rev.ItemID, rev.MemoryID)
+	}
 	if rev.MemoryKey != "" {
 		t.Errorf("memory_key = %q; a keyless write is the norm for this domain", rev.MemoryKey)
 	}

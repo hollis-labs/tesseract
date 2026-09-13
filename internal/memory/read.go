@@ -67,6 +67,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 		return Revision{}, err
 	}
 	rev.Domain = domains.Domain(domain)
+	rev.ItemID = rev.MemoryID
 	rev.CreatedAt, _ = parseMemoryTime(createdAt)
 	if expiresAt.Valid {
 		t, _ := parseMemoryTime(expiresAt.String)
@@ -131,6 +132,7 @@ FROM memory_state WHERE memory_id = ?`, memoryID)
 	if err != nil {
 		return State{}, err
 	}
+	st.ItemID = st.MemoryID
 	if lastAccessed.Valid {
 		t, _ := parseMemoryTime(lastAccessed.String)
 		st.LastAccessedAt = &t
@@ -152,6 +154,54 @@ func (s *Store) GetRevisionByID(ctx context.Context, revisionID string) (Revisio
 		return Revision{}, fmt.Errorf("%w: revision_id %s", ErrNotFound, revisionID)
 	}
 	return rev, err
+}
+
+// GetCurrentByItemID returns the current revision for the stable item_id.
+// item_id is the public, domain-neutral name for the existing memory_id value;
+// resolving it never guesses a domain from the identifier's shape.
+func (s *Store) GetCurrentByItemID(ctx context.Context, itemID string) (Revision, error) {
+	if itemID == "" {
+		return Revision{}, fmt.Errorf("%w: item_id is required", ErrInvalidInput)
+	}
+	state, err := s.GetState(ctx, itemID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Revision{}, fmt.Errorf("%w: item_id %s", ErrNotFound, itemID)
+		}
+		return Revision{}, err
+	}
+	if state.CurrentRevision == "" {
+		return Revision{}, fmt.Errorf("%w: item_id %s has no current revision", ErrNotFound, itemID)
+	}
+	return s.GetRevisionByID(ctx, state.CurrentRevision)
+}
+
+// GetCurrentByItemIDReinforced is GetCurrentByItemID plus the domain-policy
+// controlled deliberate-read bump. Agent-facing surfaces must resolve the
+// item state and authorize its namespace before calling this method.
+func (s *Store) GetCurrentByItemIDReinforced(ctx context.Context, itemID string) (Revision, error) {
+	rev, err := s.GetCurrentByItemID(ctx, itemID)
+	if err != nil {
+		return Revision{}, err
+	}
+	_ = s.reinforceAccess(ctx, rev.MemoryID)
+	return rev, nil
+}
+
+// GetHistoryByItemID returns every immutable revision for the stable item_id,
+// newest first. Keyless items are first-class here because no key participates
+// in the lookup.
+func (s *Store) GetHistoryByItemID(ctx context.Context, itemID string) ([]Revision, error) {
+	if itemID == "" {
+		return nil, fmt.Errorf("%w: item_id is required", ErrInvalidInput)
+	}
+	if _, err := s.GetState(ctx, itemID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, fmt.Errorf("%w: item_id %s", ErrNotFound, itemID)
+		}
+		return nil, err
+	}
+	return s.getHistoryByMemoryID(ctx, itemID)
 }
 
 // explainMemoryKeyMiss attaches the memory-key policy diagnosis to a read that
@@ -380,6 +430,10 @@ func (s *Store) getHistory(ctx context.Context, namespace, memoryKey string) ([]
 		return nil, err
 	}
 
+	return s.getHistoryByMemoryID(ctx, memoryID)
+}
+
+func (s *Store) getHistoryByMemoryID(ctx context.Context, memoryID string) ([]Revision, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+revisionColumns+` FROM memory_revisions WHERE memory_id = ? ORDER BY created_at DESC, revision_id DESC`,
 		memoryID,

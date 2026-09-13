@@ -122,18 +122,20 @@ var surfaceCatalog = []parityOp{
 	{MCP: "event_write", HTTPMethod: http.MethodPost, HTTPPath: "/v1/event/write"},
 
 	// ── Cross-domain reads (CW-20260825-0010) ──────────────────────────
-	// One MCP tool per operation, several HTTP routes each. The routes are
-	// unchanged from when a domain-specific tool served each of them, so
-	// every pairing below is a real peer relationship and not a placeholder.
+	// One MCP tool per operation, several HTTP routes each. The item-ID routes
+	// are the preferred domain-neutral peers; the older per-domain keyed routes
+	// remain paired for compatibility.
 	// Argument and output parity per (tool, domain) is asserted in
 	// internal/mcpadapter/crossdomain_parity_test.go; these rows carry the
 	// existence half.
 	{MCP: "tesseract_deprecate", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/deprecate"},
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/head"},
+	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}"},
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
 	{MCP: "tesseract_get", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/current"},
 	{MCP: "tesseract_get_revision", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/revisions/{id}"},
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/context/history"},
+	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}/history"},
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/history"},
 	{MCP: "tesseract_history", HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/history"},
 	{MCP: "tesseract_recall", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/recall"},
@@ -191,6 +193,8 @@ var observedHTTPRoutes = []parityOp{
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/auth/tokens/list"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/event/log"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/health/readiness"},
+	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}"},
+	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/items/{item_id}/history"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/current"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/knowledge/history"},
 	{HTTPMethod: http.MethodGet, HTTPPath: "/v1/memory/current"},
@@ -299,9 +303,8 @@ func TestHTTPRoutesMatchCatalog(t *testing.T) {
 	srv := newFullyWiredHTTPServer(t)
 	for _, rt := range observedHTTPRoutes {
 		path := rt.HTTPPath
-		if strings.Contains(path, "{id}") {
-			path = strings.ReplaceAll(path, "{id}", "probe-id")
-		}
+		path = strings.ReplaceAll(path, "{id}", "probe-id")
+		path = strings.ReplaceAll(path, "{item_id}", "probe-id")
 		req := httptest.NewRequest(rt.HTTPMethod, path, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()

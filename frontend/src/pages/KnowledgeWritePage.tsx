@@ -7,9 +7,7 @@ import type { KnowledgeRevision, KnowledgeWriteRequest } from "../api/types";
 import { Spinner } from "../components/ui/Spinner";
 
 interface Props {
-  onOpenItem?:
-    | ((domain: "memory" | "knowledge", namespace: string, key: string) => void)
-    | undefined;
+  onOpenItem?: ((itemId: string) => void) | undefined;
 }
 
 export function KnowledgeWritePage({ onOpenItem }: Props) {
@@ -112,14 +110,12 @@ export function KnowledgeWritePage({ onOpenItem }: Props) {
                     {result.namespace} / {result.memory_key ?? "(no key)"} · kind{" "}
                     {result.facets?.kind ?? kind} · source {result.facets?.source ?? source}
                   </span>
-                  {onOpenItem && result.memory_key ? (
+                  {onOpenItem ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="xs"
-                      onClick={() =>
-                        onOpenItem("knowledge", result.namespace, result.memory_key ?? "")
-                      }
+                      onClick={() => onOpenItem(result.item_id)}
                     >
                       Open detail
                     </Button>

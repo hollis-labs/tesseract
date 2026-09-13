@@ -51,6 +51,9 @@ func TestKnowledgeWrite_Success(t *testing.T) {
 	if rev.Domain != "knowledge" {
 		t.Errorf("rev.Domain = %q, want knowledge", rev.Domain)
 	}
+	if rev.ItemID == "" || rev.ItemID != rev.MemoryID {
+		t.Errorf("response aliases item_id=%q memory_id=%q", rev.ItemID, rev.MemoryID)
+	}
 	if rev.Facets.Kind != "package" || rev.Facets.Source != "filesystem" {
 		t.Errorf("facets = %+v, want kind=package source=filesystem", rev.Facets)
 	}

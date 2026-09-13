@@ -58,7 +58,7 @@ function pushRecentNamespace(namespace: string): string[] {
 }
 
 interface Props {
-  onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
+  onOpenItem?: (itemId: string) => void;
 }
 
 function readHashParams(): {
@@ -332,8 +332,7 @@ export function RecallPage({ onOpenItem }: Props) {
             {format === "brief" && briefItems.length > 0 ? (
               <div className="border-y border-border-strong bg-panel">
                 {briefItems.map((item) => {
-                  const domain = item.domain === "knowledge" ? "knowledge" : "memory";
-                  const canOpen = Boolean(item.memory_key && onOpenItem);
+                  const canOpen = Boolean(item.item_id && onOpenItem);
                   return (
                     <article
                       key={item.revision_id}
@@ -343,10 +342,7 @@ export function RecallPage({ onOpenItem }: Props) {
                         type="button"
                         variant="ghost"
                         className="h-auto w-full items-start justify-start rounded-none px-4 py-3 text-left font-normal"
-                        onClick={() => {
-                          if (item.memory_key)
-                            onOpenItem?.(domain, item.namespace, item.memory_key);
-                        }}
+                        onClick={() => onOpenItem?.(item.item_id)}
                         disabled={!canOpen}
                       >
                         <span className="min-w-0 flex-1">

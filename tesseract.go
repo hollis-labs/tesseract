@@ -221,6 +221,17 @@ func (c *Tesseract) GetRevisionHistory(ctx context.Context, namespace, key strin
 	return c.memoryStore.GetHistory(ctx, namespace, key)
 }
 
+// GetCurrentItem returns an item's current revision by stable item_id.
+func (c *Tesseract) GetCurrentItem(ctx context.Context, itemID string) (memory.Revision, error) {
+	return c.memoryStore.GetCurrentByItemID(ctx, itemID)
+}
+
+// GetItemHistory returns an item's immutable revisions by stable item_id,
+// newest first.
+func (c *Tesseract) GetItemHistory(ctx context.Context, itemID string) ([]memory.Revision, error) {
+	return c.memoryStore.GetHistoryByItemID(ctx, itemID)
+}
+
 // EmbedRevision generates and stores an embedding for a memory revision.
 func (c *Tesseract) EmbedRevision(ctx context.Context, revisionID string) error {
 	if c.embedder == nil {

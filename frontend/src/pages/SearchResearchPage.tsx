@@ -54,7 +54,7 @@ interface ThreadEntry {
 }
 
 interface Props {
-  onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
+  onOpenItem?: (itemId: string) => void;
 }
 
 const STATUS_FILTERS: MemoryStatus[] = ["draft", "reviewed", "canonical", "deprecated"];
@@ -663,15 +663,8 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                     type="button"
                                     variant="ghost"
                                     className="h-auto w-full flex-col items-stretch p-0 text-left font-normal"
-                                    onClick={() =>
-                                      result.revision.memory_key &&
-                                      onOpenItem?.(
-                                        result.revision.domain,
-                                        result.revision.namespace,
-                                        result.revision.memory_key,
-                                      )
-                                    }
-                                    disabled={!result.revision.memory_key || !onOpenItem}
+                                    onClick={() => onOpenItem?.(result.revision.item_id)}
+                                    disabled={!onOpenItem}
                                   >
                                     <span className="flex flex-wrap items-center justify-between gap-2">
                                       <span className="font-mono text-sm text-status-doing">
@@ -817,11 +810,8 @@ export function SearchResearchPage({ onOpenItem }: Props) {
                                   type="button"
                                   variant="outline"
                                   className="h-auto w-full flex-col items-stretch px-3 py-2 text-left font-normal"
-                                  onClick={() =>
-                                    source.memory_key &&
-                                    onOpenItem?.(source.domain, source.namespace, source.memory_key)
-                                  }
-                                  disabled={!source.memory_key || !onOpenItem}
+                                  onClick={() => onOpenItem?.(source.item_id)}
+                                  disabled={!onOpenItem}
                                 >
                                   <span className="flex flex-wrap items-center justify-between gap-2">
                                     <span className="font-mono text-sm">

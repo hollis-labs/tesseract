@@ -196,6 +196,7 @@ func (f Facets) IsZero() bool {
 // mutated after write is Status, and only via the deprecation code path.
 type Revision struct {
 	RevisionID  string         `json:"revision_id"`
+	ItemID      string         `json:"item_id"`
 	MemoryID    string         `json:"memory_id"`
 	Domain      domains.Domain `json:"domain"`
 	Namespace   string         `json:"namespace"`
@@ -241,6 +242,7 @@ type Revision struct {
 // decay write to it. Revision.ConsumerState is the consumer's, is scoped to
 // one revision, and Tesseract never reads a value out of it.
 type State struct {
+	ItemID          string         `json:"item_id"`
 	MemoryID        string         `json:"memory_id"`
 	Domain          domains.Domain `json:"domain"`
 	Namespace       string         `json:"namespace"`

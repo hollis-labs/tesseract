@@ -1285,3 +1285,21 @@ func TestChronologicalLogComposition_SummaryIsCheaperThanFull(t *testing.T) {
 		summary.Manifest.BytesReturned, full.Manifest.BytesReturned,
 		summary.Manifest.ResultsReturned)
 }
+
+func TestItemHistoryCursorIsBoundToItemID(t *testing.T) {
+	revisions := []memory.Revision{
+		{RevisionID: "rev-2", ItemID: "item-a", MemoryID: "item-a", CreatedAt: time.Date(2026, 9, 12, 2, 0, 0, 0, time.UTC)},
+		{RevisionID: "rev-1", ItemID: "item-a", MemoryID: "item-a", CreatedAt: time.Date(2026, 9, 12, 1, 0, 0, 0, time.UTC)},
+	}
+	page, err := memory.PageRevisions(revisions, memory.PageRequest{Limit: 1}, memory.ItemHistoryOrderingFingerprint("item-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Manifest.NextCursor == nil || *page.Manifest.NextCursor == "" {
+		t.Fatal("first page did not return a cursor")
+	}
+	_, err = memory.PageRevisions(revisions, memory.PageRequest{Limit: 1, Cursor: *page.Manifest.NextCursor}, memory.ItemHistoryOrderingFingerprint("item-b"))
+	if !errors.Is(err, memory.ErrInvalidCursor) {
+		t.Fatalf("cross-item cursor error = %v, want ErrInvalidCursor", err)
+	}
+}

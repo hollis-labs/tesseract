@@ -47,7 +47,7 @@ type QueueMode = "actionable" | "all";
 type ReviewPreset = "lowConfidence" | "reviewed" | "pendingReview";
 
 interface Props {
-  onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
+  onOpenItem?: (itemId: string) => void;
   onOpenWrite?: () => void;
   initialPreset?: ReviewPreset | undefined;
 }
@@ -917,18 +917,12 @@ export function MemoryReviewPage({ onOpenItem, onOpenWrite, initialPreset }: Pro
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        {onOpenItem && focusedItem.revision.memory_key ? (
+                        {onOpenItem ? (
                           <Button
                             type="button"
                             variant="outline"
                             size="xs"
-                            onClick={() =>
-                              onOpenItem(
-                                focusedItem.revision.domain,
-                                focusedItem.revision.namespace,
-                                focusedItem.revision.memory_key ?? "",
-                              )
-                            }
+                            onClick={() => onOpenItem(focusedItem.revision.item_id)}
                           >
                             <Eye aria-hidden="true" /> Open detail
                           </Button>

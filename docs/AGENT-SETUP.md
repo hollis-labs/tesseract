@@ -82,7 +82,7 @@ The full inventory is in [MCP tools](MCP_TOOLS.md).
 
 1. Use `context_plan` with `execute: true` for an intent-driven boot, or
    `context_pack` with `shape: "packet"` when the namespace set is known.
-2. Read exact current values with `tesseract_get`, always naming the `domain`.
+2. Read exact current values with `tesseract_get`; prefer `item_id`, or supply the complete legacy `domain`, `namespace`, and `key` selector.
 3. Write working state only beneath the agent's `app/<id>/*` grant.
 4. Request promotion into protected user memory; do not silently write around
    the ownership boundary.

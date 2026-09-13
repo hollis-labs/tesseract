@@ -2,6 +2,7 @@ import type { NavPage } from "./components/layout/nav";
 
 /** Navigation state encoded in a hash route. */
 export interface NavContext {
+  itemId?: string;
   namespace?: string;
   key?: string;
   revisionA?: number;
@@ -20,6 +21,7 @@ export function buildRouteUrl(page: NavPage, ctx: NavContext, search: string): s
   }
 
   const params = new URLSearchParams();
+  if (ctx.itemId) params.set("item_id", ctx.itemId);
   if (ctx.namespace) params.set("namespace", ctx.namespace);
   if (ctx.key) params.set("key", ctx.key);
   if (ctx.domain) params.set("domain", ctx.domain);

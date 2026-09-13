@@ -168,6 +168,6 @@ Note the nesting: `items` is a string holding an array whose elements carry `pay
 
 - Writing an agent memory? → `tesseract_skills memory`
 - Writing something a later session will come back for by name? → `tesseract_skills knowledge`
-- Looking something up? → use `tesseract_recall` directly, then **close the loop**: hydrate chosen hits with `tesseract_get_revision`, and after reasoning pass projected hits that shaped the turn to `tesseract_touch`. Recall itself does not reinforce; deliberate gets reinforce once, while touch reports use that happened without a fetch (or adds an intentional second signal). `tesseract_skills recall-and-ranking` for ranking modes.
+- Looking something up? → use `tesseract_recall` directly, then **close the loop**: hydrate chosen hits with `tesseract_get_revision`, and after reasoning pass projected hits that shaped the turn to `tesseract_touch`. Recall itself does not reinforce; deliberate gets reinforce once, while touch reports use that happened without a fetch (or adds an intentional second signal). Prefer `tesseract_get item_id=<item_id>` for current objects; the complete domain/namespace/key selector remains supported. `tesseract_skills recall-and-ranking` for ranking modes.
 - Working across user/app namespace boundaries? → `tesseract_skills promotion`.
 - Booting into a project? → `tesseract_skills context-packet`.

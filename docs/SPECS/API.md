@@ -200,7 +200,9 @@ creation and recovery.
 |---|---|---|
 | `POST /v1/memory/write` | namespace | Append a memory-domain revision. |
 | `POST /v1/memory/recall` | each namespace | Ranked memory/knowledge recall with cursor and response budgets. |
-| `GET /v1/memory/revisions/{id}` | — | Read one revision by ID. |
+| `GET /v1/memory/revisions/{id}` | — | Read one exact revision by `revision_id`. |
+| `GET /v1/items/{item_id}` | resolved namespace | Read the current memory, knowledge, or event revision by stable item identity; works for keyless items. |
+| `GET /v1/items/{item_id}/history` | resolved namespace | Read the item's immutable revision chain newest first; accepts history paging and budget query parameters. |
 | `GET /v1/memory/current` | namespace | Current memory revision for `namespace` + `key`. |
 | `GET /v1/memory/history` | namespace | Memory history for `namespace` + `key`. |
 | `POST /v1/memory/touch` | — | Reinforce deliberately used revision IDs. |
@@ -213,8 +215,17 @@ creation and recovery.
 | `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `limit`, `cursor`, `payload_mode`. Every namespace named is authorized, not just the first. |
 
 Here, `namespace` means a `namespace_globs` authorization check when managed or
-static authentication is active. HTTP memory, knowledge and event routes
-currently do not require the MCP-only `memory:read` or `memory:write` scopes.
+static authentication is active. The item routes resolve the stored namespace first and
+apply the same policy before returning revision content or reinforcing activation. HTTP
+memory, knowledge and event routes currently do not require the MCP-only `memory:read` or
+`memory:write` scopes.
+
+`item_id` is the stable identity of a Tesseract-owned memory, knowledge, or event item. It
+is the same value retained as `memory_id`; revision and state responses carry both fields
+for compatibility. The preferred item routes need no domain, namespace, or key, and they
+therefore reach keyless items. Existing per-domain namespace/key routes remain supported.
+`revision_id` still selects one exact immutable revision and must not be treated as an
+item ID.
 
 ### Retrieval and synthesis
 
@@ -285,6 +296,20 @@ Finally send this to `/v1/context/promote/apply`:
 The target write requires `actor=user` when its namespace starts with
 `user/`. Promotion audit events use `promote.request`, `promote.approve`, and
 `promote`.
+
+### Stable item read
+
+```bash
+curl -sS "$TESSERACT_URL/v1/items/01HITEM..." \
+  -H "Authorization: Bearer $TESSERACT_TOKEN"
+
+curl -sS "$TESSERACT_URL/v1/items/01HITEM.../history?limit=20" \
+  -H "Authorization: Bearer $TESSERACT_TOKEN"
+```
+
+The current read reinforces memory and knowledge activation after authorization. Event
+items do not participate in activation, and history does not reinforce any domain. An
+unknown `item_id` returns `404 not_found`.
 
 ### Memory write shape
 

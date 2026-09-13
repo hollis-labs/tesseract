@@ -351,6 +351,7 @@ INSERT INTO memory_revisions (
 
 	rev := Revision{
 		RevisionID:    revisionID,
+		ItemID:        memoryID,
 		MemoryID:      memoryID,
 		Domain:        in.Domain,
 		Namespace:     in.Namespace,

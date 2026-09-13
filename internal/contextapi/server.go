@@ -274,8 +274,8 @@ const (
 type apiRoute struct {
 	method string
 	path   string
-	// prefix matches r.URL.Path by prefix instead of equality. The only
-	// current case is /v1/memory/revisions/{id}.
+	// prefix matches r.URL.Path by prefix instead of equality. It serves
+	// resource identifiers carried in the path, including revision and item IDs.
 	prefix  bool
 	auth    routeAuthKind
 	handler func(*Server, http.ResponseWriter, *http.Request)
@@ -362,6 +362,11 @@ var apiRoutes = []apiRoute{
 	{http.MethodPost, "/v1/memory/touch", false, authRequired, (*Server).handleMemoryTouch},
 	{http.MethodPost, "/v1/memory/deprecate", false, authRequired, (*Server).handleMemoryDeprecate},
 	{http.MethodPost, "/v1/memory/promote", false, authRequired, (*Server).handleMemoryPromote},
+
+	// --- stable item identity ---
+	// One prefix handler serves both /v1/items/{item_id} and its /history
+	// suffix. The item resolves its own domain and namespace from storage.
+	{http.MethodGet, "/v1/items/", true, authRequired, (*Server).handleItemRead},
 
 	// --- knowledge ---
 	{http.MethodPost, "/v1/knowledge/write", false, authRequired, (*Server).handleKnowledgeWrite},

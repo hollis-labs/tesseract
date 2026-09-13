@@ -608,6 +608,7 @@ export const demo = {
     const limited = matches.slice(0, limit);
     const brief: RecallBriefItem[] = limited.map((r, i) => ({
       revision_id: `01KPRRZ332MDP106D0F8H057${i.toString(16).padStart(2, "0").toUpperCase()}`,
+      item_id: r.record_id,
       memory_id: r.record_id,
       domain: r.namespace.includes("/knowledge") ? "knowledge" : "memory",
       namespace: r.namespace,
@@ -724,6 +725,7 @@ export const demo = {
   getMemoryCurrent(namespace: string, memoryKey: string): MemoryRevision {
     return {
       revision_id: "01KPRRZ332MDP106D0F8H057ZQ",
+      item_id: "01KPRRZ331PJYGHSWX5FCB65XM",
       memory_id: "01KPRRZ331PJYGHSWX5FCB65XM",
       domain: "memory",
       namespace,
@@ -746,6 +748,7 @@ export const demo = {
   getMemoryHistory(namespace: string, memoryKey: string): MemoryRevision[] {
     return [3, 2, 1].map((n, i) => ({
       revision_id: `01KPRRZ332MDP106D0F8H057Z${n}`,
+      item_id: "01KPRRZ331PJYGHSWX5FCB65XM",
       memory_id: "01KPRRZ331PJYGHSWX5FCB65XM",
       domain: "memory",
       namespace,
@@ -756,6 +759,41 @@ export const demo = {
       confidence: 0.95 - i * 0.05,
       tags: ["demo"],
       payload: { summary: `Revision ${n} of ${memoryKey}` },
+    }));
+  },
+
+  getItemCurrent(itemID: string): MemoryRevision {
+    return {
+      revision_id: "01KPRRZ332MDP106D0F8H057ZQ",
+      item_id: itemID,
+      memory_id: itemID,
+      domain: "memory",
+      namespace: "user/demo/memory/notes",
+      status: "canonical",
+      created_at: ago(24),
+      author: { agent_id: "demo-agent", agent_version: "0.1.0" },
+      confidence: 0.92,
+      tags: ["demo", "memory", "keyless"],
+      payload: {
+        summary: `Keyless demo item ${itemID}.`,
+        body: "This item is opened by stable item_id without a namespace or key in the route.",
+      },
+    };
+  },
+
+  getItemHistory(itemID: string): MemoryRevision[] {
+    return [3, 2, 1].map((n, i) => ({
+      revision_id: `01KPRRZ332MDP106D0F8H057Z${n}`,
+      item_id: itemID,
+      memory_id: itemID,
+      domain: "memory",
+      namespace: "user/demo/memory/notes",
+      status: i === 0 ? "canonical" : "deprecated",
+      created_at: ago(i * 24 + 1),
+      author: { agent_id: "demo-agent", agent_version: "0.1.0" },
+      confidence: 0.95 - i * 0.05,
+      tags: ["demo", "keyless"],
+      payload: { summary: `Revision ${n} of keyless item ${itemID}` },
     }));
   },
 
@@ -773,11 +811,13 @@ export const demo = {
   },
 
   knowledgeWrite(req: KnowledgeWriteRequest): KnowledgeRevision {
+    const itemID = `01DEMOKNOW${Date.now()}`;
     const payload: KnowledgeRevision["payload"] = { summary: req.summary };
     if (req.body) payload.body = req.body;
     return {
       revision_id: `01DEMO_K${Date.now()}`,
-      memory_id: `01DEMOKNOW${Date.now()}`,
+      item_id: itemID,
+      memory_id: itemID,
       domain: "knowledge",
       namespace: req.namespace,
       ...(req.key ? { memory_key: req.key } : {}),
@@ -796,9 +836,11 @@ export const demo = {
   },
 
   memoryWrite(req: MemoryWriteRequest): MemoryRevision {
+    const itemID = `01DEMOMEM${Date.now()}`;
     return {
       revision_id: `01DEMO_W${Date.now()}`,
-      memory_id: `01DEMOMEM${Date.now()}`,
+      item_id: itemID,
+      memory_id: itemID,
       domain: "memory",
       namespace: req.namespace,
       memory_key: req.memory_key ?? "",
@@ -819,6 +861,7 @@ export const demo = {
   memoryPromote(req: MemoryPromoteRequest): MemoryRevision {
     return {
       revision_id: `01DEMO_P${Date.now()}`,
+      item_id: req.source_memory_id,
       memory_id: req.source_memory_id,
       domain: "memory",
       namespace: req.target_namespace,
@@ -842,6 +885,7 @@ export const demo = {
       sources: MOCK_RECORDS.slice(0, 2).map((r, i) => ({
         n: i + 1,
         revision_id: `01DEMOSYN${i}`,
+        item_id: r.record_id,
         memory_id: r.record_id,
         domain: "memory" as const,
         namespace: r.namespace,
@@ -866,6 +910,7 @@ export const demo = {
     const items = MOCK_RECORDS.slice(0, limit).map((r, i) => ({
       revision: {
         revision_id: `01DEMO${i.toString().padStart(2, "0")}`,
+        item_id: r.record_id,
         memory_id: r.record_id,
         domain: r.namespace.includes("/knowledge") ? ("knowledge" as const) : ("memory" as const),
         namespace: r.namespace,

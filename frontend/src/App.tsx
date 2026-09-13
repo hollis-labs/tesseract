@@ -60,6 +60,7 @@ function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
 
   const params = new URLSearchParams(queryPart);
   const ctx: NavContext = {};
+  const itemId = params.get("item_id");
   const namespace = params.get("namespace");
   const key = params.get("key");
   const domain = params.get("domain");
@@ -67,6 +68,7 @@ function readRouteFromHash(): { page: NavPage; ctx: NavContext } {
   const revisionB = params.get("revisionB");
   const reviewPreset = params.get("reviewPreset");
 
+  if (itemId) ctx.itemId = itemId;
   if (namespace) ctx.namespace = namespace;
   if (key) ctx.key = key;
   if (domain === "memory" || domain === "knowledge") ctx.domain = domain;
@@ -234,33 +236,25 @@ export default function App() {
               />
             )}
             {page === "recall" && (
-              <RecallPage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
-              />
+              <RecallPage onOpenItem={(itemId) => navigate("memoryDetail", { itemId })} />
             )}
             {page === "memoryKnowledgeBrowser" && (
               <MemoryKnowledgeBrowserPage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
+                onOpenItem={(itemId) => navigate("memoryDetail", { itemId })}
               />
             )}
-            {page === "memoryDetail" && ctx.namespace && ctx.key && ctx.domain && (
-              <MemoryDetailPage
-                domain={ctx.domain}
-                namespace={ctx.namespace}
-                memoryKey={ctx.key}
-                onBack={() => handleNav("memoryKnowledgeBrowser")}
-              />
-            )}
+            {page === "memoryDetail" &&
+              (ctx.itemId || (ctx.namespace && ctx.key && ctx.domain)) && (
+                <MemoryDetailPage
+                  itemId={ctx.itemId}
+                  domain={ctx.domain}
+                  namespace={ctx.namespace}
+                  memoryKey={ctx.key}
+                  onBack={() => handleNav("memoryKnowledgeBrowser")}
+                />
+              )}
             {page === "searchResearch" && (
-              <SearchResearchPage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
-              />
+              <SearchResearchPage onOpenItem={(itemId) => navigate("memoryDetail", { itemId })} />
             )}
             {page === "namespaceDetail" && ctx.namespace && (
               <NamespaceDetailPage
@@ -332,27 +326,19 @@ export default function App() {
             )}
             {page === "memoryReview" && (
               <MemoryReviewPage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
+                onOpenItem={(itemId) => navigate("memoryDetail", { itemId })}
                 onOpenWrite={() => navigate("memoryWrite")}
                 initialPreset={ctx.reviewPreset}
               />
             )}
             {page === "memoryWrite" && (
               <MemoryWritePage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
+                onOpenItem={(itemId) => navigate("memoryDetail", { itemId })}
                 onOpenReview={() => navigate("memoryReview")}
               />
             )}
             {page === "knowledgeWrite" && (
-              <KnowledgeWritePage
-                onOpenItem={(d, ns, key) =>
-                  navigate("memoryDetail", { domain: d, namespace: ns, key })
-                }
-              />
+              <KnowledgeWritePage onOpenItem={(itemId) => navigate("memoryDetail", { itemId })} />
             )}
             {page === "promote" && <PromotePage onBack={() => handleNav("writeRecord")} />}
             {page === "policyManager" && <PolicyManagerPage />}

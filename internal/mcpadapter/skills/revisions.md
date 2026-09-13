@@ -9,24 +9,31 @@ related: [memory, knowledge, audit]
 
 Every write in Tesseract creates a new revision. The service never mutates existing records in place.
 
-## Revision identity
+## Item and revision identity
 
-- **Revision ID** — monotonic ULID (`01HX…`). Lexicographically sortable, globally unique within the store.
+- **Item ID (`item_id`)** — stable identity for a Tesseract-owned memory, knowledge, or event item. It is the same value retained as `memory_id`; responses carry both names for compatibility. It stays fixed across edits and key changes.
+- **Revision ID (`revision_id`)** — monotonic ULID for one exact immutable version. Lexicographically sortable and globally unique within the store. It is not an item ID.
 - **Timestamp** — RFC3339Nano (nanosecond precision). Tie-breaking falls back to revision ID lex order for same-millisecond writes.
 
 ## Head vs. history
 
-- `tesseract_get` — returns the current (latest, non-deprecated) revision for `(domain, namespace, key)`. `domain` filters: a key holding another domain's revision answers `not_found`, not that revision.
-- `tesseract_history` — returns the revision chain, newest first, as a **bare array** under `domain="memory"` and `domain="knowledge"`.
+- `tesseract_get` — returns the current revision for `item_id`, including keyless items. The complete legacy `(domain, namespace, key)` selector remains supported and domain-filtered.
+- `tesseract_history` — returns the item's revision chain newest first by `item_id`, or by the complete legacy keyed selector. It is a **bare array** when no paging or budget argument is present.
 - `tesseract_recall` with `revision_scope=timeline` — includes superseded revisions in ranking.
 
 To bound a history read, pass `limit`, `cursor`, `budget_bytes`, or `budget_tokens`. Any of them switches the response from the bare array to `{results, manifest}`, with the same manifest and cursor semantics `tesseract_skills recall-and-ranking` documents. Chains are shallow in practice, so this is a ceiling against unbounded growth rather than a routine knob.
 
 ```json
+{"item_id": "01HITEM...", "limit": 20}
+```
+
+Use exactly one selector form. Mixed calls and partial legacy triples are rejected:
+
+```json
 {"domain": "memory", "namespace": "user/chrispian/memory/decisions", "key": "sqlite.pragma.journal_mode", "limit": 20}
 ```
 
-The HTTP peer is per-domain rather than one route with a `domain` argument, and uses the same `key` query name. The old `memory_key` query parameter is refused with migration guidance, including when both names are present. Read responses still carry `memory_key`. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
+The preferred HTTP peer is `GET /v1/items/{item_id}/history`. Per-domain namespace/key routes remain supported and use the same `key` query name. The old `memory_key` query parameter is refused with migration guidance, including when both names are present. Read responses still carry `memory_key`. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
 
 ```bash
 curl -sS -G "$TESSERACT_URL/v1/memory/history" \
@@ -75,7 +82,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
   }'
 ```
 
-The value of `supersedes` is a `revision_id`, which is what `tesseract_recall`, `tesseract_get` and `tesseract_history` all carry on every result. It is not a `memory_id` — that is the stable id of the memory the revision belongs to, and it is what `memory_promote` takes. Full field lists for both shapes are in `tesseract_skills memory`.
+The value of `supersedes` is a `revision_id`, which is what `tesseract_recall`, `tesseract_get` and `tesseract_history` all carry on every result. It is not an `item_id`/`memory_id` — those two response fields carry the same stable item identity, and `memory_promote` retains `source_memory_id` for compatibility. Full field lists for both shapes are in `tesseract_skills memory`.
 
 ## Dedup
 

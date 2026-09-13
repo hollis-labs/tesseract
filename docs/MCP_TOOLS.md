@@ -163,20 +163,22 @@ The append-only narrative log — reasoning in prose, not telemetry. Two propert
 
 ### Cross-domain
 
-`domain` is an argument on the keyed reads: `context`, `memory`, `knowledge`, or `event`. It is required — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
+For the legacy keyed selector, `domain` is an argument on the reads: `context`, `memory`, `knowledge`, or `event`. It is required when using the keyed selector — there is no default, because inferring it from the namespace would answer the wrong question silently. A domain with no store wired answers `domain_unavailable`, which is a different fact from `not_found`.
 
-The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was.
+The preferred selector is `item_id`, supplied alone. It is the stable identity returned on every memory, knowledge, and event revision, and is the same value retained as `memory_id`. Tesseract resolves the stored domain and namespace, applies namespace policy, and can therefore read keyless items. The alternative legacy selector is the complete `domain` + `namespace` + `key` triple. Mixed and partial forms are rejected.
+
+The revision-level ops take no `domain`. Revisions of every domain share one table keyed by `revision_id`, so an id from any of them resolves without saying which it was. `revision_id` remains the exact immutable-version selector; it is not interchangeable with `item_id`.
 
 `domain` is a **filter**, not a hint. A namespace does not identify a domain: `memory_state` *does* carry a `domain` column, but it is stamped once at creation and the head pointer it holds addresses `memory_revisions`, which memory and knowledge share — so resolving `(namespace, key)` returns whatever was written at that key, whichever domain wrote it. The `not_found` is therefore an explicit check on the **resolved revision's** domain (`GetCurrentInDomain`), not a property of the schema. Only a matching read reinforces, and the check runs *before* the reinforcement write — bumping a row that is then withheld would teach the ranking that a memory mattered on the strength of a read that never returned it.
 
-Each of these covers several HTTP routes rather than one; the parity catalog carries one row per (tool, route) pair. The routes are unchanged and still wired.
+Each tool covers the item-ID routes and the existing keyed HTTP routes; the parity catalog carries one row per (tool, route) pair.
 
 **Argument name:** keyed MCP and HTTP get/history requests take `key`. HTTP refuses the retired `memory_key` query parameter with guidance to use `key`, even when empty or sent alongside `key`. Revision JSON still carries `memory_key`. The memory write tool retains `memory_key`, `payload_summary` and `payload_body` in this slice.
 
 | Tool | Scope | HTTP equivalents | Deeper | Notes |
 |---|---|---|---|---|
-| `tesseract_get` | `memory:read` for `memory`/`knowledge`/`event`; none for `context` | `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current entry at (domain, namespace, key). `not_found` if the key holds another domain's revision. Reinforces under `memory` and `knowledge`, and only on a match; `context` has no activation state and `event` opts out of activation. Most events are keyless — read them with `event_list`. |
-| `tesseract_history` | as above | `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history, newest-first, filtered to the named domain. Under `event` this is where a retracted entry stays findable. |
+| `tesseract_get` | `memory:read` for item/`memory`/`knowledge`/`event`; none for `context` | `GET /v1/items/{item_id}`, `GET /v1/context/head`, `GET /v1/memory/current`, `GET /v1/knowledge/current` | `tesseract_skills memory` | Current item by `item_id`, or current entry by the complete legacy `(domain, namespace, key)` selector. Item IDs reach keyless entries. Reinforces memory and knowledge after authorization; event and context do not. |
+| `tesseract_history` | as above | `GET /v1/items/{item_id}/history`, `GET /v1/context/history`, `GET /v1/memory/history`, `GET /v1/knowledge/history` | `tesseract_skills revisions` | Revision history newest first by `item_id`, including keyless items, or by the complete legacy keyed selector. History never reinforces. |
 | `tesseract_recall` | `memory:read` | `POST /v1/tesseract/lookup`, `POST /v1/memory/recall` | `tesseract_skills recall-and-ranking` | Multi-knob recall over the curated corpus — memory + knowledge — (activation / chronological / similarity / relevance). Narrow with `domains`, which is also how you opt `event` in. |
 | `tesseract_get_revision` | `memory:read` | `GET /v1/memory/revisions/{id}` | `tesseract_skills revisions` | Single revision by id, any domain. Reinforces the parent entry. |
 | `tesseract_deprecate` | `memory:write` | `POST /v1/memory/deprecate` | `tesseract_skills revisions` | Deprecate a revision by id, any domain |
@@ -270,7 +272,23 @@ mcp__tesseract__context_plan {
 Or split the phases: `context_plan` with `execute` omitted returns the plan,
 and `context_pack` with `shape: "packet"` assembles it.
 
-### 5. Resolve a revision id
+### 5. Read a stable item
+
+```json
+mcp__tesseract__tesseract_get { "item_id": "01HITEM…" }
+```
+
+Use the same selector with `tesseract_history` for its revision chain. Existing keyed calls remain valid:
+
+```json
+mcp__tesseract__tesseract_get {
+  "domain": "knowledge",
+  "namespace": "user/chrispian/knowledge/frameworks",
+  "key": "example"
+}
+```
+
+### 6. Resolve a revision id
 
 ```json
 mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }
@@ -278,7 +296,7 @@ mcp__tesseract__tesseract_get_revision { "revision_id": "01HXYZ…" }
 
 Useful when a `tesseract_recall` hit references a revision you want to inspect in full. Every result carries `revision_id` under every `payload_mode`, so this hydrate step is always available. The deliberate fetch reinforces the parent entry once.
 
-### 6. Close the loop after using what you recalled
+### 7. Close the loop after using what you recalled
 
 ```json
 mcp__tesseract__tesseract_touch { "revision_ids": ["01HXYZ…"] }

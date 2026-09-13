@@ -49,6 +49,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	current, err := db.GetCurrentItem(ctx, rev.ItemID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	history, err := db.GetItemHistory(ctx, rev.ItemID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	hits, err := db.RecallMemory(ctx, memory.RecallInput{
 		Namespaces: []string{"user/demo/memory"},
 		Query:      "which Tesseract version should Nanite consume?",
@@ -59,5 +68,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("wrote %s; recalled %d result(s)", rev.RevisionID, len(hits))
+	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s)",
+		current.ItemID, current.RevisionID, len(history), len(hits))
 }

@@ -13,27 +13,31 @@ import { ArrowLeft, History, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
+  getItemCurrent,
+  getItemHistory,
   getKnowledgeCurrent,
   getKnowledgeHistory,
   getMemoryCurrent,
   getMemoryHistory,
 } from "../api/client";
 import type { KnowledgeRevision, MemoryRevision } from "../api/types";
+import { CopyButton } from "../components/ui/CopyButton";
 import { EmptyState } from "../components/ui/EmptyState";
 import { JsonViewer } from "../components/ui/JsonViewer";
 import { Spinner } from "../components/ui/Spinner";
 import { StatusBadge } from "../components/ui/StatusBadge";
 
 interface Props {
-  domain: "memory" | "knowledge";
-  namespace: string;
-  memoryKey: string;
-  onBack?: () => void;
+  itemId?: string | undefined;
+  domain?: "memory" | "knowledge" | undefined;
+  namespace?: string | undefined;
+  memoryKey?: string | undefined;
+  onBack?: (() => void) | undefined;
 }
 
 type Tab = "summary" | "payload" | "history" | "raw";
 
-export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props) {
+export function MemoryDetailPage({ itemId, domain, namespace, memoryKey, onBack }: Props) {
   const [current, setCurrent] = useState<MemoryRevision | KnowledgeRevision | null>(null);
   const [history, setHistory] = useState<(MemoryRevision | KnowledgeRevision)[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +49,15 @@ export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props
     setLoading(true);
     setError(null);
     setCurrent(null);
-    const fetcher = domain === "memory" ? getMemoryCurrent : getKnowledgeCurrent;
-    fetcher(namespace, memoryKey)
+    setHistory(null);
+    const request = itemId
+      ? getItemCurrent(itemId)
+      : domain && namespace && memoryKey
+        ? (domain === "memory" ? getMemoryCurrent : getKnowledgeCurrent)(namespace, memoryKey)
+        : Promise.reject(
+            new Error("An item_id or complete domain/namespace/key selector is required."),
+          );
+    request
       .then((rev) => setCurrent(rev))
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -54,14 +65,20 @@ export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props
         toast.error(`Load failed: ${msg}`);
       })
       .finally(() => setLoading(false));
-  }, [domain, namespace, memoryKey]);
+  }, [itemId, domain, namespace, memoryKey]);
 
   const loadHistory = async () => {
     if (history) return;
     setHistoryLoading(true);
     try {
-      const fetcher = domain === "memory" ? getMemoryHistory : getKnowledgeHistory;
-      const revs = await fetcher(namespace, memoryKey);
+      const revs = itemId
+        ? await getItemHistory(itemId)
+        : domain && namespace && memoryKey
+          ? await (domain === "memory" ? getMemoryHistory : getKnowledgeHistory)(
+              namespace,
+              memoryKey,
+            )
+          : [];
       setHistory(revs);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -82,9 +99,18 @@ export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">
-              {domain === "memory" ? "Memory" : "Knowledge"} revision
+              {(current?.domain ?? domain) === "event"
+                ? "Event"
+                : (current?.domain ?? domain) === "memory"
+                  ? "Memory"
+                  : (current?.domain ?? domain) === "knowledge"
+                    ? "Knowledge"
+                    : "Item"}{" "}
+              revision
             </h2>
-            <p className="mt-1 font-mono text-xs text-text-subtle">{namespace}</p>
+            <p className="mt-1 font-mono text-xs text-text-subtle">
+              {current?.namespace ?? namespace ?? "Resolving item…"}
+            </p>
           </div>
           {onBack ? (
             <Button type="button" variant="outline" size="sm" onClick={onBack}>
@@ -97,10 +123,19 @@ export function MemoryDetailPage({ domain, namespace, memoryKey, onBack }: Props
       <div className="space-y-3 p-4">
         <Card size="sm">
           <CardContent className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+            <span className="text-text-subtle">Item ID</span>
+            <span className="flex min-w-0 items-center gap-2 break-all font-mono">
+              {current?.item_id ?? itemId ?? "Resolving…"}
+              {current?.item_id || itemId ? (
+                <CopyButton text={current?.item_id ?? itemId ?? ""} />
+              ) : null}
+            </span>
             <span className="text-text-subtle">Namespace</span>
-            <span className="break-all font-mono">{namespace}</span>
+            <span className="break-all font-mono">{current?.namespace ?? namespace ?? "—"}</span>
             <span className="text-text-subtle">Key</span>
-            <span className="break-all font-mono text-status-doing">{memoryKey}</span>
+            <span className="break-all font-mono text-status-doing">
+              {current?.memory_key ?? memoryKey ?? "(no key)"}
+            </span>
             {current ? (
               <>
                 <span className="text-text-subtle">Status</span>

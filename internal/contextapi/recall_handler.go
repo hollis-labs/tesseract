@@ -15,6 +15,7 @@ import (
 // available via /v1/memory/revisions/{id} when needed.
 type recallBriefItem struct {
 	RevisionID string   `json:"revision_id"`
+	ItemID     string   `json:"item_id"`
 	MemoryID   string   `json:"memory_id"`
 	Domain     string   `json:"domain"`
 	Namespace  string   `json:"namespace"`
@@ -130,6 +131,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 			rev := rr.Revision
 			brief = append(brief, recallBriefItem{
 				RevisionID: rev.RevisionID,
+				ItemID:     rev.MemoryID,
 				MemoryID:   rev.MemoryID,
 				Domain:     string(rev.Domain),
 				Namespace:  rev.Namespace,

@@ -33,7 +33,7 @@ import { Spinner } from "../components/ui/Spinner";
 type DomainFilter = "both" | "memory" | "knowledge";
 
 interface Props {
-  onOpenItem?: (domain: "memory" | "knowledge", namespace: string, key: string) => void;
+  onOpenItem?: (itemId: string) => void;
 }
 
 // Group namespaces by their first path segment so the tree mirrors the tier
@@ -427,18 +427,14 @@ export function MemoryKnowledgeBrowserPage({ onOpenItem }: Props) {
                           </p>
                         ) : null}
                         {keys.map((item) => {
-                          const itemDomain = item.domain === "knowledge" ? "knowledge" : "memory";
                           return (
                             <Button
                               type="button"
                               key={item.revision_id}
                               variant="ghost"
                               className="h-auto w-full justify-start rounded-none px-3 py-2 font-normal"
-                              onClick={() =>
-                                item.memory_key &&
-                                onOpenItem?.(itemDomain, item.namespace, item.memory_key)
-                              }
-                              disabled={!item.memory_key || !onOpenItem}
+                              onClick={() => onOpenItem?.(item.item_id)}
+                              disabled={!onOpenItem}
                             >
                               <FileText className="text-text-subtle" aria-hidden="true" />
                               <span className="min-w-0 flex-1 truncate text-left font-mono text-xs">

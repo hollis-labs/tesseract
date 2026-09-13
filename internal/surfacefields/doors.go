@@ -180,6 +180,13 @@ var Doors = []Door{
 		},
 	},
 	{
+		Name: "item.get", MCPTool: "tesseract_get",
+		HTTPMethod: "GET", HTTPPath: "/v1/items/{item_id}",
+		Fields: []Field{
+			{Concept: "item_id", MCP: "item_id", HTTP: "item_id"},
+		},
+	},
+	{
 		Name: "memory.get", MCPTool: "tesseract_get",
 		HTTPMethod: "GET", HTTPPath: "/v1/memory/current",
 		Fields: []Field{
@@ -201,6 +208,13 @@ var Doors = []Door{
 		Fields: []Field{
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
 			{Concept: "key", MCP: "key", HTTP: "key"},
+		},
+	},
+	{
+		Name: "item.history", MCPTool: "tesseract_history",
+		HTTPMethod: "GET", HTTPPath: "/v1/items/{item_id}/history",
+		Fields: []Field{
+			{Concept: "item_id", MCP: "item_id", HTTP: "item_id"},
 		},
 	},
 	{

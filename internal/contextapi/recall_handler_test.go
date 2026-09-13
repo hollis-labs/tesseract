@@ -135,6 +135,9 @@ func TestRecall_BriefFormat(t *testing.T) {
 	if items[0].Domain != "memory" {
 		t.Errorf("domain = %q, want memory", items[0].Domain)
 	}
+	if items[0].ItemID == "" || items[0].ItemID != items[0].MemoryID {
+		t.Errorf("brief aliases item_id=%q memory_id=%q", items[0].ItemID, items[0].MemoryID)
+	}
 }
 
 // TestRecall_FullFormat verifies format=full returns complete RecallResult.

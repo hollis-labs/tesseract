@@ -13,7 +13,7 @@ import (
 // The three modes form a strict ladder — each one is a superset of the one
 // before it:
 //
-//	keys     identity only: revision_id, memory_id, domain, namespace,
+//	keys     identity only: revision_id, item_id, memory_id, domain, namespace,
 //	         memory_key, created_at (+ score). The browse/enumerate shape.
 //	summary  keys + status, tags, confidence, payload.summary and
 //	         consumer_state. The working default: enough to triage without
@@ -58,13 +58,14 @@ func (m PayloadMode) Valid() bool {
 //
 // The field set under summary mode deliberately matches the long-standing
 // condensed recall shape served by GET /v1/recall?format=brief
-// (contextapi.recallBriefItem) — revision_id, memory_id, domain, namespace,
+// (contextapi.recallBriefItem) — revision_id, item_id, memory_id, domain, namespace,
 // memory_key, tags, confidence, summary, created_at — so the repo carries
 // one condensed-recall field set rather than two. It differs only in that
 // the fields stay nested under `revision`, matching full mode, and that
 // `status` is carried (a triage signal: draft vs canonical vs deprecated).
 type ProjectedRevision struct {
 	RevisionID string         `json:"revision_id"`
+	ItemID     string         `json:"item_id"`
 	MemoryID   string         `json:"memory_id"`
 	Domain     domains.Domain `json:"domain"`
 	Namespace  string         `json:"namespace"`
@@ -172,6 +173,7 @@ func ProjectResults(results []RecallResult, mode PayloadMode) any {
 		pr := ProjectedResult{
 			Revision: ProjectedRevision{
 				RevisionID: r.Revision.RevisionID,
+				ItemID:     r.Revision.MemoryID,
 				MemoryID:   r.Revision.MemoryID,
 				Domain:     r.Revision.Domain,
 				Namespace:  r.Revision.Namespace,
@@ -228,6 +230,7 @@ func ProjectRevisions(revs []Revision, mode PayloadMode) any {
 	for _, r := range revs {
 		pr := ProjectedRevision{
 			RevisionID: r.RevisionID,
+			ItemID:     r.MemoryID,
 			MemoryID:   r.MemoryID,
 			Domain:     r.Domain,
 			Namespace:  r.Namespace,

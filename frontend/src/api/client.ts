@@ -625,6 +625,18 @@ export async function listAllNamespaces(
   return { items, count, complete: false };
 }
 
+// ── Stable item identity ────────────────────────────────────────────
+
+export async function getItemCurrent(itemID: string): Promise<MemoryRevision> {
+  if (isDemoMode()) return demo.getItemCurrent(itemID);
+  return apiFetch<MemoryRevision>(`/v1/items/${encodeURIComponent(itemID)}`);
+}
+
+export async function getItemHistory(itemID: string): Promise<MemoryRevision[]> {
+  if (isDemoMode()) return demo.getItemHistory(itemID);
+  return apiFetch<MemoryRevision[]>(`/v1/items/${encodeURIComponent(itemID)}/history`);
+}
+
 // ── Memory ──────────────────────────────────────────────────────────
 
 export async function getMemoryCurrent(

@@ -814,6 +814,7 @@ FROM memory_state WHERE memory_id IN (%s)`, ph)
 		); err != nil {
 			return nil, err
 		}
+		st.ItemID = st.MemoryID
 		st.Domain = domains.Domain(domain)
 		if lastAccessed.Valid {
 			t, _ := parseMemoryTime(lastAccessed.String)

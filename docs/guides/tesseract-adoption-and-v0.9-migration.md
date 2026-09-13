@@ -122,10 +122,17 @@ func main() {
 		SessionID:  "adoption-v0.9",
 		DerivedFrom: memory.DerivedFromProject,
 		Confidence: 0.95,
-		Payload: memory.Payload{
-			Summary: "Nanite consumes immutable Tesseract release tags.",
-		},
+		Summary:     "Nanite consumes immutable Tesseract release tags.",
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	current, err := db.GetCurrentItem(ctx, rev.ItemID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	history, err := db.GetItemHistory(ctx, rev.ItemID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -140,7 +147,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("wrote %s; recalled %d result(s)", rev.RevisionID, len(hits))
+	log.Printf("item %s current revision %s; %d revision(s), %d recalled result(s)",
+		current.ItemID, current.RevisionID, len(history), len(hits))
 }
 ```
 
@@ -191,8 +199,8 @@ The current domain writes are `context_write`, `memory_write`, and `knowledge_wr
 
 | Current tool | Purpose |
 |---|---|
-| `tesseract_get` | Current entry at `domain`, `namespace`, and `key` |
-| `tesseract_history` | Revision history for `domain`, `namespace`, and `key` |
+| `tesseract_get` | Current item by `item_id`, or by legacy `domain`, `namespace`, and `key` |
+| `tesseract_history` | Item history by `item_id`, or by legacy `domain`, `namespace`, and `key` |
 | `tesseract_recall` | Ranked recall across selected memory/knowledge `domains` |
 | `tesseract_get_revision` | Full revision by `revision_id` |
 | `tesseract_deprecate` | Deprecate a revision by `revision_id` |
@@ -204,8 +212,8 @@ There are no compatibility aliases. Update allowlists and prompts as well as exe
 
 | Retired in v0.9 | Replacement |
 |---|---|
-| `context_head`, `memory_get`, `knowledge_get` | `tesseract_get` with required `domain`, `namespace`, `key` |
-| `context_history`, `memory_history`, `knowledge_history` | `tesseract_history` with required `domain`, `namespace`, `key` |
+| `context_head`, `memory_get`, `knowledge_get` | `tesseract_get` with legacy `domain`, `namespace`, `key` selector |
+| `context_history`, `memory_history`, `knowledge_history` | `tesseract_history` with legacy `domain`, `namespace`, `key` selector |
 | `memory_get_revision` | `tesseract_get_revision` |
 | `memory_deprecate` | `tesseract_deprecate` |
 | `memory_recall`, `tesseract_lookup` | `tesseract_recall`; narrow with `domains` |
