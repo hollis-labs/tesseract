@@ -187,6 +187,45 @@ func TestParseKnowledgeNamespace(t *testing.T) {
 	}
 }
 
+func TestParseWorkspaceNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		input     string
+		wantScope memory.Scope
+		wantHead  string
+		wantTail  string
+		wantErr   bool
+	}{
+		{"user", "user/chrispian/workspace/drafts", memory.ScopeUser, "user/chrispian", "drafts", false},
+		{"project deep tail", "project/tesseract/workspace/drafts/api/v2", memory.ScopeProject, "project/tesseract", "drafts/api/v2", false},
+		{"app", "app/tether/workspace/scratch", memory.ScopeApp, "app/tether", "scratch", false},
+		{"org", "org/hollis-labs/workspace/plans", memory.ScopeOrg, "org/hollis-labs", "plans", false},
+		{"session", "session/s-1/workspace/handoff", memory.ScopeSession, "session/s-1", "handoff", false},
+		{"system singleton", "system/workspace/scratch", memory.ScopeSystem, "system", "scratch", false},
+		{"bare head", "project/tesseract/workspace", memory.ScopeUnknown, "", "", true},
+		{"empty tail", "project/tesseract/workspace//draft", memory.ScopeUnknown, "", "", true},
+		{"trailing slash", "system/workspace/scratch/", memory.ScopeUnknown, "", "", true},
+		{"wrong domain", "project/tesseract/knowledge/drafts", memory.ScopeUnknown, "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ns, err := memory.ParseWorkspaceNamespace(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ParseWorkspaceNamespace(%q) succeeded: %#v", tc.input, ns)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ns.Scope != tc.wantScope || ns.Head() != tc.wantHead || ns.Tail != tc.wantTail ||
+				ns.Domain() != "workspace" || ns.String() != tc.input {
+				t.Fatalf("parsed %#v, head=%q domain=%q rendered=%q", ns, ns.Head(), ns.Domain(), ns.String())
+			}
+		})
+	}
+}
+
 // TestNamespaceHead pins the unit the ADR calls the fixed-depth head,
 // including system's one-segment irregularity.
 func TestNamespaceHead(t *testing.T) {

@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 23
+	schemaVersion = 24
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1297,6 +1297,140 @@ CREATE TABLE IF NOT EXISTS novelty_basis (
 				if _, err = tx.ExecContext(ctx, col.ddl); err != nil {
 					return err
 				}
+			}
+		case 24:
+			// Workspace is Tesseract's deliberate mutable-storage exception.
+			// Its current content lives outside memory_revisions, and deletion
+			// moves only identity and authorization metadata into the tombstone
+			// table. Keeping tombstones separate makes content retention after a
+			// delete structurally impossible rather than a convention on nullable
+			// columns.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS workspace_items (
+	item_id          TEXT PRIMARY KEY,
+	version_token    TEXT NOT NULL UNIQUE,
+	namespace        TEXT NOT NULL,
+	key_name         TEXT NULL,
+	summary          TEXT NOT NULL,
+	body             TEXT NULL,
+	data             TEXT NULL,
+	data_schema_hash TEXT NULL,
+	tags             TEXT NULL,
+	consumer_state   TEXT NULL,
+	author_agent_id  TEXT NOT NULL,
+	author_version   TEXT NOT NULL,
+	session_id       TEXT NOT NULL,
+	created_at       TEXT NOT NULL,
+	updated_at       TEXT NOT NULL,
+	activation       REAL NOT NULL DEFAULT 1.0,
+	access_count     INTEGER NOT NULL DEFAULT 0,
+	last_used_at     TEXT NOT NULL,
+	last_decayed_at  TEXT NOT NULL,
+	CHECK (key_name IS NULL OR key_name <> ''),
+	CHECK (body IS NULL OR body <> ''),
+	CHECK (data_schema_hash IS NULL OR data IS NOT NULL)
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_items_live_key
+ON workspace_items(namespace, key_name)
+WHERE key_name IS NOT NULL`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_items_namespace ON workspace_items(namespace)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_items_use ON workspace_items(last_used_at, item_id)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS workspace_tombstones (
+	item_id    TEXT PRIMARY KEY,
+	domain     TEXT NOT NULL CHECK (domain = 'workspace'),
+	namespace  TEXT NOT NULL,
+	deleted_at TEXT NOT NULL
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_tombstones_namespace ON workspace_tombstones(namespace)`); err != nil {
+				return err
+			}
+			// Workspace IDs share the same object-identity vocabulary as
+			// revisioned item IDs. The store retries collisions before insert;
+			// these symmetric guards close the opposite ordering too, so a later
+			// revisioned write cannot reuse a live or tombstoned workspace ID.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS workspace_items_identity_guard
+BEFORE INSERT ON workspace_items
+WHEN EXISTS (SELECT 1 FROM memory_state WHERE memory_id = new.item_id)
+  OR EXISTS (SELECT 1 FROM memory_revisions WHERE revision_id = new.item_id)
+BEGIN
+	SELECT RAISE(ABORT, 'workspace item identity collision');
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS memory_state_workspace_identity_guard
+BEFORE INSERT ON memory_state
+WHEN EXISTS (SELECT 1 FROM workspace_items WHERE item_id = new.memory_id)
+  OR EXISTS (SELECT 1 FROM workspace_tombstones WHERE item_id = new.memory_id)
+BEGIN
+	SELECT RAISE(ABORT, 'revisioned item identity collides with workspace item');
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS memory_revisions_workspace_identity_guard
+BEFORE INSERT ON memory_revisions
+WHEN EXISTS (SELECT 1 FROM workspace_items WHERE item_id = new.revision_id)
+  OR EXISTS (SELECT 1 FROM workspace_tombstones WHERE item_id = new.revision_id)
+BEGIN
+	SELECT RAISE(ABORT, 'revision identity collides with workspace item');
+END`); err != nil {
+				return err
+			}
+
+			// Workspace has a separate lexical index because it is mutable and
+			// must never enter memory_revisions_fts or the embedding queue. The
+			// triggers run in the caller's mutation transaction, so content and
+			// index visibility commit or roll back together.
+			if _, err = tx.ExecContext(ctx, `
+CREATE VIRTUAL TABLE IF NOT EXISTS workspace_items_fts USING fts5(
+	key_name,
+	summary,
+	body,
+	tags,
+	content='workspace_items',
+	content_rowid='rowid'
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS workspace_items_fts_ai
+AFTER INSERT ON workspace_items BEGIN
+	INSERT INTO workspace_items_fts(rowid, key_name, summary, body, tags)
+	VALUES (new.rowid, new.key_name, new.summary, new.body, new.tags);
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS workspace_items_fts_ad
+AFTER DELETE ON workspace_items BEGIN
+	INSERT INTO workspace_items_fts(workspace_items_fts, rowid, key_name, summary, body, tags)
+	VALUES ('delete', old.rowid, old.key_name, old.summary, old.body, old.tags);
+END`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `
+CREATE TRIGGER IF NOT EXISTS workspace_items_fts_au
+AFTER UPDATE OF key_name, summary, body, tags ON workspace_items BEGIN
+	INSERT INTO workspace_items_fts(workspace_items_fts, rowid, key_name, summary, body, tags)
+	VALUES ('delete', old.rowid, old.key_name, old.summary, old.body, old.tags);
+	INSERT INTO workspace_items_fts(rowid, key_name, summary, body, tags)
+	VALUES (new.rowid, new.key_name, new.summary, new.body, new.tags);
+END`); err != nil {
+				return err
 			}
 		}
 

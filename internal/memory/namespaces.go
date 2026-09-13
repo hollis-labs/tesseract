@@ -102,8 +102,8 @@ type Namespace struct {
 	// scope — read ScopeID there.
 	LegacyUserID string
 
-	// domain is the domain segment this was parsed under: memory, event or
-	// knowledge. Unexported with a Domain() accessor because nothing should
+	// domain is the domain segment this was parsed under: memory, event,
+	// knowledge or workspace. Unexported with a Domain() accessor because nothing should
 	// be able to construct a Namespace that claims a domain its parser never
 	// checked — the previous struct carried no record of which grammar built
 	// it, and String() rendered the memory form for an event namespace.
@@ -313,6 +313,7 @@ const (
 	memoryNamespaceSegment    = "memory"
 	eventNamespaceSegment     = "event"
 	knowledgeNamespaceSegment = "knowledge"
+	workspaceNamespaceSegment = "workspace"
 )
 
 // scopedNamespaceSegments is the closed set of domain segments whose BARE form
@@ -461,6 +462,37 @@ func ParseKnowledgeNamespace(s string) (Namespace, error) {
 // ValidateKnowledgeNamespace is a convenience wrapper returning only the error.
 func ValidateKnowledgeNamespace(s string) error {
 	_, err := ParseKnowledgeNamespace(s)
+	return err
+}
+
+// ParseWorkspaceNamespace parses the workspace grammar: a fixed scope head,
+// the workspace domain segment, and at least one free-depth tail segment.
+// Workspace keys are not part of the namespace and remain exact free-form
+// values in the workspace store.
+//
+//	{scope}/{id}/workspace/{anything}/{...}
+//	system/workspace/{anything}/{...}
+func ParseWorkspaceNamespace(s string) (Namespace, error) {
+	ns, rest, err := parseHead(s, workspaceNamespaceSegment)
+	if err != nil {
+		return Namespace{}, err
+	}
+	if len(rest) == 0 {
+		return Namespace{}, fmt.Errorf("%w: workspace namespace needs at least one segment after %q in %q",
+			ErrInvalidNamespace, workspaceNamespaceSegment, s)
+	}
+	for _, seg := range rest {
+		if seg == "" {
+			return Namespace{}, fmt.Errorf("%w: empty segment in %q", ErrInvalidNamespace, s)
+		}
+	}
+	ns.Tail = strings.Join(rest, "/")
+	return ns, nil
+}
+
+// ValidateWorkspaceNamespace is a convenience wrapper returning only the error.
+func ValidateWorkspaceNamespace(s string) error {
+	_, err := ParseWorkspaceNamespace(s)
 	return err
 }
 

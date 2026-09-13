@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -1661,5 +1662,89 @@ INSERT INTO memory_revisions (
 	}
 	if summary != "written before payload.data existed" {
 		t.Errorf("payload_summary = %q after the migration; an ADD COLUMN must not touch existing data", summary)
+	}
+}
+
+func TestMigration24CreatesWorkspaceStorageWithMinimalTombstones(t *testing.T) {
+	ctx := context.Background()
+	store, openErr := Open(ctx, Config{RootDir: t.TempDir()})
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer store.Close()
+	db := store.DB()
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO memory_state (memory_id, namespace, memory_key, domain)
+		 VALUES ('mem-ws-neighbor', 'project/tesseract/memory/notes', 'workspace.neighbor', 'memory')`); err != nil {
+		t.Fatalf("seed neighboring memory state: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO memory_revisions (
+	revision_id, memory_id, domain, namespace, memory_key, status,
+	author_agent_id, author_version, "trigger", session_id, derived_from, confidence,
+	tags, payload_summary
+) VALUES (
+	'rev-ws-neighbor', 'mem-ws-neighbor', 'memory', 'project/tesseract/memory/notes',
+	'workspace.neighbor', 'canonical', 'agent', 'v1', 'manual', 'session', 'project',
+	0.9, '[]', 'neighbor survives workspace migration'
+)`); err != nil {
+		t.Fatalf("seed neighboring memory revision: %v", err)
+	}
+	for _, statement := range []string{
+		`DROP TRIGGER workspace_items_fts_ai`,
+		`DROP TRIGGER workspace_items_fts_ad`,
+		`DROP TRIGGER workspace_items_fts_au`,
+		`DROP TRIGGER workspace_items_identity_guard`,
+		`DROP TRIGGER memory_state_workspace_identity_guard`,
+		`DROP TRIGGER memory_revisions_workspace_identity_guard`,
+		`DROP TABLE workspace_items_fts`,
+		`DROP TABLE workspace_tombstones`,
+		`DROP TABLE workspace_items`,
+		`DELETE FROM schema_version WHERE version >= 24`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare schema-23 store with %q: %v", statement, err)
+		}
+	}
+	if err := store.migrate(ctx); err != nil {
+		t.Fatalf("migrate schema 23 to 24: %v", err)
+	}
+
+	for _, table := range []string{"workspace_items", "workspace_tombstones", "workspace_items_fts"} {
+		var name string
+		if err := db.QueryRowContext(ctx,
+			`SELECT name FROM sqlite_master WHERE name = ?`, table).Scan(&name); err != nil {
+			t.Fatalf("workspace schema object %q: %v", table, err)
+		}
+	}
+
+	rows, queryErr := db.QueryContext(ctx, `SELECT name FROM pragma_table_info('workspace_tombstones') ORDER BY cid`)
+	if queryErr != nil {
+		t.Fatal(queryErr)
+	}
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.Fatal(err)
+		}
+		columns = append(columns, column)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"item_id", "domain", "namespace", "deleted_at"}
+	if !slices.Equal(columns, want) {
+		t.Fatalf("workspace tombstone columns = %v, want minimal %v", columns, want)
+	}
+	var summary string
+	if err := db.QueryRowContext(ctx,
+		`SELECT payload_summary FROM memory_revisions WHERE revision_id = 'rev-ws-neighbor'`).Scan(&summary); err != nil {
+		t.Fatalf("read neighboring revision after migration: %v", err)
+	}
+	if summary != "neighbor survives workspace migration" {
+		t.Fatalf("neighboring revision changed during workspace migration: %q", summary)
 	}
 }
