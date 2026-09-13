@@ -146,6 +146,7 @@ var surfaceCatalog = []parityOp{
 	{MCP: "tesseract_touch", HTTPMethod: http.MethodPost, HTTPPath: "/v1/memory/touch"},
 
 	// ── Meta (orientation / discovery) ─────────────────────────────────
+	{MCP: "tesseract_runtime_get", Waiver: "MCP-only: observes this stdio process and its initialize-time supervising owner; the HTTP daemon is a different process without this launch context"},
 	{MCP: "tesseract_skills", Waiver: "MCP-only: progressive-discovery meta-tool; serves embedded skill MDs"},
 
 	// ── HTTP-only (infra, admin, security boundary, batch-2) ───────────
