@@ -3,7 +3,10 @@ package workspace_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -287,6 +290,41 @@ func TestCanceledRetentionApplyLeavesLiveContentWithoutTombstone(t *testing.T) {
 	}
 }
 
+func TestRetentionPassReportsCommittedPrefixAcrossPages(t *testing.T) {
+	cs, store, now := newWorkspaceStore(t)
+	ctx := context.Background()
+	var itemIDs []string
+	for _, key := range []string{"partial-a", "partial-b", "partial-c", "partial-d"} {
+		item, err := store.Create(ctx, createInput(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		itemIDs = append(itemIDs, item.ItemID)
+		setRetentionState(t, cs, item.ItemID, workspace.ActivationFloor, now.Add(-365*24*time.Hour), *now)
+	}
+	sort.Strings(itemIDs)
+	failedItemID := itemIDs[len(itemIDs)-1]
+	if _, err := cs.DB().Exec(fmt.Sprintf(`CREATE TRIGGER abort_last_retention_delete BEFORE DELETE ON workspace_items WHEN OLD.item_id = '%s' BEGIN SELECT RAISE(ABORT, 'injected purge failure'); END`, failedItemID)); err != nil {
+		t.Fatal(err)
+	}
+
+	applied, err := store.RunRetentionPass(ctx, workspace.RetentionSettings{PurgeEnabled: true}, 2)
+	if err == nil || !strings.Contains(err.Error(), "injected purge failure") {
+		t.Fatalf("RunRetentionPass error = %v", err)
+	}
+	if applied.Purged != 3 || applied.Skipped != 0 || len(applied.Results) != 3 {
+		t.Fatalf("partial pass report = %#v", applied)
+	}
+	for i, result := range applied.Results {
+		if result.ItemID != itemIDs[i] || result.Status != "purged" {
+			t.Fatalf("result[%d] = %#v, want committed item %s", i, result, itemIDs[i])
+		}
+	}
+	if _, err := store.GetCurrent(ctx, failedItemID); err != nil {
+		t.Fatalf("failed item did not remain live: %v", err)
+	}
+}
+
 func TestConcurrentRetentionAndUseSerialize(t *testing.T) {
 	cs, store, now := newWorkspaceStore(t)
 	ctx := context.Background()
@@ -370,4 +408,50 @@ func TestRetentionJobRequiresExplicitPositiveInterval(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func TestRetentionJobLogsCommittedPrefixOnFailure(t *testing.T) {
+	cs, store, now := newWorkspaceStore(t)
+	ctx := context.Background()
+	var itemIDs []string
+	for _, key := range []string{"job-partial-a", "job-partial-b"} {
+		item, err := store.Create(ctx, createInput(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		itemIDs = append(itemIDs, item.ItemID)
+		setRetentionState(t, cs, item.ItemID, workspace.ActivationFloor, now.Add(-365*24*time.Hour), *now)
+	}
+	sort.Strings(itemIDs)
+	if _, err := cs.DB().Exec(fmt.Sprintf(`CREATE TRIGGER abort_job_retention_delete BEFORE DELETE ON workspace_items WHEN OLD.item_id = '%s' BEGIN SELECT RAISE(ABORT, 'injected job purge failure'); END`, itemIDs[1])); err != nil {
+		t.Fatal(err)
+	}
+
+	jobCtx, cancel := context.WithCancel(ctx)
+	logs := make(chan string, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		(&workspace.RetentionJob{
+			Store: store, Settings: workspace.RetentionSettings{PurgeEnabled: true}, Interval: time.Millisecond, BatchSize: 10,
+			Logger: func(format string, args ...any) {
+				select {
+				case logs <- fmt.Sprintf(format, args...):
+				default:
+				}
+			},
+		}).Run(jobCtx)
+	}()
+	var logged string
+	select {
+	case logged = <-logs:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("retention job did not report its failed pass")
+	}
+	<-done
+	if !strings.Contains(logged, "failed: purged=1 skipped=0") || !strings.Contains(logged, "injected job purge failure") {
+		t.Fatalf("failure log omitted committed outcomes: %q", logged)
+	}
 }

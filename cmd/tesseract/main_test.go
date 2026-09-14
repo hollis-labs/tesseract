@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -170,6 +171,44 @@ func TestRunServeFlagValidationPath(t *testing.T) {
 	}
 	if data.Len() == 0 {
 		t.Fatalf("expected stderr output for invalid args")
+	}
+}
+
+func TestRunRejectsInvalidRetentionConfigBeforeOpeningStore(t *testing.T) {
+	layout := hermeticLayout(t)
+	if err := os.MkdirAll(layout.ConfigDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(layout.ConfigDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("workspace:\n  retention:\n    purge_enabled: true\n    batch_size: null\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := os.CreateTemp(t.TempDir(), "stdout-*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout.Close()
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr-*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+
+	if code := run(context.Background(), []string{"serve", "--addr", "127.0.0.1:0"}, stdout, stderr); code == 0 {
+		t.Fatal("serve accepted explicitly invalid retention configuration")
+	}
+	if _, seekErr := stderr.Seek(0, 0); seekErr != nil {
+		t.Fatal(seekErr)
+	}
+	message, err := io.ReadAll(stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(message, []byte(config.ErrWorkspaceRetentionConfig.Error())) {
+		t.Fatalf("startup error = %q", message)
+	}
+	if _, statErr := os.Stat(layout.MainDB()); !os.IsNotExist(statErr) {
+		t.Fatalf("invalid retention config opened the store: stat error=%v", statErr)
 	}
 }
 

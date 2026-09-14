@@ -257,7 +257,10 @@ Use the maintenance subcommands' `--dry-run` before destructive retention work.
 door. It is a report by default and accepts `--db`, `--json`, `--cursor`, and
 `--limit`. `--apply` rechecks eligible rows transactionally and requires the
 loaded workspace purge configuration to be enabled; repeat `--item-id` to
-apply only reviewed identities. It does not implement the revision-store
+apply only reviewed identities. With no `--item-id`, apply is intentionally
+bounded to eligible items in the current `--cursor`/`--limit` scan page.
+Unexpected positional arguments are rejected before the database is opened,
+so a misspelled or misplaced selector cannot widen that page scope. It does not implement the revision-store
 `context maintenance trim` policy.
 The broader `context compact` command has no dry-run mode.
 

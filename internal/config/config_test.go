@@ -39,9 +39,9 @@ dedup:
 
 func TestWorkspaceRetentionDefaultsOffAndStrictValidation(t *testing.T) {
 	defaults := config.Defaults().Workspace.Retention
-	parsed, err := config.ParseWorkspaceRetention(defaults)
-	if err != nil {
-		t.Fatal(err)
+	parsed, parseErr := config.ParseWorkspaceRetention(defaults)
+	if parseErr != nil {
+		t.Fatal(parseErr)
 	}
 	if parsed.PurgeEnabled || parsed.AutomaticInterval != 0 || parsed.MinimumIdle != 30*24*time.Hour || parsed.BatchSize != 100 {
 		t.Fatalf("unsafe workspace retention defaults: %#v", parsed)
@@ -64,6 +64,41 @@ func TestWorkspaceRetentionDefaultsOffAndStrictValidation(t *testing.T) {
     minimum_idle: 720h
     automatic_interval: 1h
 `,
+		"empty_idle": `workspace:
+  retention:
+    purge_enabled: true
+    minimum_idle: ""
+`,
+		"null_idle": `workspace:
+  retention:
+    purge_enabled: true
+    minimum_idle: null
+`,
+		"zero_batch": `workspace:
+  retention:
+    purge_enabled: true
+    batch_size: 0
+`,
+		"null_batch": `workspace:
+  retention:
+    purge_enabled: true
+    batch_size: null
+`,
+		"null_interval": `workspace:
+  retention:
+    purge_enabled: true
+    automatic_interval: null
+`,
+		"empty_interval": `workspace:
+  retention:
+    purge_enabled: true
+    automatic_interval: ""
+`,
+		"null_retention": `workspace:
+  retention: null
+`,
+		"null_workspace": `workspace: null
+`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
@@ -74,6 +109,18 @@ func TestWorkspaceRetentionDefaultsOffAndStrictValidation(t *testing.T) {
 				t.Fatalf("Load error = %v, want workspace retention configuration error", err)
 			}
 		})
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("workspace:\n  retention:\n    purge_enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("omitted optional retention fields: %v", err)
+	}
+	if got.Workspace.Retention.MinimumIdle != "720h" || got.Workspace.Retention.BatchSize != 100 || got.Workspace.Retention.AutomaticInterval != "" {
+		t.Fatalf("omitted retention fields did not inherit defaults: %#v", got.Workspace.Retention)
 	}
 }
 

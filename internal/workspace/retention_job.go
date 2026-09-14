@@ -29,7 +29,7 @@ func (j *RetentionJob) Run(ctx context.Context) {
 			report, err := j.Store.RunRetentionPass(ctx, j.Settings, j.BatchSize)
 			if err != nil {
 				if j.Logger != nil {
-					j.Logger("workspace retention pass failed: %v", err)
+					j.Logger("workspace retention pass failed: purged=%d skipped=%d: %v", report.Purged, report.Skipped, err)
 				}
 				continue
 			}

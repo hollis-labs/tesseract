@@ -69,8 +69,27 @@ func (c *WorkspaceRetentionConfig) UnmarshalYAML(node *yaml.Node) error {
 	}
 	allowed := map[string]bool{"purge_enabled": true, "minimum_idle": true, "automatic_interval": true, "batch_size": true}
 	for i := 0; i < len(node.Content); i += 2 {
-		if !allowed[node.Content[i].Value] {
-			return fmt.Errorf("%w: unknown workspace.retention setting %q", ErrWorkspaceRetentionConfig, node.Content[i].Value)
+		name, value := node.Content[i].Value, node.Content[i+1]
+		if !allowed[name] {
+			return fmt.Errorf("%w: unknown workspace.retention setting %q", ErrWorkspaceRetentionConfig, name)
+		}
+		switch name {
+		case "purge_enabled":
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!bool" {
+				return fmt.Errorf("%w: workspace.retention.purge_enabled must be a boolean", ErrWorkspaceRetentionConfig)
+			}
+		case "minimum_idle", "automatic_interval":
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || strings.TrimSpace(value.Value) == "" {
+				return fmt.Errorf("%w: workspace.retention.%s must be a non-empty duration string", ErrWorkspaceRetentionConfig, name)
+			}
+		case "batch_size":
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" {
+				return fmt.Errorf("%w: workspace.retention.batch_size must be an integer", ErrWorkspaceRetentionConfig)
+			}
+			var batchSize int
+			if err := value.Decode(&batchSize); err != nil || batchSize < 1 || batchSize > 1000 {
+				return fmt.Errorf("%w: workspace.retention.batch_size must be between 1 and 1000", ErrWorkspaceRetentionConfig)
+			}
 		}
 	}
 	type plain WorkspaceRetentionConfig
@@ -201,6 +220,9 @@ func Load(path string) (Config, error) {
 		return cfg, err
 	}
 
+	if err := validateWorkspaceRetentionBoundaries(data); err != nil {
+		return cfg, err
+	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
 	}
@@ -209,6 +231,38 @@ func Load(path string) (Config, error) {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// YAML null skips a nested type's UnmarshalYAML method and leaves a
+// pre-populated receiver unchanged. Inspect these two object boundaries before
+// decoding so an explicit null cannot masquerade as an omitted default.
+func validateWorkspaceRetentionBoundaries(data []byte) error {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	if len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	root := document.Content[0]
+	for i := 0; i < len(root.Content); i += 2 {
+		if root.Content[i].Value != "workspace" {
+			continue
+		}
+		workspaceNode := root.Content[i+1]
+		if workspaceNode.Tag == "!!null" {
+			return fmt.Errorf("%w: workspace must be an object", ErrWorkspaceRetentionConfig)
+		}
+		if workspaceNode.Kind != yaml.MappingNode {
+			return nil
+		}
+		for j := 0; j < len(workspaceNode.Content); j += 2 {
+			if workspaceNode.Content[j].Value == "retention" && workspaceNode.Content[j+1].Tag == "!!null" {
+				return fmt.Errorf("%w: workspace.retention must be an object", ErrWorkspaceRetentionConfig)
+			}
+		}
+	}
+	return nil
 }
 
 // Normalize reapplies defaults for zero values that should not remain zero in

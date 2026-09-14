@@ -44,6 +44,10 @@ func runWorkspaceRetention(ctx context.Context, defaultDB string, cfg config.Con
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
+	if fs.NArg() != 0 {
+		fmt.Fprintf(stderr, "error: unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		return 1
+	}
 	if *dbPath == "" {
 		fmt.Fprintln(stderr, "error: --db is required")
 		return 1
@@ -104,14 +108,14 @@ func runWorkspaceRetention(ctx context.Context, defaultDB string, cfg config.Con
 		return 0
 	}
 	applied, err := store.ApplyRetention(ctx, workspace.RetentionApplyInput{Settings: settings, ItemIDs: selected})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: retention apply: %v\n", err)
-		return 1
-	}
 	if *jsonOut {
 		writeIndentedJSON(stdout, map[string]any{"report": report, "apply": applied})
 	} else {
 		printWorkspaceRetentionApply(stdout, applied)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "error: retention apply: %v\n", err)
+		return 1
 	}
 	return 0
 }

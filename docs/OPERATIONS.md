@@ -216,6 +216,13 @@ tesseract workspace-retention --db /path/to/disposable/main.db \
 ```
 
 JSON apply output is one document with `report` and `apply` members.
+Without `--item-id`, `--apply` intentionally operates on eligible items in the
+current bounded `--cursor`/`--limit` report page. Any positional or otherwise
+unparsed argument is rejected before opening the database, including tokens
+after `--`; use repeated `--item-id` flags to constrain the apply to reviewed
+identities. If a later per-item transaction fails, the command exits nonzero
+but still prints the completed prefix in the `apply` member (or text apply
+section), because those earlier item transactions are already committed.
 
 Before any live activation, review every report page and namespace override,
 stop all writers, export and verify a v2 backup, and retain an offline copy of

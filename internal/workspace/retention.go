@@ -323,18 +323,22 @@ func (s *Store) RunRetentionPass(ctx context.Context, settings RetentionSettings
 		}
 		if len(itemIDs) > 0 {
 			applied, err := s.applyRetentionAt(ctx, RetentionApplyInput{Settings: settings, ItemIDs: itemIDs}, now)
+			mergeRetentionApplyReport(&total, applied)
 			if err != nil {
 				return total, err
 			}
-			total.Results = append(total.Results, applied.Results...)
-			total.Purged += applied.Purged
-			total.Skipped += applied.Skipped
 		}
 		if !report.Truncated {
 			return total, nil
 		}
 		cursor = report.NextCursor
 	}
+}
+
+func mergeRetentionApplyReport(total *RetentionApplyReport, applied RetentionApplyReport) {
+	total.Results = append(total.Results, applied.Results...)
+	total.Purged += applied.Purged
+	total.Skipped += applied.Skipped
 }
 
 func (s *Store) applyRetentionOne(ctx context.Context, itemID string, now time.Time, settings RetentionSettings) (RetentionApplyResult, error) {
