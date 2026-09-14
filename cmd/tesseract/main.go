@@ -318,6 +318,17 @@ func topLevelCommands() []topLevelCommand {
 			FlagsSource: "migrate_corpus.go",
 		},
 		{
+			Name:        "classify-backlog",
+			Summary:     "classify user/chrispian/memory backlog and event reasoning records",
+			Description: "Inspects and classifies historical agent-authored records in\n  user/chrispian/memory/* and user/chrispian/event/reasoning according to the\n  4-tier signal precedence (report only, zero writes).",
+			Flags: []string{
+				"  -db path\tpath to the SQLite store to inspect (required)",
+				"  -json\temit the full classification report as JSON",
+				"  -verbose\temit detailed per-record classification output",
+			},
+			FlagsSource: "classify_backlog.go",
+		},
+		{
 			Name:        "verify-pointers",
 			Summary:     "resolve knowledge pointers and record what was found",
 			Description: "Resolves the pointers on knowledge records and writes what it saw to the\n  verification log. Plans only unless -apply is given.",
@@ -561,6 +572,8 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runPromoteRecord(ctx, "", rest, stdout, stderr)
 	case "migrate-corpus":
 		return runMigrateCorpus(ctx, "", rest, stdout, stderr)
+	case "classify-backlog":
+		return runClassifyBacklog(ctx, rest, stdout, stderr)
 	}
 
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))

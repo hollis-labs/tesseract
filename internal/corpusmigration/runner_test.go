@@ -66,6 +66,28 @@ func TestClassifyNamespaceComprehensive(t *testing.T) {
 			wantAction:   corpusmigration.ActionRename,
 			wantTargetNS: "project/nanite/knowledge/architecture",
 		},
+		// 3b. Project knowledge rename additions (Part A)
+		{
+			namespace:    "user/chrispian/knowledge/tesseract/adr",
+			domain:       domains.Knowledge,
+			wantCat:      corpusmigration.CategoryProjectKnowledgeRename,
+			wantAction:   corpusmigration.ActionRename,
+			wantTargetNS: "project/tesseract/knowledge/adr",
+		},
+		{
+			namespace:    "user/chrispian/knowledge/tesseract",
+			domain:       domains.Knowledge,
+			wantCat:      corpusmigration.CategoryProjectKnowledgeRename,
+			wantAction:   corpusmigration.ActionRename,
+			wantTargetNS: "project/tesseract/knowledge",
+		},
+		{
+			namespace:    "user/chrispian/knowledge/design-kit/catalogs",
+			domain:       domains.Knowledge,
+			wantCat:      corpusmigration.CategoryProjectKnowledgeRename,
+			wantAction:   corpusmigration.ActionRename,
+			wantTargetNS: "project/design-kit/knowledge/catalogs",
+		},
 		// 4. System verify
 		{
 			namespace:    "system/knowledge/guidelines",
@@ -152,7 +174,7 @@ func TestClassifyNamespaceComprehensive(t *testing.T) {
 			wantAction:   corpusmigration.ActionDeferred,
 			wantTargetNS: "app/my-app/knowledge/docs",
 		},
-		// 13. Deferred Tether
+		// 13. Deferred Tether (broadened)
 		{
 			namespace:    "user/chrispian/knowledge/tether/sync",
 			domain:       domains.Knowledge,
@@ -160,7 +182,29 @@ func TestClassifyNamespaceComprehensive(t *testing.T) {
 			wantAction:   corpusmigration.ActionDeferred,
 			wantTargetNS: "user/chrispian/knowledge/tether/sync",
 		},
-		// 14. Unmapped default
+		{
+			namespace:    "user/chrispian/knowledge/investigation/tether",
+			domain:       domains.Knowledge,
+			wantCat:      corpusmigration.CategoryDeferredTether,
+			wantAction:   corpusmigration.ActionDeferred,
+			wantTargetNS: "user/chrispian/knowledge/investigation/tether",
+		},
+		{
+			namespace:    "user/chrispian/knowledge/projects/tether/playbooks",
+			domain:       domains.Knowledge,
+			wantCat:      corpusmigration.CategoryDeferredTether,
+			wantAction:   corpusmigration.ActionDeferred,
+			wantTargetNS: "user/chrispian/knowledge/projects/tether/playbooks",
+		},
+		// 14. Event reasoning routing
+		{
+			namespace:    "user/chrispian/event/reasoning",
+			domain:       domains.Event,
+			wantCat:      corpusmigration.CategoryEventReasoningRouting,
+			wantAction:   corpusmigration.ActionClassify,
+			wantTargetNS: "",
+		},
+		// 15. Unmapped default
 		{
 			namespace:    "other/unrecognized/custom",
 			domain:       domains.Knowledge,

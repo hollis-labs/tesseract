@@ -14,6 +14,7 @@ const (
 	ActionReclassify Action = "reclassify"
 	ActionVerify     Action = "verify"
 	ActionDeferred   Action = "deferred"
+	ActionClassify   Action = "classify"
 	ActionSkip       Action = "skip"
 )
 
@@ -32,6 +33,7 @@ const (
 	CategoryAmbiguousPackages      RuleCategory = "ambiguous_packages"
 	CategoryAmbiguousPortfolio     RuleCategory = "ambiguous_portfolio"
 	CategoryAmbiguousLowConfidence RuleCategory = "ambiguous_low_confidence"
+	CategoryEventReasoningRouting  RuleCategory = "event_reasoning_routing"
 	CategoryDeferredApp            RuleCategory = "deferred_app"
 	CategoryDeferredTether         RuleCategory = "deferred_tether"
 	CategoryUnmapped               RuleCategory = "unmapped"
@@ -51,7 +53,7 @@ type Decision struct {
 	Reason       string         `json:"reason"`
 }
 
-// SpecifiedProjectSlugs is the explicit list of 10 project slugs finalized in N6 Phase 1.
+// SpecifiedProjectSlugs is the explicit list of project slugs finalized in N6 Phase 1 and 2.
 var SpecifiedProjectSlugs = map[string]struct{}{
 	"cairn":       {},
 	"cerberus":    {},
@@ -63,6 +65,8 @@ var SpecifiedProjectSlugs = map[string]struct{}{
 	"worldarcana": {},
 	"agent-setup": {},
 	"hollis_labs": {},
+	"tesseract":   {},
+	"design-kit":  {},
 }
 
 // HowWeWorkSubpaths is the set of relative subpaths under user/{id}/knowledge/
@@ -162,13 +166,33 @@ func ClassifyNamespace(ns string, domain domains.Domain) Decision {
 			}
 		}
 
+		// Event namespace rules: user/{id}/event/reasoning
+		if len(parts) >= 4 && parts[2] == "event" && parts[3] == "reasoning" {
+			return Decision{
+				Category:     CategoryEventReasoningRouting,
+				Action:       ActionClassify,
+				SourceDomain: domains.Event,
+				TargetDomain: domains.Event,
+				OldNamespace: ns,
+				Confidence:   "high",
+				Reason:       "directly-authored event reasoning log routed per-record via classifier",
+			}
+		}
+
 		// Knowledge namespace rules: user/{id}/knowledge/...
 		if len(parts) >= 4 && parts[2] == "knowledge" {
 			subpath := strings.Join(parts[3:], "/")
 			seg3 := parts[3]
 
-			// 5. Deferred Tether knowledge: user/{id}/knowledge/tether/...
-			if seg3 == "tether" {
+			// 5. Deferred Tether knowledge: any namespace with segment "tether" under user/{id}/knowledge/
+			isTether := false
+			for _, p := range parts[3:] {
+				if p == "tether" {
+					isTether = true
+					break
+				}
+			}
+			if isTether {
 				return Decision{
 					Category:     CategoryDeferredTether,
 					Action:       ActionDeferred,

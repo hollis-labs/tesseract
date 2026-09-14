@@ -144,7 +144,7 @@ func printPlanSummary(w io.Writer, plan *corpusmigration.MigrationPlan, graph *c
 	fmt.Fprintf(w, "N6 Corpus Migration Plan\n")
 	fmt.Fprintf(w, "========================\n")
 	fmt.Fprintf(w, "Total namespaces in store: %d\n", plan.TotalNamespaces)
-	fmt.Fprintf(w, "Total rows to update/promote: %d\n", plan.TotalRowsAffected)
+	fmt.Fprintf(w, "Total active records to update/promote: %d (table rows across DB: %d)\n", plan.TotalRowsAffected, plan.TotalTableRows)
 	fmt.Fprintf(w, "Total reclassification records: %d\n\n", len(plan.Reclassifications))
 
 	fmt.Fprintf(w, "Category Breakdown:\n")
@@ -156,7 +156,7 @@ func printPlanSummary(w io.Writer, plan *corpusmigration.MigrationPlan, graph *c
 
 	for _, c := range categories {
 		cat := corpusmigration.RuleCategory(c)
-		fmt.Fprintf(w, "  %-32s : %4d namespaces, %5d rows\n", cat, plan.CategoryCounts[cat], plan.CategoryRows[cat])
+		fmt.Fprintf(w, "  %-32s : %4d namespaces, %5d active records\n", cat, plan.CategoryCounts[cat], plan.CategoryRows[cat])
 	}
 
 	if len(plan.SkippedNamespaces) > 0 {
@@ -189,6 +189,8 @@ func printPlanSummary(w io.Writer, plan *corpusmigration.MigrationPlan, graph *c
 				fmt.Fprintf(w, "  [verify] %s (%d rows)\n", ns.OldNamespace, ns.TotalRows)
 			case corpusmigration.ActionDeferred:
 				fmt.Fprintf(w, "  [deferred] %s\n", ns.OldNamespace)
+			case corpusmigration.ActionClassify:
+				fmt.Fprintf(w, "  [classify] %s\n", ns.OldNamespace)
 			case corpusmigration.ActionSkip:
 				fmt.Fprintf(w, "  [skip] %s\n", ns.OldNamespace)
 			}

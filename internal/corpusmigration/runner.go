@@ -19,20 +19,22 @@ import (
 
 // NamespaceStat represents migration details for one namespace.
 type NamespaceStat struct {
-	OldNamespace  string         `json:"old_namespace"`
-	NewNamespace  string         `json:"new_namespace"`
-	Domain        domains.Domain `json:"domain"`
-	Category      RuleCategory   `json:"category"`
-	Action        Action         `json:"action"`
-	StateRows     int            `json:"state_rows"`
-	RevisionRows  int            `json:"revision_rows"`
-	RecordRows    int            `json:"record_rows"`
-	HeadRows      int            `json:"head_rows"`
-	WorkspaceRows int            `json:"workspace_rows"`
-	TotalRows     int            `json:"total_rows"`
-	Reason        string         `json:"reason"`
-	IsAmbiguous   bool           `json:"is_ambiguous,omitempty"`
-	Confidence    string         `json:"confidence,omitempty"`
+	OldNamespace   string         `json:"old_namespace"`
+	NewNamespace   string         `json:"new_namespace"`
+	Domain         domains.Domain `json:"domain"`
+	Category       RuleCategory   `json:"category"`
+	Action         Action         `json:"action"`
+	ActiveRecords  int            `json:"active_records"`
+	StateRows      int            `json:"state_rows"`
+	RevisionRows   int            `json:"revision_rows"`
+	RecordRows     int            `json:"record_rows"`
+	HeadRows       int            `json:"head_rows"`
+	WorkspaceRows  int            `json:"workspace_rows"`
+	TotalTableRows int            `json:"total_table_rows"`
+	TotalRows      int            `json:"total_rows"` // active/pending records (matches active_records for pending/done clarity)
+	Reason         string         `json:"reason"`
+	IsAmbiguous    bool           `json:"is_ambiguous,omitempty"`
+	Confidence     string         `json:"confidence,omitempty"`
 }
 
 // ReclassificationRecord specifies one record to promote across domains.
@@ -62,14 +64,16 @@ type MigrationCollision struct {
 
 // MigrationPlan represents the full migration execution plan.
 type MigrationPlan struct {
-	Namespaces        []NamespaceStat          `json:"namespaces"`
-	Reclassifications []ReclassificationRecord `json:"reclassifications"`
-	CategoryCounts    map[RuleCategory]int     `json:"category_counts"`
-	CategoryRows      map[RuleCategory]int     `json:"category_rows"`
-	Collisions        []MigrationCollision     `json:"collisions"`
-	SkippedNamespaces []string                 `json:"skipped_namespaces"`
-	TotalNamespaces   int                      `json:"total_namespaces"`
-	TotalRowsAffected int                      `json:"total_rows_affected"`
+	Namespaces         []NamespaceStat          `json:"namespaces"`
+	Reclassifications  []ReclassificationRecord `json:"reclassifications"`
+	CategoryCounts     map[RuleCategory]int     `json:"category_counts"`
+	CategoryRows       map[RuleCategory]int     `json:"category_rows"`
+	Collisions         []MigrationCollision     `json:"collisions"`
+	SkippedNamespaces  []string                 `json:"skipped_namespaces"`
+	TotalNamespaces    int                      `json:"total_namespaces"`
+	TotalActiveRecords int                      `json:"total_active_records"`
+	TotalTableRows     int                      `json:"total_table_rows"`
+	TotalRowsAffected  int                      `json:"total_rows_affected"`
 }
 
 // MigrationReceipt reports execution results after applying the plan.
@@ -154,7 +158,13 @@ func BuildMigrationPlan(ctx context.Context, db *sql.DB) (*MigrationPlan, error)
 		CategoryRows:   make(map[RuleCategory]int),
 	}
 
-	// Pre-load counts by namespace for performance
+	// Pre-load counts by namespace for performance and accurate pending/active work reporting
+	memActive := countByNamespace(ctx, db, `
+SELECT s.namespace, COUNT(*) 
+FROM memory_state s 
+LEFT JOIN memory_revisions r ON r.revision_id = s.current_revision 
+WHERE s.current_revision IS NOT NULL AND (r.status IS NULL OR r.status <> 'deprecated') 
+GROUP BY s.namespace`)
 	stateCounts := countByNamespace(ctx, db, `SELECT namespace, COUNT(*) FROM memory_state GROUP BY namespace`)
 	revCounts := countByNamespace(ctx, db, `SELECT namespace, COUNT(*) FROM memory_revisions GROUP BY namespace`)
 	recCounts := countByNamespace(ctx, db, `SELECT namespace, COUNT(*) FROM records GROUP BY namespace`)
@@ -184,37 +194,42 @@ func BuildMigrationPlan(ctx context.Context, db *sql.DB) (*MigrationPlan, error)
 		recRows := recCounts[ns]
 		hRows := headCounts[ns]
 		wRows := wsCounts[ns]
-		totRows := sRows + rRows + recRows + hRows + wRows
+		activeRecs := memActive[ns] + wsCounts[ns] + headCounts[ns]
+		totTableRows := sRows + rRows + recRows + hRows + wRows
 
 		stat := NamespaceStat{
-			OldNamespace:  ns,
-			NewNamespace:  dec.NewNamespace,
-			Domain:        dom,
-			Category:      dec.Category,
-			Action:        dec.Action,
-			StateRows:     sRows,
-			RevisionRows:  rRows,
-			RecordRows:    recRows,
-			HeadRows:      hRows,
-			WorkspaceRows: wRows,
-			TotalRows:     totRows,
-			Reason:        dec.Reason,
-			IsAmbiguous:   dec.IsAmbiguous,
-			Confidence:    dec.Confidence,
+			OldNamespace:   ns,
+			NewNamespace:   dec.NewNamespace,
+			Domain:         dom,
+			Category:       dec.Category,
+			Action:         dec.Action,
+			ActiveRecords:  activeRecs,
+			StateRows:      sRows,
+			RevisionRows:   rRows,
+			RecordRows:     recRows,
+			HeadRows:       hRows,
+			WorkspaceRows:  wRows,
+			TotalTableRows: totTableRows,
+			TotalRows:      activeRecs,
+			Reason:         dec.Reason,
+			IsAmbiguous:    dec.IsAmbiguous,
+			Confidence:     dec.Confidence,
 		}
 
 		plan.Namespaces = append(plan.Namespaces, stat)
 		plan.CategoryCounts[dec.Category]++
-		plan.CategoryRows[dec.Category] += totRows
+		plan.CategoryRows[dec.Category] += activeRecs
 		plan.TotalNamespaces++
+		plan.TotalActiveRecords += activeRecs
+		plan.TotalTableRows += totTableRows
 
-		if dec.Action == ActionSkip || dec.Action == ActionDeferred {
+		if dec.Action == ActionSkip || dec.Action == ActionDeferred || dec.Action == ActionClassify {
 			plan.SkippedNamespaces = append(plan.SkippedNamespaces, ns)
 			continue
 		}
 
 		if dec.Action == ActionRename {
-			plan.TotalRowsAffected += totRows
+			plan.TotalRowsAffected += activeRecs
 		}
 
 		if dec.Action == ActionReclassify {
