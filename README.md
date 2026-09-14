@@ -145,6 +145,8 @@ namespace filtering, but it is not a complete read-isolation boundary for the
 local stdio server. See
 [`docs/AGENT-SETUP.md`](docs/AGENT-SETUP.md) and
 [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md).
+The observation-only `tesseract_runtime_get` tool reports executable staleness;
+see [its evidence and platform limits](docs/MCP_RUNTIME.md).
 
 ## Backup before real use
 
