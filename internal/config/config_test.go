@@ -1,9 +1,11 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/tesseract/internal/config"
 )
@@ -32,6 +34,65 @@ dedup:
 	}
 	if cfg.Dedup.SimilarityThreshold != 0.90 {
 		t.Errorf("threshold: got %f, want 0.90", cfg.Dedup.SimilarityThreshold)
+	}
+}
+
+func TestWorkspaceRetentionDefaultsOffAndStrictValidation(t *testing.T) {
+	defaults := config.Defaults().Workspace.Retention
+	parsed, err := config.ParseWorkspaceRetention(defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.PurgeEnabled || parsed.AutomaticInterval != 0 || parsed.MinimumIdle != 30*24*time.Hour || parsed.BatchSize != 100 {
+		t.Fatalf("unsafe workspace retention defaults: %#v", parsed)
+	}
+
+	for name, body := range map[string]string{
+		"unknown": `workspace:
+  retention:
+    purge_enabled: true
+    minimum_idle: 720h
+    surprise: true
+`,
+		"short_idle": `workspace:
+  retention:
+    purge_enabled: true
+    minimum_idle: 24h
+`,
+		"interval_without_purge": `workspace:
+  retention:
+    minimum_idle: 720h
+    automatic_interval: 1h
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := config.Load(path); !errors.Is(err, config.ErrWorkspaceRetentionConfig) {
+				t.Fatalf("Load error = %v, want workspace retention configuration error", err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceRetentionConfigRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.Defaults()
+	cfg.Workspace.Retention.PurgeEnabled = true
+	cfg.Workspace.Retention.MinimumIdle = "1440h"
+	cfg.Workspace.Retention.AutomaticInterval = "6h"
+	cfg.Workspace.Retention.BatchSize = 250
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Workspace.Retention != cfg.Workspace.Retention {
+		t.Fatalf("round trip = %#v, want %#v", got.Workspace.Retention, cfg.Workspace.Retention)
 	}
 }
 

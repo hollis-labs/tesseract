@@ -1,13 +1,19 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 )
+
+var ErrWorkspaceRetentionConfig = errors.New("invalid workspace retention configuration")
 
 // Config holds the top-level tesseract configuration loaded from config.yaml.
 type Config struct {
@@ -15,6 +21,87 @@ type Config struct {
 	Dedup     DedupConfig     `yaml:"dedup"`
 	Synthesis SynthesisConfig `yaml:"synthesis"`
 	Read      ReadConfig      `yaml:"read"`
+	Workspace WorkspaceConfig `yaml:"workspace"`
+}
+
+type WorkspaceConfig struct {
+	Retention WorkspaceRetentionConfig `yaml:"retention"`
+}
+
+func (c *WorkspaceConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("%w: workspace must be an object", ErrWorkspaceRetentionConfig)
+	}
+	for i := 0; i < len(node.Content); i += 2 {
+		if node.Content[i].Value != "retention" {
+			return fmt.Errorf("%w: unknown workspace setting %q", ErrWorkspaceRetentionConfig, node.Content[i].Value)
+		}
+	}
+	type plain WorkspaceConfig
+	if err := node.Decode((*plain)(c)); err != nil {
+		return fmt.Errorf("%w: %w", ErrWorkspaceRetentionConfig, err)
+	}
+	return nil
+}
+
+// WorkspaceRetentionConfig controls operator and daemon purge behavior.
+// PurgeEnabled is an explicit opt-in; AutomaticInterval separately selects a
+// daemon loop and is valid only with purge enabled. Both default off.
+type WorkspaceRetentionConfig struct {
+	PurgeEnabled      bool   `yaml:"purge_enabled"`
+	MinimumIdle       string `yaml:"minimum_idle"`
+	AutomaticInterval string `yaml:"automatic_interval,omitempty"`
+	BatchSize         int    `yaml:"batch_size"`
+}
+
+type ParsedWorkspaceRetention struct {
+	PurgeEnabled      bool
+	MinimumIdle       time.Duration
+	AutomaticInterval time.Duration
+	BatchSize         int
+}
+
+const minimumWorkspaceRetentionIdle = 30 * 24 * time.Hour
+
+func (c *WorkspaceRetentionConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("%w: workspace.retention must be an object", ErrWorkspaceRetentionConfig)
+	}
+	allowed := map[string]bool{"purge_enabled": true, "minimum_idle": true, "automatic_interval": true, "batch_size": true}
+	for i := 0; i < len(node.Content); i += 2 {
+		if !allowed[node.Content[i].Value] {
+			return fmt.Errorf("%w: unknown workspace.retention setting %q", ErrWorkspaceRetentionConfig, node.Content[i].Value)
+		}
+	}
+	type plain WorkspaceRetentionConfig
+	if err := node.Decode((*plain)(c)); err != nil {
+		return fmt.Errorf("%w: %w", ErrWorkspaceRetentionConfig, err)
+	}
+	return nil
+}
+
+func ParseWorkspaceRetention(c WorkspaceRetentionConfig) (ParsedWorkspaceRetention, error) {
+	minimumIdle, err := time.ParseDuration(strings.TrimSpace(c.MinimumIdle))
+	if err != nil {
+		return ParsedWorkspaceRetention{}, fmt.Errorf("%w: workspace.retention.minimum_idle: %w", ErrWorkspaceRetentionConfig, err)
+	}
+	if minimumIdle < minimumWorkspaceRetentionIdle {
+		return ParsedWorkspaceRetention{}, fmt.Errorf("%w: workspace.retention.minimum_idle must be at least %s", ErrWorkspaceRetentionConfig, minimumWorkspaceRetentionIdle)
+	}
+	var automaticInterval time.Duration
+	if strings.TrimSpace(c.AutomaticInterval) != "" {
+		automaticInterval, err = time.ParseDuration(c.AutomaticInterval)
+		if err != nil || automaticInterval <= 0 {
+			return ParsedWorkspaceRetention{}, fmt.Errorf("%w: workspace.retention.automatic_interval must be a positive duration", ErrWorkspaceRetentionConfig)
+		}
+	}
+	if automaticInterval > 0 && !c.PurgeEnabled {
+		return ParsedWorkspaceRetention{}, fmt.Errorf("%w: workspace.retention.automatic_interval requires purge_enabled: true", ErrWorkspaceRetentionConfig)
+	}
+	if c.BatchSize < 1 || c.BatchSize > 1000 {
+		return ParsedWorkspaceRetention{}, fmt.Errorf("%w: workspace.retention.batch_size must be between 1 and 1000", ErrWorkspaceRetentionConfig)
+	}
+	return ParsedWorkspaceRetention{c.PurgeEnabled, minimumIdle, automaticInterval, c.BatchSize}, nil
 }
 
 // ReadConfig configures how much of each record the recall/lookup read paths
@@ -90,6 +177,9 @@ func Defaults() Config {
 		Read: ReadConfig{
 			PayloadMode: "summary",
 		},
+		Workspace: WorkspaceConfig{Retention: WorkspaceRetentionConfig{
+			MinimumIdle: "720h", BatchSize: 100,
+		}},
 	}
 }
 
@@ -114,7 +204,11 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
 	}
-	return Normalize(cfg), nil
+	cfg = Normalize(cfg)
+	if _, err := ParseWorkspaceRetention(cfg.Workspace.Retention); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
 }
 
 // Normalize reapplies defaults for zero values that should not remain zero in
@@ -157,6 +251,12 @@ func Normalize(cfg Config) Config {
 			cfg.Synthesis.SystemPrompt = DefaultSynthesisSystemPrompt
 		}
 	}
+	if cfg.Workspace.Retention.MinimumIdle == "" {
+		cfg.Workspace.Retention.MinimumIdle = defaults.Workspace.Retention.MinimumIdle
+	}
+	if cfg.Workspace.Retention.BatchSize == 0 {
+		cfg.Workspace.Retention.BatchSize = defaults.Workspace.Retention.BatchSize
+	}
 	return cfg
 }
 
@@ -168,6 +268,9 @@ func Normalize(cfg Config) Config {
 // a build older than CW-20260904-0078 would otherwise keep its 0644.
 func Save(path string, cfg Config) error {
 	cfg = Normalize(cfg)
+	if _, err := ParseWorkspaceRetention(cfg.Workspace.Retention); err != nil {
+		return err
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err

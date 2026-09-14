@@ -87,6 +87,10 @@ func TestWorkspaceHTTPCreateReplayReadEditRecallTouchDelete(t *testing.T) {
 	if payload["summary"] != "alpha draft" {
 		t.Fatalf("nested payload=%v", payload)
 	}
+	afterHTTPRead, err := srv.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterHTTPRead.AccessCount != 1 || afterHTTPRead.Activation <= workspace.InitialActivation {
+		t.Fatalf("HTTP content read did not reinforce workspace: %#v err=%v", afterHTTPRead, err)
+	}
 
 	edit := performJSON(t, srv, http.MethodPost, "/v1/workspace/write", map[string]any{
 		"item_id": itemID, "version_token": version, "key": "renamed-key", "summary": "alpha final",
@@ -122,6 +126,10 @@ func TestWorkspaceHTTPCreateReplayReadEditRecallTouchDelete(t *testing.T) {
 	if recall.Code != http.StatusOK {
 		t.Fatalf("recall status=%d body=%s", recall.Code, recall.Body.String())
 	}
+	afterRecall, err := srv.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterRecall.AccessCount != 3 {
+		t.Fatalf("HTTP recall changed use count or prior read/edit count missing: %#v err=%v", afterRecall, err)
+	}
 	results, _ := recallBody["results"].([]any)
 	if len(results) != 1 || results[0].(map[string]any)["item"] == nil || results[0].(map[string]any)["revision"] != nil {
 		t.Fatalf("typed recall results=%v", results)
@@ -131,6 +139,10 @@ func TestWorkspaceHTTPCreateReplayReadEditRecallTouchDelete(t *testing.T) {
 	touchBody := decodeHTTPJSON(t, touch.Body.Bytes())
 	if touch.Code != http.StatusOK || int(touchBody["touched"].(float64)) != 1 {
 		t.Fatalf("touch status=%d body=%v", touch.Code, touchBody)
+	}
+	afterTouch, err := srv.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterTouch.AccessCount != 4 || afterTouch.VersionToken != currentVersion {
+		t.Fatalf("HTTP touch did not reinforce exactly once or changed token: %#v err=%v", afterTouch, err)
 	}
 	emptyTouch := performJSON(t, srv, http.MethodPost, "/v1/memory/touch", map[string]any{"item_ids": []string{}})
 	if emptyTouch.Code != http.StatusBadRequest || decodeHTTPJSON(t, emptyTouch.Body.Bytes())["code"] != "validation_error" {

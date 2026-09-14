@@ -137,14 +137,7 @@ func (s *Service) ReadWorkspaceByKey(ctx context.Context, namespace, key string)
 	if s.Workspace == nil {
 		return WorkspaceItem{}, fmt.Errorf("workspace store unavailable")
 	}
-	item, err := s.Workspace.GetCurrentByKey(ctx, namespace, key)
-	if err != nil {
-		return WorkspaceItem{}, err
-	}
-	if markErr := s.Workspace.MarkUsed(ctx, item.ItemID); markErr != nil {
-		return WorkspaceItem{}, markErr
-	}
-	item, err = s.Workspace.GetCurrent(ctx, item.ItemID)
+	item, err := s.Workspace.GetCurrentByKeyAndUse(ctx, namespace, key)
 	if err != nil {
 		return WorkspaceItem{}, err
 	}

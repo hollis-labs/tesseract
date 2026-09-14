@@ -252,16 +252,33 @@ func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearFiel
 		return Item{}, fmt.Errorf("begin workspace edit: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	state, err := readRetentionState(tx.QueryRowContext(ctx, `SELECT item_id, namespace, activation, last_used_at, last_decayed_at FROM workspace_items WHERE item_id = ?`, in.ItemID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, classifyConditionalMiss(ctx, tx, in.ItemID)
+	}
+	if err != nil {
+		return Item{}, fmt.Errorf("read workspace edit activation: %w", err)
+	}
 	sets := []string{
 		"version_token = ?", "updated_at = ?", "author_agent_id = ?", "author_version = ?", "session_id = ?",
-		"access_count = access_count + 1", "last_used_at = ?", "write_context = ?",
+		"access_count = access_count + 1", "last_used_at = ?", "activation = ?", "last_decayed_at = ?", "write_context = ?",
 	}
 	now := s.now().UTC()
+	usedAt := now
+	if state.lastUsedAt.After(usedAt) {
+		usedAt = state.lastUsedAt
+	}
+	decayedAt := now
+	if state.lastDecayedAt.After(decayedAt) {
+		decayedAt = state.lastDecayedAt
+	}
+	activation := reinforcedActivation(state.activation, state.lastDecayedAt, now)
 	writeContextValue, _, err := memory.EncodeWriteContext(ctx)
 	if err != nil {
 		return Item{}, err
 	}
-	args := []any{newToken, memorytime.Format(now), in.Author.AgentID, in.Author.AgentVersion, in.SessionID, memorytime.Format(now), writeContextValue}
+	args := []any{newToken, memorytime.Format(now), in.Author.AgentID, in.Author.AgentVersion, in.SessionID,
+		memorytime.Format(usedAt), activation, memorytime.Format(decayedAt), writeContextValue}
 	if in.Key != nil {
 		sets = append(sets, "key_name = ?")
 		args = append(args, *in.Key)
@@ -391,20 +408,8 @@ func (s *Store) deleteWithReceiptOnce(ctx context.Context, in DeleteInput) (Dele
 	}
 
 	deletedAt := s.now().UTC()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_tombstones (item_id, domain, namespace, deleted_at) VALUES (?, ?, ?, ?)`,
-		in.ItemID, Domain, namespace, memorytime.Format(deletedAt)); err != nil {
-		return DeleteReceipt{}, fmt.Errorf("create workspace tombstone: %w", err)
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM workspace_items WHERE item_id = ? AND version_token = ?`, in.ItemID, in.VersionToken)
-	if err != nil {
-		return DeleteReceipt{}, fmt.Errorf("remove workspace content: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return DeleteReceipt{}, fmt.Errorf("remove workspace content rows affected: %w", err)
-	}
-	if n != 1 {
-		return DeleteReceipt{}, fmt.Errorf("remove workspace content: affected %d rows, want 1", n)
+	if _, err = deleteLiveInTx(ctx, tx, in.ItemID, in.VersionToken, deletedAt); err != nil {
+		return DeleteReceipt{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return DeleteReceipt{}, fmt.Errorf("commit workspace delete receipt: %w", err)
@@ -419,33 +424,9 @@ func (s *Store) deleteOnce(ctx context.Context, in DeleteInput) (Metadata, error
 	}
 	defer func() { _ = tx.Rollback() }()
 	deletedAt := s.now().UTC()
-	res, err := tx.ExecContext(ctx, `INSERT INTO workspace_tombstones (item_id, domain, namespace, deleted_at)
-		SELECT item_id, ?, namespace, ? FROM workspace_items
-		WHERE item_id = ? AND version_token = ?`, Domain, memorytime.Format(deletedAt), in.ItemID, in.VersionToken)
+	namespace, err := deleteLiveInTx(ctx, tx, in.ItemID, in.VersionToken, deletedAt)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("create workspace tombstone: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Metadata{}, fmt.Errorf("workspace delete rows affected: %w", err)
-	}
-	if n == 0 {
-		return Metadata{}, classifyConditionalMiss(ctx, tx, in.ItemID)
-	}
-	var namespace string
-	if readErr := tx.QueryRowContext(ctx, `SELECT namespace FROM workspace_tombstones WHERE item_id = ?`, in.ItemID).Scan(&namespace); readErr != nil {
-		return Metadata{}, fmt.Errorf("read workspace tombstone: %w", readErr)
-	}
-	res, err = tx.ExecContext(ctx, `DELETE FROM workspace_items WHERE item_id = ? AND version_token = ?`, in.ItemID, in.VersionToken)
-	if err != nil {
-		return Metadata{}, fmt.Errorf("remove workspace content: %w", err)
-	}
-	n, err = res.RowsAffected()
-	if err != nil {
-		return Metadata{}, fmt.Errorf("remove workspace content rows affected: %w", err)
-	}
-	if n != 1 {
-		return Metadata{}, fmt.Errorf("remove workspace content: affected %d rows, want 1", n)
+		return Metadata{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Metadata{}, fmt.Errorf("commit workspace delete: %w", err)
@@ -517,6 +498,12 @@ func (s *Store) GetCurrentByKey(ctx context.Context, namespace, key string) (Ite
 }
 
 func (s *Store) GetCurrentAndUse(ctx context.Context, itemID string) (Item, error) {
+	return retryMutation(ctx, "read use", func() (Item, error) {
+		return s.getCurrentAndUseOnce(ctx, itemID)
+	})
+}
+
+func (s *Store) getCurrentAndUseOnce(ctx context.Context, itemID string) (Item, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Item{}, err
@@ -535,7 +522,54 @@ func (s *Store) GetCurrentAndUse(ctx context.Context, itemID string) (Item, erro
 	return item, nil
 }
 
+// GetCurrentByKeyAndUse resolves an exact legacy key and reinforces the item
+// in one transaction, preventing a rename/delete race between lookup and use.
+func (s *Store) GetCurrentByKeyAndUse(ctx context.Context, namespace, key string) (Item, error) {
+	if err := memory.ValidateWorkspaceNamespace(namespace); err != nil {
+		return Item{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
+	if key == "" {
+		return Item{}, fmt.Errorf("%w: keyless items cannot be read by key", ErrInvalidInput)
+	}
+	return retryMutation(ctx, "key read use", func() (Item, error) {
+		return s.getCurrentByKeyAndUseOnce(ctx, namespace, key)
+	})
+}
+
+func (s *Store) getCurrentByKeyAndUseOnce(ctx context.Context, namespace, key string) (Item, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Item{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	item, err := getLiveByKey(ctx, tx, namespace, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, fmt.Errorf("%w: no live item at exact key", ErrNotFound)
+	}
+	if err != nil {
+		return Item{}, err
+	}
+	if markErr := s.markUsed(ctx, tx, item.ItemID); markErr != nil {
+		return Item{}, markErr
+	}
+	item, err = getLive(ctx, tx, item.ItemID)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Item{}, err
+	}
+	return item, nil
+}
+
 func (s *Store) MarkUsed(ctx context.Context, itemID string) error {
+	_, err := retryMutation(ctx, "mark used", func() (struct{}, error) {
+		return struct{}{}, s.markUsedOnce(ctx, itemID)
+	})
+	return err
+}
+
+func (s *Store) markUsedOnce(ctx context.Context, itemID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -548,9 +582,26 @@ func (s *Store) MarkUsed(ctx context.Context, itemID string) error {
 }
 
 func (s *Store) markUsed(ctx context.Context, tx *sql.Tx, itemID string) error {
-	now := memorytime.Format(s.now().UTC())
+	now := s.now().UTC()
+	state, err := readRetentionState(tx.QueryRowContext(ctx, `SELECT item_id, namespace, activation, last_used_at, last_decayed_at FROM workspace_items WHERE item_id = ?`, itemID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return classifyConditionalMiss(ctx, tx, itemID)
+	}
+	if err != nil {
+		return err
+	}
+	usedAt := now
+	if state.lastUsedAt.After(usedAt) {
+		usedAt = state.lastUsedAt
+	}
+	decayedAt := now
+	if state.lastDecayedAt.After(decayedAt) {
+		decayedAt = state.lastDecayedAt
+	}
+	activation := reinforcedActivation(state.activation, state.lastDecayedAt, now)
 	res, err := tx.ExecContext(ctx, `UPDATE workspace_items
-		SET access_count = access_count + 1, last_used_at = ? WHERE item_id = ?`, now, itemID)
+		SET access_count = access_count + 1, last_used_at = ?, activation = ?, last_decayed_at = ?
+		WHERE item_id = ?`, memorytime.Format(usedAt), activation, memorytime.Format(decayedAt), itemID)
 	if err != nil {
 		return err
 	}
@@ -562,6 +613,51 @@ func (s *Store) markUsed(ctx context.Context, tx *sql.Tx, itemID string) error {
 		return classifyConditionalMiss(ctx, tx, itemID)
 	}
 	return nil
+}
+
+// deleteLiveInTx is the single workspace privacy boundary shared by manual
+// delete and retention purge. An empty expectedToken is reserved for a purge
+// transaction that has already established current eligibility.
+func deleteLiveInTx(ctx context.Context, tx *sql.Tx, itemID, expectedToken string, deletedAt time.Time) (string, error) {
+	where := "item_id = ?"
+	args := []any{Domain, memorytime.Format(deletedAt), itemID}
+	if expectedToken != "" {
+		where += " AND version_token = ?"
+		args = append(args, expectedToken)
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO workspace_tombstones (item_id, domain, namespace, deleted_at)
+		SELECT item_id, ?, namespace, ? FROM workspace_items WHERE `+where, args...)
+	if err != nil {
+		return "", fmt.Errorf("create workspace tombstone: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return "", fmt.Errorf("workspace delete rows affected: %w", err)
+	}
+	if n == 0 {
+		return "", classifyConditionalMiss(ctx, tx, itemID)
+	}
+	var namespace string
+	if scanErr := tx.QueryRowContext(ctx, `SELECT namespace FROM workspace_tombstones WHERE item_id = ?`, itemID).Scan(&namespace); scanErr != nil {
+		return "", fmt.Errorf("read workspace tombstone: %w", scanErr)
+	}
+	deleteQuery := `DELETE FROM workspace_items WHERE ` + where
+	deleteArgs := []any{itemID}
+	if expectedToken != "" {
+		deleteArgs = append(deleteArgs, expectedToken)
+	}
+	res, err = tx.ExecContext(ctx, deleteQuery, deleteArgs...)
+	if err != nil {
+		return "", fmt.Errorf("remove workspace content: %w", err)
+	}
+	n, err = res.RowsAffected()
+	if err != nil {
+		return "", fmt.Errorf("remove workspace content rows affected: %w", err)
+	}
+	if n != 1 {
+		return "", fmt.Errorf("remove workspace content: affected %d rows, want 1", n)
+	}
+	return namespace, nil
 }
 
 type scanner interface{ Scan(...any) error }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -159,6 +160,7 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 	from := "workspace_items w"
 	order := "w.updated_at DESC, w.item_id DESC"
 	scoreExpr := "NULL"
+	activationRanking := false
 	if strings.TrimSpace(in.Query) != "" {
 		match, matchErr := lexicalMatch(in.Query)
 		if matchErr != nil {
@@ -170,14 +172,16 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 		order = "bm25(workspace_items_fts), w.item_id"
 		scoreExpr = "bm25(workspace_items_fts)"
 	} else if in.Ranking == memory.RankingActivation {
-		order = "w.activation DESC, w.item_id"
-		scoreExpr = "w.activation"
+		// Stored values have different decay baselines. Rank the complete
+		// matching set by effective activation at one captured instant.
+		activationRanking = true
+		order = "w.item_id"
 	}
 	// #nosec G202 -- every SQL fragment is selected from constants above;
 	// caller values remain placeholders in args.
 	query := `SELECT ` + recallItemColumns + `, ` + scoreExpr + ` FROM ` + from +
 		` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY ` + order
-	if bounded {
+	if bounded && !activationRanking {
 		query += ` LIMIT ?`
 		args = append(args, in.Limit)
 	}
@@ -187,6 +191,7 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 	}
 	defer func() { _ = rows.Close() }()
 	results := make([]RecallResult, 0)
+	now := s.now().UTC()
 	for rows.Next() {
 		var score sql.NullFloat64
 		item, scanErr := scanItemWithScore(rows, &score)
@@ -194,13 +199,30 @@ func (s *Store) recall(ctx context.Context, in RecallInput, bounded bool) ([]Rec
 			return nil, scanErr
 		}
 		var scorePtr *float64
-		if score.Valid {
+		if activationRanking {
+			v := effectiveActivation(item.Activation, item.LastDecayedAt, now)
+			scorePtr = &v
+		} else if score.Valid {
 			v := score.Float64
 			scorePtr = &v
 		}
 		results = append(results, RecallResult{Item: item, Score: scorePtr})
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if activationRanking {
+		sort.Slice(results, func(i, j int) bool {
+			if *results[i].Score == *results[j].Score {
+				return results[i].Item.ItemID < results[j].Item.ItemID
+			}
+			return *results[i].Score > *results[j].Score
+		})
+		if bounded && len(results) > in.Limit {
+			results = results[:in.Limit]
+		}
+	}
+	return results, nil
 }
 
 func scanItemWithScore(row scanner, score *sql.NullFloat64) (Item, error) {

@@ -4,7 +4,34 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestParseWorkspaceRetentionPolicy(t *testing.T) {
+	policy, present, err := ParseWorkspaceRetentionPolicy(map[string]any{
+		"retention":           "24h",
+		"workspace_retention": map[string]any{"purge_enabled": false, "minimum_idle": "1440h"},
+	})
+	if err != nil || !present {
+		t.Fatalf("parse = %#v present=%t err=%v", policy, present, err)
+	}
+	if policy.PurgeEnabled == nil || *policy.PurgeEnabled || policy.MinimumIdle != 60*24*time.Hour {
+		t.Fatalf("parsed policy = %#v", policy)
+	}
+	if _, present, err := ParseWorkspaceRetentionPolicy(map[string]any{"retention": "1h"}); err != nil || present {
+		t.Fatalf("generic retention became workspace policy: present=%t err=%v", present, err)
+	}
+	for _, raw := range []map[string]any{
+		{"workspace_retention": "30d"},
+		{"workspace_retention": map[string]any{"minimum_idle": "24h"}},
+		{"workspace_retention": map[string]any{"purge_enabled": "false"}},
+		{"workspace_retention": map[string]any{"unknown": true}},
+	} {
+		if _, _, err := ParseWorkspaceRetentionPolicy(raw); err == nil {
+			t.Fatalf("invalid policy accepted: %#v", raw)
+		}
+	}
+}
 
 func TestRegisterGetAndValidatePayload(t *testing.T) {
 	e := New()

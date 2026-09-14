@@ -7,7 +7,58 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
+
+const MinimumWorkspaceRetentionIdle = 30 * 24 * time.Hour
+
+// WorkspaceRetentionPolicy is the namespace-level retention override. A nil
+// PurgeEnabled inherits the operator setting; false can only make it safer.
+type WorkspaceRetentionPolicy struct {
+	PurgeEnabled *bool
+	MinimumIdle  time.Duration
+}
+
+// ParseWorkspaceRetentionPolicy strictly decodes the workspace_retention
+// member without treating the older generic retention string as workspace TTL.
+func ParseWorkspaceRetentionPolicy(policy map[string]any) (WorkspaceRetentionPolicy, bool, error) {
+	raw, present := policy["workspace_retention"]
+	if !present {
+		return WorkspaceRetentionPolicy{}, false, nil
+	}
+	member, ok := raw.(map[string]any)
+	if !ok {
+		return WorkspaceRetentionPolicy{}, true, fmt.Errorf("workspace_retention must be an object")
+	}
+	for key := range member {
+		if key != "purge_enabled" && key != "minimum_idle" {
+			return WorkspaceRetentionPolicy{}, true, fmt.Errorf("unknown workspace_retention setting %q", key)
+		}
+	}
+	var out WorkspaceRetentionPolicy
+	if value, ok := member["purge_enabled"]; ok {
+		enabled, valid := value.(bool)
+		if !valid {
+			return WorkspaceRetentionPolicy{}, true, fmt.Errorf("workspace_retention.purge_enabled must be boolean")
+		}
+		out.PurgeEnabled = &enabled
+	}
+	if value, ok := member["minimum_idle"]; ok {
+		text, valid := value.(string)
+		if !valid || strings.TrimSpace(text) == "" {
+			return WorkspaceRetentionPolicy{}, true, fmt.Errorf("workspace_retention.minimum_idle must be a duration string")
+		}
+		duration, err := time.ParseDuration(text)
+		if err != nil {
+			return WorkspaceRetentionPolicy{}, true, fmt.Errorf("workspace_retention.minimum_idle: %w", err)
+		}
+		if duration < MinimumWorkspaceRetentionIdle {
+			return WorkspaceRetentionPolicy{}, true, fmt.Errorf("workspace_retention.minimum_idle must be at least %s", MinimumWorkspaceRetentionIdle)
+		}
+		out.MinimumIdle = duration
+	}
+	return out, true, nil
+}
 
 // TierPolicy holds the tier-extended enforcement fields for a namespace policy.
 // Zero values mean "not enforced" for all fields except AllowedOps:
@@ -95,6 +146,9 @@ func (e *Engine) RegisterNamespace(namespace, ownerType, ownerID string, policy 
 	}
 	if strings.TrimSpace(ownerID) == "" {
 		return errors.New("owner_id required")
+	}
+	if _, _, err := ParseWorkspaceRetentionPolicy(policy); err != nil {
+		return err
 	}
 
 	e.mu.Lock()

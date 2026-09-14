@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -240,6 +241,20 @@ func topLevelCommands() []topLevelCommand {
 			Subcommands:       []string{"list", "install", "uninstall", "disable", "enable"},
 			SubcommandsSource: "../../internal/contextcli/plugin_cmd.go",
 			SubcommandsFunc:   "RunPluginCmd",
+		},
+		{
+			Name:        "workspace-retention",
+			Summary:     "report or apply workspace retention candidates",
+			Description: "Scans mutable workspace items without reading payloads or recording use. Reports\n  only unless -apply is given; apply also requires purge_enabled in config.yaml.",
+			Flags: []string{
+				"  -db path\tSQLite store to inspect (default: the resolved layout DB)",
+				"  -apply\trecheck and purge eligible items",
+				"  -json\temit JSON",
+				"  -cursor item_id\tcontinue after the previous report's next_cursor",
+				"  -limit n\tmaximum workspace items to scan",
+				"  -item-id id\tspecific reported identity to recheck; repeatable, apply only",
+			},
+			FlagsSource: "workspace_retention.go",
 		},
 		{
 			Name:        "backfill-embeddings",
@@ -498,8 +513,15 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
 	if cfgErr != nil {
+		if errors.Is(cfgErr, config.ErrWorkspaceRetentionConfig) {
+			_, _ = stderr.WriteString("error: " + cfgErr.Error() + "\n")
+			return 1
+		}
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
 		tesseractCfg = config.Defaults()
+	}
+	if cmd == "workspace-retention" {
+		return runWorkspaceRetention(ctx, layout.MainDB(), tesseractCfg, rest, stdout, stderr)
 	}
 
 	if regErr := loadTypeRegistry(filepath.Join(layout.ConfigDir(), "types.yaml")); regErr != nil {
@@ -813,6 +835,26 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.QueueDBPath = mem.QueueDBPath
 	srv.QueueDB = mem.queueDB
 	srv.RuntimeConfig = tesseractCfg
+
+	retentionCfg, err := config.ParseWorkspaceRetention(tesseractCfg.Workspace.Retention)
+	if err != nil {
+		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
+		return 1
+	}
+	var retentionDone chan struct{}
+	if retentionCfg.AutomaticInterval > 0 {
+		retentionDone = make(chan struct{})
+		retentionCtx, cancelRetention := context.WithCancel(ctx)
+		job := &workspace.RetentionJob{
+			Store:     srv.WorkspaceStore,
+			Settings:  workspace.RetentionSettings{PurgeEnabled: retentionCfg.PurgeEnabled, MinimumIdle: retentionCfg.MinimumIdle},
+			Interval:  retentionCfg.AutomaticInterval,
+			BatchSize: retentionCfg.BatchSize,
+			Logger:    log.Printf,
+		}
+		go func() { defer close(retentionDone); job.Run(retentionCtx) }()
+		defer func() { cancelRetention(); <-retentionDone }()
+	}
 
 	// Wire LLM-backed synthesis if config + credentials are present. Failure
 	// to construct the provider is non-fatal — the route just stays 503.

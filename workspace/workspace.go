@@ -20,6 +20,13 @@ type ClearField = internal.ClearField
 type SearchResult = internal.SearchResult
 type RecallInput = internal.RecallInput
 type RecallResult = internal.RecallResult
+type RetentionSettings = internal.RetentionSettings
+type RetentionReportInput = internal.RetentionReportInput
+type RetentionCandidate = internal.RetentionCandidate
+type RetentionReport = internal.RetentionReport
+type RetentionApplyInput = internal.RetentionApplyInput
+type RetentionApplyResult = internal.RetentionApplyResult
+type RetentionApplyReport = internal.RetentionApplyReport
 
 const (
 	Domain domains.Domain = internal.Domain
@@ -30,6 +37,13 @@ const (
 	ClearTags          = internal.ClearTags
 	ClearConsumerState = internal.ClearConsumerState
 	ClearWorkstreamID  = internal.ClearWorkstreamID
+
+	InitialActivation  = internal.InitialActivation
+	ActivationCeiling  = internal.ActivationCeiling
+	ReinforcementRate  = internal.ReinforcementRate
+	ActivationFloor    = internal.ActivationFloor
+	ActivationHalfLife = internal.ActivationHalfLife
+	MinimumPurgeIdle   = internal.MinimumPurgeIdle
 )
 
 var (

@@ -76,8 +76,9 @@ Three properties are worth knowing before you write one:
   is what lets you remove a value rather than only add one, so a partial list
   narrows the vocabulary. A vocabulary you do not name keeps its default.
 - **A malformed file stops the daemon starting.** This is deliberately harsher
-  than `config.yaml`, which warns and falls back to defaults. A bad
-  `config.yaml` costs a setting; a bad `types.yaml` would mean enforcing a
+  than most `config.yaml` errors, which warn and fall back to defaults. Invalid
+  workspace retention configuration is also fatal because silently changing a
+  deletion policy is unsafe. A bad `types.yaml` would mean enforcing a
   vocabulary you did not declare. Fix or delete the file and start again.
 
   Malformed means more than unparseable. An unknown key is refused, so `close:`
@@ -151,6 +152,82 @@ method, path, status, latency, and request ID fields. Query strings are replaced
 with `[REDACTED]` by default. `--request-log-mode full` includes the raw query
 string, which may contain namespaces, keys, search terms, cursors, or accidental
 secrets. Protect and retain full logs accordingly.
+
+## Workspace retention
+
+Workspace activation starts at `1.0`, has a 14-day half-life and a `0.05`
+floor. A deliberate content read, accepted edit, or explicit item touch first
+applies all decay owed since the stored baseline and then closes 10 percent of
+the remaining distance to the `2.0` ceiling. Search, recall, reference
+resolution, list operations, previews, and create/promotion receipt replay do
+not count as use. Retention never applies to memory, knowledge, event, or
+context records.
+
+Purge and automatic maintenance are disabled by default. The full explicit
+configuration is:
+
+```yaml
+workspace:
+  retention:
+    purge_enabled: false
+    minimum_idle: 720h
+    batch_size: 100
+    # automatic_interval: 24h
+```
+
+`minimum_idle` cannot be shorter than 720 hours (30 days). Eligibility also
+requires effective activation to have reached the floor, so this is not a
+30-day TTL. `automatic_interval` starts a purge loop only in `tesseract serve`,
+and is rejected unless `purge_enabled` is true. Library `Open`, MCP children,
+and one-shot CLI commands never start it.
+
+A namespace policy may lengthen the idle minimum or disable purge:
+
+```json
+{
+  "workspace_retention": {
+    "minimum_idle": "1440h",
+    "purge_enabled": false
+  }
+}
+```
+
+The existing top-level namespace-policy `retention` string is unrelated and is
+never treated as workspace TTL. Unknown or malformed `workspace_retention`
+members are rejected. Missing namespace policy inherits the operator settings;
+a policy read failure aborts the report/apply.
+
+Use the operator command against a reviewed database path. It reports only by
+default and includes no payload, key, token, author, or provenance fields:
+
+```bash
+tesseract workspace-retention --db /path/to/disposable/main.db --json
+tesseract workspace-retention --db /path/to/disposable/main.db \
+  --cursor 01NEXTITEM --limit 100 --json
+```
+
+`truncated` and `next_cursor` state whether the scan page is complete. An apply
+requires `purge_enabled: true` in the loaded config and rechecks live use,
+effective activation, and current namespace policy in the deletion transaction:
+
+```bash
+tesseract workspace-retention --db /path/to/disposable/main.db \
+  --apply --item-id 01REVIEWEDITEM --json
+```
+
+JSON apply output is one document with `report` and `apply` members.
+
+Before any live activation, review every report page and namespace override,
+stop all writers, export and verify a v2 backup, and retain an offline copy of
+the resolved layout for rollback. Confirm the backup contains the main database
+and config evidence, restore it into a disposable layout, and verify workspace
+current reads, tombstones, creation retries, and promotion receipt replay.
+Only then set `purge_enabled`; set `automatic_interval` in a separate reviewed
+step after a manual apply is understood. A rollback stops every process,
+restores the verified pre-activation layout, restores the reviewed config
+separately, and starts one daemon. Opening a live store with a new binary can
+perform schema setup, so even a dry-run command is not permission to skip the
+normal migration review.
 
 ## Backup format
 

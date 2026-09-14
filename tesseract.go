@@ -215,6 +215,17 @@ func (c *Tesseract) MemoryStore() *memory.Store { return c.memoryStore }
 // WorkspaceStore returns the mutable workspace store.
 func (c *Tesseract) WorkspaceStore() *workspace.Store { return c.workspaceStore }
 
+// ReportWorkspaceRetention evaluates a stable page without reading payloads
+// or recording use.
+func (c *Tesseract) ReportWorkspaceRetention(ctx context.Context, in workspace.RetentionReportInput) (workspace.RetentionReport, error) {
+	return c.workspaceStore.ReportRetention(ctx, in)
+}
+
+// ApplyWorkspaceRetention transactionally rechecks and purges named items.
+func (c *Tesseract) ApplyWorkspaceRetention(ctx context.Context, in workspace.RetentionApplyInput) (workspace.RetentionApplyReport, error) {
+	return c.workspaceStore.ApplyRetention(ctx, in)
+}
+
 type WorkspacePromotionTarget = workspacepromotion.Target
 type WorkspacePromotionRequest = workspacepromotion.RequestInput
 type WorkspacePromotionApproval = workspacepromotion.ApproveInput

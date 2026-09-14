@@ -252,6 +252,13 @@ before restore. Restore replaces the target state; it is not a merge.
 | `context ttl-cleanup` | No flags; deletes expired records. |
 
 Use the maintenance subcommands' `--dry-run` before destructive retention work.
+
+`tesseract workspace-retention` is the separate mutable-workspace operator
+door. It is a report by default and accepts `--db`, `--json`, `--cursor`, and
+`--limit`. `--apply` rechecks eligible rows transactionally and requires the
+loaded workspace purge configuration to be enabled; repeat `--item-id` to
+apply only reviewed identities. It does not implement the revision-store
+`context maintenance trim` policy.
 The broader `context compact` command has no dry-run mode.
 
 ## Contract suites

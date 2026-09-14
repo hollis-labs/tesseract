@@ -240,6 +240,10 @@ func TestWorkspaceMCPMutationAndTypedReadContract(t *testing.T) {
 	if read["domain"] != "workspace" || read["item_id"] != itemID || read["revision_id"] != nil {
 		t.Fatalf("typed get=%v", read)
 	}
+	afterGet, err := a.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterGet.AccessCount != 1 || afterGet.Activation <= workspace.InitialActivation {
+		t.Fatalf("MCP content get did not reinforce workspace: %#v err=%v", afterGet, err)
+	}
 	wantErrorCode(t, mustCallRegistered(t, a, "tesseract_history", map[string]any{"item_id": itemID}), "history_unavailable")
 
 	recall := wantNoError(t, mustCallRegistered(t, a, "tesseract_recall", map[string]any{
@@ -250,10 +254,18 @@ func TestWorkspaceMCPMutationAndTypedReadContract(t *testing.T) {
 	if len(results) != 1 || results[0].(map[string]any)["item"] == nil || results[0].(map[string]any)["revision"] != nil {
 		t.Fatalf("typed recall=%v", recall)
 	}
+	afterRecall, err := a.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterRecall.AccessCount != afterGet.AccessCount {
+		t.Fatalf("MCP recall reinforced workspace: before=%#v after=%#v err=%v", afterGet, afterRecall, err)
+	}
 
 	touched := wantNoError(t, mustCallRegistered(t, a, "tesseract_touch", map[string]any{"item_ids": `[` + `"` + itemID + `"` + `]`}))
 	if int(touched["touched"].(float64)) != 1 {
 		t.Fatalf("touch=%v", touched)
+	}
+	afterTouch, err := a.WorkspaceStore.GetCurrent(context.Background(), itemID)
+	if err != nil || afterTouch.AccessCount != 2 || afterTouch.VersionToken != version {
+		t.Fatalf("MCP touch did not reinforce exactly once or changed token: %#v err=%v", afterTouch, err)
 	}
 	wantErrorCode(t, mustCallRegistered(t, a, "tesseract_touch", map[string]any{"item_ids": `[]`}), "validation_error")
 	forbidden, err := a.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
