@@ -151,7 +151,7 @@ type Command struct {
 // Commands returns the context subcommands, in dispatch order.
 func Commands() []Command {
 	return []Command{
-		{Name: "namespace", Summary: "register a namespace, show its policy, or list the registry", Subcommands: []string{"register", "show", "list"}},
+		{Name: "namespace", Summary: "register a namespace, show its policy, list the registry, or audit", Subcommands: []string{"register", "show", "list", "audit"}},
 		{Name: "put", Summary: "write a new revision of a namespace/key"},
 		{Name: "get", Summary: "read the head (or a specific revision) of a namespace/key"},
 		{Name: "history", Summary: "list the revision history of a namespace/key"},
@@ -550,7 +550,7 @@ func (c *CLI) execCommand(ctx context.Context, cmdline string) ([]byte, error) {
 
 func (c *CLI) runNamespace(args []string) int {
 	if len(args) == 0 {
-		return c.fail("usage: tesseract context namespace <register|show|list> ...")
+		return c.fail("usage: tesseract context namespace <register|show|list|audit> ...")
 	}
 	switch args[0] {
 	case "register":
@@ -559,8 +559,10 @@ func (c *CLI) runNamespace(args []string) int {
 		return c.runNamespaceShow(args[1:])
 	case "list":
 		return c.runNamespaceList(args[1:])
+	case "audit":
+		return c.runNamespaceAudit(args[1:])
 	default:
-		return c.fail("usage: tesseract context namespace <register|show|list> ...")
+		return c.fail("usage: tesseract context namespace <register|show|list|audit> ...")
 	}
 }
 

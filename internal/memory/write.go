@@ -64,6 +64,10 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		return Revision{}, err
 	}
 
+	if err := s.validateTierPolicy(ctx, s.db, in); err != nil {
+		return Revision{}, err
+	}
+
 	// Make sure the namespace is in the policy registry before we write data
 	// for it. Idempotent — only inserts the first time the namespace is seen.
 	// See CW-20260428-0005 for the bug this closes (registry-vs-data drift).

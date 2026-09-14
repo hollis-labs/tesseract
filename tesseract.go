@@ -156,6 +156,12 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 		o.logger("namespace reconcile: %v", err)
 	}
 
+	// Seed the 18 Cerberus-backed project scope roots in the namespace registry
+	// (ADR adr_namespace_architecture; CW-20260912-0081).
+	if _, err := store.SeedCerberusProjects(ctx); err != nil {
+		o.logger("namespace seed: %v", err)
+	}
+
 	workerCtx, cancel := context.WithCancel(ctx)
 	decayJob := &memory.DecayJob{
 		Store:    memStore,

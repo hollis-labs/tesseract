@@ -2977,7 +2977,7 @@ func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source
 // after a caller-owned transaction has committed a new registry row.
 func (s *Store) FinishNamespaceRegistration(ctx context.Context, namespace, source string) {
 	ns := strings.TrimSpace(namespace)
-	ownerType, ownerID := DeriveNamespaceOwner(ns)
+	ownerType, ownerID := lookupOrDeriveOwner(ctx, s.db, ns)
 	meta, err := json.Marshal(map[string]any{
 		"source":     source,
 		"owner_type": ownerType,
@@ -2990,6 +2990,41 @@ func (s *Store) FinishNamespaceRegistration(ctx context.Context, namespace, sour
 
 type namespaceRegistrationExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func lookupOrDeriveOwner(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, ns string) (string, string) {
+	if head := extractScopeHead(ns); head != "" {
+		var oType, oID string
+		err := q.QueryRowContext(ctx, `SELECT owner_type, owner_id FROM namespace_policies WHERE namespace = ?`, head).Scan(&oType, &oID)
+		if err == nil && oType != "" && oID != "" {
+			return oType, oID
+		}
+	}
+	return DeriveNamespaceOwner(ns)
+}
+
+// extractScopeHead returns the {scope}/{id} head for recognized scopes, or
+// "system" for ScopeSystem. Returns "" for unknown shapes.
+func extractScopeHead(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	parts := strings.Split(ns, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+	switch parts[0] {
+	case "user", "project", "app", "org", "session":
+		if len(parts) >= 2 && parts[1] != "" {
+			return parts[0] + "/" + parts[1]
+		}
+		return ""
+	case "system":
+		return "system"
+	default:
+		return ""
+	}
 }
 
 func insertNamespaceRegistration(ctx context.Context, exec namespaceRegistrationExecutor, namespace, source string) (bool, error) {
@@ -2998,7 +3033,7 @@ func insertNamespaceRegistration(ctx context.Context, exec namespaceRegistration
 		return false, errors.New("namespace required")
 	}
 
-	ownerType, ownerID := DeriveNamespaceOwner(ns)
+	ownerType, ownerID := lookupOrDeriveOwner(ctx, exec, ns)
 	policyJSON, err := json.Marshal(map[string]any{"source": source})
 	if err != nil {
 		return false, err
@@ -3024,8 +3059,9 @@ func (s *Store) EnsureNamespaceRegisteredTx(ctx context.Context, tx *sql.Tx, nam
 }
 
 // DeriveNamespaceOwner returns the (owner_type, owner_id) pair derived from a
-// namespace string. Well-formed user/* and app/* namespaces yield their tier
-// segment plus owner_id; everything else yields the sentinel (system, ns).
+// namespace string under the scope-type-rooted grammar. Recognized scope types
+// with an id segment (user, project, app, org, session) yield their scope type
+// plus id; everything else yields the sentinel (system, ns).
 // Exported for tests.
 func DeriveNamespaceOwner(namespace string) (string, string) {
 	ns := strings.TrimSpace(namespace)
@@ -3034,10 +3070,76 @@ func DeriveNamespaceOwner(namespace string) (string, string) {
 		return "system", ns
 	}
 	tier := parts[0]
-	if tier != "user" && tier != "app" {
+	switch tier {
+	case "user", "project", "app", "org", "session":
+		return tier, parts[1]
+	default:
 		return "system", ns
 	}
-	return tier, parts[1]
+}
+
+// GetNamespaceOwner returns the registered owner of namespace. It consults
+// namespace_policies for an exact match, falls back to the scope head in
+// namespace_policies, and finally falls back to DeriveNamespaceOwner.
+func (s *Store) GetNamespaceOwner(ctx context.Context, namespace string) (string, string, error) {
+	entry, ok, err := s.ResolveNamespacePolicy(ctx, namespace)
+	if err != nil {
+		return "", "", err
+	}
+	if ok && entry.OwnerType != "" && entry.OwnerID != "" {
+		return entry.OwnerType, entry.OwnerID, nil
+	}
+	oType, oID := DeriveNamespaceOwner(namespace)
+	return oType, oID, nil
+}
+
+// ResolveNamespacePolicy resolves the policy entry for namespace from the
+// registry. It checks for an exact namespace row first; if not found or if the
+// row carries only inferred metadata, it checks the scope head (e.g.
+// project/{slug} or user/{id}) for declared policy. Returns (entry, true, nil)
+// if a row was found in the registry, or (NamespacePolicyEntry{}, false, nil)
+// if neither exists.
+func (s *Store) ResolveNamespacePolicy(ctx context.Context, namespace string) (NamespacePolicyEntry, bool, error) {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return NamespacePolicyEntry{}, false, errors.New("namespace required")
+	}
+
+	entry, err := s.GetNamespacePolicy(ctx, ns)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return NamespacePolicyEntry{}, false, err
+	}
+	exactFound := (err == nil)
+	if exactFound && isDeclaredPolicy(entry.Policy) {
+		return entry, true, nil
+	}
+
+	head := extractScopeHead(ns)
+	if head != "" && head != ns {
+		headEntry, headErr := s.GetNamespacePolicy(ctx, head)
+		if headErr != nil && !errors.Is(headErr, sql.ErrNoRows) {
+			return NamespacePolicyEntry{}, false, headErr
+		}
+		if headErr == nil && (isDeclaredPolicy(headEntry.Policy) || !exactFound) {
+			return headEntry, true, nil
+		}
+	}
+
+	if exactFound {
+		return entry, true, nil
+	}
+	return NamespacePolicyEntry{}, false, nil
+}
+
+func isDeclaredPolicy(policy map[string]any) bool {
+	if policy == nil {
+		return false
+	}
+	src, _ := policy["source"].(string)
+	if src == "inferred" || src == "inferred-backfill" {
+		return false
+	}
+	return len(policy) > 0
 }
 
 // ReconcileNamespaceRegistry scans every distinct namespace appearing in the

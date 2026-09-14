@@ -141,8 +141,8 @@ func (e *Engine) RegisterNamespace(namespace, ownerType, ownerID string, policy 
 	if ns == "" {
 		return errors.New("namespace required")
 	}
-	if ownerType != "user" && ownerType != "app" && ownerType != "system" {
-		return errors.New("owner_type must be user|app|system")
+	if !scopeTypes[ownerType] {
+		return errors.New("owner_type must be user|project|app|org|session|system")
 	}
 	if strings.TrimSpace(ownerID) == "" {
 		return errors.New("owner_id required")
@@ -157,13 +157,38 @@ func (e *Engine) RegisterNamespace(namespace, ownerType, ownerID string, policy 
 	return nil
 }
 
-// GetNamespace returns namespace metadata when registered.
+// GetNamespace returns namespace metadata when registered. It checks for an
+// exact registration with declared policy first, then falls back to the scope
+// head (e.g. project/{slug}), and finally falls back to exact inferred registration.
 func (e *Engine) GetNamespace(namespace string) (NamespaceOwner, bool) {
 	ns := strings.TrimSpace(namespace)
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	owner, ok := e.owners[ns]
-	return owner, ok
+	if owner, ok := e.owners[ns]; ok {
+		if isDeclaredPolicy(owner.Policy) {
+			return owner, true
+		}
+	}
+	if head := extractScopeHead(ns); head != "" && head != ns {
+		if owner, ok := e.owners[head]; ok {
+			return owner, true
+		}
+	}
+	if owner, ok := e.owners[ns]; ok {
+		return owner, true
+	}
+	return NamespaceOwner{}, false
+}
+
+func isDeclaredPolicy(policy map[string]any) bool {
+	if policy == nil {
+		return false
+	}
+	src, _ := policy["source"].(string)
+	if src == "inferred" || src == "inferred-backfill" {
+		return false
+	}
+	return len(policy) > 0
 }
 
 // CanWrite enforces namespace write rules.
@@ -252,6 +277,31 @@ func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 	return nil
 }
 
+// ExtractScopeHead returns the {scope}/{id} head for recognized scopes (user,
+// project, app, org, session), or "system" for system. Returns "" for unknown
+// shapes.
+func ExtractScopeHead(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	parts := strings.Split(ns, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+	if !scopeTypes[parts[0]] {
+		return ""
+	}
+	if parts[0] == "system" {
+		return "system"
+	}
+	if len(parts) >= 2 && parts[1] != "" {
+		return parts[0] + "/" + parts[1]
+	}
+	return ""
+}
+
+func extractScopeHead(namespace string) string {
+	return ExtractScopeHead(namespace)
+}
+
 // splitScopeHead returns the scope keyword and its id segment, and whether the
 // namespace begins with a known scope type.
 //
@@ -330,43 +380,42 @@ func (e *Engine) ValidatePayload(namespace string, payload json.RawMessage) erro
 	return nil
 }
 
-// ValidateTierPolicy checks tier enforcement fields for the given op.
+// Validate checks tier enforcement fields for the given op.
 // op must be one of: "write", "promote.request", "promote.approve", "promote.apply",
 // "repair", "namespace.register".
 // payloadLen is the byte length of the payload (used for max_bytes_per_key check).
 // payload is only examined for required_schema_keys when op == "write".
-func (e *Engine) ValidateTierPolicy(namespace, op string, payloadLen int, payload json.RawMessage) error {
-	ns := strings.TrimSpace(namespace)
-	e.mu.RLock()
-	owner, ok := e.owners[ns]
-	e.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-
-	tp := ParseTierPolicy(owner.Policy)
-
-	if !tp.HasOp(op) {
+func (p TierPolicy) Validate(namespace, op string, payloadLen int, payload json.RawMessage) error {
+	if !p.HasOp(op) {
 		return &PolicyViolation{
 			Field:  "allowed_ops",
-			Detail: fmt.Sprintf("%s not permitted in namespace %q", op, ns),
+			Detail: fmt.Sprintf("%s not permitted in namespace %q", op, namespace),
 		}
 	}
 
 	if op == "write" {
-		if tp.MaxBytesPerKey > 0 && payloadLen > tp.MaxBytesPerKey {
+		if p.MaxBytesPerKey > 0 && payloadLen > p.MaxBytesPerKey {
 			return &PolicyViolation{
 				Field:  "max_bytes_per_key",
-				Detail: fmt.Sprintf("payload size %d exceeds limit %d for namespace %q", payloadLen, tp.MaxBytesPerKey, ns),
+				Detail: fmt.Sprintf("payload size %d exceeds limit %d for namespace %q", payloadLen, p.MaxBytesPerKey, namespace),
 			}
 		}
-		if len(tp.RequiredSchemaKeys) > 0 && len(payload) > 0 {
+		if len(p.RequiredSchemaKeys) > 0 {
+			if len(payload) == 0 || strings.TrimSpace(string(payload)) == "" || string(payload) == "null" {
+				missing := make([]string, len(p.RequiredSchemaKeys))
+				copy(missing, p.RequiredSchemaKeys)
+				sort.Strings(missing)
+				return &PolicyViolation{
+					Field:  "required_schema_keys",
+					Detail: fmt.Sprintf("missing required keys: %s", strings.Join(missing, ", ")),
+				}
+			}
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(payload, &obj); err != nil {
 				return &PolicyViolation{Field: "required_schema_keys", Detail: "payload must be a JSON object for schema key validation"}
 			}
 			var missing []string
-			for _, k := range tp.RequiredSchemaKeys {
+			for _, k := range p.RequiredSchemaKeys {
 				if _, found := obj[k]; !found {
 					missing = append(missing, k)
 				}
@@ -381,6 +430,20 @@ func (e *Engine) ValidateTierPolicy(namespace, op string, payloadLen int, payloa
 		}
 	}
 	return nil
+}
+
+// ValidateTierPolicy checks tier enforcement fields for the given op.
+// op must be one of: "write", "promote.request", "promote.approve", "promote.apply",
+// "repair", "namespace.register".
+// payloadLen is the byte length of the payload (used for max_bytes_per_key check).
+// payload is only examined for required_schema_keys when op == "write".
+func (e *Engine) ValidateTierPolicy(namespace, op string, payloadLen int, payload json.RawMessage) error {
+	owner, ok := e.GetNamespace(namespace)
+	if !ok {
+		return nil
+	}
+	tp := ParseTierPolicy(owner.Policy)
+	return tp.Validate(namespace, op, payloadLen, payload)
 }
 
 // PolicyViolation is returned when a tier policy check fails.

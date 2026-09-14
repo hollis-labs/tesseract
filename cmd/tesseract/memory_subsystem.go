@@ -207,6 +207,14 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 		log.Printf("namespace reconcile: registered %d previously-unregistered namespaces", registered)
 	}
 
+	// Seed the 18 Cerberus-backed project scope roots in the namespace registry
+	// (ADR adr_namespace_architecture; CW-20260912-0081).
+	if seeded, seedErr := store.SeedCerberusProjects(ctx); seedErr != nil {
+		log.Printf("namespace seed: %v", seedErr)
+	} else if seeded > 0 {
+		log.Printf("namespace seed: registered %d Cerberus project namespaces", seeded)
+	}
+
 	// Who runs the embed worker, and on whose terms (CW-20260911-0039).
 	//
 	// Both roles build the SAME worker against the SAME queue. What differs is

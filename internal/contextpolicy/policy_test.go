@@ -144,3 +144,82 @@ func TestTierPolicyEmptyAllowedOpsPermitsAll(t *testing.T) {
 		t.Fatalf("expected write allowed with empty policy, got: %v", err)
 	}
 }
+
+func TestTierPolicyRequiredSchemaKeys_EmptyPayload(t *testing.T) {
+	e := New()
+	if err := e.RegisterNamespace("user/memory/structured", "user", "user", map[string]any{
+		"tier":                 "memory",
+		"required_schema_keys": []any{"fact", "source"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	for _, payload := range []json.RawMessage{nil, []byte{}, []byte(""), []byte("null")} {
+		err := e.ValidateTierPolicy("user/memory/structured", "write", 0, payload)
+		if err == nil {
+			t.Fatalf("expected required_schema_keys violation for empty payload %q", string(payload))
+		}
+		if !strings.Contains(err.Error(), "required_schema_keys") {
+			t.Fatalf("expected required_schema_keys error, got: %v", err)
+		}
+	}
+}
+
+func TestTierPolicy_ScopeHeadFallback(t *testing.T) {
+	e := New()
+	// Declare policy on scope head project/torque.
+	if err := e.RegisterNamespace("project/torque", "project", "torque", map[string]any{
+		"tier":              "project",
+		"max_bytes_per_key": 50,
+	}); err != nil {
+		t.Fatalf("register head: %v", err)
+	}
+
+	// Exact child namespace registered with inferred policy.
+	if err := e.RegisterNamespace("project/torque/memory/notes", "project", "torque", map[string]any{
+		"source": "inferred",
+	}); err != nil {
+		t.Fatalf("register child: %v", err)
+	}
+
+	// Policy should be inherited from project/torque.
+	small := json.RawMessage(`{"v":"ok"}`)
+	if err := e.ValidateTierPolicy("project/torque/memory/notes", "write", len(small), small); err != nil {
+		t.Fatalf("expected small write allowed, got: %v", err)
+	}
+
+	err := e.ValidateTierPolicy("project/torque/memory/notes", "write", 100, json.RawMessage(`{}`))
+	if err == nil {
+		t.Fatal("expected max_bytes_per_key violation via inherited scope head policy")
+	}
+	if !strings.Contains(err.Error(), "max_bytes_per_key") {
+		t.Fatalf("expected max_bytes_per_key error, got: %v", err)
+	}
+}
+
+func TestExtractScopeHead(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"user/chrispian", "user/chrispian"},
+		{"user/chrispian/memory/notes", "user/chrispian"},
+		{"project/tesseract", "project/tesseract"},
+		{"project/tesseract/knowledge/arch", "project/tesseract"},
+		{"app/agent-1/state", "app/agent-1"},
+		{"org/hollis-labs/team", "org/hollis-labs"},
+		{"session/s-123/context", "session/s-123"},
+		{"system", "system"},
+		{"system/audit", "system"},
+		{"unknown/foo", ""},
+		{"single", ""},
+		{"", ""},
+		{"   ", ""},
+	}
+	for _, tt := range tests {
+		got := ExtractScopeHead(tt.input)
+		if got != tt.want {
+			t.Errorf("ExtractScopeHead(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}

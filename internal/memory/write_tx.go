@@ -67,6 +67,9 @@ func (s *Store) writeRevisionInTx(ctx context.Context, tx *sql.Tx, in WriteInput
 	if err := ValidateWriteInput(in); err != nil {
 		return Revision{}, err
 	}
+	if err := s.validateTierPolicy(ctx, tx, in); err != nil {
+		return Revision{}, err
+	}
 
 	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
 	memoryID := fixedItemID
