@@ -38,10 +38,11 @@ The practical fork: a decision you would want a future session to *apply* is mem
 
 An event namespace has memory's shape with `event` in the domain-segment position:
 
-```
+```text
+project/{project_id}/event/{type}
+session/{session_id}/event/{type}
+system/event/{type}
 user/{user_id}/event/{type}
-user/{user_id}/project/{project_id}/event/{type}
-user/{user_id}/session/{session_id}/event/{type}
 ```
 
 `{type}` is a **closed vocabulary** naming the *stream*, not a taxonomy of what happened:
@@ -53,13 +54,14 @@ user/{user_id}/session/{session_id}/event/{type}
 
 Pick the scope by what you would read back as a unit:
 
-- **Session scope** is the natural home for an agent's reasoning — `user/chrispian/session/session-20260910-85916030/event/reasoning`. One session's thinking is one linear read.
-- **User scope** is the journal — `user/chrispian/event/journal`.
-- **Project scope** is reasoning that spans sessions but belongs to one codebase — `user/chrispian/project/tesseract/event/reasoning`.
+- **Session scope** is the natural home for an agent's reasoning — `session/session-20260910-85916030/event/reasoning`. One session's thinking is one linear read.
+- **Project scope** is reasoning that spans sessions for one codebase, or a session-close summary — `project/tesseract/event/reasoning`.
+- **System scope** is agent runtime operations — `system/event/reasoning`.
+- **User scope** is the personal journal — `user/chrispian/event/journal`.
 
 **Do not put dates in the path.** `created_at` is indexed and `event_list` filters on it, so date segments turn every time-range read into a multi-namespace query and buy nothing. Time is an attribute, not a partition.
 
-A bare `user/chrispian/event` reads every stream under that scope — the same prefix shorthand memory namespaces have.
+A bare `project/tesseract/event` reads every stream under that scope — the same prefix shorthand memory namespaces have.
 
 ## Writing
 
@@ -72,7 +74,7 @@ separately on the revision as an unverified `provenance.write_context` receipt.
 
 ```json
 {
-  "namespace": "user/chrispian/session/session-20260910-85916030/event/reasoning",
+  "namespace": "session/session-20260910-85916030/event/reasoning",
   "workstream_id": "ws-release-notes-42",
   "summary": "Chose a dedicated log read over ranking=chronological",
   "body": "Recall's fetchCandidates issues no ORDER BY and no LIMIT — it loads every matching row into Go before windowing. Fine at 2k revisions, quadratic-feeling at log volumes. Also its cursor is an offset, and a log is appended at the head, so page 2 would repeat rows written between pages. Went with keyset pagination pushed into SQL. Rejected: adding a LIMIT to fetchCandidates, which would have changed recall's Total semantics for every caller.",
@@ -122,7 +124,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/event/write" \
 
 ```json
 {
-  "namespaces": ["user/chrispian/session/session-20260910-85916030/event/reasoning"],
+  "namespaces": ["session/session-20260910-85916030/event/reasoning"],
   "workstream_id": "ws-release-notes-42",
   "direction": "oldest_first",
   "limit": 50
@@ -152,7 +154,7 @@ Counting a log means scanning it, which is the cost this read exists to avoid, a
 
 ```json
 {
-  "namespaces": ["user/chrispian/event/reasoning"],
+  "namespaces": ["project/tesseract/event/reasoning"],
   "domains": ["event"],
   "query": "why did we reject offset paging"
 }

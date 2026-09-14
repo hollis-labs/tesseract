@@ -178,7 +178,7 @@ Revisions can carry `consumer_state`, a JSON object holding the writer's own lif
 
 ```json
 {
-  "namespaces": "[\"user/chrispian/memory/todos\"]",
+  "namespaces": "[\"project/tesseract/memory/todos\"]",
   "ranking": "chronological",
   "state_filters": "[{\"field\":\"section\",\"values\":[\"now\",\"soon\"]},{\"field\":\"completed\",\"values\":[false]}]"
 }

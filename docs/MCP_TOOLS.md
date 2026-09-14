@@ -118,7 +118,6 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | Tool | Why |
 |---|---|
 | `context_rag_query` | `rag_query` is not an operation in the vocabulary, and it is the one name on the surface that does not fit. It remains unchanged for compatibility; the related `search` and `embed` operation names are part of the public vocabulary. |
-| `tesseract_runtime_get` | — | — (MCP-only process observation) | [Runtime observation](MCP_RUNTIME.md) | No arguments. Verified running/replacement image comparison with owner context; always observation-only. |
 | `tesseract_skills` | Named for what it serves rather than for a verb, and both its arms — the catalog and one skill body — are covered by the plural noun. Kept because it is the most-referenced identifier on the surface (every tool description ends in a `tesseract_skills <name>` pointer) and no verb form read better than the noun: it neither purely lists nor purely gets. |
 <!-- END GENERATED: tool-naming -->
 
@@ -229,7 +228,7 @@ the intended result.
 
 ```json
 mcp__tesseract__memory_write {
-  "namespace": "user/alex/memory/feedback",
+  "namespace": "project/tesseract/memory/feedback",
   "memory_key": "boot_prompt_preference",
   "workstream_id": "ws-release-notes-42",
   "author_agent_id": "claude-code",
@@ -259,7 +258,7 @@ When an MCP request carries `_meta["tether.provenance"]` at schema version 1, Te
 
 ```json
 mcp__tesseract__knowledge_write {
-  "namespace": "user/alex/knowledge/framework",
+  "namespace": "project/tesseract/knowledge/framework",
   "key": "framework.go-providers",
   "kind": "package",
   "source": "filesystem",
@@ -298,7 +297,7 @@ omits `version_token`. Read the current item, then edit through `workspace_write
 
 ```json
 mcp__tesseract__tesseract_recall {
-  "namespaces": ["user/alex/memory", "user/alex/knowledge"],
+  "namespaces": ["project/tesseract/memory", "project/tesseract/knowledge"],
   "query": "hybrid relevance recall ranking",
   "limit": 20
 }
@@ -336,7 +335,7 @@ Use the same selector with `tesseract_history` for its revision chain. Existing 
 ```json
 mcp__tesseract__tesseract_get {
   "domain": "knowledge",
-  "namespace": "user/chrispian/knowledge/frameworks",
+  "namespace": "project/tesseract/knowledge/frameworks",
   "key": "example"
 }
 ```

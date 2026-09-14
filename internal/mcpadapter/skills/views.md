@@ -15,7 +15,7 @@ The shared `contextstore.Selector` struct:
 
 ```json
 {
-  "namespaces": ["user/chrispian/memory/*", "app/test/session/*"],
+  "namespaces": ["project/tesseract/memory/*", "app/test/session/*"],
   "keys": ["task-001", "goal"],
   "revision_scope": "head",
   "order": ["namespace", "key", "revision"],

@@ -43,7 +43,7 @@ convention for audit emits.
 The response envelope carries `next_cursor` when more results are available; omit it (or pass `0`) on the first call.
 
 ```json
-{"namespace": "user/chrispian/memory/decisions", "event_type": "memory.write", "limit": 25}
+{"namespace": "project/tesseract/memory/decisions", "event_type": "memory.write", "limit": 25}
 ```
 
 The HTTP peer is `GET /v1/context/audit`, and it takes three filters this tool does not: `actor`, `since` and `until` (both RFC3339, both rejected outright if they are not). Its `limit` also defaults to 50 rather than 10, and it is not capped at 25. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
@@ -51,7 +51,7 @@ The HTTP peer is `GET /v1/context/audit`, and it takes three filters this tool d
 ```bash
 curl -sS -G "$TESSERACT_URL/v1/context/audit" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
-  --data-urlencode "namespace=user/chrispian/memory/decisions" \
+  --data-urlencode "namespace=project/tesseract/memory/decisions" \
   --data-urlencode "event_type=memory.write" \
   --data-urlencode "since=2026-04-01T00:00:00Z" \
   --data-urlencode "limit=50"
@@ -77,7 +77,7 @@ Event types actually emitted by the MCP surface:
 - `memory.deprecate` — a **memory** revision was deprecated (also fires on the source side of a promote). Knowledge and event deprecations carry their own domain, so filter `knowledge.deprecate` or `event.deprecate` for those.
 
   **One boundary worth knowing when reading old rows.** Until CW-20260910-0069, `Store.Deprecate` stamped every domain as `memory`, so deprecations of knowledge and event revisions written before that fix are recorded as `memory.deprecate` and no `knowledge.deprecate` row exists earlier than it. Those rows were left alone deliberately — an audit log rewritten to look better is not an audit log — so a query reaching back past the fix should read `namespace` to tell the domains apart.
-- `memory.promote` — umbrella event for a session → user/project memory promotion. A promote also emits the nested `memory.write` (target) and `memory.deprecate` (source).
+- `memory.promote` — umbrella event for a session → project/system memory promotion. A promote also emits the nested `memory.write` (target) and `memory.deprecate` (source).
 - `knowledge.write` / `knowledge.supersede` / `knowledge.deprecate` — the knowledge-domain equivalents. `event.write` / `event.supersede` / `event.deprecate` likewise, composed the same way.
 - `namespace.register` / `namespace.update` — a `namespace_policies` row was created or changed. You will see `namespace.register` without having asked for it: the first memory, knowledge or event write into a namespace with no policy row auto-registers it and emits this with `source: "inferred"` in the metadata.
 
@@ -116,6 +116,6 @@ Each returned event carries:
 
 ## Common queries
 
-- "What wrote into `user/chrispian/memory` recently?" — set `namespace: user/chrispian/memory`, page with `cursor`. Filter `event_type: memory.write` (or `memory.supersede` / `memory.deprecate` / `memory.promote`) to narrow to memory-domain mutations.
+- "What wrote into `project/tesseract/memory` recently?" — set `namespace: project/tesseract/memory`, page with `cursor`. Filter `event_type: memory.write` (or `memory.supersede` / `memory.deprecate` / `memory.promote`) to narrow to memory-domain mutations.
 - "What promotions are pending?" — prefer `context_promotion_list` (domain-aware); `context_audit_list` gives the raw event stream.
 - "When was revision X applied?" — filter `event_type: promote` and walk until `record_id` or `revision` matches; there is no direct revision index.

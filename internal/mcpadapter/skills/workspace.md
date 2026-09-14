@@ -139,7 +139,7 @@ unchanged. Run all three explicit stages:
 ```text
 workspace_promote stage=request source_item_id=<workspace-id> \
   source_version_token=<token> actor=agent:reviewer \
-  target_domain=memory target_namespace=user/example/memory/notes \
+  target_domain=memory target_namespace=project/example/memory/notes \
   target_key=reviewed.note target_author_agent_id=agent:reviewer \
   target_session_id=session-1 target_trigger=promotion \
   target_derived_from=project

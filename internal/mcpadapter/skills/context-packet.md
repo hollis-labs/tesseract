@@ -35,6 +35,9 @@ The simplest path. Plans and fetches in a single call:
 - `review_session` — `user/cache/*` + `user/pins/*`.
 - `custom` — `user/*` catch-all when no explicit constraints are provided.
 
+> [!NOTE]
+> The built-in planner intents default to legacy namespace patterns (`user/memory/*`, `user/pins/*`). When assembling context across modern scope-type-rooted namespaces (`project/{slug}/*`, `system/*`), use the two-phase workflow below or pass explicit namespace globs directly to `context_pack` (`shape: "packet"`).
+
 ## Two-phase: plan, then assemble
 
 When you want to inspect or edit the plan before executing:

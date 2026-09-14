@@ -77,19 +77,19 @@ Every stage emits an audit event (`promote.request`, `promote.approve`, `promote
 `memory_promote` is a single-call path for the memory domain - not a shortcut through the three-stage `context_promote` flow, but a separate tool with its own invariants:
 
 - **Scope:** `memory:write` (not `promote.*`).
-- **Direction:** `session` scope -> `user` or `project` scope. Source namespace MUST be session-scoped (e.g. `user/{id}/session/{sid}/memory`); target MUST be user-scoped or project-scoped.
+- **Direction:** `session` scope -> `project` or `system` scope. Source namespace MUST be session-scoped (e.g. `session/{sid}/memory/{type}`); target MUST be project-scoped or system-scoped.
 - **Side effect:** the source revision is deprecated after a promoted revision is written to the target namespace. Keyed memories with the same key in the target get an explicit `supersedes` link.
 - **Trigger:** the promoted revision is stamped with `trigger=promotion`; status defaults to `reviewed`.
 
-Use it for same-agent, same-session elevations (session scratch -> durable user memory). Cross-ownership moves between apps and user still go through `context_promote`.
+Use it for same-agent, same-session elevations (session scratch -> durable project memory). Cross-ownership moves between apps and user still go through `context_promote`.
 
 Worked, on both surfaces:
 
 ```json
 {
-  "source_namespace": "user/chrispian/session/2026-04-19:backend/memory/learnings",
+  "source_namespace": "session/2026-04-19:backend/memory/learnings",
   "source_memory_id": "01HXA...",
-  "target_namespace": "user/chrispian/memory/learnings",
+  "target_namespace": "project/tesseract/memory/learnings",
   "actor_agent_id": "claude",
   "actor_version": "opus-5"
 }
@@ -100,9 +100,9 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/promote" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "source_namespace": "user/chrispian/session/2026-04-19:backend/memory/learnings",
+    "source_namespace": "session/2026-04-19:backend/memory/learnings",
     "source_memory_id": "01HXA...",
-    "target_namespace": "user/chrispian/memory/learnings",
+    "target_namespace": "project/tesseract/memory/learnings",
     "actor_agent_id": "claude",
     "actor_version": "opus-5"
   }'

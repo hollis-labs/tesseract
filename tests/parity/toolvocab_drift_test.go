@@ -43,15 +43,15 @@ import (
 // checksum: from the outside, an anchor someone verified and an anchor someone
 // captured are indistinguishable, permanently.
 //
-//	All 52 names — 25 accept, 27 reject — were checked BY HAND, one at a time,
+//	All 57 names — 28 accept, 29 reject — were checked BY HAND, one at a time,
 //	against ToolVerbTable and ToolPrefixRule as they stand on branch
-//	wave3/0012-verb-vocabulary (CW-20260825-0012, branched from 2004638), on
-//	2026-08-25, during the review pass that added the seven context-domain
-//	verbs. For each accept the verb's Prefixes were read and confirmed to
-//	contain the name's prefix; for each reject the specific reason — unknown
-//	prefix, unknown verb, or verb-not-scoped-to-this-prefix — was identified
-//	and is recorded in that entry's `why`. The digest was then taken from the
-//	checked state. It was NOT captured from whatever the lists happened to hold.
+//	task/CW-20260912-0084-capture-skills, incorporating the workspace-domain
+//	verbs from CW-20260912-0079 (accept: workspace_write, workspace_delete,
+//	workspace_promote; reject: memory_delete, workspace_history). For each accept
+//	the verb's Prefixes were read and confirmed to contain the name's prefix;
+//	for each reject the specific reason — unknown prefix, unknown verb, or
+//	verb-not-scoped-to-this-prefix — was identified and is recorded in that entry's
+//	`why`. The digest was then taken from the checked state.
 //
 // WHAT THIS EARNS, stated narrowly, because the obvious justification is the
 // wrong one. anchorMustReject is ALREADY self-protecting against a rename this
@@ -62,7 +62,7 @@ import (
 //     passes silently because both sides of the assertion agree;
 //   - any edit to either list that this vocabulary does not motivate — a
 //     dropped case, a typo, a "tidy-up" that removes a duplicate-looking entry.
-const anchorDigest = "f14bd323cdff2441e595dc753017b2a2115618ea67bc2ef50363da22052ddaca"
+const anchorDigest = "0b2728b0598f9d94fab2868b6c085829de9ac3988ae7ce78019005963e4e1412"
 
 // TestAnchorListsAreFrozen fails when either literal list changes.
 func TestAnchorListsAreFrozen(t *testing.T) {

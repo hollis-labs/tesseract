@@ -22,7 +22,7 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 				"• **Scope:** `memory:write`.\n"+
 				domainBoundaryLine+
 				"• **Use this when:** a decision and its rationale, a limitation, a deferred follow-up, feedback, an outcome, what a session learned — something a later session should meet while working nearby, without having known to ask for it.\n"+
-				"• **Don't use this for:** content someone will come back for by name — a project's canonical, a handoff, a playbook, a doc or package reference. That is `knowledge_write`, whether or not it points at anything outside Tesseract. Generic revisioned records — `context_write`.\n"+
+				"• **Don't use this for:** content someone will come back for by name — a project's canonical, an ADR, a playbook, a doc or package reference (knowledge_write). Active drafts, handoffs, or session plans — workspace_write. Generic revisioned records — context_write.\n"+
 				"• **Deeper:** `tesseract_skills namespaces` for namespace rules.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Typed memory namespace {scope}/{id}/memory/{type} — e.g. project/tesseract/memory/decisions. "+
@@ -68,9 +68,9 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 				"• **Use this when:** a session memory has proven durable and you want it to survive session boundaries.\n"+
 				"• **Don't use this for:** cross-ownership promotion (app/* → user/*) — use the `context_promote` three-stage workflow.",
 		),
-		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace user/{id}/session/{sid}/memory/{type} (e.g. user/chrispian/session/2026-04-19:backend/memory/decisions)")),
+		mcp.WithString("source_namespace", mcp.Required(), mcp.Description("Source session memory namespace session/{sid}/memory/{type} (e.g. session/2026-04-19:backend/memory/decisions)")),
 		mcp.WithString("source_memory_id", mcp.Required(), mcp.Description("Source memory ID to promote")),
-		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target user or project memory namespace; the {type} segment MUST match the source (e.g. user/chrispian/memory/decisions)")),
+		mcp.WithString("target_namespace", mcp.Required(), mcp.Description("Target project or user memory namespace; the {type} segment MUST match the source (e.g. project/tesseract/memory/decisions)")),
 		mcp.WithString("actor_agent_id", mcp.Required(), mcp.Description("Agent ID performing the promotion")),
 		mcp.WithString("actor_version", mcp.Description("Agent version string")),
 		mcp.WithReadOnlyHintAnnotation(false),

@@ -22,9 +22,9 @@ The thread through those: a later session should **meet** it while working nearb
 
 ## When NOT to use memory
 
-- **Content someone will come back for by name.** A project's canonical, a handoff, a playbook, a doc or package reference — `knowledge_write`, whether or not it points at anything outside Tesseract.
+- **Content someone will come back for by name.** A project's canonical, a playbook, an ADR, an investigation dossier, a doc or package reference — `knowledge_write`, whether or not it points at anything outside Tesseract.
 - **Generic state records.** Use `context_write` - memory has specific lifecycle semantics (activation, promotion, dedup) you don't need for plain records.
-- **Ephemeral session scratch.** Write to session-scoped memory (`user/{id}/session/{sid}/memory/{type}`) when you want promotion later; use app context records (`app/{id}/session/*`) when you just want ephemeral scratch.
+- **Active working state and drafts.** Use Tesseract's workspace domain (`project/{slug}/workspace/...`) through `workspace_write` for drafts, scratchpad analysis, working handoffs, and session plans. File-based drafts are reserved for artifacts that are inherently files (repro scripts, binary traces, committed repository docs).
 
 ## The fields, and how to choose their values
 
@@ -35,7 +35,7 @@ a value outside them is a `validation_error`, not a new category.
 
 | Field | Required | What it is for |
 |---|---|---|
-| `namespace` | yes | where the revision lives, and therefore who owns it and what it is *about*. Must parse as a typed memory namespace: `user/{id}/memory/{type}`, `user/{id}/project/{pid}/memory/{type}`, or `user/{id}/session/{sid}/memory/{type}`. |
+| `namespace` | yes | where the revision lives, and therefore who owns it and what it is *about*. Must parse as a typed memory namespace: `project/{slug}/memory/{type}`, `system/memory/{type}`, `session/{sid}/memory/{type}`, or `user/{id}/memory/{type}` (human-authored or explicitly directed only). |
 | `payload_summary` | yes | the one line a later session reads in recall results before deciding whether to hydrate. Write it as the claim, not as a title. |
 | `derived_from` | yes | where the content came from. **Weights recall** — see below. |
 | `trigger` | yes | what caused you to write *now*. Provenance only; nothing reads it for behaviour. |
@@ -106,7 +106,7 @@ Over MCP, every field is a flat scalar and `tags` is a JSON-encoded **string**:
 
 ```json
 {
-  "namespace": "user/chrispian/memory/decisions",
+  "namespace": "project/tesseract/memory/decisions",
   "memory_key": "sqlite.pragma.journal_mode",
   "author_agent_id": "claude",
   "author_version": "opus-5",
@@ -127,7 +127,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "namespace": "user/chrispian/memory/decisions",
+    "namespace": "project/tesseract/memory/decisions",
     "memory_key": "sqlite.pragma.journal_mode",
     "author": {"agent_id": "claude", "agent_version": "opus-5"},
     "trigger": "explicit",
@@ -159,7 +159,7 @@ the highest-weighted value in the vocabulary:
 
 ```json
 {
-  "namespace": "user/chrispian/memory/feedback",
+  "namespace": "system/memory/feedback",
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-09-12:review",
@@ -268,7 +268,7 @@ refused, it is refused with "this field is now named `derived_from`".
 
 ```json
 {
-  "namespace": "user/chrispian/memory/decisions",
+  "namespace": "project/tesseract/memory/decisions",
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-09-12:adr",
@@ -324,13 +324,14 @@ Filter on it with `state_filters` — see `tesseract_skills recall-and-ranking`.
 
 ### `todos`, the first structured type
 
-`user/{id}/memory/todos` holds flat list items with light state. **A todo is not a task**: a Torque task is FSM-governed tracked work with dispatch, budgets and dependencies, and it stays in Torque. A todo is a note with a checkbox, often ephemeral.
+`user/{id}/memory/todos` holds flat list items with light state (or `project/{slug}/memory/todos` for codebase items). **A todo is not a task**: a Torque task is FSM-governed tracked work with dispatch, budgets and dependencies, and it stays in Torque. A todo is a note with a checkbox, often ephemeral.
 
-The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag. **This one keeps `derived_from: "user"` and is the counterexample**: nobody measured or inferred that the registration needs renewing — a person said so, and the record is that instruction. That is what `user` is for.
+The shape, from NIL's working model — title in `payload_summary`, notes in `payload_body`, and the rest in the bag. **This one keeps `derived_from: "user"` and is the counterexample**: nobody measured or inferred that the registration needs renewing — a person said so, and the record is that instruction. That is what `user` is for. Note that writing to `user/*` requires `actor: "user"` (explicitly asserted for human-directed content).
 
 ```json
 {
   "namespace": "user/chrispian/memory/todos",
+  "actor": "user",
   "author_agent_id": "claude",
   "trigger": "explicit",
   "session_id": "2026-09-10:inbox",
@@ -350,7 +351,7 @@ Four of those carry an index (`completed`, `external_ref`, `kind`, `section`); t
 **This is the default shape of a turn that consults memory, not one option among several.** Three steps, and the third is the one that is easy to skip and expensive to skip.
 
 ```
-1. tesseract_recall namespaces=["user/chrispian/memory/decisions"] query="sqlite pragma handling" limit=10
+1. tesseract_recall namespaces=["project/tesseract/memory/decisions"] query="sqlite pragma handling" limit=10
      -> {results: [{revision: {revision_id: "01HXA...", ...}, score}, ...], manifest}
 
 2. read the summaries, hydrate the two that look right:
@@ -394,4 +395,4 @@ Recall's ranking modes — `relevance` (the default when `query` is set), `activ
 
 ## Promotion
 
-Session-scoped memories can be promoted to user or project scope via `memory_promote` (the shortcut). Source and target must carry the same `{type}` segment — promote is a scope change, not a re-classification. The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `tesseract_skills promotion`.
+Session-scoped memories can be promoted to project or system scope via `memory_promote` (the shortcut). Source and target must carry the same `{type}` segment — promote is a scope change, not a re-classification. The source is deprecated; the promoted revision lands in the target namespace with `trigger=promotion`. See `tesseract_skills promotion`.

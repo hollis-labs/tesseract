@@ -7,7 +7,7 @@ related: [facets-and-kinds, memory]
 
 # Knowledge domain
 
-**Knowledge is content you go *to*** — addressed by key, read whole, expected to stay true. A project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference. Memory is the other half: content that comes *to you*, surfaced by recall while you work nearby.
+**Knowledge is content you go *to*** — addressed by key, read whole, expected to stay true. Canonical project definitions, ADRs, playbooks, investigation dossiers, templates, doc or package references. Memory is content that comes *to you*, surfaced by recall while you work nearby; workspace is active working state.
 
 Whether the content came from outside Tesseract does not decide this — most knowledge here is agent-authored, and `pointer_scheme: "nil"` is the first-class way to say there is nothing to link to. **The full statement, including where the rule stops applying, is in `tesseract_skills start-here`; it is stated once, there.** If you are about to reason from a one-line version of it, read that section first.
 
@@ -33,26 +33,27 @@ Reach for a real `file:` or `https:` pointer when the external thing genuinely i
 
 ## When to use knowledge
 
-- A project's single source of truth — paths, configs, roadmap.
-- A handoff written for whoever picks the work up next.
-- A codified process, or a dossier from a completed investigation.
+- A project's single source of truth — paths, configs, roadmap, canonical architecture.
+- Reusable templates, guidelines, playbooks, or codified processes (handoff templates, boot-prompt templates).
+- A dossier from a completed investigation or a formal Architecture Decision Record (ADR).
 - Recording that a library exists and what it does; cataloging a document's location and summary.
 
 The thread through those: someone will come back for it **deliberately**, knowing it exists.
 
 ## When NOT to use knowledge
 
+- **Active working state and drafts.** Ephemeral drafts, scratchpads, working handoffs, and session plans belong in `workspace_write` (`project/{slug}/workspace/...`). File-based authoring is reserved for artifacts that are inherently files (repro scripts, binary traces, committed repository docs).
 - **Content nobody would know to ask for.** A decision and its rationale, a limitation, a deferred follow-up, feedback, an outcome, what a session learned. Recall is how those get found — `memory_write`.
 - **Generic records.** Use `context_write`.
 
-Note what is *not* on that list: authorship. "Agent-authored content with no external source — use `memory_write`" is what this section said until 2026-09-10, and it was false for `investigation`, `session_close` and `project_canonical`, three populated kinds that agents write with nothing external to point at. If you meet that sentence somewhere still, it is stale.
+Note what is *not* on that list: authorship. "Agent-authored content with no external source — use `memory_write`" is what this section said until 2026-09-10, and it was false for `investigation` and `project_canonical`, populated kinds that agents write with nothing external to point at. If you meet that sentence somewhere still, it is stale.
 
 ## Namespace rule
 
 A knowledge namespace MUST have shape `{scope}/{id}/knowledge[/...]`, where `{scope}` is one of `user`, `project`, `app`, `org`, `session` or `system` (CW-20260912-0078). The segment after the scope head must literally be the word `knowledge` — that head is `{scope}/{id}`, except for `system`, which is a singleton and takes no id, so its shape is `system/knowledge/...`. Examples:
 
-- Valid: `user/chrispian/knowledge`, `user/chrispian/knowledge/framework`, `app/ingester/knowledge/obsidian/work`.
-- Invalid: `user/alice/memory/knowledge` (`knowledge` not 3rd segment), `knowledge/user/alice` (missing `user/` or `app/` prefix), `org/acme/knowledge` (wrong first segment).
+- Valid: `project/tesseract/knowledge`, `project/tesseract/knowledge/framework`, `system/knowledge/templates`, `app/ingester/knowledge/obsidian/work`.
+- Invalid: `user/alice/memory/knowledge` (`knowledge` not 3rd segment), `knowledge/user/alice` (missing scope prefix).
 
 ## Required fields on knowledge_write
 
@@ -88,7 +89,7 @@ The body carries what you learned; the entry stays useful with no external sourc
 
 ```json
 {
-  "namespace": "user/chrispian/knowledge/framework",
+  "namespace": "project/tesseract/knowledge/framework",
   "key": "framework.go-providers",
   "kind": "package",
   "source": "manual",
@@ -112,7 +113,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/knowledge/write" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "namespace": "user/chrispian/knowledge/framework",
+    "namespace": "project/tesseract/knowledge/framework",
     "key": "framework.go-providers",
     "kind": "package",
     "source": "manual",
@@ -179,7 +180,7 @@ Pass `pointer_health` to `tesseract_recall` as a JSON array of statuses. The fil
 
 ```json
 {
-  "namespaces": ["user/chrispian/knowledge"],
+  "namespaces": ["project/tesseract/knowledge/*"],
   "pointer_health": ["unresolvable"],
   "limit": 200
 }

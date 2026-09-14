@@ -24,9 +24,9 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 				"• **Deeper:** `tesseract_skills event`.",
 		),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description(
-			"Event namespace: user/{id}/event/{type}, user/{id}/project/{pid}/event/{type} or user/{id}/session/{sid}/event/{type}. "+
+			"Event namespace: {scope}/{id}/event/{type} (e.g. session/{sid}/event/reasoning, project/{slug}/event/reasoning, system/event/reasoning, user/{id}/event/journal). "+
 				"{type} is a closed vocabulary naming the STREAM — allowed: "+memory.EventTypeList()+". "+
-				"Session scope is the natural home for an agent's reasoning; user scope for a journal. "+
+				"Session scope is the natural home for an agent's reasoning; project scope for codebase reasoning and session close; user scope for a journal. "+
 				"Do not put dates in the path — created_at is indexed and `event_list` filters on it.")),
 		mcp.WithString("key", mcp.Description(
 			"Optional logical key. Usually omit: a keyless write appends a new entry, which is what a log does. "+
@@ -68,8 +68,8 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 				"• **Deeper:** `tesseract_skills event`.",
 		),
 		mcp.WithString("namespaces", mcp.Required(), mcp.Description(
-			"JSON array of event namespaces. Exact (`user/chrispian/event/journal`) or prefix — a bare "+
-				"`user/chrispian/event` reads every stream under that scope, as does an explicit `user/chrispian/event/*`.")),
+			"JSON array of event namespaces. Exact (`project/tesseract/event/reasoning`) or prefix — a bare "+
+				"`project/tesseract/event` reads every stream under that scope, as does an explicit `project/tesseract/event/*`.")),
 		mcp.WithString("direction", mcp.Description("newest_first (default) | oldest_first")),
 		mcp.WithString("since", mcp.Description("RFC3339 lower bound on created_at, inclusive")),
 		mcp.WithString("until", mcp.Description("RFC3339 upper bound on created_at, inclusive")),

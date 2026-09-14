@@ -12,29 +12,34 @@ Tesseract is a local-first context and memory service. You reach it through the 
 ## The five domains
 
 - **Memory** — decisions, limitations, follow-ups, feedback, outcomes, what a session learned. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
-- **Knowledge** — a project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference. Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
-- **Event** — the append-only narrative log: reasoning about what you are doing, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
+- **Knowledge** — canonical definitions, ADRs, playbooks, investigation dossiers, templates, doc or package references. Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
+- **Event** — the append-only narrative log: reasoning about what you are doing, session-close summaries, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
-- **Workspace** — project-owned scratch and replaceable working state. One mutable current value per item, guarded by a version token, with a tombstone after deletion and no content history. Start with `tesseract_skills workspace`.
+- **Workspace** — project-owned working state: drafts, scratchpad analysis, handoffs, boot prompts, session plans, and replaceable working state. One mutable current value per item, guarded by a version token, with a tombstone after deletion and no content history. Start with `tesseract_skills workspace`.
 
-### Memory or knowledge — the canonical statement
+### Memory, knowledge, or workspace — the canonical statement
 
 **This is the one place this boundary is stated.** The domain skills and the write tools carry the short form and point back here; nothing else restates it, because a rule restated in five places drifts in four of them.
 
-> **Knowledge is content you go *to*.** Addressed by key, read whole, expected to stay true.
+> **Workspace is active working state.** Drafts, scratchpads, handoffs, boot prompts, and session plans. Mutable in place under a version token, replaced or decayed as work completes.
 >
-> **Memory is content that comes *to you*.** Surfaced by recall when you are working nearby, dated, superseded rather than edited.
+> **Knowledge is content you go *to*.** Addressed by key, read whole, expected to stay true. Canonical project docs, ADRs, playbooks, templates, reference dossiers.
+>
+> **Memory is content that comes *to you*.** Surfaced by recall when you are working nearby, dated, superseded rather than edited. Decisions, limitations, follow-ups, learnings.
 
-**`derived_from` does not decide this, and used to be claimed to.** Until 2026-09-10 the guidance said knowledge was for external content and that agent-authored content with no external source belonged in memory. That was false for every populated knowledge kind an agent writes — `investigation`, `session_close` and `project_canonical` are all agent-authored with nothing outside Tesseract to point at, and `pointer_scheme: "nil"` exists to say so. Both domains are mostly agent-authored. What separates them is **how the content gets found again**.
+**The instance-vs-pattern rule:** Working instances of handoffs, boot prompts, drafts, scratchpads, and session plans live in **workspace** (`project/{slug}/workspace/...`). Once codified into reusable patterns, playbooks, templates, or architectural decisions, they live in **knowledge** (`project/{slug}/knowledge/...` or `system/knowledge/...`). Session narrative logs live in **event** (`project/{slug}/event/...`).
+
+**`derived_from` does not decide this, and used to be claimed to.** Until 2026-09-10 the guidance said knowledge was for external content and that agent-authored content with no external source belonged in memory. That was false for every populated knowledge kind an agent writes — `investigation` and `project_canonical` are agent-authored with nothing outside Tesseract to point at, and `pointer_scheme: "nil"` exists to say so. Both domains are mostly agent-authored. What separates them is **how the content gets found again**.
 
 **Where this stops.** *"I might look this up later"* is not the test, and reading it that way sends everything to knowledge — nearly all memory is looked up eventually. The question that actually separates them is whether you could **name it before you went looking**:
 
-- You go to a project's handoff, its canonical, its playbook because you already knew it existed and roughly what it was called. That is knowledge.
+- You go to a project's canonical, an ADR, its playbook, or a template because you already knew it existed and roughly what it was called. That is knowledge.
 - You did not know that decision record existed. Recall put it in front of you while you were working on something else. That is memory — however often it ends up being read, and however precisely you can cite it *afterwards*. A `[[wikilink]]` to a decision is downstream of a recall that surfaced it once; it is not evidence you would have gone looking.
+- You need the current working handoff, draft, or session plan. That is workspace.
 
 Neither half is about how the content was authored, how long it lasts, or how good it is.
 
-The third domain is a different axis and rarely ambiguous: what happened and what you were thinking at the time is **event**.
+The fourth domain is a different axis and rarely ambiguous: what happened, your session-close summary, and what you were thinking at the time is **event**.
 
 **The fork is one-way.** A record's domain is stamped when it is created and never changes, so a write to the wrong domain stays there. The promotion workflow is the obvious escape and it is the wrong shape — it moves records across *namespaces*, not across domains. The only way to reclassify is to write a new record under a new identity, which discards the revision lineage the store exists to keep. This is worth one moment of thought at write time; it is not worth agonizing over, because `notes` and `note` are honest catch-alls and a record in a defensible domain is fine where it is.
 
@@ -62,9 +67,9 @@ Every write tool's description opens by naming the skill that carries its reques
 | What you want to write | Tool | Shape lives in |
 |---|---|---|
 | A decision, limitation, follow-up, or what a session learned | `memory_write` | `tesseract_skills memory` |
-| A canonical, handoff, playbook, dossier, doc or package reference | `knowledge_write` | `tesseract_skills knowledge` |
-| Your reasoning about what you are doing, or a journal entry | `event_write` | `tesseract_skills event` |
-| Project-owned scratch or replaceable working state | `workspace_write` | `tesseract_skills workspace` |
+| A canonical doc, ADR, playbook, dossier, or package reference | `knowledge_write` | `tesseract_skills knowledge` |
+| Your reasoning about what you are doing, session-close summary, or a journal entry | `event_write` | `tesseract_skills event` |
+| Drafts, scratchpad analysis, handoffs, boot prompts, or replaceable working state | `workspace_write` | `tesseract_skills workspace` |
 | A plain revisioned record | `context_write` | below, on this page |
 | A record with a registered type and lifecycle status | `context_typed_write` | below, on this page |
 | Many records at once, or one long document | `context_ingest` | below, on this page |
@@ -116,7 +121,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/context/write" \
   }'
 ```
 
-Both answer with the new record's identity — `record_id`, `revision`, `namespace`, `key`. Neither mutates anything: the previous revision is still there, and `tesseract_history` under `domain="context"` will show both.
+Both answer with the new record's identity — `item_id` (the primary stable object identity, compatible with `record_id` and `memory_id`), `revision_id` (monotonic ULID for this immutable version), `namespace`, and `key`. Neither mutates anything: the previous revision is still there, and `tesseract_history` under `domain="context"` will show both.
 
 Where the write may land is decided by the namespace, not by this call — see `tesseract_skills namespaces`. Over MCP the capability token's namespace globs are checked first, and a target outside them is a `namespace_not_permitted` error.
 

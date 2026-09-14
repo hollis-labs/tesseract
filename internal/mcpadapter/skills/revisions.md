@@ -9,10 +9,11 @@ related: [memory, knowledge, audit]
 
 Every write in Tesseract creates a new revision. The service never mutates existing records in place.
 
-## Item and revision identity
+## Item, revision, and version identity
 
-- **Item ID (`item_id`)** — stable identity for a Tesseract-owned memory, knowledge, or event item. It is the same value retained as `memory_id`; responses carry both names for compatibility. It stays fixed across edits and key changes.
-- **Revision ID (`revision_id`)** — monotonic ULID for one exact immutable version. Lexicographically sortable and globally unique within the store. It is not an item ID.
+- **Item ID (`item_id`)** — the primary stable identity for a Tesseract-owned item across its revisions and lifecycle. Responses retain `memory_id` and `record_id` as compatible aliases. It stays fixed across edits, supersedes, and key changes.
+- **Revision ID (`revision_id`)** — monotonic ULID for one exact immutable version in a revisioned domain (`context`, `memory`, `knowledge`, `event`). Lexicographically sortable and globally unique within the store. It is not an item ID.
+- **Version token (`version_token`)** — concurrency token for mutable items in `workspace`. Rotates on every edit; workspace retains no revision history.
 - **Timestamp** — RFC3339Nano (nanosecond precision). Tie-breaking falls back to revision ID lex order for same-millisecond writes.
 
 ## Head vs. history
@@ -36,7 +37,7 @@ reference rather than the stored content. Pass exactly one complete selector:
 ```
 
 ```json
-{"domain":"knowledge","namespace":"user/chrispian/knowledge/contracts","key":"resolver-contract"}
+{"domain":"knowledge","namespace":"project/tesseract/knowledge/contracts","key":"resolver-contract"}
 ```
 
 ```json
@@ -71,7 +72,7 @@ To bound a history read, pass `limit`, `cursor`, `budget_bytes`, or `budget_toke
 Use exactly one selector form. Mixed calls and partial legacy triples are rejected:
 
 ```json
-{"domain": "memory", "namespace": "user/chrispian/memory/decisions", "key": "sqlite.pragma.journal_mode", "limit": 20}
+{"domain": "memory", "namespace": "project/tesseract/memory/decisions", "key": "sqlite.pragma.journal_mode", "limit": 20}
 ```
 
 The preferred HTTP peer is `GET /v1/items/{item_id}/history`. Per-domain namespace/key routes remain supported and use the same `key` query name. The old `memory_key` query parameter is refused with migration guidance, including when both names are present. Read responses still carry `memory_key`. See `tesseract_skills start-here` for `$TESSERACT_URL` / `$TESSERACT_TOKEN`.
@@ -79,7 +80,7 @@ The preferred HTTP peer is `GET /v1/items/{item_id}/history`. Per-domain namespa
 ```bash
 curl -sS -G "$TESSERACT_URL/v1/memory/history" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
-  --data-urlencode "namespace=user/chrispian/memory/decisions" \
+  --data-urlencode "namespace=project/tesseract/memory/decisions" \
   --data-urlencode "key=sqlite.pragma.journal_mode" \
   --data-urlencode "limit=20"
 ```
@@ -94,7 +95,7 @@ An edit is a full write plus one field — there is no partial-update call, so e
 
 ```json
 {
-  "namespace": "user/chrispian/memory/decisions",
+  "namespace": "project/tesseract/memory/decisions",
   "memory_key": "sqlite.pragma.journal_mode",
   "supersedes": "01HXA...",
   "author_agent_id": "claude",
@@ -111,7 +112,7 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
   -H "Authorization: Bearer $TESSERACT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "namespace": "user/chrispian/memory/decisions",
+    "namespace": "project/tesseract/memory/decisions",
     "memory_key": "sqlite.pragma.journal_mode",
     "supersedes": "01HXA...",
     "author": {"agent_id": "claude"},

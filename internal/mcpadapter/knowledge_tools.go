@@ -37,11 +37,11 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 				"• **Kind of content:** records carrying `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
 				"• **Scope:** `memory:write`.\n"+
 				domainBoundaryLine+
-				"• **Use this when:** a project's canonical, a handoff, a playbook, an investigation dossier, a doc or package reference — something someone will come back for deliberately. Whether it points at anything outside Tesseract is a separate question: `pointer_scheme: \"nil\"` is a first-class answer.\n"+
+				"• **Use this when:** a project's canonical, an ADR, a playbook or template, an investigation dossier, a doc or package reference — something someone will come back for deliberately. Whether it points at anything outside Tesseract is a separate question: `pointer_scheme: \"nil\"` is a first-class answer.\n"+
 				"• **Don't use this for:** content nobody would know to ask for — a decision and its rationale, a limitation, a deferred follow-up, what a session learned. Recall is how those get found, so they are `memory_write`. Generic records — use `context_write`.\n"+
 				"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. user/chrispian/knowledge/framework)")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. project/tesseract/knowledge/framework)")),
 		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
 			"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.")),
 		mcp.WithString("workstream_id", mcp.Description("Optional opaque workstream association. Omit to preserve; send an empty string to clear.")),
