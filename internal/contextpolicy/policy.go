@@ -134,7 +134,7 @@ func New() *Engine {
 // owner_type "system" is accepted for sentinel registrations of namespaces
 // that don't fit the user|app tier shape (single-segment, missing owner_id,
 // or non-tier prefixes). System-owned entries are not consulted for
-// access enforcement — CanWrite / CanPromote treat them like unregistered
+// access enforcement — CanWrite treats them like unregistered
 // namespaces and fall through to the prefix-based default rules.
 func (e *Engine) RegisterNamespace(namespace, ownerType, ownerID string, policy map[string]any) error {
 	ns := strings.TrimSpace(namespace)
@@ -191,7 +191,50 @@ func isDeclaredPolicy(policy map[string]any) bool {
 	return len(policy) > 0
 }
 
+// ScopePolicyViolation is returned when a namespace write authorization fails.
+type ScopePolicyViolation struct {
+	Namespace string
+	Scope     string
+	Actor     string
+	Message   string
+}
+
+func (v *ScopePolicyViolation) Error() string {
+	return v.Message
+}
+
+// UserScopeWriteError returns a teaching error when a non-user actor attempts
+// to write to a user-scoped namespace.
+//
+// Rejection follows the voice and shape of CW-20260912-0055: it answers what was
+// attempted, what is probably right, and where to fetch the authoritative rule.
+func UserScopeWriteError(namespace, actor string) error {
+	head := ExtractScopeHead(namespace)
+	if head == "" {
+		head = namespace
+	}
+	msg := fmt.Sprintf("writes to protected namespace %q require actor=user (attempted scope %q with actor %q). "+
+		"User scope is reserved for content the human author explicitly directs — almost never the right answer for an agent. "+
+		"What to use instead: for agent-authored project content, use `project/{slug}` (e.g. project/<project_id>/memory/<type>); "+
+		"for how-we-work guidelines or conventions, use `system` (e.g. system/memory/<type>). "+
+		"Run `tesseract_skills namespaces` for canonical namespace patterns and authority rules.",
+		namespace, head, actor)
+	return &ScopePolicyViolation{
+		Namespace: namespace,
+		Scope:     head,
+		Actor:     actor,
+		Message:   msg,
+	}
+}
+
 // CanWrite enforces namespace write rules.
+//
+// The honest limitation (CW-20260912-0082): actor is caller-asserted, so this
+// gates honesty rather than authority — any field an agent can set, an agent
+// can set wrongly. CW-20260912-0024 (proxy-stamped provenance) is the real fix
+// and is not in scope here; a forgeable check plus a teaching error still
+// prevents the accidental case, which produced the 1152 inferred namespaces in
+// the first place.
 func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 	ns := strings.TrimSpace(namespace)
 	if ns == "" {
@@ -201,19 +244,12 @@ func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 		return errors.New("actor required")
 	}
 
-	// The registry is the authority on ownership, and it is consulted FIRST.
-	//
-	// It used to be consulted last, behind two string-prefix rules that read an
-	// owner out of the path: `user/` meant "protected, actor=user only", and
-	// `app/{id}/` meant "writable only by app:{id}", with {id} taken from the
-	// second segment. Under the scope-type-rooted grammar
-	// (CW-20260912-0078) the first segment names a SCOPE TYPE, one of six, and
-	// a scope type is not an owner — `project/tether` has an owner, and it is
-	// not "tether". Deriving one from the path is the claim this grammar
-	// removes.
-	e.mu.RLock()
-	owner, registered := e.owners[ns]
-	e.mu.RUnlock()
+	// The registry is the authority on ownership, and it is consulted FIRST
+	// via GetNamespace, which checks declared exact registration first, falls
+	// back to scope head (e.g. project/{slug} or user/{id}), and finally falls
+	// back to exact inferred registration.
+	owner, registered := e.GetNamespace(ns)
+
 	// owner_type "system" is a SENTINEL registration for namespaces that never
 	// fit the user|app tier shape, and RegisterNamespace documents that it is
 	// not consulted for enforcement. Treating it as registered here would let a
@@ -223,7 +259,7 @@ func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 		switch owner.OwnerType {
 		case "user":
 			if actor != "user" {
-				return fmt.Errorf("namespace %q writable only by user", ns)
+				return UserScopeWriteError(ns, actor)
 			}
 		case "app":
 			if actor != "app:"+owner.OwnerID || clientID != owner.OwnerID {
@@ -233,37 +269,15 @@ func (e *Engine) CanWrite(clientID, actor, namespace string) error {
 		return nil
 	}
 
-	// UNREGISTERED. These two fences stay, and CW-20260912-0078 deliberately
-	// did NOT remove them despite moving ownership to the registry in every
-	// other respect.
-	//
-	// The reason is that registration is a SIDE EFFECT OF WRITING, so the
-	// first write to any namespace arrives unregistered and reaches the
-	// fallthrough below. That makes these the only rules protecting a
-	// namespace that does not exist yet:
-	//
-	//   - user scope: without it, any actor could create a namespace in the
-	//     one tier the ADR exists to keep agents out of.
-	//   - app scope: without it, app `editor` may write `app/other/session`.
-	//     That is cross-app isolation, not bookkeeping — TestPolicyDeniedWrite,
-	//     TestPolicyAndDeterminismEndToEnd and the golden API error contract
-	//     all assert the 403, on namespaces no registry row covers.
-	//
-	// So what this grammar change actually removes here is the ad-hoc STRING
-	// PREFIX form, not the rules: both now read the scope off the shared
-	// vocabulary, so `user/` and `app/` are scope types rather than two magic
-	// strings, and the other four scopes are visibly unfenced rather than
-	// accidentally omitted.
-	//
-	// Replacing inference with declared ownership is N4's job and needs
-	// declared registration to exist first. Until then an unregistered
-	// namespace cannot be refused outright without breaking every first write,
-	// and these are a fence rather than a model.
+	// UNREGISTERED fallback:
+	// If the scope is user, non-user actors are refused with the teaching error.
+	// If the scope is app, cross-app isolation is enforced.
+	// Other scopes (project, org, session, system) are not fenced.
 	if scope, id, ok := splitScopeHead(ns); ok {
 		switch scope {
 		case "user":
 			if actor != "user" {
-				return fmt.Errorf("writes to protected namespace %q require actor=user", ns)
+				return UserScopeWriteError(ns, actor)
 			}
 		case "app":
 			if id == "" {
@@ -333,16 +347,11 @@ var scopeTypes = map[string]bool{
 	"org": true, "session": true, "system": true,
 }
 
-// CanPromote checks promotion constraints into protected user namespace.
-func (e *Engine) CanPromote(actor, toNamespace string) error {
-	if actor != "user" {
-		return errors.New("promote requires actor=user")
-	}
-	if !strings.HasPrefix(strings.TrimSpace(toNamespace), "user/") {
-		return errors.New("promotion target must be in user/*")
-	}
-	return nil
-}
+// CanPromote was retired in CW-20260912-0082. It had zero callers across the
+// codebase (verified by CW-20260911-0006). It belonged to the legacy
+// context/records store promotion path (internal/contextapi/promote_handler.go),
+// which is being retired separately under CW-20260909-0037, and is completely
+// distinct from the shipped workspacepromotion package.
 
 // ValidatePayload enforces namespace schema policy when configured.
 // Supported policy keys:

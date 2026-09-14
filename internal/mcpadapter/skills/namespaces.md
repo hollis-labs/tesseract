@@ -100,13 +100,15 @@ Pre-migration shapes (`user/{id}/project/{pid}/memory/{type}`) still parse while
 
 ## Two authority rules
 
-- `user/*` — only `actor=user` may write directly.
+- `user/*` — only `actor=user` may write directly. Writing agent-authored content to `user/*` without `actor=user` is refused with a teaching error directing agent-authored work to `project/{slug}` (or `system` for operating guidelines).
 - `app/<id>/*` — only `actor=app:<id>` with matching `client_id=<id>` may write.
 - **Apps cannot write to `user/*`.** The only bridge is promotion (`tesseract_skills promotion`).
 
 ## Actor and client_id matrix
 
-Every write carries an **actor** (logical identity, e.g. `user`, `app:nanite`) and a **client_id** (the API token's identity). Mismatches fail at the write boundary, before anything touches the store.
+Every write carries an **actor** (logical identity, e.g. `user`, `agent`, `app:nanite`) and a **client_id** (the API token's identity). When omitted on write tools (`memory_write`, `knowledge_write`, and HTTP peers), `actor` defaults to `"agent"`, causing unasserted writes to `user/*` to fail closed.
+
+**Honest limitation (CW-20260912-0082):** `actor` is caller-asserted, so this check gates honesty rather than authority — any field an agent can set, an agent can set wrongly. Until proxy-stamped provenance (CW-20260912-0024) arrives, a caller-asserted check plus a teaching error prevents accidental misfiling into `user/*`.
 
 ## Common mistakes
 

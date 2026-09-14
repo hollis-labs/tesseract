@@ -130,7 +130,7 @@ func TestWorkspacePromotionHTTPRejectsNullAndRedundantExistingSelectorFields(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{Domain: "memory", Namespace: "user/chrispian/memory/notes", MemoryKey: "existing.http", Status: memory.StatusDraft, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"})
+	target, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{Domain: "memory", Actor: "user", Namespace: "user/chrispian/memory/notes", MemoryKey: "existing.http", Status: memory.StatusDraft, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestWorkspacePromotionHTTPRejectsNoncanonicalFieldNamesAtEveryLevel(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{Domain: "memory", Namespace: "user/chrispian/memory/notes", MemoryKey: "canonical.fields.target", Author: memory.Author{AgentID: "old"}, SessionID: "old", Summary: "old", Trigger: memory.TriggerExplicit, DerivedFrom: memory.DerivedFromProject})
+	target, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{Domain: "memory", Actor: "user", Namespace: "user/chrispian/memory/notes", MemoryKey: "canonical.fields.target", Author: memory.Author{AgentID: "old"}, SessionID: "old", Summary: "old", Trigger: memory.TriggerExplicit, DerivedFrom: memory.DerivedFromProject})
 	if err != nil {
 		t.Fatal(err)
 	}

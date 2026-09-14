@@ -18,6 +18,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 	// Write and embed a revision.
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: ns, MemoryKey: "dedup_test",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -35,6 +36,7 @@ func TestWriteRevision_SemanticDedup_SameKey(t *testing.T) {
 	// Write similar revision with dedup enabled.
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: ns, MemoryKey: "dedup_test",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -64,6 +66,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: ns, MemoryKey: "alpha",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -80,6 +83,7 @@ func TestWriteRevision_SemanticDedup_CrossKey(t *testing.T) {
 
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: ns, MemoryKey: "beta",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -108,6 +112,7 @@ func TestWriteRevision_SemanticDedup_NoMatch(t *testing.T) {
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: "user/chrispian/memory/notes", MemoryKey: "unique",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -131,6 +136,7 @@ func TestWriteRevision_NoDedup_Default(t *testing.T) {
 
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:    domains.Memory,
+		Actor:     "user",
 		Namespace: "user/chrispian/memory/notes", MemoryKey: "no_dedup",
 		Status:  memory.StatusDraft,
 		Author:  memory.Author{AgentID: "test", AgentVersion: "1.0"},

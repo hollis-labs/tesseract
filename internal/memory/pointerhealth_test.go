@@ -38,6 +38,7 @@ func newHealthFixture(t *testing.T) (*memory.Store, *knowledge.Store) {
 func seedKnowledge(t *testing.T, ks *knowledge.Store, key, scheme, locator string) memory.Revision {
 	t.Helper()
 	rev, err := ks.Write(context.Background(), knowledge.WriteInput{
+		Actor:     "user",
 		Namespace: healthNamespace,
 		Key:       key,
 		Kind:      "note",
@@ -150,6 +151,7 @@ func TestPointerHealth_AbsentFieldMeansNoPointer(t *testing.T) {
 
 	if _, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/tester/memory/notes",
 		MemoryKey:   "plain.note",
 		Author:      memory.Author{AgentID: "test", AgentVersion: "1"},

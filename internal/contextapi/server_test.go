@@ -1121,6 +1121,7 @@ VALUES
 	memStore := memory.NewStore(srv.Store.DB(), nil, "", 0, nil)
 	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "rev_1",
 		Author:      memory.Author{AgentID: "app:test"},
@@ -1135,6 +1136,7 @@ VALUES
 	}
 	if _, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "rev_2",
 		Author:      memory.Author{AgentID: "app:test"},
@@ -1149,6 +1151,7 @@ VALUES
 	}
 	rev3, err := memStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "rev_3",
 		Author:      memory.Author{AgentID: "app:test"},

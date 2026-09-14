@@ -71,6 +71,10 @@ func (c *CLI) runTypedPut(ctx context.Context, args []string) int {
 		return c.fail("payload must be valid JSON: " + err.Error())
 	}
 
+	if err := c.Policy.CanWrite("", *actor, *ns); err != nil {
+		return c.fail(err.Error())
+	}
+
 	rec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace:  *ns,
 		Key:        *key,

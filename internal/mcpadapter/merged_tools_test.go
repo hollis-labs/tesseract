@@ -1552,6 +1552,7 @@ func TestRetiredArg_OriginIsRefusedNotIgnored(t *testing.T) {
 	t.Run("memory_write/derived_from is accepted", func(t *testing.T) {
 		body := mustCall(t, a.handleMemoryWrite, map[string]any{
 			"namespace":       "user/chrispian/memory/notes",
+			"actor":           "user",
 			"author_agent_id": "test",
 			"trigger":         "explicit",
 			"session_id":      "s-1",

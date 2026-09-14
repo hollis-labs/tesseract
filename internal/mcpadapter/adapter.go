@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/hollis-labs/tesseract/internal/event"
@@ -45,7 +47,9 @@ type Adapter struct {
 	EventStore              *event.Store              // optional; nil disables event_write / event_list
 	WorkspaceStore          *workspace.Store          // optional; nil disables workspace mutations and reads
 	WorkspacePromotionStore *workspacepromotion.Store // optional; nil disables workspace_promote
-	Logger                  *slog.Logger              // optional; nil falls back to slog.Default()
+	Policy                  *contextpolicy.Engine     // optional; nil loads/defaults from Store via policy()
+	policyMu                sync.Mutex
+	Logger                  *slog.Logger // optional; nil falls back to slog.Default()
 
 	// Version is reported to the client in the MCP initialize handshake. The
 	// binary stamps it from build info so there is one source of truth; this
@@ -382,9 +386,40 @@ const (
 		"Never infer completeness from the array length.\n"
 )
 
+func (a *Adapter) policy() *contextpolicy.Engine {
+	a.policyMu.Lock()
+	defer a.policyMu.Unlock()
+	if a.Policy != nil {
+		return a.Policy
+	}
+	e := contextpolicy.New()
+	if a.Store != nil {
+		if entries, err := a.Store.ListNamespacePolicies(context.Background()); err == nil {
+			for _, entry := range entries {
+				_ = e.RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy)
+			}
+		}
+	}
+	a.Policy = e
+	return a.Policy
+}
+
 // New creates an Adapter for the given store and optional capability token.
 func New(store *contextstore.Store, token string) *Adapter {
-	return &Adapter{Store: store, Token: token, runtime: newRuntimeObserver()}
+	adapter := &Adapter{
+		Store:   store,
+		Token:   token,
+		runtime: newRuntimeObserver(),
+		Policy:  contextpolicy.New(),
+	}
+	if store != nil {
+		if entries, err := store.ListNamespacePolicies(context.Background()); err == nil {
+			for _, entry := range entries {
+				_ = adapter.Policy.RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy)
+			}
+		}
+	}
+	return adapter
 }
 
 // Run registers all tools and starts the MCP stdio server. Blocks until ctx is

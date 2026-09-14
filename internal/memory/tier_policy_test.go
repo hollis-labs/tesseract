@@ -30,6 +30,7 @@ func newTestMemoryStore(t *testing.T) (*memory.Store, *contextstore.Store, func(
 func baseInput(ns, key string) memory.WriteInput {
 	return memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   ns,
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "test-agent"},

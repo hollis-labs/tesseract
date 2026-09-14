@@ -26,6 +26,7 @@ func seedMemory(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "prefs.terse",
 		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -44,6 +45,7 @@ func seedMemory(t *testing.T, srv *Server) {
 func seedKnowledge(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
+		Actor:     "user",
 		Namespace: "user/chrispian/knowledge/framework",
 		Key:       "framework.go-providers",
 		Kind:      "package",
@@ -182,6 +184,7 @@ func seedMemoryWithBody(t *testing.T, srv *Server) {
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "prefs.body",
 		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -403,6 +406,7 @@ func TestTesseractLookup_FacetsCountReturnedRowsOnly(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   "user/chrispian/memory/notes",
 			MemoryKey:   "facet.probe." + string(rune('a'+i)),
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},

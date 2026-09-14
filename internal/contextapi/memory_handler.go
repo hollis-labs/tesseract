@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
@@ -35,6 +36,7 @@ func (s *Server) memoryStoreUnavailable(w http.ResponseWriter) bool {
 type memoryWriteRequest struct {
 	Domain         domains.Domain     `json:"domain,omitempty"`
 	Namespace      string             `json:"namespace"`
+	Actor          string             `json:"actor,omitempty"`
 	MemoryKey      string             `json:"memory_key,omitempty"`
 	WorkstreamID   presentString      `json:"workstream_id,omitempty"`
 	Supersedes     string             `json:"supersedes,omitempty"`
@@ -87,9 +89,24 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actor := req.Actor
+	if actor == "" {
+		actor = "agent"
+	}
+	var clientID string
+	if claims, ok := getTokenClaims(r); ok {
+		clientID = claims.ClientID
+	}
+	if err := s.Policy.CanWrite(clientID, actor, req.Namespace); err != nil {
+		writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+		return
+	}
+
 	in := memory.WriteInput{
 		Domain:         req.Domain,
 		Namespace:      req.Namespace,
+		Actor:          actor,
+		ClientID:       clientID,
 		MemoryKey:      req.MemoryKey,
 		WorkstreamID:   req.WorkstreamID.Pointer(),
 		Supersedes:     req.Supersedes,
@@ -113,6 +130,11 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 
 	rev, err := s.MemoryStore.WriteRevision(r.Context(), in)
 	if err != nil {
+		var spv *contextpolicy.ScopePolicyViolation
+		if errors.As(err, &spv) {
+			writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+			return
+		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 			return

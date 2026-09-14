@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -66,6 +67,7 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 		mcp.WithNumber("ttl_seconds", mcp.Description("Optional TTL in seconds (0 = no expiry)")),
 		mcp.WithNumber("confidence", mcp.Description("Confidence score in [0, 1.0] (default 0.9)")),
 		mcp.WithString("supersedes", mcp.Description("Optional revision_id this entry supersedes")),
+		mcp.WithString("actor", mcp.Description("Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.")),
 		mcp.WithReadOnlyHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -101,8 +103,18 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 		return workstreamErr, nil
 	}
 
+	actor := req.GetString("actor", "")
+	if actor == "" {
+		actor = "agent"
+	}
+	ns := req.GetString("namespace", "")
+	if policyErr := a.policy().CanWrite("", actor, ns); policyErr != nil {
+		return toolError(codeNamespaceNotPermitted, policyErr.Error()), nil
+	}
+
 	in := knowledge.WriteInput{
-		Namespace:      req.GetString("namespace", ""),
+		Namespace:      ns,
+		Actor:          actor,
 		Key:            req.GetString("key", ""),
 		WorkstreamID:   workstreamID,
 		Kind:           req.GetString("kind", ""),
@@ -126,6 +138,10 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 
 	rev, err := a.KnowledgeStore.Write(ctx, in)
 	if err != nil {
+		var spv *contextpolicy.ScopePolicyViolation
+		if errors.As(err, &spv) {
+			return toolError(codeNamespaceNotPermitted, err.Error()), nil
+		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			return toolError(codeValidationError, err.Error()), nil
 		}

@@ -83,6 +83,7 @@ func seedVerifyStore(t *testing.T) (dbPath, alivePath, deadPath string) {
 	for key, loc := range map[string]string{"cli.alive": alivePath, "cli.dead": deadPath} {
 		if _, err = ks.Write(ctx, knowledge.WriteInput{
 			Namespace: "user/tester/knowledge/cli",
+			Actor:     "user",
 			Key:       key,
 			Kind:      "note",
 			Source:    "manual",

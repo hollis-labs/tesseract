@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter/skills"
@@ -37,6 +38,7 @@ func newTestStoreWithMemory(t *testing.T) (*knowledge.Store, *memory.Store) {
 
 func validInput() knowledge.WriteInput {
 	return knowledge.WriteInput{
+		Actor:     "user",
 		Namespace: "user/chrispian/knowledge/framework",
 		Key:       "framework.go-providers",
 		Kind:      "package",
@@ -328,6 +330,7 @@ func TestGetCurrent_RefusesAMemoryRevision(t *testing.T) {
 	const ns, key = "user/chrispian/memory/notes", "cross.domain.probe"
 	if _, err := mem.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   ns,
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "claude"},
@@ -401,6 +404,7 @@ func TestKnowledgeWriteEmitsKnowledgeWriteEvent(t *testing.T) {
 	ks := knowledge.New(ms)
 
 	_, err = ks.Write(context.Background(), knowledge.WriteInput{
+		Actor:     "user",
 		Namespace: "user/alice/knowledge",
 		Key:       "pkg/react",
 		Kind:      "package",
@@ -423,5 +427,44 @@ func TestKnowledgeWriteEmitsKnowledgeWriteEvent(t *testing.T) {
 	}
 	if events[0].EventType != contextstore.EventKnowledgeWrite {
 		t.Errorf("event_type: got %q, want %q", events[0].EventType, contextstore.EventKnowledgeWrite)
+	}
+}
+
+func TestWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	in := validInput()
+	in.Actor = "agent" // non-user actor writing to user/chrispian/knowledge/framework
+	_, err := s.Write(ctx, in)
+	if err == nil {
+		t.Fatal("expected user scope write with actor=agent to be rejected")
+	}
+
+	var violation *contextpolicy.ScopePolicyViolation
+	if !errors.As(err, &violation) {
+		t.Fatalf("expected *contextpolicy.ScopePolicyViolation, got %T: %v", err, err)
+	}
+	if violation.Namespace != in.Namespace {
+		t.Errorf("violation.Namespace = %q, want %q", violation.Namespace, in.Namespace)
+	}
+	if violation.Scope != "user/chrispian" {
+		t.Errorf("violation.Scope = %q, want %q", violation.Scope, "user/chrispian")
+	}
+	if violation.Actor != "agent" {
+		t.Errorf("violation.Actor = %q, want %q", violation.Actor, "agent")
+	}
+
+	errMsg := err.Error()
+	for _, needle := range []string{
+		"writes to protected namespace",
+		"require actor=user",
+		"project/{slug}",
+		"system",
+		"tesseract_skills namespaces",
+	} {
+		if !strings.Contains(errMsg, needle) {
+			t.Errorf("error message missing %q:\n%s", needle, errMsg)
+		}
 	}
 }

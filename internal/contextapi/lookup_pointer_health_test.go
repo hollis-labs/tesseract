@@ -21,6 +21,7 @@ func seedPointerHealthCorpus(t *testing.T, srv *Server) (deadID, liveID string) 
 	ctx := context.Background()
 	write := func(key, locator string) memory.Revision {
 		rev, err := srv.KnowledgeStore.Write(ctx, knowledge.WriteInput{
+			Actor:     "user",
 			Namespace: "user/chrispian/knowledge/ph",
 			Key:       key,
 			Kind:      "note",

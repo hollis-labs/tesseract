@@ -11,6 +11,7 @@ import (
 func TestHTTPWriteEndpointsEnforceDomainFacetContract(t *testing.T) {
 	validMemory := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"memory_key":"facet.http",
 		"author":{"agent_id":"test"},
 		"trigger":"explicit",
@@ -21,6 +22,7 @@ func TestHTTPWriteEndpointsEnforceDomainFacetContract(t *testing.T) {
 	}`
 	validKnowledge := `{
 		"namespace":"user/chrispian/knowledge/docs",
+		"actor":"user",
 		"key":"facet-http",
 		"kind":"doc",
 		"source":"filesystem",

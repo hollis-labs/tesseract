@@ -199,7 +199,7 @@ func TestExistingTargetPreconditionAssociationAndApplyReplay(t *testing.T) {
 	_, mem, ws, promotions := promotionStores(t)
 	ctx := context.Background()
 	originalWS := "target-stream"
-	target, err := mem.WriteRevision(ctx, memory.WriteInput{Domain: domains.Memory, Namespace: "user/chrispian/memory/notes", MemoryKey: "existing.target", WorkstreamID: &originalWS, Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old-session", DerivedFrom: memory.DerivedFromProject, Confidence: .8, Summary: "old"})
+	target, err := mem.WriteRevision(ctx, memory.WriteInput{Domain: domains.Memory, Actor: "user", Namespace: "user/chrispian/memory/notes", MemoryKey: "existing.target", WorkstreamID: &originalWS, Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old-session", DerivedFrom: memory.DerivedFromProject, Confidence: .8, Summary: "old"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestExistingTargetPreconditionAssociationAndApplyReplay(t *testing.T) {
 		t.Fatalf("existing target fields: %#v", current)
 	}
 	if _, err = mem.WriteRevision(ctx, memory.WriteInput{
-		Domain: domains.Memory, Namespace: current.Namespace, MemoryKey: current.MemoryKey,
+		Domain: domains.Memory, Actor: "user", Namespace: current.Namespace, MemoryKey: current.MemoryKey,
 		WorkstreamID: &originalWS, Supersedes: current.RevisionID, Status: memory.StatusReviewed,
 		Author: memory.Author{AgentID: "later"}, Trigger: memory.TriggerExplicit, SessionID: "later-session",
 		DerivedFrom: memory.DerivedFromProject, Confidence: .8, Summary: "later target revision",
@@ -376,7 +376,7 @@ func TestPromotionRejectsWrongExistingRevisionAndNewlyOccupiedKey(t *testing.T) 
 	_, mem, ws, promotions := promotionStores(t)
 	ctx := context.Background()
 	input := func(key string) memory.WriteInput {
-		return memory.WriteInput{Domain: domains.Memory, Namespace: "user/chrispian/memory/notes", MemoryKey: key, Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"}
+		return memory.WriteInput{Domain: domains.Memory, Actor: "user", Namespace: "user/chrispian/memory/notes", MemoryKey: key, Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"}
 	}
 	first, err := mem.WriteRevision(ctx, input("parent.first"))
 	if err != nil {
@@ -412,7 +412,7 @@ func TestPromotionRejectsWrongExistingRevisionAndNewlyOccupiedKey(t *testing.T) 
 func TestApplyRejectsAdvancedExistingTarget(t *testing.T) {
 	_, mem, ws, promotions := promotionStores(t)
 	ctx := context.Background()
-	targetInput := memory.WriteInput{Domain: domains.Memory, Namespace: "user/chrispian/memory/notes", MemoryKey: "advanced.target", Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"}
+	targetInput := memory.WriteInput{Domain: domains.Memory, Actor: "user", Namespace: "user/chrispian/memory/notes", MemoryKey: "advanced.target", Status: memory.StatusReviewed, Author: memory.Author{AgentID: "old"}, Trigger: memory.TriggerExplicit, SessionID: "old", DerivedFrom: memory.DerivedFromProject, Summary: "old"}
 	target, err := mem.WriteRevision(ctx, targetInput)
 	if err != nil {
 		t.Fatal(err)

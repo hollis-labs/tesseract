@@ -11,6 +11,7 @@ import (
 func validMemoryToolArgs() map[string]any {
 	return map[string]any{
 		"namespace":       "user/chrispian/memory/notes",
+		"actor":           "user",
 		"memory_key":      "facet.mcp",
 		"author_agent_id": "test",
 		"trigger":         "explicit",
@@ -24,6 +25,7 @@ func validMemoryToolArgs() map[string]any {
 func validKnowledgeToolArgs() map[string]any {
 	return map[string]any{
 		"namespace":       "user/chrispian/knowledge/docs",
+		"actor":           "user",
 		"key":             "facet-mcp",
 		"kind":            "doc",
 		"source":          "filesystem",

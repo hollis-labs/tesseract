@@ -55,6 +55,7 @@ func seedSearchModeCorpus(t *testing.T, ms *memory.Store) {
 	for _, r := range rows {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   "user/chrispian/memory/notes",
 			MemoryKey:   r.key,
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},

@@ -95,6 +95,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	for i, summary := range []string{"mem first", "mem second", "mem third"} {
 		if _, err := ms.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   xdMemNS,
 			MemoryKey:   xdMemKey,
 			Author:      memory.Author{AgentID: "claude"},
@@ -111,6 +112,7 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 	for i, summary := range []string{"know first", "know second"} {
 		if _, err := ks.Write(ctx, knowledge.WriteInput{
 			Namespace: xdKnowNS,
+			Actor:     "user",
 			Key:       xdKnowKey,
 			Kind:      "package",
 			Source:    "filesystem",
@@ -533,6 +535,7 @@ func TestKnowledgeOnlyDeployment_RevisionOpsWork(t *testing.T) {
 
 	rev, err := a.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
 		Namespace: xdKnowNS,
+		Actor:     "user",
 		Key:       xdKnowKey,
 		Kind:      "package",
 		Source:    "filesystem",
@@ -591,6 +594,7 @@ func TestKnowledgeOnlyDeployment_RevisionOpsWork(t *testing.T) {
 	// keyed read of it would legitimately answer not_found.
 	if _, err := a.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
 		Namespace: xdKnowNS,
+		Actor:     "user",
 		Key:       "xd.know.live",
 		Kind:      "doc",
 		Source:    "filesystem",
@@ -625,6 +629,7 @@ func TestMemoryOnlyDeployment_RevisionOpsWork(t *testing.T) {
 
 	rev, err := a.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   xdMemNS,
 		MemoryKey:   xdMemKey,
 		Author:      memory.Author{AgentID: "claude"},
@@ -1160,6 +1165,7 @@ func TestLegacySelectorPreservesExactKnowledgeKey(t *testing.T) {
 		t.Helper()
 		rev, err := ks.Write(ctx, knowledge.WriteInput{
 			Namespace: xdKnowNS,
+			Actor:     "user",
 			Key:       key,
 			Kind:      "note",
 			Source:    "manual",
@@ -1244,6 +1250,7 @@ func TestLegacySelectorDoesNotResolveTrimmedKnowledgeIdentity(t *testing.T) {
 	ctx := context.Background()
 	trimmed, err := ks.Write(ctx, knowledge.WriteInput{
 		Namespace: xdKnowNS,
+		Actor:     "user",
 		Key:       "unpaired_key",
 		Kind:      "note",
 		Source:    "manual",
@@ -1461,9 +1468,12 @@ func TestItemIDSelectorHonorsDomainAvailabilityAfterResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	knowledgeOnly := *a
-	knowledgeOnly.MemoryStore = nil
-	knowledgeOnly.EventStore = nil
+	knowledgeOnly := &Adapter{
+		Store:          a.Store,
+		Token:          a.Token,
+		KnowledgeStore: a.KnowledgeStore,
+		WorkspaceStore: a.WorkspaceStore,
+	}
 	if raw := xdMCP(t, knowledgeOnly.handleTesseractGet, map[string]any{"item_id": knowledgeRevision.ItemID}); strings.Contains(raw, `"code":"`) {
 		t.Fatalf("knowledge-only deployment could not read knowledge item: %s", raw)
 	}
@@ -1480,9 +1490,12 @@ func TestItemIDSelectorHonorsDomainAvailabilityAfterResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eventOnly := *a
-	eventOnly.MemoryStore = nil
-	eventOnly.KnowledgeStore = nil
+	eventOnly := &Adapter{
+		Store:          a.Store,
+		Token:          a.Token,
+		EventStore:     a.EventStore,
+		WorkspaceStore: a.WorkspaceStore,
+	}
 	if raw := xdMCP(t, eventOnly.handleTesseractGet, map[string]any{"item_id": eventRevision.ItemID}); strings.Contains(raw, `"code":"`) {
 		t.Fatalf("event-only deployment could not read event item: %s", raw)
 	}

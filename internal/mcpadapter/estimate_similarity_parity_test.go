@@ -133,6 +133,7 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 	} {
 		rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   estNS,
 			MemoryKey:   row.key,
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -158,6 +159,7 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 	} {
 		rev, err := ks.Write(ctx, knowledge.WriteInput{
 			Namespace: estKnowNS,
+			Actor:     "user",
 			Key:       k.key,
 			Kind:      k.kind,
 			Source:    k.source,

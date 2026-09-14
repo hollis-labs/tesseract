@@ -49,6 +49,7 @@ func TestMemorySubsystemWiresLiveDeferredEmbedding(t *testing.T) {
 	// A write through the production store must actually reach the queue.
 	rev, err := mem.Store.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "wiring.deferred_embedding",
 		Author:      memory.Author{AgentID: "wiring-test", AgentVersion: "1.0"},

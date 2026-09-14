@@ -2,6 +2,7 @@ package contextpolicy
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -221,5 +222,61 @@ func TestExtractScopeHead(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("ExtractScopeHead(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestCanWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	e := New()
+	err := e.CanWrite("agent-1", "agent", "user/chrispian/memory/notes")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var spv *ScopePolicyViolation
+	if !errors.As(err, &spv) {
+		t.Fatalf("expected *ScopePolicyViolation, got %T: %v", err, err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "writes to protected namespace \"user/chrispian/memory/notes\" require actor=user") {
+		t.Errorf("expected attempted namespace in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, `attempted scope "user/chrispian" with actor "agent"`) {
+		t.Errorf("expected attempted scope and actor in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "project/{slug}") {
+		t.Errorf("expected project/{slug} guidance in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "system") {
+		t.Errorf("expected system guidance in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "tesseract_skills namespaces") {
+		t.Errorf("expected tesseract_skills namespaces in error, got: %s", msg)
+	}
+}
+
+func TestCanWrite_RegisteredUserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	e := New()
+	if err := e.RegisterNamespace("user/chrispian", "user", "chrispian", map[string]any{"tier": "memory"}); err != nil {
+		t.Fatalf("RegisterNamespace: %v", err)
+	}
+	err := e.CanWrite("agent-1", "agent", "user/chrispian/memory/notes")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "tesseract_skills namespaces") {
+		t.Errorf("expected teaching error, got: %s", err.Error())
+	}
+	// user actor succeeds
+	if err := e.CanWrite("", "user", "user/chrispian/memory/notes"); err != nil {
+		t.Errorf("expected user actor allowed on registered user namespace, got: %v", err)
+	}
+}
+
+func TestCanWrite_RegisteredProjectScopePermitsAgent(t *testing.T) {
+	e := New()
+	if err := e.RegisterNamespace("project/tesseract", "project", "tesseract", map[string]any{"tier": "memory"}); err != nil {
+		t.Fatalf("RegisterNamespace: %v", err)
+	}
+	if err := e.CanWrite("agent-1", "agent", "project/tesseract/memory/notes"); err != nil {
+		t.Errorf("expected agent allowed on registered project namespace, got: %v", err)
 	}
 }

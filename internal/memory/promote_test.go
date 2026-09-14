@@ -14,6 +14,7 @@ import (
 func sessionInput(key string) memory.WriteInput {
 	return memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/session/sess123/memory/notes",
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},

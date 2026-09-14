@@ -76,6 +76,7 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		// being moved, not of the operation doing the moving.
 		Domain:         srcRev.Domain,
 		Namespace:      in.TargetNamespace,
+		Actor:          "user",
 		MemoryKey:      srcRev.MemoryKey,
 		Author:         Author{AgentID: in.ActorAgentID, AgentVersion: in.ActorVersion},
 		Trigger:        TriggerPromotion,

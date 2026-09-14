@@ -29,6 +29,7 @@ func seedLinkedCorpus(t *testing.T, srv *Server) {
 		t.Helper()
 		if _, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   relatedNS,
 			MemoryKey:   key,
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},

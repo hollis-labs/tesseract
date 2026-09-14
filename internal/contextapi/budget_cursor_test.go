@@ -66,6 +66,7 @@ func seedBudgetRows(t *testing.T, srv *Server, n int) {
 	for i := 0; i < n; i++ {
 		if _, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   "user/chrispian/memory/notes",
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
 			Trigger:     memory.TriggerExplicit,
@@ -260,6 +261,7 @@ func seedHistory(t *testing.T, srv *Server, n int) {
 	for i := 0; i < n; i++ {
 		rev, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   "user/chrispian/memory/notes",
 			MemoryKey:   "hist.key",
 			Supersedes:  last,
@@ -329,6 +331,7 @@ func TestKnowledgeHistoryHTTP_BareArrayUntilAKnobIsPassed(t *testing.T) {
 	var last string
 	for i := 0; i < 3; i++ {
 		rev, err := srv.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
+			Actor:      "user",
 			Namespace:  "user/chrispian/knowledge/framework",
 			Key:        "k.hist",
 			Kind:       "doc",

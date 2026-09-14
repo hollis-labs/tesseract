@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 )
 
@@ -65,6 +66,67 @@ func (s *Store) validateTierPolicy(ctx context.Context, q queryRower, in WriteIn
 	tp := contextpolicy.ParseTierPolicy(policyMap)
 	payloadLen := len(in.Summary) + len(in.Body) + len(in.Data)
 	return tp.Validate(ns, "write", payloadLen, in.Data)
+}
+
+// validateCanWrite enforces namespace write authorization rules via
+// contextpolicy.CanWrite. It consults namespace_policies for declared
+// registration on the target namespace and its scope head, registers them in a
+// policy engine, and checks write permission. An empty actor defaults to
+// "agent", ensuring unasserted writes to protected user namespaces fail closed.
+func (s *Store) validateCanWrite(ctx context.Context, q queryRower, in WriteInput) error {
+	// CanWrite enforcement applies to memory and knowledge domains (CW-20260912-0082).
+	// The event domain is an append-only narrative log that opts out of memory scope fencing.
+	if in.Domain == domains.Event {
+		return nil
+	}
+	ns := strings.TrimSpace(in.Namespace)
+	if ns == "" {
+		return nil
+	}
+	actor := strings.TrimSpace(in.Actor)
+	if actor == "" {
+		actor = "agent"
+	}
+	clientID := strings.TrimSpace(in.ClientID)
+
+	engine := contextpolicy.New()
+
+	// 1. Exact lookup
+	var ownerType, ownerID, policyJSON sql.NullString
+	err := q.QueryRowContext(ctx, `SELECT owner_type, owner_id, policy_json FROM namespace_policies WHERE namespace = ?`, ns).
+		Scan(&ownerType, &ownerID, &policyJSON)
+	if err == nil && ownerType.Valid && ownerID.Valid && ownerType.String != "" && ownerID.String != "" {
+		var policyMap map[string]any
+		if policyJSON.Valid && policyJSON.String != "" {
+			_ = json.Unmarshal([]byte(policyJSON.String), &policyMap)
+		}
+		_ = engine.RegisterNamespace(ns, ownerType.String, ownerID.String, policyMap)
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if !strings.Contains(err.Error(), "no such table") {
+			return err
+		}
+	}
+
+	// 2. Scope head fallback
+	head := contextpolicy.ExtractScopeHead(ns)
+	if head != "" && head != ns {
+		var hType, hID, hPolicy sql.NullString
+		hErr := q.QueryRowContext(ctx, `SELECT owner_type, owner_id, policy_json FROM namespace_policies WHERE namespace = ?`, head).
+			Scan(&hType, &hID, &hPolicy)
+		if hErr == nil && hType.Valid && hID.Valid && hType.String != "" && hID.String != "" {
+			var hPolicyMap map[string]any
+			if hPolicy.Valid && hPolicy.String != "" {
+				_ = json.Unmarshal([]byte(hPolicy.String), &hPolicyMap)
+			}
+			_ = engine.RegisterNamespace(head, hType.String, hID.String, hPolicyMap)
+		} else if hErr != nil && !errors.Is(hErr, sql.ErrNoRows) {
+			if !strings.Contains(hErr.Error(), "no such table") {
+				return hErr
+			}
+		}
+	}
+
+	return engine.CanWrite(clientID, actor, ns)
 }
 
 // NamespaceOwner returns the registered owner of namespace. It consults

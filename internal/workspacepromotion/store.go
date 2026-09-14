@@ -368,7 +368,7 @@ func (s *Store) normalizeTarget(ctx context.Context, tx *sql.Tx, target Target, 
 
 func writeInput(target Target, source sourceSnapshot) memory.WriteInput {
 	return memory.WriteInput{
-		Domain: target.Domain, Namespace: target.Namespace, MemoryKey: target.Key, WorkstreamID: target.WorkstreamID,
+		Domain: target.Domain, Namespace: target.Namespace, Actor: "user", MemoryKey: target.Key, WorkstreamID: target.WorkstreamID,
 		Status: target.Status, Author: target.Author, Trigger: target.Trigger, SessionID: target.SessionID,
 		DerivedFrom: target.DerivedFrom, Confidence: target.Confidence, Tags: target.Tags,
 		TTL: time.Duration(target.TTLSeconds) * time.Second, Summary: source.Summary, Body: source.Body,

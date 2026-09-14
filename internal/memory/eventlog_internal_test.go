@@ -47,6 +47,7 @@ func TestEventLogKeysetBreaksTiesInsideOneTimestamp(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		rev, err := ms.WriteRevision(ctx, WriteInput{
 			Domain:      domains.Event,
+			Actor:       "user",
 			Namespace:   ns,
 			Author:      Author{AgentID: "test-agent"},
 			Trigger:     TriggerManual,
@@ -156,6 +157,7 @@ func TestEventLogSingleQueryMatchesPagedWalk(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		rev, err := ms.WriteRevision(ctx, WriteInput{
 			Domain:      domains.Event,
+			Actor:       "user",
 			Namespace:   ns,
 			Author:      Author{AgentID: "test-agent"},
 			Trigger:     TriggerManual,

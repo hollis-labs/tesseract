@@ -37,7 +37,7 @@ func pointerHealthAdapter(t *testing.T) (*Adapter, string, string) {
 
 	write := func(key, scheme, locator string) memory.Revision {
 		rev, wErr := ks.Write(ctx, knowledge.WriteInput{
-			Namespace: phNamespace, Key: key, Kind: "note", Source: "manual",
+			Namespace: phNamespace, Actor: "user", Key: key, Kind: "note", Source: "manual",
 			Pointer: memory.Pointer{Scheme: scheme, Locator: locator},
 			Summary: "pointer health probe " + key,
 			Author:  memory.Author{AgentID: "test", AgentVersion: "1"}, SessionID: "sess-ph",

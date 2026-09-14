@@ -18,7 +18,7 @@ func writeReferenceRevision(t *testing.T, ms *memory.Store, domain domains.Domai
 	t.Helper()
 	if domain == domains.Knowledge {
 		rev, err := knowledge.New(ms).Write(context.Background(), knowledge.WriteInput{
-			Namespace: namespace, Key: key, Kind: "doc", Source: "test",
+			Namespace: namespace, Actor: "user", Key: key, Kind: "doc", Source: "test",
 			Pointer: memory.Pointer{Scheme: "nil", Locator: "nil"}, Summary: "secret content",
 			Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
 		})
@@ -28,7 +28,7 @@ func writeReferenceRevision(t *testing.T, ms *memory.Store, domain domains.Domai
 		return rev
 	}
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
-		Domain: domain, Namespace: namespace, MemoryKey: key, Summary: "secret content",
+		Domain: domain, Actor: "user", Namespace: namespace, MemoryKey: key, Summary: "secret content",
 		Author: memory.Author{AgentID: "test"}, SessionID: "resolver",
 		Trigger: memory.TriggerManual, DerivedFrom: memory.DerivedFromProject,
 	})

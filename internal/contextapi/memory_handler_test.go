@@ -33,6 +33,7 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 
 	body := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"memory_key":"prefs.output_style",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -68,7 +69,7 @@ func TestMemoryWrite_ReturnsRevisionWithDomain(t *testing.T) {
 func TestMemoryHTTPWorkstreamWriteFilterAndNullRejection(t *testing.T) {
 	srv := newMemoryTestServer(t)
 	writeBody := `{
-		"namespace":"user/chrispian/memory/notes", "memory_key":"workstream.http",
+		"namespace":"user/chrispian/memory/notes", "actor":"user", "memory_key":"workstream.http",
 		"workstream_id":"ws-http", "author":{"agent_id":"test"}, "trigger":"manual",
 		"session_id":"http-session", "derived_from":"observation", "confidence":0.9,
 		"summary":"workstream http"
@@ -130,6 +131,7 @@ func TestMemoryHistory_RoundtripViaHTTP(t *testing.T) {
 	}
 	base := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"memory_key":"prefs.history_test",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -301,6 +303,7 @@ func TestPostRoutesStillAcceptTheirCanonicalBodies(t *testing.T) {
 
 	write := postRawJSON(t, srv, "/v1/memory/write", `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"memory_key":"prefs.output_style",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -440,7 +443,7 @@ func TestMemoryWrite_RetiredOriginNamesItsReplacement(t *testing.T) {
 // arrive together. The successful control also pins flat-in / nested-out.
 func TestMemoryWriteRetiredPayloadRefused(t *testing.T) {
 	srv := newMemoryTestServer(t)
-	base := `{"namespace":"user/chrispian/memory/notes","memory_key":"flat.write","author":{"agent_id":"test"},"trigger":"explicit","session_id":"s1","derived_from":"user","confidence":0.9`
+	base := `{"namespace":"user/chrispian/memory/notes","actor":"user","memory_key":"flat.write","author":{"agent_id":"test"},"trigger":"explicit","session_id":"s1","derived_from":"user","confidence":0.9`
 	for _, content := range []string{
 		`,"payload":{"summary":"old"}}`,
 		`,"summary":"new","payload":{"summary":"old"}}`,
@@ -471,5 +474,51 @@ func TestMemoryWriteRetiredPayloadRefused(t *testing.T) {
 	}
 	if len(history) != 1 || history[0].RevisionID != rev.RevisionID {
 		t.Fatalf("rejected shapes wrote revisions: %+v", history)
+	}
+}
+
+func TestMemoryWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	srv := newMemoryTestServer(t)
+
+	// Writing to user scope without actor=user returns 403 policy_denied with the teaching message.
+	body := `{
+		"namespace":"user/chrispian/memory/notes",
+		"memory_key":"prefs.output_style",
+		"author":{"agent_id":"test","agent_version":"1.0"},
+		"trigger":"explicit",
+		"session_id":"manual:01HX",
+		"derived_from":"user",
+		"confidence":0.9,
+		"status":"draft",
+		"summary":"terse output"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/write", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 Forbidden; body=%s", rr.Code, rr.Body.String())
+	}
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Code != "policy_denied" {
+		t.Errorf("code = %q, want policy_denied", errResp.Code)
+	}
+	for _, needle := range []string{
+		"writes to protected namespace",
+		"require actor=user",
+		"project/{slug}",
+		"system",
+		"tesseract_skills namespaces",
+	} {
+		if !strings.Contains(errResp.Message, needle) {
+			t.Errorf("error message missing %q:\n%s", needle, errResp.Message)
+		}
 	}
 }

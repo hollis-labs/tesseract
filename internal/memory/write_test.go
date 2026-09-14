@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
@@ -30,6 +31,7 @@ func sampleInput(key string) memory.WriteInput {
 	return memory.WriteInput{
 		Domain:      domains.Memory,
 		Namespace:   "user/chrispian/memory/notes",
+		Actor:       "user",
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
 		Trigger:     memory.TriggerExplicit,
@@ -274,6 +276,7 @@ func TestWriteRevisionEmitsAuditEvent(t *testing.T) {
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
 		Namespace:   "user/alice/memory/notes",
+		Actor:       "user",
 		MemoryKey:   "notes.today",
 		Author:      memory.Author{AgentID: "test-agent"},
 		Trigger:     memory.TriggerManual,
@@ -319,6 +322,7 @@ func TestDeprecateEmitsAuditEvent(t *testing.T) {
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
 		Namespace:   "user/alice/memory/notes",
+		Actor:       "user",
 		MemoryKey:   "notes.today",
 		Author:      memory.Author{AgentID: "test-agent"},
 		Trigger:     memory.TriggerManual,
@@ -376,6 +380,7 @@ func TestDeprecateEmitsTheEntrysOwnDomain(t *testing.T) {
 	rev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Knowledge,
 		Namespace:   "user/alice/knowledge/docs",
+		Actor:       "user",
 		MemoryKey:   "the.doc",
 		Author:      memory.Author{AgentID: "test-agent"},
 		Trigger:     memory.TriggerManual,
@@ -423,6 +428,7 @@ func TestPromoteEmitsThreeEvents(t *testing.T) {
 	srcRev, err := ms.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
 		Namespace:   "user/alice/session/s1/memory/notes",
+		Actor:       "user",
 		MemoryKey:   "note.42",
 		Author:      memory.Author{AgentID: "test-agent"},
 		Trigger:     memory.TriggerManual,
@@ -517,5 +523,55 @@ func TestWriteRevision_DomainErrorNamesTheValues(t *testing.T) {
 			t.Errorf("the domain-required error does not name the domain %q, "+
 				"so a caller reading it still cannot pick a value:\n%s", d, msg)
 		}
+	}
+}
+
+func TestWriteRevision_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	ms, cleanup := newTestStore(t)
+	defer cleanup()
+
+	// Default unasserted actor ("" -> "agent") writing to user scope is rejected
+	in := sampleInput("prefs.test")
+	in.Actor = ""
+	_, err := ms.WriteRevision(context.Background(), in)
+	if err == nil {
+		t.Fatal("expected write to user scope without actor=user to be rejected")
+	}
+	var spv *contextpolicy.ScopePolicyViolation
+	if !errors.As(err, &spv) {
+		t.Fatalf("expected *contextpolicy.ScopePolicyViolation, got %T: %v", err, err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "writes to protected namespace \"user/chrispian/memory/notes\" require actor=user") {
+		t.Errorf("expected attempted namespace in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, `attempted scope "user/chrispian" with actor "agent"`) {
+		t.Errorf("expected attempted scope and actor in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "project/{slug}") {
+		t.Errorf("expected project/{slug} guidance in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "system") {
+		t.Errorf("expected system guidance in error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "tesseract_skills namespaces") {
+		t.Errorf("expected tesseract_skills namespaces in error, got: %s", msg)
+	}
+
+	// Explicit actor="agent" is also rejected
+	in.Actor = "agent"
+	_, err = ms.WriteRevision(context.Background(), in)
+	if err == nil {
+		t.Fatal("expected write to user scope with actor=agent to be rejected")
+	}
+
+	// Explicit actor="user" succeeds
+	in.Actor = "user"
+	rev, err := ms.WriteRevision(context.Background(), in)
+	if err != nil {
+		t.Fatalf("expected write to user scope with actor=user to succeed, got: %v", err)
+	}
+	if rev.RevisionID == "" {
+		t.Fatal("expected non-empty revision_id")
 	}
 }

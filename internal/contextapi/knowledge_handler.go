@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/surfacefields"
@@ -234,6 +235,7 @@ func jsonFieldNames(dst any) []string {
 // rather than dropping it and reporting a missing facet later.
 type knowledgeWriteRequest struct {
 	Namespace    string         `json:"namespace"`
+	Actor        string         `json:"actor,omitempty"`
 	Key          string         `json:"key,omitempty"`
 	WorkstreamID presentString  `json:"workstream_id,omitempty"`
 	Kind         string         `json:"kind"`
@@ -271,8 +273,23 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actor := req.Actor
+	if actor == "" {
+		actor = "agent"
+	}
+	var clientID string
+	if claims, ok := getTokenClaims(r); ok {
+		clientID = claims.ClientID
+	}
+	if err := s.Policy.CanWrite(clientID, actor, req.Namespace); err != nil {
+		writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+		return
+	}
+
 	rev, err := s.KnowledgeStore.Write(r.Context(), knowledge.WriteInput{
 		Namespace:      req.Namespace,
+		Actor:          actor,
+		ClientID:       clientID,
 		Key:            req.Key,
 		WorkstreamID:   req.WorkstreamID.Pointer(),
 		Kind:           req.Kind,
@@ -291,6 +308,11 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 		ConsumerState:  req.ConsumerState,
 	})
 	if err != nil {
+		var spv *contextpolicy.ScopePolicyViolation
+		if errors.As(err, &spv) {
+			writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+			return
+		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 			return

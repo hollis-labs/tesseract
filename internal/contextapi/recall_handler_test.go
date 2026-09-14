@@ -26,6 +26,7 @@ func seedMemoryWithTags(t *testing.T, srv *Server, ns, key, summary string, tags
 	t.Helper()
 	_, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   ns,
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -45,6 +46,7 @@ func seedMemoryWithTags(t *testing.T, srv *Server, ns, key, summary string, tags
 func seedKnowledgeWithTags(t *testing.T, srv *Server, ns, key, summary string, tags []string) {
 	t.Helper()
 	_, err := srv.KnowledgeStore.Write(context.Background(), knowledge.WriteInput{
+		Actor:     "user",
 		Namespace: ns,
 		Key:       key,
 		Kind:      "session_close",

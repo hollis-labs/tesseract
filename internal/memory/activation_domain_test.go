@@ -30,6 +30,7 @@ func activationFixtures() map[domains.Domain]activationFixture {
 	base := func(ns, key string) memory.WriteInput {
 		return memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   ns,
 			MemoryKey:   key,
 			Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},

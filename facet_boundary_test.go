@@ -11,6 +11,7 @@ import (
 func publicMemoryInput() memory.WriteInput {
 	return memory.WriteInput{
 		Domain:      memory.DomainMemory,
+		Actor:       "user",
 		Namespace:   "user/test/memory/notes",
 		MemoryKey:   "facet.boundary",
 		Status:      memory.StatusDraft,

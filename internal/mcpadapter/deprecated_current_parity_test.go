@@ -21,6 +21,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 		t.Helper()
 		rev, err := store.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   "user/chrispian/memory/notes",
 			MemoryKey:   key,
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},
@@ -45,6 +46,7 @@ func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, s
 	supersededRev := write("deprecated.parity.superseded")
 	replacementIn := memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		MemoryKey:   "deprecated.parity.superseded",
 		Supersedes:  supersededRev.RevisionID,

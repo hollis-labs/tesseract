@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
+	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -50,6 +51,7 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
 		mcp.WithString("dedup", mcp.Description("Dedup mode: none (default) or semantic")),
 		mcp.WithNumber("dedup_threshold", mcp.Description("Similarity threshold override for semantic dedup (0 = use config default 0.85)")),
+		mcp.WithString("actor", mcp.Description("Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.")),
 		mcp.WithReadOnlyHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -98,13 +100,23 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 		return workstreamErr, nil
 	}
 
+	actor := req.GetString("actor", "")
+	if actor == "" {
+		actor = "agent"
+	}
+	ns := req.GetString("namespace", "")
+	if policyErr := a.policy().CanWrite("", actor, ns); policyErr != nil {
+		return toolError(codeNamespaceNotPermitted, policyErr.Error()), nil
+	}
+
 	in := memory.WriteInput{
 		// `memory_write` is the memory surface and declares no `domain`
 		// argument, so the caller has nothing to fill in. The domain is a
 		// property of the TOOL, and it is set here rather than defaulted in
 		// the store — see errDomainRequired in internal/memory/write.go.
 		Domain:       domains.Memory,
-		Namespace:    req.GetString("namespace", ""),
+		Namespace:    ns,
+		Actor:        actor,
 		MemoryKey:    req.GetString("memory_key", ""),
 		WorkstreamID: workstreamID,
 		Supersedes:   req.GetString("supersedes", ""),
@@ -130,6 +142,10 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req mcp.CallToolRequest
 
 	rev, err := a.MemoryStore.WriteRevision(ctx, in)
 	if err != nil {
+		var spv *contextpolicy.ScopePolicyViolation
+		if errors.As(err, &spv) {
+			return toolError(codeNamespaceNotPermitted, err.Error()), nil
+		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			return toolError(codeValidationError, err.Error()), nil
 		}

@@ -100,6 +100,7 @@ func TestKnowledgeReadsAreNotHeldToTheMemoryKeyRule(t *testing.T) {
 
 	written, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Knowledge,
+		Actor:       "user",
 		Namespace:   ns,
 		MemoryKey:   knowledgeKey,
 		Author:      memory.Author{AgentID: "indexer", AgentVersion: "1.0"},

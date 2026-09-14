@@ -24,6 +24,8 @@ type WriteInput struct {
 	// errDomainRequired. See that message for why the default was removed.
 	Domain    domains.Domain
 	Namespace string
+	Actor     string
+	ClientID  string
 	MemoryKey string
 	// WorkstreamID is presence-capable: nil preserves the current association,
 	// a nonempty value sets it, and a pointer to empty clears it.
@@ -61,6 +63,10 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	// The input is flat; stored revisions and every read projection retain Payload.
 	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
 	if err := ValidateWriteInput(in); err != nil {
+		return Revision{}, err
+	}
+
+	if err := s.validateCanWrite(ctx, s.db, in); err != nil {
 		return Revision{}, err
 	}
 

@@ -73,6 +73,7 @@ func TestTesseract_WriteAndRecall(t *testing.T) {
 
 	rev, err := c.WriteMemory(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/test/memory/notes",
 		MemoryKey:   "facade_test",
 		Status:      memory.StatusDraft,
@@ -115,6 +116,7 @@ func TestTesseract_GetCurrentAndHistory(t *testing.T) {
 
 	written, err := c.WriteMemory(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/test/memory/notes",
 		MemoryKey:   "history_test",
 		Status:      memory.StatusDraft,

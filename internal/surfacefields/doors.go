@@ -49,6 +49,7 @@ var Doors = []Door{
 			{Concept: "dedup_threshold", MCP: "dedup_threshold", HTTP: "dedup_threshold"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
 			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
+			{Concept: "actor", MCP: "actor", HTTP: "actor"},
 
 			{Concept: "author_agent_id", MCP: "author_agent_id", HTTP: "author.agent_id"},
 			{
@@ -103,6 +104,7 @@ var Doors = []Door{
 			{Concept: "supersedes", MCP: "supersedes", HTTP: "supersedes"},
 			{Concept: "consumer_state", MCP: "consumer_state", HTTP: "consumer_state"},
 			{Concept: "workstream_id", MCP: "workstream_id", HTTP: "workstream_id"},
+			{Concept: "actor", MCP: "actor", HTTP: "actor"},
 
 			{Concept: "pointer_scheme", MCP: "pointer_scheme", HTTP: "pointer.scheme"},
 			{Concept: "pointer_locator", MCP: "pointer_locator", HTTP: "pointer.locator"},

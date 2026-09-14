@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -37,6 +38,9 @@ func newMemoryAdapter(t *testing.T, scopes ...string) *Adapter {
 // writeViaHandler is a helper that calls handleMemoryWrite and returns the parsed result.
 func writeViaHandler(t *testing.T, a *Adapter, args map[string]any) map[string]any {
 	t.Helper()
+	if _, ok := args["actor"]; !ok {
+		args["actor"] = "user"
+	}
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = args
 	res, err := a.handleMemoryWrite(context.Background(), req)
@@ -467,5 +471,55 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 	getBody := parseResult(t, getRes)
 	if getBody["code"] != "not_found" {
 		t.Errorf("expected not_found after deprecating only revision, got %v", getBody)
+	}
+}
+
+func TestMemoryWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	a := newMemoryAdapter(t, "memory:write")
+
+	for _, tc := range []struct {
+		name  string
+		actor any
+	}{
+		{"omitted actor", nil},
+		{"explicit agent actor", "agent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := map[string]any{
+				"namespace":       "user/chrispian/memory/notes",
+				"memory_key":      "prefs.output_style",
+				"author_agent_id": "claude",
+				"trigger":         "explicit",
+				"session_id":      "sess-001",
+				"derived_from":    "user",
+				"confidence":      0.9,
+				"payload_summary": "User prefers dark mode",
+			}
+			if tc.actor != nil {
+				args["actor"] = tc.actor
+			}
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = args
+			res, err := a.handleMemoryWrite(context.Background(), req)
+			if err != nil {
+				t.Fatalf("handleMemoryWrite: %v", err)
+			}
+			body := parseResult(t, res)
+			if body["code"] != string(codeNamespaceNotPermitted) {
+				t.Fatalf("code = %v, want %s; body=%v", body["code"], codeNamespaceNotPermitted, body)
+			}
+			msg, _ := body["message"].(string)
+			for _, needle := range []string{
+				"writes to protected namespace",
+				"require actor=user",
+				"project/{slug}",
+				"system",
+				"tesseract_skills namespaces",
+			} {
+				if !strings.Contains(msg, needle) {
+					t.Errorf("error message missing %q:\n%s", needle, msg)
+				}
+			}
+		})
 	}
 }

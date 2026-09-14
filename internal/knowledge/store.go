@@ -44,6 +44,8 @@ func New(ms *memory.Store) *Store {
 // string; upstream callers are expected to pick from a conventional set.
 type WriteInput struct {
 	Namespace    string
+	Actor        string
+	ClientID     string
 	Key          string
 	WorkstreamID *string
 
@@ -100,6 +102,8 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 	memIn := memory.WriteInput{
 		Domain:       domains.Knowledge,
 		Namespace:    in.Namespace,
+		Actor:        in.Actor,
+		ClientID:     in.ClientID,
 		MemoryKey:    in.Key,
 		WorkstreamID: in.WorkstreamID,
 		Supersedes:   in.Supersedes,

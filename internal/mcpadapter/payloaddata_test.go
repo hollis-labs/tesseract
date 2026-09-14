@@ -161,10 +161,12 @@ func TestFlatDataWriteContractAcrossMCPDoors(t *testing.T) {
 				"consumer_state": `{"completed":false}`, "tags": `["flat-write"]`,
 			}
 			if tc.tool == "memory_write" {
+				args["actor"] = "user"
 				args["trigger"] = "explicit"
 				args["derived_from"] = "user"
 			}
 			if tc.tool == "knowledge_write" {
+				args["actor"] = "user"
 				args["kind"] = "doc"
 				args["source"] = "manual"
 				args["pointer_scheme"] = "nil"

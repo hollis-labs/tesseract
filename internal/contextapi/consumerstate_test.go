@@ -38,6 +38,7 @@ func writeTodoHTTP(t *testing.T, srv *Server, key, bag string) {
 	t.Helper()
 	body := `{
 		"namespace":"user/chrispian/memory/todos",
+		"actor":"user",
 		"memory_key":"` + key + `",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -59,6 +60,7 @@ func TestHTTPMemoryWriteRoundTripsConsumerState(t *testing.T) {
 	bag := `{"kind":"todo","section":"now","completed":false,"priority":2}`
 	body := `{
 		"namespace":"user/chrispian/memory/todos",
+		"actor":"user",
 		"memory_key":"todo.milk",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -102,6 +104,7 @@ func TestHTTPMemoryWriteRefusesANonObjectConsumerState(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			body := `{
 				"namespace":"user/chrispian/memory/todos",
+				"actor":"user",
 				"author":{"agent_id":"test","agent_version":"1.0"},
 				"trigger":"explicit",
 				"session_id":"manual:01HX",

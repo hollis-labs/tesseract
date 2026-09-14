@@ -28,6 +28,7 @@ func TestKnowledgeWrite_Success(t *testing.T) {
 
 	body := `{
 		"namespace":"user/chrispian/knowledge/framework",
+		"actor":"user",
 		"key":"framework.go-providers",
 		"kind":"package",
 		"source":"filesystem",
@@ -58,7 +59,7 @@ func TestKnowledgeWrite_Success(t *testing.T) {
 		t.Errorf("facets = %+v, want kind=package source=filesystem", rev.Facets)
 	}
 	if rev.Facets.Pointer == nil || rev.Facets.Pointer.Scheme != "file" {
-		t.Errorf("pointer = %+v, want scheme=file", rev.Facets.Pointer)
+		t.Errorf("facets.pointer = %+v, want scheme=file", rev.Facets.Pointer)
 	}
 }
 
@@ -88,6 +89,7 @@ func TestKnowledgeWrite_MissingFacetsReturns400(t *testing.T) {
 	// Missing kind, source, pointer.
 	body := `{
 		"namespace":"user/chrispian/knowledge/framework",
+		"actor":"user",
 		"summary":"no facets",
 		"author":{"agent_id":"x","agent_version":"1.0"},
 		"session_id":"manual:01HX"
@@ -108,6 +110,7 @@ func TestKnowledgeGetCurrent_Success(t *testing.T) {
 	srv := newKnowledgeTestServer(t)
 	writeBody := `{
 		"namespace":"user/chrispian/knowledge/framework",
+		"actor":"user",
 		"key":"framework.go-providers",
 		"kind":"package",
 		"source":"filesystem",
@@ -168,6 +171,7 @@ func TestKnowledgeGetHistory_OrdersNewestFirst(t *testing.T) {
 	writeBody := func(summary, supersedes string) string {
 		return `{
 			"namespace":"user/chrispian/knowledge/framework",
+			"actor":"user",
 			"key":"framework.go-providers",
 			"kind":"package",
 			"source":"filesystem",
@@ -388,6 +392,7 @@ func TestKnowledgeWrite_NestedBodyStillAccepted(t *testing.T) {
 
 	body := `{
 		"namespace":"user/chrispian/knowledge/framework",
+		"actor":"user",
 		"key":"framework.go-providers",
 		"kind":"package",
 		"source":"filesystem",
@@ -413,5 +418,51 @@ func TestKnowledgeWrite_NestedBodyStillAccepted(t *testing.T) {
 	}
 	if len(rev.Tags) != 2 {
 		t.Errorf("tags = %v, want 2", rev.Tags)
+	}
+}
+
+func TestKnowledgeWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
+	srv := newKnowledgeTestServer(t)
+
+	// Omitted or non-user actor writing to user-scoped namespace returns 403 policy_denied
+	// with the teaching message.
+	body := `{
+		"namespace":"user/chrispian/knowledge/framework",
+		"key":"framework.go-providers",
+		"kind":"package",
+		"source":"filesystem",
+		"pointer":{"scheme":"file","locator":"/pkg/go-providers"},
+		"summary":"go-providers multi-provider adapter",
+		"author":{"agent_id":"indexer","agent_version":"1.0"},
+		"session_id":"indexer:01HX"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/knowledge/write", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 Forbidden; body=%s", rr.Code, rr.Body.String())
+	}
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Code != "policy_denied" {
+		t.Errorf("code = %q, want policy_denied", errResp.Code)
+	}
+	for _, needle := range []string{
+		"writes to protected namespace",
+		"require actor=user",
+		"project/{slug}",
+		"system",
+		"tesseract_skills namespaces",
+	} {
+		if !strings.Contains(errResp.Message, needle) {
+			t.Errorf("error message missing %q:\n%s", needle, errResp.Message)
+		}
 	}
 }

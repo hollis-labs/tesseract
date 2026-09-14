@@ -27,6 +27,7 @@ func TestPayloadDataRoundTripsOverHTTP(t *testing.T) {
 	const data = `{"zeta":1,"id":9007199254740993,"alpha":{"nested":true}}`
 	body := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"memory_key":"adr.http",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
@@ -63,6 +64,7 @@ func TestPayloadDataRefusedOverHTTPWhenNotAnObject(t *testing.T) {
 
 	body := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
@@ -103,6 +105,7 @@ func TestPayloadDataWireFormIsSemanticNotByteIdentical(t *testing.T) {
 	const sent = `{"a": 1,  "html":"x<y&z>w"}`
 	body := `{
 		"namespace":"user/chrispian/memory/notes",
+		"actor":"user",
 		"author":{"agent_id":"test","agent_version":"1.0"},
 		"trigger":"explicit",
 		"session_id":"manual:01HX",
@@ -163,6 +166,7 @@ func TestPayloadDataOnKnowledgeAndEventHTTP(t *testing.T) {
 		srv := newKnowledgeTestServer(t)
 		rr, _ := postJSON(t, srv, "/v1/knowledge/write", `{
 			"namespace":"user/chrispian/knowledge/framework",
+			"actor":"user",
 			"key":"framework.go-providers",
 			"kind":"package",
 			"source":"filesystem",

@@ -76,6 +76,7 @@ func TestItemCurrentReinforcesMemoryButHistoryDoesNot(t *testing.T) {
 	srv := newMemoryTestServer(t)
 	written, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		Author:      memory.Author{AgentID: "test"},
 		Trigger:     memory.TriggerExplicit,
@@ -110,6 +111,7 @@ func TestItemReadAppliesResolvedNamespacePolicyBeforeReinforcement(t *testing.T)
 	srv := newMemoryTestServer(t)
 	written, err := srv.MemoryStore.WriteRevision(context.Background(), memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   "user/chrispian/memory/notes",
 		Author:      memory.Author{AgentID: "test"},
 		Trigger:     memory.TriggerExplicit,

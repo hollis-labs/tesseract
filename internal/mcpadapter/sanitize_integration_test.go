@@ -38,6 +38,7 @@ func TestSanitizeMiddleware_PollutedMemoryWrite(t *testing.T) {
 
 	args := map[string]any{
 		"namespace":       "user/chrispian/memory/notes",
+		"actor":           "user",
 		"memory_key":      "decisions.test.cw_sanitize_integration",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",
@@ -101,6 +102,7 @@ func TestSanitizeMiddleware_CleanCallPassesThrough(t *testing.T) {
 
 	args := map[string]any{
 		"namespace":       "user/chrispian/memory/notes",
+		"actor":           "user",
 		"memory_key":      "test.clean_call",
 		"author_agent_id": "claude",
 		"trigger":         "explicit",

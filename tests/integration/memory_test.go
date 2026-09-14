@@ -42,6 +42,7 @@ func TestMemoryEndToEnd(t *testing.T) {
 	// ── Step 1: Write first revision ────────────────────────────────────────────
 	rev1, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   userNS,
 		MemoryKey:   memKey,
 		Author:      author,
@@ -101,6 +102,7 @@ func TestMemoryEndToEnd(t *testing.T) {
 	// ── Step 4: Write second revision (supersedes first) → first auto-deprecated ─
 	rev2, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   userNS,
 		MemoryKey:   memKey,
 		Supersedes:  rev1.RevisionID,
@@ -177,6 +179,7 @@ func TestMemoryEndToEnd(t *testing.T) {
 	// ── Step 7: Write session-scoped memory ──────────────────────────────────────
 	sessionRev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   sessionNS,
 		MemoryKey:   "session.insight",
 		Author:      author,

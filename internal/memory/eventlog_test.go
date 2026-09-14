@@ -18,6 +18,7 @@ const eventNS = "user/chrispian/event/reasoning"
 func eventInput(summary string) memory.WriteInput {
 	return memory.WriteInput{
 		Domain:      domains.Event,
+		Actor:       "user",
 		Namespace:   eventNS,
 		Author:      memory.Author{AgentID: "test-agent", AgentVersion: "1.0"},
 		Trigger:     memory.TriggerManual,

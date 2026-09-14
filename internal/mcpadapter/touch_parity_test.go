@@ -68,6 +68,7 @@ func seedTouchable(t *testing.T, ms *memory.Store, key string) memory.Revision {
 	ctx := context.Background()
 	rev, err := ms.WriteRevision(ctx, memory.WriteInput{
 		Domain:      domains.Memory,
+		Actor:       "user",
 		Namespace:   touchNS,
 		MemoryKey:   key,
 		Author:      memory.Author{AgentID: "test", AgentVersion: "1.0"},

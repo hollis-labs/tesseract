@@ -39,6 +39,7 @@ func relatedAdapter(t *testing.T) *Adapter {
 		t.Helper()
 		if _, wErr := ms.WriteRevision(ctx, memory.WriteInput{
 			Domain:      domains.Memory,
+			Actor:       "user",
 			Namespace:   relNamespace,
 			MemoryKey:   key,
 			Author:      memory.Author{AgentID: "test", AgentVersion: "1"},
