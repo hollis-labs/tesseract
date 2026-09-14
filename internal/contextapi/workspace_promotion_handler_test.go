@@ -145,3 +145,99 @@ func TestWorkspacePromotionHTTPRejectsNullAndRedundantExistingSelectorFields(t *
 		t.Fatalf("unknown nested field=%s", unknown.Body.String())
 	}
 }
+
+func TestWorkspacePromotionHTTPRejectsNoncanonicalFieldNamesAtEveryLevel(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	ctx := context.Background()
+	source, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{Namespace: httpWorkspaceNS, Key: "canonical-fields-source", Summary: "content", Author: memory.Author{AgentID: "draft"}, SessionID: "draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := srv.MemoryStore.WriteRevision(ctx, memory.WriteInput{Domain: "memory", Namespace: "user/chrispian/memory/notes", MemoryKey: "canonical.fields.target", Author: memory.Author{AgentID: "old"}, SessionID: "old", Summary: "old", Trigger: memory.TriggerExplicit, DerivedFrom: memory.DerivedFromProject})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalTarget := func() map[string]any {
+		return map[string]any{"item_id": target.ItemID, "expected_revision_id": target.RevisionID, "author": map[string]any{"agent_id": "codex"}, "session_id": "review", "trigger": "promotion", "derived_from": "project"}
+	}
+	tests := []struct {
+		name string
+		body map[string]any
+	}{
+		{"root", map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "Actor": "agent", "target": canonicalTarget()}},
+		{"target", func() map[string]any {
+			targetSpec := canonicalTarget()
+			targetSpec["Domain"] = ""
+			return map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent", "target": targetSpec}
+		}()},
+		{"author_object", func() map[string]any {
+			targetSpec := canonicalTarget()
+			delete(targetSpec, "author")
+			targetSpec["Author"] = map[string]any{"agent_id": "codex", "agent_version": nil}
+			return map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent", "target": targetSpec}
+		}()},
+		{"author_field", func() map[string]any {
+			targetSpec := canonicalTarget()
+			targetSpec["author"] = map[string]any{"agent_id": "codex", "Agent_Version": "1"}
+			return map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent", "target": targetSpec}
+		}()},
+		{"author_null", func() map[string]any {
+			targetSpec := canonicalTarget()
+			targetSpec["author"] = map[string]any{"agent_id": "codex", "agent_version": nil}
+			return map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent", "target": targetSpec}
+		}()},
+		{"pointer_field", map[string]any{"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent", "target": map[string]any{"domain": "knowledge", "namespace": "project/tesseract/knowledge/contracts", "author": map[string]any{"agent_id": "codex"}, "session_id": "review", "kind": "doc", "source": "manual", "pointer": map[string]any{"Scheme": "nil", "locator": "x"}}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := performJSON(t, srv, http.MethodPost, "/v1/workspace/promote/request", test.body)
+			if response.Code != http.StatusBadRequest || decodeHTTPJSON(t, response.Body.Bytes())["code"] != "validation_error" {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+	for _, stage := range []struct {
+		path string
+		body map[string]any
+	}{
+		{"/v1/workspace/promote/approve", map[string]any{"request_id": "request", "actor": "agent", "Notes": "reviewed"}},
+		{"/v1/workspace/promote/apply", map[string]any{"request_id": "request", "Actor": "agent"}},
+	} {
+		response := performJSON(t, srv, http.MethodPost, stage.path, stage.body)
+		if response.Code != http.StatusBadRequest || decodeHTTPJSON(t, response.Body.Bytes())["code"] != "validation_error" {
+			t.Fatalf("path=%s status=%d body=%s", stage.path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestWorkspacePromotionHTTPAuthorizesExistingTargetBeforeDomainCheck(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+	ctx := context.Background()
+	source, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{Namespace: httpWorkspaceNS, Key: "target-auth-source", Summary: "source", Author: memory.Author{AgentID: "draft"}, SessionID: "draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbiddenTarget, err := srv.WorkspaceStore.Create(ctx, workspace.CreateInput{Namespace: "project/other/workspace/private", Key: "secret", Summary: "secret", Author: memory.Author{AgentID: "other"}, SessionID: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := issueTokenWithScopes(t, srv, "target-domain-denial", []string{"promote.request"}, []string{"project/tesseract/workspace/*"})
+	srv.ManagedAuth = true
+	response := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/workspace/promote/request", map[string]any{
+		"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent",
+		"target": map[string]any{"item_id": forbiddenTarget.ItemID, "expected_revision_id": "irrelevant", "author": map[string]any{"agent_id": "codex"}, "session_id": "review"},
+	}, map[string]string{"Authorization": "Bearer " + token})
+	if response.Code != http.StatusForbidden || decodeHTTPJSON(t, response.Body.Bytes())["code"] != "namespace_not_permitted" {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), forbiddenTarget.Namespace) || strings.Contains(response.Body.String(), "revisioned") {
+		t.Fatalf("authorization denial disclosed target facts: %s", response.Body.String())
+	}
+	authorized := performJSONWithHeaders(t, srv, http.MethodPost, "/v1/workspace/promote/request", map[string]any{
+		"source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent",
+		"target": map[string]any{"item_id": source.ItemID, "expected_revision_id": "irrelevant", "author": map[string]any{"agent_id": "codex"}, "session_id": "review"},
+	}, map[string]string{"Authorization": "Bearer " + token})
+	if authorized.Code != http.StatusBadRequest || decodeHTTPJSON(t, authorized.Body.Bytes())["code"] != "validation_error" {
+		t.Fatalf("authorized ineligible target status=%d body=%s", authorized.Code, authorized.Body.String())
+	}
+}

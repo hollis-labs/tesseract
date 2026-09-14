@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -98,6 +99,93 @@ func TestWorkspacePromoteMCPFlatStages(t *testing.T) {
 	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "approve", "request_id": requestID, "actor": "approver", "target_key": "ignored"}), "validation_error")
 	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"source_item_id": source.ItemID}), "validation_error")
 	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "request ", "source_item_id": source.ItemID}), "validation_error")
+}
+
+func TestWorkspacePromoteMCPRejectsMalformedScalarsBeforeDefaults(t *testing.T) {
+	a := workspaceAdapter(t)
+	source, err := a.WorkspaceStore.Create(context.Background(), workspace.CreateInput{
+		Namespace: mcpWorkspaceNS, Key: "malformed-scalars", Summary: "source",
+		Author: memory.Author{AgentID: "draft"}, SessionID: "draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := map[string]any{
+		"stage": "request", "source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent",
+		"target_domain": "memory", "target_namespace": "user/chrispian/memory/notes",
+		"target_author_agent_id": "codex", "target_session_id": "review",
+		"target_trigger": "promotion", "target_derived_from": "project",
+	}
+	clone := func() map[string]any {
+		out := make(map[string]any, len(base)+1)
+		for key, value := range base {
+			out[key] = value
+		}
+		return out
+	}
+	stringFields := []string{
+		"stage", "source_item_id", "source_version_token", "request_id", "actor", "reason", "notes",
+		"target_domain", "target_namespace", "target_key", "target_item_id", "expected_target_revision_id",
+		"target_author_agent_id", "target_author_version", "target_session_id", "target_data_schema_hash",
+		"target_workstream_id", "target_status", "target_trigger", "target_derived_from", "target_kind", "target_source",
+		"target_pointer_scheme", "target_pointer_locator", "target_pointer_resolved_at",
+	}
+	for _, field := range stringFields {
+		t.Run(field, func(t *testing.T) {
+			args := clone()
+			args[field] = true
+			wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", args), "validation_error")
+		})
+	}
+	for _, field := range []string{"target_confidence", "target_ttl_seconds"} {
+		t.Run(field, func(t *testing.T) {
+			args := clone()
+			args[field] = true
+			wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", args), "validation_error")
+		})
+	}
+
+	valid := clone()
+	valid["target_key"] = "structured.transport"
+	valid["target_tags"] = []any{"reviewed"}
+	valid["target_consumer_state"] = map[string]any{"section": "now"}
+	valid["target_confidence"] = 1
+	valid["target_ttl_seconds"] = 60
+	valid["target_workstream_id"] = ""
+	valid["reason"] = ""
+	requested := wantNoError(t, mustCallRegistered(t, a, "workspace_promote", valid))
+	requestID := requested["request_id"].(string)
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "approve", "request_id": requestID, "actor": "approver", "notes": []any{"not prose"}}), "validation_error")
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "approve", "request_id": true, "actor": "approver"}), "validation_error")
+	wantErrorCode(t, mustCallRegistered(t, a, "workspace_promote", map[string]any{"stage": "apply", "request_id": requestID, "actor": 7}), "validation_error")
+}
+
+func TestWorkspacePromoteMCPAuthorizesExistingTargetBeforeDomainCheck(t *testing.T) {
+	a := workspaceAdapter(t)
+	ctx := context.Background()
+	source, err := a.WorkspaceStore.Create(ctx, workspace.CreateInput{Namespace: mcpWorkspaceNS, Key: "target-auth-source", Summary: "source", Author: memory.Author{AgentID: "draft"}, SessionID: "draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbiddenTarget, err := a.WorkspaceStore.Create(ctx, workspace.CreateInput{Namespace: "project/other/workspace/private", Key: "secret", Summary: "secret", Author: memory.Author{AgentID: "other"}, SessionID: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := mustCallRegistered(t, a, "workspace_promote", map[string]any{
+		"stage": "request", "source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent",
+		"target_item_id": forbiddenTarget.ItemID, "expected_target_revision_id": "irrelevant",
+		"target_author_agent_id": "codex", "target_session_id": "review",
+	})
+	wantErrorCode(t, result, "namespace_not_permitted")
+	if message, _ := result["message"].(string); strings.Contains(message, "workspace") || strings.Contains(message, forbiddenTarget.Namespace) {
+		t.Fatalf("authorization denial disclosed target facts: %v", result)
+	}
+	authorized := mustCallRegistered(t, a, "workspace_promote", map[string]any{
+		"stage": "request", "source_item_id": source.ItemID, "source_version_token": source.VersionToken, "actor": "agent",
+		"target_item_id": source.ItemID, "expected_target_revision_id": "irrelevant",
+		"target_author_agent_id": "codex", "target_session_id": "review",
+	})
+	wantErrorCode(t, authorized, "validation_error")
 }
 
 func TestWorkspacePromoteMCPEachStageUsesItsOwnScope(t *testing.T) {

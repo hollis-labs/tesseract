@@ -57,12 +57,36 @@ type workspacePromotionApplyHTTP struct {
 	Actor     string `json:"actor"`
 }
 
-func rejectPromotionNulls(raw []byte) (map[string]json.RawMessage, error) {
+var (
+	promotionTargetFields = promotionFieldSet(
+		"domain", "namespace", "key", "item_id", "expected_revision_id", "author", "session_id", "tags",
+		"consumer_state", "confidence", "ttl_seconds", "data_schema_hash", "workstream_id", "status", "trigger",
+		"derived_from", "kind", "source", "pointer",
+	)
+	promotionRequestFields = promotionFieldSet("source_item_id", "source_version_token", "actor", "reason", "target")
+	promotionApproveFields = promotionFieldSet("request_id", "actor", "notes")
+	promotionApplyFields   = promotionFieldSet("request_id", "actor")
+	promotionAuthorFields  = promotionFieldSet("agent_id", "agent_version")
+	promotionPointerFields = promotionFieldSet("scheme", "locator", "resolved_at")
+)
+
+func promotionFieldSet(names ...string) map[string]struct{} {
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		out[name] = struct{}{}
+	}
+	return out
+}
+
+func validatePromotionFields(raw []byte, allowed map[string]struct{}) (map[string]json.RawMessage, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, err
 	}
 	for name, value := range fields {
+		if _, ok := allowed[name]; !ok {
+			return nil, fmt.Errorf("json: unknown field %q", name)
+		}
 		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return nil, fmt.Errorf("%s must not be null; omit it instead", name)
 		}
@@ -83,7 +107,7 @@ func decodePromotionObject(raw []byte, dst any) error {
 }
 
 func (v *workspacePromotionTargetRequest) UnmarshalJSON(raw []byte) error {
-	fields, err := rejectPromotionNulls(raw)
+	fields, err := validatePromotionFields(raw, promotionTargetFields)
 	if err != nil {
 		return err
 	}
@@ -92,11 +116,14 @@ func (v *workspacePromotionTargetRequest) UnmarshalJSON(raw []byte) error {
 	if err := decodePromotionObject(raw, &decoded); err != nil {
 		return err
 	}
-	for _, nested := range []string{"author", "pointer"} {
-		if value, ok := fields[nested]; ok {
-			if _, err := rejectPromotionNulls(value); err != nil {
-				return fmt.Errorf("%s.%w", nested, err)
-			}
+	if value, ok := fields["author"]; ok {
+		if _, err := validatePromotionFields(value, promotionAuthorFields); err != nil {
+			return fmt.Errorf("author.%w", err)
+		}
+	}
+	if value, ok := fields["pointer"]; ok {
+		if _, err := validatePromotionFields(value, promotionPointerFields); err != nil {
+			return fmt.Errorf("pointer.%w", err)
 		}
 	}
 	*v = workspacePromotionTargetRequest(decoded)
@@ -105,7 +132,7 @@ func (v *workspacePromotionTargetRequest) UnmarshalJSON(raw []byte) error {
 }
 
 func (v *workspacePromotionRequestHTTP) UnmarshalJSON(raw []byte) error {
-	if _, err := rejectPromotionNulls(raw); err != nil {
+	if _, err := validatePromotionFields(raw, promotionRequestFields); err != nil {
 		return err
 	}
 	type plain workspacePromotionRequestHTTP
@@ -118,7 +145,7 @@ func (v *workspacePromotionRequestHTTP) UnmarshalJSON(raw []byte) error {
 }
 
 func (v *workspacePromotionApproveHTTP) UnmarshalJSON(raw []byte) error {
-	if _, err := rejectPromotionNulls(raw); err != nil {
+	if _, err := validatePromotionFields(raw, promotionApproveFields); err != nil {
 		return err
 	}
 	type plain workspacePromotionApproveHTTP
@@ -131,7 +158,7 @@ func (v *workspacePromotionApproveHTTP) UnmarshalJSON(raw []byte) error {
 }
 
 func (v *workspacePromotionApplyHTTP) UnmarshalJSON(raw []byte) error {
-	if _, err := rejectPromotionNulls(raw); err != nil {
+	if _, err := validatePromotionFields(raw, promotionApplyFields); err != nil {
 		return err
 	}
 	type plain workspacePromotionApplyHTTP
@@ -183,14 +210,18 @@ func (s *Server) handleWorkspacePromoteRequest(w http.ResponseWriter, r *http.Re
 			writeWorkspacePromotionError(w, targetErr)
 			return
 		}
+		targetNamespace = targetMeta.Namespace
+		if !s.authorizeWorkspacePromotion(w, r, "promote.request", targetNamespace, targetNamespace) {
+			return
+		}
 		if targetMeta.Domain == workspace.Domain || targetMeta.Domain == "context" {
 			writeError(w, http.StatusBadRequest, "validation_error", "target item must identify a revisioned memory, knowledge, or event item", nil)
 			return
 		}
-		targetNamespace = targetMeta.Namespace
-	}
-	if !s.authorizeWorkspacePromotion(w, r, "promote.request", targetNamespace, targetNamespace) {
-		return
+	} else {
+		if !s.authorizeWorkspacePromotion(w, r, "promote.request", targetNamespace, targetNamespace) {
+			return
+		}
 	}
 
 	target := workspacepromotion.Target{

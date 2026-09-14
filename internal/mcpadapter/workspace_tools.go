@@ -91,6 +91,9 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 			return toolError(codeValidationError, name+" must not be null; omit it instead"), nil
 		}
 	}
+	if typeErr := validateWorkspacePromotionArgTypes(args); typeErr != nil {
+		return typeErr, nil
+	}
 
 	if stage == "request" {
 		if _, ok := args["request_id"]; ok {
@@ -124,13 +127,17 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 			if targetErr != nil {
 				return workspacePromotionToolError(targetErr), nil
 			}
+			targetNamespace = targetMeta.Namespace
+			if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", targetNamespace); denied != nil {
+				return denied, nil
+			}
 			if targetMeta.Domain == workspace.Domain || targetMeta.Domain == "context" {
 				return toolError(codeValidationError, "target item must be revisioned"), nil
 			}
-			targetNamespace = targetMeta.Namespace
-		}
-		if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", targetNamespace); denied != nil {
-			return denied, nil
+		} else {
+			if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", targetNamespace); denied != nil {
+				return denied, nil
+			}
 		}
 		receipt, err := a.WorkspacePromotionStore.Request(ctx, workspacepromotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: req.GetString("reason", ""), Target: target})
 		if err != nil {
@@ -168,6 +175,33 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 		return workspacePromotionToolError(err), nil
 	}
 	return toolJSON(receipt), nil
+}
+
+func validateWorkspacePromotionArgTypes(args map[string]any) *mcp.CallToolResult {
+	stringFields := []string{
+		"stage", "source_item_id", "source_version_token", "request_id", "actor", "reason", "notes",
+		"target_domain", "target_namespace", "target_key", "target_item_id", "expected_target_revision_id",
+		"target_author_agent_id", "target_author_version", "target_session_id", "target_data_schema_hash",
+		"target_workstream_id", "target_status", "target_trigger", "target_derived_from", "target_kind", "target_source",
+		"target_pointer_scheme", "target_pointer_locator", "target_pointer_resolved_at",
+	}
+	for _, name := range stringFields {
+		if value, present := args[name]; present {
+			if _, ok := value.(string); !ok {
+				return toolError(codeValidationError, name+" must be a string")
+			}
+		}
+	}
+	for _, name := range []string{"target_confidence", "target_ttl_seconds"} {
+		if value, present := args[name]; present {
+			switch value.(type) {
+			case float64, int:
+			default:
+				return toolError(codeValidationError, name+" must be a number")
+			}
+		}
+	}
+	return nil
 }
 
 func workspacePromotionTarget(req mcp.CallToolRequest) (workspacepromotion.Target, *mcp.CallToolResult) {
