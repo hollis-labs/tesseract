@@ -306,6 +306,18 @@ func topLevelCommands() []topLevelCommand {
 			FlagsSource: "migrate_kinds.go",
 		},
 		{
+			Name:        "migrate-corpus",
+			Summary:     "bulk runner for N6 corpus namespace and domain migration",
+			Description: "Applies the finalized N6 classification mapping across the corpus, renaming\n  same-domain namespaces and promoting cross-domain records (session-close,\n  handoff, boot-prompt). Dry-run by default; pass -apply to execute.",
+			Flags: []string{
+				"  -apply\tcommit the plan instead of planning it",
+				"  -db path\tpath to the SQLite store to migrate (required)",
+				"  -json\temit the full plan and diff as JSON",
+				"  -verbose\temit detailed per-namespace migration progress",
+			},
+			FlagsSource: "migrate_corpus.go",
+		},
+		{
 			Name:        "verify-pointers",
 			Summary:     "resolve knowledge pointers and record what was found",
 			Description: "Resolves the pointers on knowledge records and writes what it saw to the\n  verification log. Plans only unless -apply is given.",
@@ -547,6 +559,8 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runVerifyPointers(ctx, layout.MainDB(), rest, stdout, stderr)
 	case "promote-record":
 		return runPromoteRecord(ctx, "", rest, stdout, stderr)
+	case "migrate-corpus":
+		return runMigrateCorpus(ctx, "", rest, stdout, stderr)
 	}
 
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
