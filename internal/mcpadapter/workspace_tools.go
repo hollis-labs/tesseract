@@ -13,8 +13,8 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -139,7 +139,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 				return denied, nil
 			}
 		}
-		receipt, err := a.WorkspacePromotionStore.Request(ctx, workspacepromotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: req.GetString("reason", ""), Target: target})
+		receipt, err := a.WorkspacePromotionStore.Request(ctx, promotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: req.GetString("reason", ""), Target: target})
 		if err != nil {
 			return workspacePromotionToolError(err), nil
 		}
@@ -164,13 +164,13 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 		return denied, nil
 	}
 	if stage == "approve" {
-		approvalReceipt, approvalErr := a.WorkspacePromotionStore.Approve(ctx, workspacepromotion.ApproveInput{RequestID: requestID, Actor: actor, Notes: req.GetString("notes", "")})
+		approvalReceipt, approvalErr := a.WorkspacePromotionStore.Approve(ctx, promotion.ApproveInput{RequestID: requestID, Actor: actor, Notes: req.GetString("notes", "")})
 		if approvalErr != nil {
 			return workspacePromotionToolError(approvalErr), nil
 		}
 		return toolJSON(approvalReceipt), nil
 	}
-	receipt, err := a.WorkspacePromotionStore.Apply(ctx, workspacepromotion.ApplyInput{RequestID: requestID, Actor: actor})
+	receipt, err := a.WorkspacePromotionStore.Apply(ctx, promotion.ApplyInput{RequestID: requestID, Actor: actor})
 	if err != nil {
 		return workspacePromotionToolError(err), nil
 	}
@@ -204,16 +204,16 @@ func validateWorkspacePromotionArgTypes(args map[string]any) *mcp.CallToolResult
 	return nil
 }
 
-func workspacePromotionTarget(req mcp.CallToolRequest) (workspacepromotion.Target, *mcp.CallToolResult) {
+func workspacePromotionTarget(req mcp.CallToolRequest) (promotion.Target, *mcp.CallToolResult) {
 	args := req.GetArguments()
 	if _, hasItem := args["target_item_id"]; hasItem {
 		for _, redundant := range []string{"target_domain", "target_namespace", "target_key"} {
 			if _, ok := args[redundant]; ok {
-				return workspacepromotion.Target{}, toolError(codeValidationError, "target_item_id cannot be combined with "+redundant)
+				return promotion.Target{}, toolError(codeValidationError, "target_item_id cannot be combined with "+redundant)
 			}
 		}
 	}
-	target := workspacepromotion.Target{
+	target := promotion.Target{
 		Domain: domains.Domain(req.GetString("target_domain", "")), Namespace: req.GetString("target_namespace", ""), Key: req.GetString("target_key", ""),
 		ItemID: req.GetString("target_item_id", ""), ExpectedRevisionID: req.GetString("expected_target_revision_id", ""),
 		Author:    memory.Author{AgentID: req.GetString("target_author_agent_id", ""), AgentVersion: req.GetString("target_author_version", "")},
@@ -311,17 +311,17 @@ func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contex
 
 func workspacePromotionToolError(err error) *mcp.CallToolResult {
 	switch {
-	case errors.Is(err, workspacepromotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
+	case errors.Is(err, promotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
 		return toolError(codeValidationError, err.Error())
-	case errors.Is(err, workspacepromotion.ErrNotFound), errors.Is(err, workspacepromotion.ErrSourceNotFound), errors.Is(err, memory.ErrNotFound):
+	case errors.Is(err, promotion.ErrNotFound), errors.Is(err, promotion.ErrSourceNotFound), errors.Is(err, memory.ErrNotFound):
 		return toolError(codeNotFound, err.Error())
-	case errors.Is(err, workspacepromotion.ErrSourceDeleted):
+	case errors.Is(err, promotion.ErrSourceDeleted):
 		return toolError(codeDeleted, err.Error())
-	case errors.Is(err, workspacepromotion.ErrSourceStale), errors.Is(err, workspacepromotion.ErrTargetStale):
+	case errors.Is(err, promotion.ErrSourceStale), errors.Is(err, promotion.ErrTargetStale):
 		return toolError(codeVersionConflict, err.Error())
-	case errors.Is(err, workspacepromotion.ErrTargetKeyOccupied):
+	case errors.Is(err, promotion.ErrTargetKeyOccupied):
 		return toolError(codeKeyConflict, err.Error())
-	case errors.Is(err, workspacepromotion.ErrNotApproved):
+	case errors.Is(err, promotion.ErrNotApproved):
 		return toolError(codeInvalidState, err.Error())
 	default:
 		return toolError(codePromoteFailed, err.Error())

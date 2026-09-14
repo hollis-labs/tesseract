@@ -32,9 +32,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -316,7 +316,7 @@ type Server struct {
 	// WorkspaceStore backs mutable workspace routes and cross-domain item reads.
 	WorkspaceStore *workspace.Store
 	// WorkspacePromotionStore backs the staged workspace-to-revision workflow.
-	WorkspacePromotionStore *workspacepromotion.Store
+	WorkspacePromotionStore *promotion.Store
 	// SynthesisProvider is the LLM Provider used by /v1/synthesis/ask.
 	// When nil, the synthesis route returns 503 service_unavailable. Wired by
 	// cmd/tesseract from config.Synthesis settings.

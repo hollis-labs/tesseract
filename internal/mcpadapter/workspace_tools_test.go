@@ -7,8 +7,8 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -60,7 +60,7 @@ func workspaceAdapterOnStore(cs *contextstore.Store, token string) *Adapter {
 	a := New(cs, token)
 	a.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	a.WorkspaceStore = workspace.NewStore(cs.DB())
-	a.WorkspacePromotionStore = workspacepromotion.NewStore(cs, a.MemoryStore)
+	a.WorkspacePromotionStore = promotion.NewStore(cs, a.MemoryStore)
 	return a
 }
 

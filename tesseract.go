@@ -13,7 +13,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/workspace"
 )
 
@@ -82,7 +82,7 @@ type Tesseract struct {
 	store          *contextstore.Store
 	memoryStore    *memory.Store
 	workspaceStore *workspace.Store
-	promotionStore *workspacepromotion.Store
+	promotionStore *promotion.Store
 	items          *itemservice.Service
 	embedder       embedcontracts.Embedder
 	embeddingModel string
@@ -148,7 +148,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 	memStore.SetAuditSink(store)
 	memStore.SetNamespaceRegistrar(store)
 	workspaceStore := workspace.NewStore(store.DB())
-	promotionStore := workspacepromotion.NewStore(store, memStore)
+	promotionStore := promotion.NewStore(store, memStore)
 
 	// Reconcile any namespaces that have data but no policy row. Idempotent —
 	// only writes the first time a divergence is observed. CW-20260428-0005.
@@ -232,24 +232,34 @@ func (c *Tesseract) ApplyWorkspaceRetention(ctx context.Context, in workspace.Re
 	return c.workspaceStore.ApplyRetention(ctx, in)
 }
 
-type WorkspacePromotionTarget = workspacepromotion.Target
-type WorkspacePromotionRequest = workspacepromotion.RequestInput
-type WorkspacePromotionApproval = workspacepromotion.ApproveInput
-type WorkspacePromotionApply = workspacepromotion.ApplyInput
-type WorkspacePromotionRequestReceipt = workspacepromotion.RequestReceipt
-type WorkspacePromotionTargetReference = workspacepromotion.TargetReference
-type WorkspacePromotionApprovalReceipt = workspacepromotion.ApprovalReceipt
-type WorkspacePromotionApplyReceipt = workspacepromotion.ApplyReceipt
+type WorkspacePromotionTarget = promotion.Target
+type WorkspacePromotionRequest = promotion.RequestInput
+type WorkspacePromotionApproval = promotion.ApproveInput
+type WorkspacePromotionApply = promotion.ApplyInput
+type WorkspacePromotionRequestReceipt = promotion.RequestReceipt
+type WorkspacePromotionTargetReference = promotion.TargetReference
+type WorkspacePromotionApprovalReceipt = promotion.ApprovalReceipt
+type WorkspacePromotionApplyReceipt = promotion.ApplyReceipt
+
+// PromotionTarget aliases promotion.Target for cross-domain promotions.
+type PromotionTarget = promotion.Target
+type PromotionRequest = promotion.RequestInput
+type PromotionApproval = promotion.ApproveInput
+type PromotionApply = promotion.ApplyInput
+type PromotionRequestReceipt = promotion.RequestReceipt
+type PromotionTargetReference = promotion.TargetReference
+type PromotionApprovalReceipt = promotion.ApprovalReceipt
+type PromotionApplyReceipt = promotion.ApplyReceipt
 
 var (
-	ErrWorkspacePromotionInvalidInput      = workspacepromotion.ErrInvalidInput
-	ErrWorkspacePromotionNotFound          = workspacepromotion.ErrNotFound
-	ErrWorkspacePromotionSourceNotFound    = workspacepromotion.ErrSourceNotFound
-	ErrWorkspacePromotionSourceDeleted     = workspacepromotion.ErrSourceDeleted
-	ErrWorkspacePromotionSourceStale       = workspacepromotion.ErrSourceStale
-	ErrWorkspacePromotionTargetStale       = workspacepromotion.ErrTargetStale
-	ErrWorkspacePromotionTargetKeyOccupied = workspacepromotion.ErrTargetKeyOccupied
-	ErrWorkspacePromotionNotApproved       = workspacepromotion.ErrNotApproved
+	ErrWorkspacePromotionInvalidInput      = promotion.ErrInvalidInput
+	ErrWorkspacePromotionNotFound          = promotion.ErrNotFound
+	ErrWorkspacePromotionSourceNotFound    = promotion.ErrSourceNotFound
+	ErrWorkspacePromotionSourceDeleted     = promotion.ErrSourceDeleted
+	ErrWorkspacePromotionSourceStale       = promotion.ErrSourceStale
+	ErrWorkspacePromotionTargetStale       = promotion.ErrTargetStale
+	ErrWorkspacePromotionTargetKeyOccupied = promotion.ErrTargetKeyOccupied
+	ErrWorkspacePromotionNotApproved       = promotion.ErrNotApproved
 )
 
 func (c *Tesseract) RequestWorkspacePromotion(ctx context.Context, in WorkspacePromotionRequest) (WorkspacePromotionRequestReceipt, error) {

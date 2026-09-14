@@ -16,9 +16,9 @@ import (
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/trace"
@@ -37,17 +37,17 @@ import (
 type Adapter struct {
 	runtime                 *runtimeObserver
 	Store                   *contextstore.Store
-	Token                   string                    // capability token for mutating ops; may be empty
-	TypeRegistry            *typeregistry.Registry    // optional; nil uses the process registry (types.yaml)
-	EmbeddingProvider       embedcontracts.Embedder   // optional; nil disables context_embed/context_search
-	EmbeddingModel          string                    // model name passed to EmbeddingProvider (default: "")
-	VectorIndex             embedding.VectorIndex     // optional; nil uses brute-force search via Store
-	MemoryStore             *memory.Store             // optional; nil disables memory_write / memory_promote
-	KnowledgeStore          *knowledge.Store          // optional; nil disables knowledge_write
-	EventStore              *event.Store              // optional; nil disables event_write / event_list
-	WorkspaceStore          *workspace.Store          // optional; nil disables workspace mutations and reads
-	WorkspacePromotionStore *workspacepromotion.Store // optional; nil disables workspace_promote
-	Policy                  *contextpolicy.Engine     // optional; nil loads/defaults from Store via policy()
+	Token                   string                  // capability token for mutating ops; may be empty
+	TypeRegistry            *typeregistry.Registry  // optional; nil uses the process registry (types.yaml)
+	EmbeddingProvider       embedcontracts.Embedder // optional; nil disables context_embed/context_search
+	EmbeddingModel          string                  // model name passed to EmbeddingProvider (default: "")
+	VectorIndex             embedding.VectorIndex   // optional; nil uses brute-force search via Store
+	MemoryStore             *memory.Store           // optional; nil disables memory_write / memory_promote
+	KnowledgeStore          *knowledge.Store        // optional; nil disables knowledge_write
+	EventStore              *event.Store            // optional; nil disables event_write / event_list
+	WorkspaceStore          *workspace.Store        // optional; nil disables workspace mutations and reads
+	WorkspacePromotionStore *promotion.Store        // optional; nil disables workspace_promote
+	Policy                  *contextpolicy.Engine   // optional; nil loads/defaults from Store via policy()
 	policyMu                sync.Mutex
 	Logger                  *slog.Logger // optional; nil falls back to slog.Default()
 

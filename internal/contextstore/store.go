@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 27
+	schemaVersion = 28
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1518,6 +1518,66 @@ CREATE TABLE IF NOT EXISTS workspace_promotion_requests (
 			}
 			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_workspace_promotion_target ON workspace_promotion_requests(target_item_id)`); err != nil {
 				return err
+			}
+		case 28:
+			// Promotion requests generalizes promotion beyond workspace-to-revisioned
+			// moves, allowing movements across any pair of domains (workspace, memory,
+			// knowledge, event) while recording source and target domains explicitly.
+			if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS promotion_requests (
+	request_id                    TEXT PRIMARY KEY,
+	status                        TEXT NOT NULL CHECK (status IN ('pending','approved','applied')),
+	source_domain                 TEXT NOT NULL,
+	source_item_id                TEXT NOT NULL,
+	source_version_token          TEXT NOT NULL,
+	source_namespace              TEXT NOT NULL,
+	source_digest                 TEXT NOT NULL,
+	target_domain                 TEXT NOT NULL,
+	target_namespace              TEXT NOT NULL,
+	target_key                    TEXT NULL,
+	target_item_id                TEXT NULL,
+	expected_target_revision_id   TEXT NULL,
+	target_spec_json              TEXT NOT NULL,
+	requested_by                  TEXT NOT NULL,
+	reason                        TEXT NOT NULL DEFAULT '',
+	requested_at                  TEXT NOT NULL,
+	approval_id                   TEXT NULL UNIQUE,
+	approved_by                   TEXT NULL,
+	approval_notes                TEXT NULL,
+	approved_at                   TEXT NULL,
+	applied_by                    TEXT NULL,
+	applied_at                    TEXT NULL,
+	result_item_id                TEXT NULL,
+	result_revision_id            TEXT NULL UNIQUE
+)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_promotion_source ON promotion_requests(source_item_id)`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_promotion_target ON promotion_requests(target_item_id)`); err != nil {
+				return err
+			}
+			var hasLegacy int
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='workspace_promotion_requests')`).Scan(&hasLegacy); err != nil {
+				return err
+			}
+			if hasLegacy != 0 {
+				if _, err = tx.ExecContext(ctx, `
+INSERT OR IGNORE INTO promotion_requests (
+	request_id, status, source_domain, source_item_id, source_version_token, source_namespace, source_digest,
+	target_domain, target_namespace, target_key, target_item_id, expected_target_revision_id,
+	target_spec_json, requested_by, reason, requested_at, approval_id, approved_by, approval_notes,
+	approved_at, applied_by, applied_at, result_item_id, result_revision_id
+)
+SELECT
+	request_id, status, 'workspace', source_item_id, source_version_token, source_namespace, source_digest,
+	target_domain, target_namespace, target_key, target_item_id, expected_target_revision_id,
+	target_spec_json, requested_by, reason, requested_at, approval_id, approved_by, approval_notes,
+	approved_at, applied_by, applied_at, result_item_id, result_revision_id
+FROM workspace_promotion_requests`); err != nil {
+					return err
+				}
 			}
 		}
 

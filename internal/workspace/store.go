@@ -138,6 +138,11 @@ func (s *Store) createOnce(ctx context.Context, in CreateInput) (Item, error) {
 	return item, nil
 }
 
+// CreateInTx creates a new workspace item in caller's transaction.
+func (s *Store) CreateInTx(ctx context.Context, tx *sql.Tx, in CreateInput) (Item, error) {
+	return s.createInTx(ctx, tx, in)
+}
+
 func (s *Store) createInTx(ctx context.Context, tx *sql.Tx, in CreateInput) (Item, error) {
 	key := optionalText(in.Key)
 	if key.Valid {
@@ -242,16 +247,36 @@ func (s *Store) Edit(ctx context.Context, in EditInput) (Item, error) {
 	})
 }
 
-func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearField]bool) (Item, error) {
-	newToken, err := s.nextTokenCandidate(in.VersionToken)
+func (s *Store) EditInTx(ctx context.Context, tx *sql.Tx, in EditInput) (Item, error) {
+	clears, err := validateEdit(in)
 	if err != nil {
 		return Item{}, err
 	}
+	return s.editInTx(ctx, tx, in, clears)
+}
+
+func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearField]bool) (Item, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Item{}, fmt.Errorf("begin workspace edit: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	item, err := s.editInTx(ctx, tx, in, clears)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Item{}, fmt.Errorf("commit workspace edit: %w", err)
+	}
+	return item, nil
+}
+
+func (s *Store) editInTx(ctx context.Context, tx *sql.Tx, in EditInput, clears map[ClearField]bool) (Item, error) {
+	newToken, err := s.nextTokenCandidate(in.VersionToken)
+	if err != nil {
+		return Item{}, err
+	}
 	state, err := readRetentionState(tx.QueryRowContext(ctx, `SELECT item_id, namespace, activation, last_used_at, last_decayed_at FROM workspace_items WHERE item_id = ?`, in.ItemID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, classifyConditionalMiss(ctx, tx, in.ItemID)
@@ -346,14 +371,7 @@ func (s *Store) editOnce(ctx context.Context, in EditInput, clears map[ClearFiel
 	if n == 0 {
 		return Item{}, classifyConditionalMiss(ctx, tx, in.ItemID)
 	}
-	item, err := getLive(ctx, tx, in.ItemID)
-	if err != nil {
-		return Item{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Item{}, fmt.Errorf("commit workspace edit: %w", err)
-	}
-	return item, nil
+	return getLive(ctx, tx, in.ItemID)
 }
 
 func (s *Store) Delete(ctx context.Context, in DeleteInput) (Metadata, error) {

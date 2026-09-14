@@ -34,10 +34,10 @@ import (
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/webui"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 	_ "modernc.org/sqlite"
 )
 
@@ -323,6 +323,42 @@ func topLevelCommands() []topLevelCommand {
 			},
 			FlagsSource: "verify_pointers.go",
 		},
+		{
+			Name:        "promote-record",
+			Summary:     "one-shot record promotion between any two storage domains",
+			Description: "Promotes a record from any domain (workspace, memory, knowledge, event) to\n  any target domain. Plans only unless -apply is given. Requires explicit --db.",
+			Flags: []string{
+				"  -db path\tSQLite store to operate on (required)",
+				"  -source-domain domain\tsource domain: workspace, memory, knowledge, event",
+				"  -source-item-id id\tsource item ID",
+				"  -source-version-token token\tsource version token or revision ID",
+				"  -target-domain domain\ttarget domain: workspace, memory, knowledge, event",
+				"  -target-namespace ns\ttarget namespace",
+				"  -target-key key\ttarget key",
+				"  -target-item-id id\texisting target item ID to update",
+				"  -expected-target-revision-id rev\texpected revision ID for existing target item",
+				"  -expected-target-version-token token\texpected version token for existing target workspace item",
+				"  -actor name\tactor requesting and applying the promotion",
+				"  -reason text\treason for promotion",
+				"  -target-author-agent-id id\tauthor agent ID for target record",
+				"  -target-author-version ver\tauthor agent version for target record",
+				"  -target-session-id id\tauthor session ID for target record",
+				"  -target-status status\tstatus for target record (e.g. canonical, draft)",
+				"  -target-trigger trigger\ttrigger for target record (e.g. promotion, manual)",
+				"  -target-derived-from src\tderived_from for target record (e.g. project, reference)",
+				"  -target-confidence num\tconfidence score for target record",
+				"  -target-ttl-seconds n\ttime-to-live in seconds for target record",
+				"  -target-data-schema-hash hash\tdata schema hash for target record",
+				"  -target-workstream-id id\tworkstream ID for target record",
+				"  -target-kind kind\tfacet kind for knowledge target",
+				"  -target-source src\tfacet source for knowledge target",
+				"  -target-pointer-scheme scheme\tfacet pointer scheme for knowledge target",
+				"  -target-pointer-locator locator\tfacet pointer locator for knowledge target",
+				"  -apply\tapply the promotion instead of planning it",
+				"  -json\temit the receipt or plan as JSON",
+			},
+			FlagsSource: "promote_record.go",
+		},
 	}
 }
 
@@ -509,6 +545,8 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		return runMigrateKnowledgeKinds(ctx, layout.MainDB(), rest, stdout, stderr)
 	case "verify-pointers":
 		return runVerifyPointers(ctx, layout.MainDB(), rest, stdout, stderr)
+	case "promote-record":
+		return runPromoteRecord(ctx, "", rest, stdout, stderr)
 	}
 
 	tesseractCfg, cfgErr := config.Load(filepath.Join(layout.ConfigDir(), "config.yaml"))
@@ -823,7 +861,7 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.KnowledgeStore = knowledge.New(mem.Store)
 	srv.EventStore = event.New(mem.Store)
 	srv.WorkspaceStore = workspace.NewStore(store.DB())
-	srv.WorkspacePromotionStore = workspacepromotion.NewStore(store, mem.Store)
+	srv.WorkspacePromotionStore = promotion.NewStore(store, mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
 	srv.EnableMetrics = cfg.EnableMetrics

@@ -127,16 +127,9 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 }
 
 // Deprecate marks a revision as deprecated without writing a replacement.
-// If the deprecated revision was the current revision, memory_state.current_revision
-// is updated to the next non-deprecated revision, or NULL if none remains.
-// The operation is idempotent: deprecating an already-deprecated revision is a no-op.
-func (s *Store) Deprecate(ctx context.Context, revisionID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
+// DeprecateInTx deprecates a revision and recomputes the parent memory_state.current_revision
+// within the caller's transaction.
+func (s *Store) DeprecateInTx(ctx context.Context, tx *sql.Tx, revisionID string) error {
 	// Load the revision's memory_id and current status.
 	var memoryID string
 	var status Status
@@ -154,7 +147,7 @@ func (s *Store) Deprecate(ctx context.Context, revisionID string) error {
 
 	// Idempotent no-op if already deprecated.
 	if status == StatusDeprecated {
-		return tx.Commit()
+		return nil
 	}
 
 	// Deprecate via the one authorized status mutation in write.go.
@@ -178,12 +171,32 @@ LIMIT 1`,
 	// If sql.ErrNoRows, nextRevision stays as sql.NullString{} (NULL).
 
 	// Update memory_state.current_revision (NULL if no non-deprecated revision remains).
-	_, err = tx.ExecContext(ctx,
+	_, err := tx.ExecContext(ctx,
 		`UPDATE memory_state SET current_revision = ? WHERE memory_id = ?`,
 		nextRevision, memoryID,
 	)
 	if err != nil {
 		return fmt.Errorf("update current_revision: %w", err)
+	}
+	return nil
+}
+
+// Deprecate marks a revision as deprecated.
+// If the deprecated revision was the current revision, memory_state.current_revision
+// is updated to the next non-deprecated revision, or NULL if none remains.
+// The operation is idempotent: deprecating an already-deprecated revision is a no-op.
+func (s *Store) Deprecate(ctx context.Context, revisionID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var memoryID string
+	_ = tx.QueryRowContext(ctx, `SELECT memory_id FROM memory_revisions WHERE revision_id = ?`, revisionID).Scan(&memoryID)
+
+	if err := s.DeprecateInTx(ctx, tx, revisionID); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {

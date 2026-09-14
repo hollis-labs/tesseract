@@ -11,8 +11,8 @@ import (
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 )
 
 type workspacePromotionTargetRequest struct {
@@ -224,7 +224,7 @@ func (s *Server) handleWorkspacePromoteRequest(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	target := workspacepromotion.Target{
+	target := promotion.Target{
 		Domain: req.Target.Domain, Namespace: stringValue(req.Target.Namespace), Key: stringValue(req.Target.Key),
 		ItemID: stringValue(req.Target.ItemID), ExpectedRevisionID: stringValue(req.Target.ExpectedRevisionID),
 		Author: req.Target.Author, SessionID: req.Target.SessionID, Tags: req.Target.Tags,
@@ -235,7 +235,7 @@ func (s *Server) handleWorkspacePromoteRequest(w http.ResponseWriter, r *http.Re
 	if req.Target.ConsumerState != nil {
 		target.ConsumerState = append([]byte(nil), (*req.Target.ConsumerState)...)
 	}
-	receipt, err := s.WorkspacePromotionStore.Request(r.Context(), workspacepromotion.RequestInput{
+	receipt, err := s.WorkspacePromotionStore.Request(r.Context(), promotion.RequestInput{
 		SourceItemID: req.SourceItemID, SourceVersionToken: req.SourceVersionToken, Actor: req.Actor, Reason: req.Reason, Target: target,
 	})
 	if err != nil {
@@ -269,7 +269,7 @@ func (s *Server) handleWorkspacePromoteApprove(w http.ResponseWriter, r *http.Re
 	if !s.authorizeWorkspacePromotion(w, r, "promote.approve", meta.SourceNamespace, meta.TargetNamespace) {
 		return
 	}
-	receipt, err := s.WorkspacePromotionStore.Approve(r.Context(), workspacepromotion.ApproveInput(req))
+	receipt, err := s.WorkspacePromotionStore.Approve(r.Context(), promotion.ApproveInput(req))
 	if err != nil {
 		writeWorkspacePromotionError(w, err)
 		return
@@ -301,7 +301,7 @@ func (s *Server) handleWorkspacePromoteApply(w http.ResponseWriter, r *http.Requ
 	if !s.authorizeWorkspacePromotion(w, r, "promote.apply", meta.SourceNamespace, meta.TargetNamespace) {
 		return
 	}
-	receipt, err := s.WorkspacePromotionStore.Apply(r.Context(), workspacepromotion.ApplyInput(req))
+	receipt, err := s.WorkspacePromotionStore.Apply(r.Context(), promotion.ApplyInput(req))
 	if err != nil {
 		writeWorkspacePromotionError(w, err)
 		return
@@ -344,17 +344,17 @@ func promotionNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace 
 
 func writeWorkspacePromotionError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, workspacepromotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
+	case errors.Is(err, promotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-	case errors.Is(err, workspacepromotion.ErrNotFound), errors.Is(err, workspacepromotion.ErrSourceNotFound), errors.Is(err, memory.ErrNotFound):
+	case errors.Is(err, promotion.ErrNotFound), errors.Is(err, promotion.ErrSourceNotFound), errors.Is(err, memory.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
-	case errors.Is(err, workspacepromotion.ErrSourceDeleted):
+	case errors.Is(err, promotion.ErrSourceDeleted):
 		writeError(w, http.StatusGone, "source_deleted", err.Error(), nil)
-	case errors.Is(err, workspacepromotion.ErrSourceStale):
+	case errors.Is(err, promotion.ErrSourceStale):
 		writeError(w, http.StatusConflict, "source_conflict", err.Error(), nil)
-	case errors.Is(err, workspacepromotion.ErrTargetStale), errors.Is(err, workspacepromotion.ErrTargetKeyOccupied):
+	case errors.Is(err, promotion.ErrTargetStale), errors.Is(err, promotion.ErrTargetKeyOccupied):
 		writeError(w, http.StatusConflict, "target_conflict", err.Error(), nil)
-	case errors.Is(err, workspacepromotion.ErrNotApproved):
+	case errors.Is(err, promotion.ErrNotApproved):
 		writeError(w, http.StatusConflict, "not_approved", err.Error(), nil)
 	default:
 		writeError(w, http.StatusInternalServerError, "promotion_failed", err.Error(), nil)

@@ -11,8 +11,8 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/hollis-labs/tesseract/internal/workspacepromotion"
 )
 
 // newMCPAdapter is the production MCP assembly boundary. In particular, it
@@ -29,7 +29,7 @@ func newMCPAdapter(store *contextstore.Store, token string, mem *memorySubsystem
 		adapter.MemoryStore = mem.Store
 		adapter.KnowledgeStore = knowledge.New(mem.Store)
 		adapter.EventStore = event.New(mem.Store)
-		adapter.WorkspacePromotionStore = workspacepromotion.NewStore(store, mem.Store)
+		adapter.WorkspacePromotionStore = promotion.NewStore(store, mem.Store)
 		adapter.EmbeddingProvider = mem.Embedder
 		adapter.EmbeddingModel = mem.EmbeddingModel
 		if mem.Embedder == nil && logWriter != nil {

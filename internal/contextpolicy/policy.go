@@ -351,7 +351,7 @@ var scopeTypes = map[string]bool{
 // codebase (verified by CW-20260911-0006). It belonged to the legacy
 // context/records store promotion path (internal/contextapi/promote_handler.go),
 // which is being retired separately under CW-20260909-0037, and is completely
-// distinct from the shipped workspacepromotion package.
+// distinct from the shipped promotion package.
 
 // ValidatePayload enforces namespace schema policy when configured.
 // Supported policy keys:
