@@ -319,11 +319,12 @@ func topLevelCommands() []topLevelCommand {
 		},
 		{
 			Name:        "classify-backlog",
-			Summary:     "classify user/chrispian/memory backlog and event reasoning records",
-			Description: "Inspects and classifies historical agent-authored records in\n  user/chrispian/memory/* and user/chrispian/event/reasoning according to the\n  4-tier signal precedence (report only, zero writes).",
+			Summary:     "classify and apply user/chrispian/memory backlog and event reasoning records",
+			Description: "Inspects and classifies historical agent-authored records in\n  user/chrispian/memory/* and user/chrispian/event/reasoning according to the\n  4-tier signal precedence. Plans only unless -apply is given.",
 			Flags: []string{
 				"  -db path\tpath to the SQLite store to inspect (required)",
-				"  -json\temit the full classification report as JSON",
+				"  -apply\tapply classified renames to the database",
+				"  -json\temit the full report as JSON",
 				"  -verbose\temit detailed per-record classification output",
 			},
 			FlagsSource: "classify_backlog.go",
