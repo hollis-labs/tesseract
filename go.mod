@@ -14,7 +14,7 @@ require (
 	github.com/hollis-labs/go-otel v0.6.1
 	github.com/hollis-labs/go-queue v0.2.0
 	github.com/hollis-labs/go-webui v0.1.0
-	github.com/hollis-labs/plugin-sdk v0.3.1
+	github.com/hollis-labs/plugin-sdk v0.4.0
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/openai/openai-go/v3 v3.56.0
