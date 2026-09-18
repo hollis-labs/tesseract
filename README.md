@@ -7,11 +7,13 @@ concurrency and identity tombstones. Tesseract applies namespace and capability
 policy and exposes the store through a Go library, CLI, HTTP API, embedded web
 UI, and MCP server.
 
-Tesseract is currently a public preview. Its contracts are documented and
-tested, but pre-1.0 releases may contain breaking changes. Read
-[`CHANGELOG.md`](CHANGELOG.md) before upgrading.
+> **Public preview, pre-1.0.** Tesseract is in active daily internal use
+> across Hollis Labs — it's the memory this very session type recalls from
+> and writes back to — but it hasn't had a public release. Built in the
+> open: contracts are documented and tested, but breaking changes can still
+> land in any minor. Read [`CHANGELOG.md`](CHANGELOG.md) before upgrading.
 
-## What it provides
+## What it is today
 
 - revisioned context records with deterministic heads and history
 - separate memory and pointer-backed knowledge domains
@@ -21,6 +23,56 @@ tested, but pre-1.0 releases may contain breaking changes. Read
 - lexical recall plus optional OpenAI-backed embeddings and synthesis
 - a local operator UI embedded in the Go binary
 - integrity-checked, failure-atomic store backup and restore
+
+## Where it sits in the stack
+
+```
+   agents / apps       Nanite, Torque, Tangent, or any MCP/HTTP client
+        │
+   ┌───────────┐
+   │ Tesseract │   context + memory + knowledge + event + workspace
+   └───────────┘
+        │
+     storage           local, append-only log — no external database
+```
+
+Tesseract doesn't run agents and doesn't decide anything — it's not an agent
+runtime, task tracker, or orchestrator (that's Nanite's, Torque's, and
+Tangent's job). It only stores, revises, and retrieves; anything that speaks
+MCP, HTTP, or the Go library reads and writes the same way.
+
+## Examples
+
+**Daily use.** This session, like every session across the portfolio, recalls
+prior context and decisions from Tesseract at the start of a task
+(`tesseract_recall`) and writes durable decisions, follow-ups, and handoffs
+back to it once the work is reviewed (the `capture-decision` /
+`capture-handoff` skills).
+
+**Composition.** An agent picks up a task from Torque, recalls relevant
+history from Tesseract before starting, does the work in Nanite, and writes
+the outcome back to Tesseract — three MCP servers, none aware of the others'
+internals, composed only through the agent's own tool calls.
+
+**Shared or isolated memory.** Any app in the portfolio can point at the same
+Tesseract instance to share one memory surface, or run against a private
+instance when isolation matters more than sharing — the namespace and
+capability-token model is what makes either safe.
+
+## Roadmap
+
+- **Public-preview hardening**, sequenced deliberately: repository behavior,
+  safety, and data/contract integrity first; install experience and the
+  public-facing surface once the code is near final; CI, branch protection,
+  and release gates last, as an audit pass rather than a 1.0 feature push.
+- **Portfolio MCP standardization**: moving onto a shared MCP server/client
+  library built on `modelcontextprotocol/go-sdk`, retiring the hand-rolled
+  `hollis-labs/go-mcp` layer — a change that lands across every app in the
+  portfolio, including this one.
+- **Deferred, post-preview**: richer recall, graph/entity memory,
+  procedural/playbook memory, provenance and descendant retraction, and
+  write-time enrichment — scoped from real public-preview usage, not
+  committed to yet.
 
 ## Install from source
 
