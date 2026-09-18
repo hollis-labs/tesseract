@@ -2,13 +2,13 @@ package mcpadapter
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // TestKnowledgeWriteToolDescribesClosedKindVocabulary guards the tool
@@ -27,15 +27,15 @@ func TestKnowledgeWriteToolDescribesClosedKindVocabulary(t *testing.T) {
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
 
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
 
-	st, ok := srv.ListTools()["knowledge_write"]
+	st, ok := toolDef(srv, "knowledge_write")
 	if !ok {
 		t.Fatal("knowledge_write not registered")
 	}
 
-	schema, err := st.Tool.InputSchema.MarshalJSON()
+	schema, err := json.Marshal(st.InputSchema)
 	if err != nil {
 		t.Fatalf("marshal input schema: %v", err)
 	}
@@ -87,8 +87,7 @@ func TestKnowledgeWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
 			if tc.actor != nil {
 				args["actor"] = tc.actor
 			}
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = args
+			req := args
 			res, err := a.handleKnowledgeWrite(context.Background(), req)
 			if err != nil {
 				t.Fatalf("handleKnowledgeWrite: %v", err)

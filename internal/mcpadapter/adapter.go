@@ -9,7 +9,8 @@ import (
 	"sync"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
-	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
+	mcpsanitize "github.com/hollis-labs/go-mcp/sanitize"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
@@ -19,8 +20,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -84,9 +83,9 @@ type Adapter struct {
 // therefore share memory.PageRequest and everything downstream of it; only
 // the argument decoding differs, and TestBudgetCursorParity_MCPvsHTTP
 // exercises both against the same store.
-func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.PayloadMode, defaultBudget memory.Budget) (memory.PageRequest, *mcp.CallToolResult) {
+func (a *Adapter) resolvePageRequest(req map[string]any, mode memory.PayloadMode, defaultBudget memory.Budget) (memory.PageRequest, any) {
 	pr := memory.PageRequest{
-		Cursor:      req.GetString("cursor", ""),
+		Cursor:      argString(req, "cursor", ""),
 		PayloadMode: mode,
 		Budget:      defaultBudget,
 	}
@@ -118,7 +117,7 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 		{"budget_bytes", &pr.Budget.Bytes},
 		{"budget_tokens", &pr.Budget.Tokens},
 	} {
-		raw, ok := req.GetArguments()[knob.name]
+		raw, ok := req[knob.name]
 		if !ok || raw == nil {
 			continue
 		}
@@ -138,7 +137,7 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 	// retrieved. It is read as a plain bool: false is both the zero value and
 	// the meaning of an absent argument, so unlike the budgets there is no
 	// third state to preserve and no presence check to do.
-	pr.EstimateOnly = req.GetBool("estimate_only", false)
+	pr.EstimateOnly = argBool(req, "estimate_only", false)
 
 	return pr, nil
 }
@@ -157,8 +156,8 @@ func (a *Adapter) resolvePageRequest(req mcp.CallToolRequest, mode memory.Payloa
 // four doors reject the same floors with the same message by construction
 // rather than by four copies agreeing. This is the pattern search_mode
 // established.
-func resolveSimilarityMin(req mcp.CallToolRequest) (*float64, *mcp.CallToolResult) {
-	raw, ok := req.GetArguments()["similarity_min"]
+func resolveSimilarityMin(req map[string]any) (*float64, any) {
+	raw, ok := req["similarity_min"]
 	if !ok || raw == nil {
 		return nil, nil
 	}
@@ -235,7 +234,7 @@ func estimateEnvelope(manifest memory.Manifest, facets any) map[string]any {
 // PayloadModeFull is passed because history serializes bare Revisions; it
 // selects nothing here beyond making the byte accounting measure the shape
 // actually written.
-func (a *Adapter) resolveHistoryPageRequest(req mcp.CallToolRequest) (memory.PageRequest, *mcp.CallToolResult) {
+func (a *Adapter) resolveHistoryPageRequest(req map[string]any) (memory.PageRequest, any) {
 	return a.resolvePageRequest(req, memory.PayloadModeFull, memory.Budget{})
 }
 
@@ -247,8 +246,8 @@ func (a *Adapter) resolveHistoryPageRequest(req mcp.CallToolRequest) (memory.Pag
 // the caller is present and can be told, and quietly serving a different
 // projection than the one asked for is exactly the failure this knob's
 // contract has to avoid.
-func (a *Adapter) resolvePayloadMode(req mcp.CallToolRequest) (memory.PayloadMode, *mcp.CallToolResult) {
-	if raw := req.GetString("payload_mode", ""); raw != "" {
+func (a *Adapter) resolvePayloadMode(req map[string]any) (memory.PayloadMode, any) {
+	if raw := argString(req, "payload_mode", ""); raw != "" {
 		mode := memory.PayloadMode(raw)
 		if !mode.Valid() {
 			return "", toolError(codeValidationError, "payload_mode must be one of keys|summary|full, got "+raw)
@@ -425,17 +424,21 @@ func New(store *contextstore.Store, token string) *Adapter {
 // Run registers all tools and starts the MCP stdio server. Blocks until ctx is
 // canceled or the client disconnects.
 func (a *Adapter) Run(ctx context.Context) error {
-	hooks := &server.Hooks{}
-	hooks.AddBeforeInitialize(a.acceptRuntimeContext)
-	s := server.NewMCPServer(
-		"tesseract",
-		a.version(),
-		server.WithToolCapabilities(true),
-		server.WithHooks(hooks),
+	logger := a.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	s := gomcpserver.NewServer("tesseract", a.version())
+	// Installed once, ahead of every method dispatch — not per tool. sanitize
+	// only inspects "tools/call" requests (see its own Middleware doc); the
+	// runtime observer only inspects "initialize". Both pass every other
+	// method through untouched.
+	s.SDKServer().AddReceivingMiddleware(
+		mcpsanitize.Middleware(logger),
+		runtimeObserverMiddleware(a),
 	)
 	a.RegisterAllTools(s)
-	ctxFunc := func(_ context.Context) context.Context { return ctx }
-	return server.ServeStdio(s, server.WithStdioContextFunc(ctxFunc))
+	return s.Run(ctx)
 }
 
 // version is what the initialize handshake reports. See the Version field.
@@ -452,7 +455,7 @@ func (a *Adapter) version() string {
 //
 // This is the one place that holds the raw server, and it hands the helpers a
 // toolRegistrar instead — see that type for why.
-func (a *Adapter) RegisterAllTools(srv *server.MCPServer) {
+func (a *Adapter) RegisterAllTools(srv *gomcpserver.Server) {
 	s := &toolRegistrar{adapter: a, server: srv}
 	a.registerRuntimeTool(s)
 	a.registerTools(s)
@@ -510,24 +513,23 @@ func (a *Adapter) RegisterAllTools(srv *server.MCPServer) {
 // by behavior: it enumerates what the server ended up with and calls each tool.
 type toolRegistrar struct {
 	adapter *Adapter
-	server  *server.MCPServer
+	server  *gomcpserver.Server
 }
 
 // addTool registers one tool with the protections every tool gets.
 //
-// Wrapping order, outermost first — the handler sees the result of all three:
+// go-mcp/sanitize and the runtime observer are installed once, ahead of every
+// tool dispatch (see Adapter.Run) — not per tool — so by the time a
+// registered handler's chain runs, sanitize has already cleaned the call.
+// What's per-tool, wrapped here, outermost first:
 //
-//  1. stripGatewayMetadata, so mux's `_traceparent` is gone before anything
-//     judges the argument names, and recorded as the upstream trace link so
-//     correlation survives the strip (CW-20260912-0055).
-//  2. go-mcp-sanitize, which auto-cleans malformed agent tool-call XML in
-//     free-text params. Clean calls are silent; cleaned calls emit one
-//     warn-level slog line (see github.com/hollis-labs/go-mcp-sanitize).
-//  3. strictArgsMiddleware, which refuses any argument the tool does not
-//     declare. It runs INSIDE sanitize deliberately: sanitize can move a leaked
-//     `<parameter name="OTHER">` fragment into args["OTHER"], so checking
-//     before it ran would validate a different call than the handler receives.
-func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc) {
+//  1. gatewayMetadataMiddleware, so mux's `_traceparent` is gone before
+//     anything judges the argument names, and recorded as the upstream trace
+//     link so correlation survives the strip (CW-20260912-0055).
+//  2. strictArgsMiddleware, which refuses any argument the tool does not
+//     declare. It runs on the args map exactly as sanitize (and the gateway
+//     strip) left it, which is what the real handler receives.
+func (a *Adapter) addTool(r *toolRegistrar, t gomcpserver.Tool) {
 	logger := a.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -540,9 +542,8 @@ func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc
 		// surface reaches this line.
 		panic(fmt.Sprintf("mcpadapter: cannot derive declared arguments: %v", err))
 	}
-	handler := strict(h)
-	handler = mcpsanitize.Middleware(logger)(handler)
-	r.server.AddTool(t, gatewayMetadataMiddleware(logger, handler))
+	t.Handler = gatewayMetadataMiddleware(logger, strict(t.Handler))
+	r.server.RegisterTool(t)
 }
 
 // gatewayMetadataMiddleware removes the gateway's transport keys from the
@@ -550,29 +551,27 @@ func (a *Adapter) addTool(r *toolRegistrar, t mcp.Tool, h server.ToolHandlerFunc
 //
 // A call carrying none of them is passed through untouched, which is every call
 // that did not come through a mux old enough to inject into arguments.
-func gatewayMetadataMiddleware(logger *slog.Logger, next server.ToolHandlerFunc) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		ctx = provenanceContext(ctx, req, logger)
-		args := req.GetArguments()
+func gatewayMetadataMiddleware(logger *slog.Logger, next gomcpserver.ToolHandler) gomcpserver.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		ctx = provenanceContext(ctx, logger)
 		if len(args) == 0 {
-			return next(ctx, req)
+			return next(ctx, args)
 		}
 		stripped, meta, changed := stripGatewayMetadata(args)
 		if !changed {
-			return next(ctx, req)
+			return next(ctx, args)
 		}
-		req.Params.Arguments = stripped
 		ctx = contextWithGatewayMetadata(ctx, meta)
 		if meta.UpstreamTrace.IsValid() {
 			ctx = trace.ContextWithRemoteSpanContext(ctx, meta.UpstreamTrace)
 		}
-		return next(ctx, req)
+		return next(ctx, stripped)
 	}
 }
 
 // checkScope validates the configured token and checks for the required scope.
 // Returns a non-nil error JSON result if auth fails; nil means the caller may proceed.
-func (a *Adapter) checkScope(ctx context.Context, scope string) (*mcp.CallToolResult, contextstore.AuthToken) {
+func (a *Adapter) checkScope(ctx context.Context, scope string) (any, contextstore.AuthToken) {
 	if a.Token == "" {
 		return toolError(codeAuthRequired, "no capability token configured for mutating operations"), contextstore.AuthToken{}
 	}
@@ -588,27 +587,24 @@ func (a *Adapter) checkScope(ctx context.Context, scope string) (*mcp.CallToolRe
 	return toolError(codeInsufficientScope, "token does not have scope: "+scope), claims
 }
 
-// toolError returns a CallToolResult containing a JSON error body agents can parse.
+// toolError returns a value carrying a JSON error body agents can parse.
+// go-mcp's ToolHandler JSON-marshals whatever a handler returns into
+// StructuredContent and a mirrored text block (see server.ToolHandler), so
+// returning the map directly reproduces the wire shape mark3labs'
+// mcp.NewToolResultText(json.Marshal(...)) used to build by hand.
 //
 // code is an errorCode rather than a string so that a call site cannot name a
 // code that does not exist. The wire shape is unchanged — the constant's value
 // is the same literal that used to be written here.
-func toolError(code errorCode, message string) *mcp.CallToolResult {
-	// This value contains strings only, so encoding/json cannot reject it.
-	// Keep the fallback explicit nevertheless: toolError is the last-resort
-	// path used when serializing an ordinary result has already failed.
-	body, err := json.Marshal(map[string]string{"code": string(code), "message": message})
-	if err != nil {
-		body = []byte(`{"code":"internal_error","message":"failed to serialize MCP error result"}`)
-	}
-	return mcp.NewToolResultText(string(body))
+func toolError(code errorCode, message string) any {
+	return map[string]string{"code": string(code), "message": message}
 }
 
-// toolJSON marshals v to JSON and wraps it as a tool result.
-func toolJSON(v any) *mcp.CallToolResult {
-	body, err := json.Marshal(v)
-	if err != nil {
-		return toolError(codeInternalError, "failed to serialize MCP tool result: "+err.Error())
-	}
-	return mcp.NewToolResultText(string(body))
+// toolJSON returns v for go-mcp to marshal into StructuredContent and a
+// mirrored text block. Kept as a named pass-through, rather than inlining `v`
+// at every call site, so every handler in this package still reads
+// `return toolJSON(x), nil` — the same shape it read under mark3labs, where
+// this function did the marshaling by hand.
+func toolJSON(v any) any {
+	return v
 }

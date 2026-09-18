@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/go-mcp/staleness"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func observationIdentity(data []byte) staleness.Identity {
@@ -19,15 +19,18 @@ func observationIdentity(data []byte) staleness.Identity {
 	return staleness.Identity{Scheme: "sha256", Digest: hex.EncodeToString(h[:]), Product: "fixture/tesseract", Platform: "fixture/platform"}
 }
 
-func observationRequest(path string) *mcp.InitializeRequest {
-	return &mcp.InitializeRequest{Params: mcp.InitializeParams{ClientInfo: mcp.Implementation{Name: "agent-mux-proxy", Version: "review"}, Capabilities: mcp.ClientCapabilities{Experimental: map[string]any{
-		runtimeCapability: map[string]any{
-			"schema_version": 1, "mode": "observation-only",
-			"owner":    map[string]any{"schema_version": 1, "instance_id": "8a5013c5-a690-497e-940e-59eea16c709a", "pid": 100, "build": map[string]any{"private": "do-not-publish"}},
-			"launch":   map[string]any{"selector": path, "selector_kind": "absolute", "resolution": "pre-spawn-path-observation", "relaunch_lookup": "selector", "pid": 200, "resolved_path": "do-not-use-cached-path", "args": []string{"private-argument"}},
-			"recovery": map[string]any{"attempts_remaining": 5, "exit_permitted": true, "reservation": "fake-permission"},
-		},
-	}}}}
+func observationRequest(path string) *mcpsdk.InitializeRequest {
+	return &mcpsdk.InitializeRequest{Params: &mcpsdk.InitializeParams{
+		ClientInfo: &mcpsdk.Implementation{Name: "agent-mux-proxy", Version: "review"},
+		Capabilities: &mcpsdk.ClientCapabilities{Experimental: map[string]any{
+			runtimeCapability: map[string]any{
+				"schema_version": 1, "mode": "observation-only",
+				"owner":    map[string]any{"schema_version": 1, "instance_id": "8a5013c5-a690-497e-940e-59eea16c709a", "pid": 100, "build": map[string]any{"private": "do-not-publish"}},
+				"launch":   map[string]any{"selector": path, "selector_kind": "absolute", "resolution": "pre-spawn-path-observation", "relaunch_lookup": "selector", "pid": 200, "resolved_path": "do-not-use-cached-path", "args": []string{"private-argument"}},
+				"recovery": map[string]any{"attempts_remaining": 5, "exit_permitted": true, "reservation": "fake-permission"},
+			},
+		}},
+	}}
 }
 
 func TestRuntimeObservationRequiresCurrentParentAndLeaf(t *testing.T) {

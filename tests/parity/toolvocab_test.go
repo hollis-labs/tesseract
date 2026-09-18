@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 
 	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 )
@@ -219,12 +219,12 @@ func TestNamingVocabularyMatchesHandStatedNames(t *testing.T) {
 func sortedRegisteredToolNames(t *testing.T) []string {
 	t.Helper()
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("toolvocab-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("toolvocab-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
 	var names []string
-	for name := range srv.ListTools() {
-		names = append(names, name)
+	for _, def := range srv.ToolDefinitions() {
+		names = append(names, def.Name)
 	}
 	sort.Strings(names)
 	return names

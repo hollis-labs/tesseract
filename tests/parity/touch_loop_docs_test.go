@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 )
 
 // touchLoopClaims are the claims the ticket requires the caller-facing surface
@@ -69,17 +69,16 @@ var rankedResultTools = []string{"tesseract_recall"}
 
 func TestRankedResultToolsDocumentTheTouchLoop(t *testing.T) {
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("touch-loop-docs-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("touch-loop-docs-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
-	tools := srv.ListTools()
 	for _, name := range rankedResultTools {
-		tool, ok := tools[name]
+		tool, ok := toolDefByName(srv, name)
 		if !ok {
 			t.Errorf("tool %q is not registered; the loop cannot be documented on a tool that does not exist", name)
 			continue
 		}
-		desc := strings.ToLower(tool.Tool.Description)
+		desc := strings.ToLower(tool.Description)
 		for _, claim := range touchLoopClaims {
 			if !strings.Contains(desc, strings.ToLower(claim.fragment)) {
 				t.Errorf("tool %q description does not carry %q — %s",
@@ -95,14 +94,14 @@ func TestRankedResultToolsDocumentTheTouchLoop(t *testing.T) {
 // is the failure recall.go refuses and the reason this is a tool and not a knob.
 func TestTouchToolDocumentsTheTiming(t *testing.T) {
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("touch-loop-docs-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("touch-loop-docs-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
-	tool, ok := srv.ListTools()["tesseract_touch"]
+	tool, ok := toolDefByName(srv, "tesseract_touch")
 	if !ok {
 		t.Fatal("tesseract_touch is not registered")
 	}
-	desc := strings.ToLower(tool.Tool.Description)
+	desc := strings.ToLower(tool.Description)
 	for _, want := range []string{
 		"after the work, not after the search",
 		"under-reporting is fine",

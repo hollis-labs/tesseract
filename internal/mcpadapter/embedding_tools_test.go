@@ -7,7 +7,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestContextEmbed_NoProvider(t *testing.T) {
@@ -15,8 +14,7 @@ func TestContextEmbed_NoProvider(t *testing.T) {
 	a := New(s, "")
 	// EmbeddingProvider is nil by default.
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"record_id": "test-id",
 		"namespace": "user/test",
 		"key":       "doc",
@@ -40,8 +38,7 @@ func TestContextEmbed_Success(t *testing.T) {
 	a.EmbeddingProvider = embedding.NewMockProvider(128)
 	a.EmbeddingModel = "mock-embed"
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"record_id": rec.RecordID,
 		"namespace": "user/test",
 		"key":       "doc",
@@ -66,8 +63,7 @@ func TestContextEmbed_RecordNotFound(t *testing.T) {
 	a.EmbeddingProvider = embedding.NewMockProvider(128)
 	a.EmbeddingModel = "mock-embed"
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"record_id": "nonexistent",
 		"namespace": "user/test",
 		"key":       "doc",
@@ -91,8 +87,7 @@ func TestContextEmbed_Idempotent(t *testing.T) {
 	a.EmbeddingProvider = embedding.NewMockProvider(128)
 	a.EmbeddingModel = "mock-embed"
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"record_id": rec.RecordID,
 		"namespace": "user/test",
 		"key":       "doc",
@@ -115,8 +110,7 @@ func TestContextSearch_NoProvider(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"query": "test"}
+	req := map[string]any{"query": "test"}
 
 	res, err := a.handleSearch(context.Background(), req)
 	if err != nil {
@@ -134,8 +128,7 @@ func TestContextSearch_EmptyResults(t *testing.T) {
 	a.EmbeddingProvider = embedding.NewMockProvider(128)
 	a.EmbeddingModel = "mock-embed"
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"query": "test"}
+	req := map[string]any{"query": "test"}
 
 	res, err := a.handleSearch(context.Background(), req)
 	if err != nil {
@@ -166,8 +159,7 @@ func TestContextSearch_RankedResults(t *testing.T) {
 
 	for _, r := range records {
 		rec := writeRecord(t, s, r.ns, r.key, r.payload)
-		embedReq := mcp.CallToolRequest{}
-		embedReq.Params.Arguments = map[string]any{
+		embedReq := map[string]any{
 			"record_id": rec.RecordID,
 			"namespace": r.ns,
 			"key":       r.key,
@@ -183,8 +175,7 @@ func TestContextSearch_RankedResults(t *testing.T) {
 	}
 
 	// Search.
-	searchReq := mcp.CallToolRequest{}
-	searchReq.Params.Arguments = map[string]any{
+	searchReq := map[string]any{
 		"query":     "neural networks deep learning",
 		"limit":     float64(10),
 		"threshold": float64(-1),
@@ -228,8 +219,7 @@ func TestContextSearch_NamespaceFilter(t *testing.T) {
 		rec contextstore.Record
 		ns  string
 	}{{rec1, "app/notes"}, {rec2, "app/logs"}} {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]any{
+		req := map[string]any{
 			"record_id": r.rec.RecordID,
 			"namespace": r.ns,
 			"key":       r.rec.Key,
@@ -240,8 +230,7 @@ func TestContextSearch_NamespaceFilter(t *testing.T) {
 	}
 
 	// Search with namespace filter — should only return app/notes.
-	searchReq := mcp.CallToolRequest{}
-	searchReq.Params.Arguments = map[string]any{
+	searchReq := map[string]any{
 		"query":     "test content",
 		"namespace": "app/notes",
 		"threshold": float64(-1),

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // The MCP door for structured objects (CW-20260909-0036).
@@ -30,8 +28,7 @@ func isRefusal(body map[string]any) bool {
 
 func recallViaHandler(t *testing.T, a *Adapter, args map[string]any) map[string]any {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
+	req := args
 	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)

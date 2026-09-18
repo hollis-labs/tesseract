@@ -7,33 +7,36 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func (a *Adapter) registerRAGTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("context_rag_query",
-		mcp.WithDescription("RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Natural language query")),
-		mcp.WithNumber("limit", mcp.Description("Max results (default: 5, max: 20)")),
-		mcp.WithNumber("threshold", mcp.Description("Minimum similarity score 0.0-1.0 (default: 0.6)")),
-		mcp.WithString("namespace", mcp.Description("Namespace prefix filter")),
-		mcp.WithString("types", mcp.Description("Comma-separated record type filter")),
-		mcp.WithNumber("max_tokens", mcp.Description("Approximate max tokens in combined results (default: 4000)")),
-		mcp.WithBoolean("include_metadata", mcp.Description("Include record metadata (namespace, key, type) in results (default: true)")),
-	), a.handleRAGQuery)
+	a.addTool(s, gomcpTool("context_rag_query",
+		"RAG retrieval: semantic search that returns ranked text content ready for LLM context injection. Embeds the query, searches similar records, and returns payloads with relevance scores. See `tesseract_skills start-here` for the primitive model.",
+		inputSchema(
+			strProp("query", "Natural language query", true),
+			numProp("limit", "Max results (default: 5, max: 20)", false),
+			numProp("threshold", "Minimum similarity score 0.0-1.0 (default: 0.6)", false),
+			strProp("namespace", "Namespace prefix filter", false),
+			strProp("types", "Comma-separated record type filter", false),
+			numProp("max_tokens", "Approximate max tokens in combined results (default: 4000)", false),
+			boolProp("include_metadata", "Include record metadata (namespace, key, type) in results (default: true)", false),
+		),
+		toolAnnotations{},
+		a.handleRAGQuery,
+	))
 }
 
-func (a *Adapter) handleRAGQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleRAGQuery(ctx context.Context, req map[string]any) (any, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured — RAG queries require an embedding provider"), nil
 	}
 
-	query := req.GetString("query", "")
+	query := argString(req, "query", "")
 	if query == "" {
 		return toolError(codeValidationError, "query is required"), nil
 	}
 
-	limit := req.GetInt("limit", 5)
+	limit := argInt(req, "limit", 5)
 	if limit <= 0 {
 		limit = 5
 	}
@@ -41,9 +44,9 @@ func (a *Adapter) handleRAGQuery(ctx context.Context, req mcp.CallToolRequest) (
 		limit = 20
 	}
 
-	threshold := req.GetFloat("threshold", 0.6)
-	maxTokens := req.GetInt("max_tokens", 4000)
-	includeMetadata := req.GetBool("include_metadata", true)
+	threshold := argFloat(req, "threshold", 0.6)
+	maxTokens := argInt(req, "max_tokens", 4000)
+	includeMetadata := argBool(req, "include_metadata", true)
 
 	// Build search options.
 	opts := embedding.SearchOptions{
@@ -52,10 +55,10 @@ func (a *Adapter) handleRAGQuery(ctx context.Context, req mcp.CallToolRequest) (
 		Model:     a.EmbeddingModel,
 	}
 
-	if ns := req.GetString("namespace", ""); ns != "" {
+	if ns := argString(req, "namespace", ""); ns != "" {
 		opts.Namespaces = []string{ns}
 	}
-	if typesStr := req.GetString("types", ""); typesStr != "" {
+	if typesStr := argString(req, "types", ""); typesStr != "" {
 		for _, t := range strings.Split(typesStr, ",") {
 			if t = strings.TrimSpace(t); t != "" {
 				opts.Types = append(opts.Types, t)

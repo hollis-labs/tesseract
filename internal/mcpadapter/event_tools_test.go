@@ -6,11 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func newEventAdapter(t *testing.T) (*Adapter, *memory.Store) {
@@ -30,15 +29,14 @@ func newEventAdapter(t *testing.T) (*Adapter, *memory.Store) {
 	return a, ms
 }
 
-func callEventTool(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), args map[string]any) string {
+func callEventTool(t *testing.T, h func(context.Context, map[string]any) (any, error), args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
+	req := args
 	res, err := h(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handler returned a transport error: %v", err)
 	}
-	return res.Content[0].(mcp.TextContent).Text
+	return mustJSONText(t, res)
 }
 
 // TestEventWriteToolDescribesTheClosedTypeVocabulary. Same reasoning as the
@@ -48,14 +46,14 @@ func callEventTool(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*
 // than restating it.
 func TestEventWriteToolDescribesTheClosedTypeVocabulary(t *testing.T) {
 	a, _ := newEventAdapter(t)
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
 
-	st, ok := srv.ListTools()["event_write"]
+	st, ok := toolDef(srv, "event_write")
 	if !ok {
 		t.Fatal("event_write not registered")
 	}
-	schema, err := st.Tool.InputSchema.MarshalJSON()
+	schema, err := json.Marshal(st.InputSchema)
 	if err != nil {
 		t.Fatalf("marshal input schema: %v", err)
 	}
@@ -66,7 +64,7 @@ func TestEventWriteToolDescribesTheClosedTypeVocabulary(t *testing.T) {
 		}
 	}
 	// The one claim the domain most needs an agent to read before writing.
-	if !strings.Contains(st.Tool.Description, "NOT telemetry") {
+	if !strings.Contains(st.Description, "NOT telemetry") {
 		t.Error("event_write's description does not say it is not telemetry, which is the " +
 			"single distinction that decides whether an agent is using the right system")
 	}
@@ -199,11 +197,10 @@ func TestEventToolsAreGatedOnTheirStore(t *testing.T) {
 	a := New(cs, "")
 	a.MemoryStore = memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
-	tools := srv.ListTools()
 	for _, name := range []string{"event_write", "event_list"} {
-		if _, ok := tools[name]; ok {
+		if _, ok := toolDef(srv, name); ok {
 			t.Errorf("%s is registered on an adapter with no event store", name)
 		}
 	}

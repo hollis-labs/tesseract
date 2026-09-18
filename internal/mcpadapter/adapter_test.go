@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // newTestStore opens a temp-dir store for testing.
@@ -21,21 +21,65 @@ func newTestStore(t *testing.T) *contextstore.Store {
 	return s
 }
 
-// toolResult decodes a tool result into a map for assertions.
-func parseResult(t *testing.T, res *mcp.CallToolResult) map[string]any {
+// parseResult decodes a tool result into a map for assertions.
+func parseResult(t *testing.T, res any) map[string]any {
 	t.Helper()
-	if res == nil || len(res.Content) == 0 {
+	if res == nil {
 		t.Fatal("empty tool result")
 	}
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
+	data := []byte(mustJSONText(t, res))
 	var m map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &m); err != nil {
-		t.Fatalf("unmarshal result %q: %v", textContent.Text, err)
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal result %s: %v", data, err)
 	}
 	return m
+}
+
+// mustJSONText renders a tool result exactly as go-mcp's ToolHandler contract
+// would put it on the wire: a string result is used VERBATIM as text content
+// (this is the shape budget.ToolJSON's callers return — already a marshaled
+// JSON string, never re-marshaled), and anything else is JSON-marshaled (see
+// server.ToolHandler in go-mcp/server/server.go). Re-marshaling a string
+// unconditionally, as an earlier version of this helper did, double-encodes
+// it into a JSON string literal instead of the object/array text a caller
+// actually receives.
+func mustJSONText(t *testing.T, res any) string {
+	t.Helper()
+	if text, ok := res.(string); ok {
+		return text
+	}
+	data, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	return string(data)
+}
+
+// toolDef looks up one registered tool's definition by name, the map-lookup
+// mark3labs' srv.ListTools()[name] gave directly — go-mcp's ToolDefinitions()
+// returns a sorted slice instead, so tests that want one tool by name go
+// through this rather than re-deriving the same loop at each call site.
+func toolDef(srv *gomcpserver.Server, name string) (gomcpserver.ToolDefinition, bool) {
+	for _, def := range srv.ToolDefinitions() {
+		if def.Name == name {
+			return def, true
+		}
+	}
+	return gomcpserver.ToolDefinition{}, false
+}
+
+// toolSchemaProperties reads the "properties" object off a registered tool's
+// InputSchema, exactly as declaredArgNames does in strictargs.go. Every schema
+// this package builds (schema.go's inputSchema) is a map[string]any in this
+// shape; a schema that isn't is a registration defect, not a test edge case,
+// so this returns nil rather than panicking.
+func toolSchemaProperties(inputSchema any) map[string]any {
+	schema, ok := inputSchema.(map[string]any)
+	if !ok {
+		return nil
+	}
+	props, _ := schema["properties"].(map[string]any)
+	return props
 }
 
 // writeRecord is a test helper that writes a record directly to the store.
@@ -73,8 +117,7 @@ func TestContextHead_Found(t *testing.T) {
 	writeRecord(t, s, "user/memory/task-001", "state", `{"phase":"start"}`)
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001", "key": "state"}
+	req := map[string]any{"namespace": "user/memory/task-001", "key": "state"}
 
 	res, err := a.handleContextHead(context.Background(), req)
 	if err != nil {
@@ -95,8 +138,7 @@ func TestContextHead_Found(t *testing.T) {
 func TestContextHead_NotFound(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "user/memory/nope", "key": "missing"}
+	req := map[string]any{"namespace": "user/memory/nope", "key": "missing"}
 
 	res, err := a.handleContextHead(context.Background(), req)
 	if err != nil {
@@ -110,8 +152,7 @@ func TestContextHead_NotFound(t *testing.T) {
 
 func TestContextHead_MissingArgs(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001"} // missing key
+	req := map[string]any{"namespace": "user/memory/task-001"} // missing key
 	res, _ := a.handleContextHead(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "validation_error" {
@@ -126,8 +167,7 @@ func TestContextHistory(t *testing.T) {
 	}
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "user/memory/task-001", "key": "state", "limit": float64(10)}
+	req := map[string]any{"namespace": "user/memory/task-001", "key": "state", "limit": float64(10)}
 
 	res, err := a.handleContextHistory(context.Background(), req)
 	if err != nil {
@@ -147,8 +187,7 @@ func TestContextView(t *testing.T) {
 	writeRecord(t, s, "app/test/session", "state", `{"v":3}`)
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces":     "user/memory/*",
 		"revision_scope": "head",
 	}
@@ -172,8 +211,7 @@ func TestContextPacket_WithPins(t *testing.T) {
 	writeRecord(t, s, "app/test/session/task-001", "state", `{"status":"active"}`)
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"shape":        "packet",
 		"namespaces":   "app/test/session/task-001",
 		"include_pins": true,
@@ -199,8 +237,7 @@ func TestContextPacket_WithPins(t *testing.T) {
 func TestContextPacket_EmptyResult(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"shape":        "packet",
 		"namespaces":   "user/memory/*",
 		"include_pins": false,
@@ -221,8 +258,7 @@ func TestContextPacket_EmptyResult(t *testing.T) {
 func TestContextWrite_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "") // no token
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/test/session/task-001",
 		"key":       "state",
 		"payload":   `{"phase":"start"}`,
@@ -249,8 +285,7 @@ func TestContextWrite_InsufficientScope(t *testing.T) {
 	}
 
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/test/session/task-001",
 		"key":       "state",
 		"payload":   `{"phase":"start"}`,
@@ -273,8 +308,7 @@ func TestContextWrite_Success(t *testing.T) {
 	}
 
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/test/session/task-001",
 		"key":       "state",
 		"payload":   `{"phase":"start","status":"active"}`,
@@ -312,8 +346,7 @@ func TestContextWrite_InvalidPayload(t *testing.T) {
 	}
 
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/test/session/task-001",
 		"key":       "state",
 		"payload":   "not json",
@@ -339,8 +372,7 @@ func TestContextPromoteRequest_Success(t *testing.T) {
 	writeRecord(t, s, "app/test/draft", "user-preference", `{"preference":"verbose output"}`)
 
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/test/draft",
 		"source_key":       "user-preference",
@@ -365,8 +397,7 @@ func TestContextPromoteRequest_Success(t *testing.T) {
 func TestContextPromoteRequest_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/test/draft",
 		"source_key":       "pref",
@@ -414,8 +445,7 @@ func TestContextView_TokenFiltersToMatchingNamespaces(t *testing.T) {
 	// Token scoped only to app/test/*
 	tok := writeToken(t, s, []string{}, []string{"app/test/*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces":     "app/test/*,user/memory/*",
 		"revision_scope": "head",
 	}
@@ -436,8 +466,7 @@ func TestContextView_NoToken_ReturnsAll(t *testing.T) {
 	writeRecord(t, s, "user/memory/task-001", "state", `{"v":2}`)
 
 	a := New(s, "") // no token → no filtering
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces":     "app/test/*,user/memory/*",
 		"revision_scope": "head",
 	}
@@ -459,8 +488,7 @@ func TestContextPacket_TokenFiltersToMatchingNamespaces(t *testing.T) {
 	// Token scoped only to app/agent/*
 	tok := writeToken(t, s, []string{}, []string{"app/agent/*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"shape":        "packet",
 		"namespaces":   "app/agent/*,user/memory/*",
 		"include_pins": true,
@@ -484,8 +512,7 @@ func TestContextWrite_NamespaceNotInTokenGlobs(t *testing.T) {
 	// Token has write scope but scoped only to app/agent/*
 	tok := writeToken(t, s, []string{"write"}, []string{"app/agent/*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "user/memory/task-001", // outside token globs
 		"key":       "state",
 		"payload":   `{"phase":"start"}`,
@@ -504,8 +531,7 @@ func TestContextWrite_NamespaceInTokenGlobs_Succeeds(t *testing.T) {
 	s := newTestStore(t)
 	tok := writeToken(t, s, []string{"write"}, []string{"app/agent/*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/agent/session",
 		"key":       "state",
 		"payload":   `{"phase":"start"}`,
@@ -528,8 +554,7 @@ func TestContextWrite_NamespaceInTokenGlobs_Succeeds(t *testing.T) {
 func TestContextPromoteList_Empty(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
+	req := map[string]any{}
 
 	res, err := a.handlePromotionList(context.Background(), req)
 	if err != nil {
@@ -550,8 +575,7 @@ func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 	a := New(s, tok)
 
 	// Create a promotion request.
-	writeReq := mcp.CallToolRequest{}
-	writeReq.Params.Arguments = map[string]any{
+	writeReq := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
@@ -561,8 +585,7 @@ func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 	_, _ = a.handlePromote(context.Background(), writeReq)
 
 	// List should return it.
-	listReq := mcp.CallToolRequest{}
-	listReq.Params.Arguments = map[string]any{"status": "pending"}
+	listReq := map[string]any{"status": "pending"}
 	res, err := a.handlePromotionList(context.Background(), listReq)
 	if err != nil {
 		t.Fatalf("handlePromotionList: %v", err)
@@ -577,8 +600,7 @@ func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 func TestContextPromoteApprove_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"stage": "approve", "request_id": "req-abc"}
+	req := map[string]any{"stage": "approve", "request_id": "req-abc"}
 
 	res, err := a.handlePromote(context.Background(), req)
 	if err != nil {
@@ -598,8 +620,7 @@ func TestContextPromoteApprove_Success(t *testing.T) {
 	a := New(s, tok)
 
 	// Create a request first.
-	writeReq := mcp.CallToolRequest{}
-	writeReq.Params.Arguments = map[string]any{
+	writeReq := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
@@ -611,8 +632,7 @@ func TestContextPromoteApprove_Success(t *testing.T) {
 	requestID := promBody["request_id"].(string)
 
 	// Approve it.
-	approveReq := mcp.CallToolRequest{}
-	approveReq.Params.Arguments = map[string]any{
+	approveReq := map[string]any{
 		"stage":      "approve",
 		"request_id": requestID,
 		"notes":      "looks good",
@@ -639,8 +659,7 @@ func TestContextPromoteApprove_AlreadyApproved(t *testing.T) {
 	writeRecord(t, s, "app/agent/session", "summary", `{"text":"ready"}`)
 	a := New(s, tok)
 
-	writeReq := mcp.CallToolRequest{}
-	writeReq.Params.Arguments = map[string]any{
+	writeReq := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
@@ -651,8 +670,7 @@ func TestContextPromoteApprove_AlreadyApproved(t *testing.T) {
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Approve once.
-	approveReq := mcp.CallToolRequest{}
-	approveReq.Params.Arguments = map[string]any{"stage": "approve", "request_id": requestID}
+	approveReq := map[string]any{"stage": "approve", "request_id": requestID}
 	a.handlePromote(context.Background(), approveReq) //nolint
 
 	// Approve again — should fail.
@@ -666,8 +684,7 @@ func TestContextPromoteApprove_AlreadyApproved(t *testing.T) {
 func TestContextPromoteApply_NoToken(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"stage": "apply", "request_id": "req-abc"}
+	req := map[string]any{"stage": "apply", "request_id": "req-abc"}
 
 	res, _ := a.handlePromote(context.Background(), req)
 	body := parseResult(t, res)
@@ -682,8 +699,7 @@ func TestContextPromoteApply_NotApproved(t *testing.T) {
 	writeRecord(t, s, "app/agent/session", "summary", `{"text":"ready"}`)
 	a := New(s, tok)
 
-	writeReq := mcp.CallToolRequest{}
-	writeReq.Params.Arguments = map[string]any{
+	writeReq := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
@@ -694,8 +710,7 @@ func TestContextPromoteApply_NotApproved(t *testing.T) {
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Try to apply without approving first.
-	applyReq := mcp.CallToolRequest{}
-	applyReq.Params.Arguments = map[string]any{"stage": "apply", "request_id": requestID}
+	applyReq := map[string]any{"stage": "apply", "request_id": requestID}
 	res, _ := a.handlePromote(context.Background(), applyReq)
 	body := parseResult(t, res)
 	if body["code"] != "invalid_state" {
@@ -710,8 +725,7 @@ func TestContextPromoteApply_Success(t *testing.T) {
 	a := New(s, tok)
 
 	// Request.
-	writeReq := mcp.CallToolRequest{}
-	writeReq.Params.Arguments = map[string]any{
+	writeReq := map[string]any{
 		"stage":            "request",
 		"source_namespace": "app/agent/session",
 		"source_key":       "summary",
@@ -722,13 +736,11 @@ func TestContextPromoteApply_Success(t *testing.T) {
 	requestID := parseResult(t, promRes)["request_id"].(string)
 
 	// Approve.
-	approveReq := mcp.CallToolRequest{}
-	approveReq.Params.Arguments = map[string]any{"stage": "approve", "request_id": requestID}
+	approveReq := map[string]any{"stage": "approve", "request_id": requestID}
 	a.handlePromote(context.Background(), approveReq) //nolint
 
 	// Apply.
-	applyReq := mcp.CallToolRequest{}
-	applyReq.Params.Arguments = map[string]any{"stage": "apply", "request_id": requestID}
+	applyReq := map[string]any{"stage": "apply", "request_id": requestID}
 	res, err := a.handlePromote(context.Background(), applyReq)
 	if err != nil {
 		t.Fatalf("handlePromoteApply: %v", err)
@@ -760,8 +772,7 @@ func TestContextPromoteApply_Success(t *testing.T) {
 
 func TestContextPlan_BootProject(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"intent": "boot_project",
 	}
 	res, err := a.handleContextPlan(context.Background(), req)
@@ -795,8 +806,7 @@ func TestContextPlan_BootProject(t *testing.T) {
 
 func TestContextPlan_ResumeTask_ExtractsKeywords(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"intent":  "resume_task",
 		"summary": "implementing authentication middleware for the API",
 	}
@@ -812,8 +822,7 @@ func TestContextPlan_ResumeTask_ExtractsKeywords(t *testing.T) {
 
 func TestContextPlan_Custom_ReturnsUserStar(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"intent": "custom"}
+	req := map[string]any{"intent": "custom"}
 	res, _ := a.handleContextPlan(context.Background(), req)
 	body := parseResult(t, res)
 	plan := body["plan"].(map[string]any)
@@ -835,8 +844,7 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 	writeRecord(t, s, "user/pins/brief", "context", `{"brief":"project"}`)
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"execute":   true,
 		"intent":    "boot_project",
 		"max_items": float64(50),
@@ -864,8 +872,7 @@ func TestContextFetch_ReturnsPacketWithManifest(t *testing.T) {
 
 func TestContextFetch_Empty(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"execute": true, "intent": "boot_project"}
+	req := map[string]any{"execute": true, "intent": "boot_project"}
 	res, _ := a.handleContextPlan(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
@@ -880,8 +887,7 @@ func TestContextNamespaceRegister_Success(t *testing.T) {
 	s := newTestStore(t)
 	tok := writeToken(t, s, []string{"namespace.admin"}, []string{"*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace":  "app/my-agent/session",
 		"owner_type": "app",
 		"owner_id":   "my-agent",
@@ -909,8 +915,7 @@ func TestContextNamespaceRegister_Success(t *testing.T) {
 
 func TestContextNamespaceRegister_NoToken(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/agent/session", "owner_type": "app", "owner_id": "agent",
 	}
 	res, _ := a.handleNamespaceRegister(context.Background(), req)
@@ -924,8 +929,7 @@ func TestContextNamespaceRegister_InsufficientScope(t *testing.T) {
 	s := newTestStore(t)
 	tok := writeToken(t, s, []string{"write"}, []string{"*"}) // write scope, not namespace.admin
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/agent/session", "owner_type": "app", "owner_id": "agent",
 	}
 	res, _ := a.handleNamespaceRegister(context.Background(), req)
@@ -939,8 +943,7 @@ func TestContextNamespaceRegister_MissingFields(t *testing.T) {
 	s := newTestStore(t)
 	tok := writeToken(t, s, []string{"namespace.admin"}, []string{"*"})
 	a := New(s, tok)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespace": "app/agent/session",
 		// missing owner_type and owner_id
 	}
@@ -963,8 +966,7 @@ func TestContextNamespaceShow_Found(t *testing.T) {
 	}
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/my-agent/session"}
+	req := map[string]any{"kind": "namespaces", "name": "app/my-agent/session"}
 	res, err := a.handleRegistryList(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleNamespaceShow: %v", err)
@@ -983,8 +985,7 @@ func TestContextNamespaceShow_Found(t *testing.T) {
 
 func TestContextNamespaceShow_NotFound(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/nonexistent/ns"}
+	req := map[string]any{"kind": "namespaces", "name": "app/nonexistent/ns"}
 	res, _ := a.handleRegistryList(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != "not_found" {
@@ -998,8 +999,7 @@ func TestContextNamespaceShow_NoAuthRequired(t *testing.T) {
 		Namespace: "app/open/ns", OwnerType: "app", OwnerID: "test",
 	})
 	a := New(s, "") // no token — should still work
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"kind": "namespaces", "name": "app/open/ns"}
+	req := map[string]any{"kind": "namespaces", "name": "app/open/ns"}
 	res, _ := a.handleRegistryList(context.Background(), req)
 	body := parseResult(t, res)
 	if body["code"] != nil {
@@ -1015,8 +1015,7 @@ func TestContextAudit_NoAuthRequired(t *testing.T) {
 	_ = s.EmitWrite(context.Background(), "test", "app/test/session", "state", 1, "", nil)
 
 	a := New(s, "") // no token
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
+	req := map[string]any{}
 	res, err := a.handleAuditList(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleAuditList: %v", err)
@@ -1037,8 +1036,7 @@ func TestContextAudit_FiltersByNamespace(t *testing.T) {
 	_ = s.EmitWrite(context.Background(), "test", "user/memory/task", "state", 1, "", nil)
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"namespace": "app/agent/session"}
+	req := map[string]any{"namespace": "app/agent/session"}
 	res, _ := a.handleAuditList(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
@@ -1053,8 +1051,7 @@ func TestContextAudit_FiltersByNamespace(t *testing.T) {
 
 func TestContextAudit_Empty(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
+	req := map[string]any{}
 	res, _ := a.handleAuditList(context.Background(), req)
 	body := parseResult(t, res)
 	items := parseItems(t, body)
@@ -1070,8 +1067,7 @@ func TestContextAudit_ProjectsMetadata(t *testing.T) {
 		json.RawMessage(`{"source":"http","correlation_id":"abc"}`))
 
 	a := New(s, "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
+	req := map[string]any{}
 	res, err := a.handleAuditList(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleAuditList: %v", err)

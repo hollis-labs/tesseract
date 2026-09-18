@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 )
 
 // repoRoot resolves the module root from this package's working directory and
@@ -33,15 +33,28 @@ func repoRoot(t *testing.T) string {
 func registeredToolNames(t *testing.T) map[string]struct{} {
 	t.Helper()
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("toolname-drift-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("toolname-drift-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
 	names := map[string]struct{}{}
-	for name := range srv.ListTools() {
-		names[name] = struct{}{}
+	for _, def := range srv.ToolDefinitions() {
+		names[def.Name] = struct{}{}
 	}
 	if len(names) == 0 {
 		t.Fatal("registered zero tools — the adapter is not wired, so any clean result here is meaningless")
 	}
 	return names
+}
+
+// toolDefByName looks up one registered tool's definition by name. Its only
+// callers are in touch_loop_docs_test.go, which is `//go:build drift`-gated
+// and excluded from the default build (see AGENTS.md), so the default lint
+// run sees it as unused even though it is not.
+func toolDefByName(srv *gomcpserver.Server, name string) (gomcpserver.ToolDefinition, bool) { //nolint:unused // used only by drift-tagged tests
+	for _, def := range srv.ToolDefinitions() {
+		if def.Name == name {
+			return def, true
+		}
+	}
+	return gomcpserver.ToolDefinition{}, false
 }

@@ -50,7 +50,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type projSizeItem struct {
@@ -105,8 +104,7 @@ func TestProjectionSize(t *testing.T) {
 	// taken two ways — the assertion at the end of each loop binds them.
 	var lastManifest memory.Manifest
 	call := func(mode string, limit int) string {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]any{
+		req := map[string]any{
 			"namespaces":   string(nsJSON),
 			"ranking":      ranking,
 			"limit":        float64(limit),
@@ -120,7 +118,7 @@ func TestProjectionSize(t *testing.T) {
 			Results json.RawMessage `json:"results"`
 			Mani    memory.Manifest `json:"manifest"`
 		}
-		raw := res.Content[0].(mcp.TextContent).Text
+		raw := mustJSONText(t, res)
 		if err := json.Unmarshal([]byte(raw), &env); err != nil {
 			t.Fatalf("recall %s: unmarshal envelope: %v", mode, err)
 		}
@@ -389,13 +387,12 @@ func TestChronologicalLogOnRealCorpus(t *testing.T) {
 		if cursor != "" {
 			args["cursor"] = cursor
 		}
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
+		req := args
 		res, err := a.handleTesseractRecall(ctx, req)
 		if err != nil {
 			t.Fatalf("page %d: %v", pages, err)
 		}
-		raw := res.Content[0].(mcp.TextContent).Text
+		raw := mustJSONText(t, res)
 
 		var env struct {
 			Results  []logLine       `json:"results"`

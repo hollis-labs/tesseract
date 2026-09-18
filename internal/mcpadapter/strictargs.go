@@ -8,9 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -35,11 +34,14 @@ import (
 //  1. stripGatewayMetadata removes the gateway's transport keys, because they
 //     are not caller arguments and refusing them would break every call made
 //     through mux (see acceptedGatewayMetadata).
-//  2. The go-mcp-sanitize middleware, because it can WRITE an argument slot —
-//     a leaked `<parameter name="OTHER">…</parameter>` fragment inside a
-//     free-text value is moved into args["OTHER"]. Validating before that ran
-//     would guard the call the client sent rather than the call the handler
-//     receives, and the recovered name is exactly the kind that is misspelled.
+//  2. The go-mcp/sanitize middleware, installed once on the raw SDK server
+//     (see Adapter.Run), because it can WRITE an argument slot — a leaked
+//     `<parameter name="OTHER">…</parameter>` fragment inside a free-text
+//     value is moved into args["OTHER"]. It runs ahead of every tool
+//     dispatch, so by the time this middleware sees an args map, sanitize has
+//     already run on it — validating before that ran would guard the call the
+//     client sent rather than the call the handler receives, and the
+//     recovered name is exactly the kind that is misspelled.
 
 // WHY THE PUBLISHED SCHEMAS STAY PERMISSIVE WHILE THE SERVER ENFORCES.
 //
@@ -66,12 +68,12 @@ import (
 // So advertising strictness would be safe today, and it is still not done,
 // for two reasons that outlive the measurement.
 //
-// It would buy no enforcement. mcp-go honors `additionalProperties: false`
-// only through its own opt-in validator, and that validator's message names
-// the offending key and nothing else. This middleware's names the key, what it
-// should have been, and the tool's whole declared set — which is the
-// deliverable. Publishing the flag would hand some clients the poorer error
-// first and change nothing about what is accepted.
+// It would buy no enforcement. Our own schemas already set
+// `additionalProperties: false` (see schema.go's inputSchema), but nothing on
+// the wire validates against it except a client's own opt-in checker — this
+// middleware's refusal names the key, what it should have been, and the
+// tool's whole declared set, which is the deliverable regardless of what a
+// schema advertises.
 //
 // And while mux injects into `params.arguments`, `additionalProperties: false`
 // is a contract THE GATEWAY ITSELF BREAKS on every call it forwards. Publishing
@@ -102,9 +104,6 @@ import (
 // difference is not pedantry: a merged-but-undeployed fix is precisely what
 // broke eight sessions on the `derived_from` rename (CW-20260912-0047), and a
 // premature deletion here fails every Tesseract call an older mux forwards.
-// mcp.CallToolParams.Meta already exists in mcp-go v1.0.0, so reading trace
-// context from `_meta` needs no library bump when that day comes — only this
-// map emptied and the read moved.
 var acceptedGatewayMetadata = map[string]bool{
 	"_traceparent": true,
 	"_tracestate":  true,
@@ -183,11 +182,15 @@ const (
 
 // parseTetherProvenance accepts exactly the version-one bounded envelope. A
 // malformed optional envelope is discarded; callers still reach the handler.
-func parseTetherProvenance(meta *mcp.Meta) (memory.WriteContext, string) {
-	if meta == nil || meta.AdditionalFields == nil {
+//
+// meta is the tool call's protocol-level `_meta` object, read via
+// gomcpserver.MetaFromContext — nil when the call carried none, which is most
+// calls and not an error.
+func parseTetherProvenance(meta map[string]any) (memory.WriteContext, string) {
+	if meta == nil {
 		return memory.WriteContext{}, ""
 	}
-	raw, present := meta.AdditionalFields[tetherProvenanceKey]
+	raw, present := meta[tetherProvenanceKey]
 	if !present {
 		return memory.WriteContext{}, ""
 	}
@@ -240,8 +243,13 @@ func isSchemaVersionOne(value any) bool {
 	}
 }
 
-func provenanceContext(ctx context.Context, req mcp.CallToolRequest, logger *slog.Logger) context.Context {
-	writeContext, reason := parseTetherProvenance(req.Params.Meta)
+// provenanceContext reads the call's protocol-level `_meta` off ctx (installed
+// automatically by go-mcp's adaptHandler before any registered handler runs;
+// see gomcpserver.MetaFromContext) and, if it carries a valid tether
+// provenance envelope, attaches it as a memory.WriteContext for the handler
+// chain to pick up.
+func provenanceContext(ctx context.Context, logger *slog.Logger) context.Context {
+	writeContext, reason := parseTetherProvenance(gomcpserver.MetaFromContext(ctx))
 	if reason != "" {
 		logger.WarnContext(ctx, "discarded optional tether provenance", "reason", reason)
 		return ctx
@@ -256,7 +264,7 @@ func provenanceContext(ctx context.Context, req mcp.CallToolRequest, logger *slo
 // returns the remaining arguments, what those keys parsed to, and whether
 // anything was removed.
 //
-// The input map is never mutated: mcp-go hands the same map to every
+// The input map is never mutated: go-mcp hands the same map to every
 // middleware in the chain, and a handler that reads arguments after this ran
 // should see the caller's own call, not a map something else edited underneath
 // it. A call carrying none of the accepted keys is returned unchanged and
@@ -411,28 +419,23 @@ const retiredPayloadModeGuidance = "payload_mode is not a knob on this tool. It 
 // in a new place. A tool that gains an argument gains it here on the same line
 // that declares it.
 //
-// RawInputSchema is mcp-go's escape hatch for a hand-written schema; nothing in
-// this repo uses it, and a tool that started to would otherwise declare zero
-// properties here and refuse every argument it has. It is parsed rather than
-// assumed away, and a schema that cannot be parsed is a registration failure:
-// registering a tool whose accepted set is unknown is the silent-drop defect
-// with extra steps.
-func declaredArgNames(t mcp.Tool) (map[string]struct{}, error) {
-	if len(t.RawInputSchema) > 0 {
-		var raw struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		}
-		if err := json.Unmarshal(t.RawInputSchema, &raw); err != nil {
-			return nil, fmt.Errorf("tool %q: RawInputSchema is not valid JSON: %w", t.Name, err)
-		}
-		out := make(map[string]struct{}, len(raw.Properties))
-		for name := range raw.Properties {
-			out[name] = struct{}{}
-		}
-		return out, nil
+// go-mcp's Tool.InputSchema is `any` — every schema this package builds is a
+// map[string]any produced by schema.go's inputSchema (via go-mcp's own
+// server.ObjectSchema), never a hand-written escape hatch, so the properties
+// key is always present and always a map. A schema shaped some other way is a
+// registration failure: registering a tool whose accepted set is unknown is
+// the silent-drop defect with extra steps.
+func declaredArgNames(t gomcpserver.Tool) (map[string]struct{}, error) {
+	schema, ok := t.InputSchema.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("tool %q: InputSchema is not a map[string]any (got %T)", t.Name, t.InputSchema)
 	}
-	out := make(map[string]struct{}, len(t.InputSchema.Properties))
-	for name := range t.InputSchema.Properties {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("tool %q: InputSchema has no map[string]any \"properties\"", t.Name)
+	}
+	out := make(map[string]struct{}, len(properties))
+	for name := range properties {
 		out[name] = struct{}{}
 	}
 	return out, nil
@@ -454,7 +457,7 @@ func sortedNames(set map[string]struct{}) []string {
 // The declared set is read once at registration time, not per call: the schema
 // cannot change after the tool is registered, and deriving it here keeps the
 // per-call cost to one map lookup per argument.
-func strictArgsMiddleware(t mcp.Tool) (func(server.ToolHandlerFunc) server.ToolHandlerFunc, error) {
+func strictArgsMiddleware(t gomcpserver.Tool) (func(gomcpserver.ToolHandler) gomcpserver.ToolHandler, error) {
 	declared, err := declaredArgNames(t)
 	if err != nil {
 		return nil, err
@@ -462,14 +465,10 @@ func strictArgsMiddleware(t mcp.Tool) (func(server.ToolHandlerFunc) server.ToolH
 	accepted := sortedNames(declared)
 	retired := retiredArgGuidance[t.Name]
 
-	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
-		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			args := req.GetArguments()
-			// Arguments that are not a JSON object carry no names to check.
-			// mcp-go answers that shape for itself; adding a second opinion
-			// here would only change which message a caller sees.
+	return func(next gomcpserver.ToolHandler) gomcpserver.ToolHandler {
+		return func(ctx context.Context, args map[string]any) (any, error) {
 			if len(args) == 0 {
-				return next(ctx, req)
+				return next(ctx, args)
 			}
 			unknown := make([]string, 0, 2)
 			for name := range args {
@@ -478,7 +477,7 @@ func strictArgsMiddleware(t mcp.Tool) (func(server.ToolHandlerFunc) server.ToolH
 				}
 			}
 			if len(unknown) == 0 {
-				return next(ctx, req)
+				return next(ctx, args)
 			}
 			sort.Strings(unknown)
 			return unknownArgError(t.Name, unknown, accepted, retired), nil
@@ -492,7 +491,7 @@ func strictArgsMiddleware(t mcp.Tool) (func(server.ToolHandlerFunc) server.ToolH
 // guessing is what produced the key. So the message answers all three
 // questions a caller actually has: what was refused, what it probably should
 // have been, and what this tool does accept.
-func unknownArgError(toolName string, unknown, accepted []string, retired map[string]string) *mcp.CallToolResult {
+func unknownArgError(toolName string, unknown, accepted []string, retired map[string]string) any {
 	var b strings.Builder
 	for i, name := range unknown {
 		if i > 0 {

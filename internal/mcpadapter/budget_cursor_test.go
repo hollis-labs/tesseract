@@ -14,10 +14,9 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/go-mcp/budget"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // recallResultsJSON extracts the results array from a memory_recall envelope.
@@ -67,12 +66,12 @@ func registeredToolSchemas(t *testing.T) map[string]map[string]any {
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
 
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
 
 	out := map[string]map[string]any{}
-	for name, st := range srv.ListTools() {
-		out[name] = st.Tool.InputSchema.Properties
+	for _, st := range srv.ToolDefinitions() {
+		out[st.Name] = toolSchemaProperties(st.InputSchema)
 	}
 	return out
 }
@@ -95,19 +94,13 @@ func budgetAdapter(t *testing.T, n int) *Adapter {
 	return a
 }
 
-func callTool(t *testing.T, fn func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), args map[string]any) string {
+func callTool(t *testing.T, fn func(context.Context, map[string]any) (any, error), args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	res, err := fn(context.Background(), req)
+	res, err := fn(context.Background(), args)
 	if err != nil {
 		t.Fatalf("tool call: %v", err)
 	}
-	text, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
-	return text.Text
+	return mustJSONText(t, res)
 }
 
 // ── The envelope reaches the caller ──────────────────────────────────────────
@@ -454,7 +447,7 @@ func TestMCPRecall_ConfiguredBudgetStillApplies(t *testing.T) {
 	}))
 
 	a.DefaultBudget = memory.Budget{Bytes: base.BytesReturned / 3}
-	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+	for name, fn := range map[string]func(context.Context, map[string]any) (any, error){
 		"memory_recall":    a.handleTesseractRecall,
 		"tesseract_lookup": a.handleTesseractRecall,
 	} {

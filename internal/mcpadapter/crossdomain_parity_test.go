@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
@@ -36,8 +37,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 const (
@@ -155,15 +154,13 @@ func crossDomainSurfaces(t *testing.T) (*Adapter, *contextapi.Server, *memory.St
 }
 
 // xdMCP calls one MCP handler and returns its raw body.
-func xdMCP(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), args map[string]any) string {
+func xdMCP(t *testing.T, h func(context.Context, map[string]any) (any, error), args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	res, err := h(context.Background(), req)
+	res, err := h(context.Background(), args)
 	if err != nil {
 		t.Fatalf("MCP handler returned a transport error: %v", err)
 	}
-	return res.Content[0].(mcp.TextContent).Text
+	return mustJSONText(t, res)
 }
 
 // xdHTTP drives one route and returns status + body.
@@ -505,11 +502,11 @@ func registeredNames(t *testing.T, wireMemory, wireKnowledge bool) (*Adapter, ma
 		a.KnowledgeStore = knowledge.New(ms)
 	}
 
-	srv := server.NewMCPServer("deployment", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("deployment", "0.0.0")
 	a.RegisterAllTools(srv)
 	names := map[string]struct{}{}
-	for name := range srv.ListTools() {
-		names[name] = struct{}{}
+	for _, def := range srv.ToolDefinitions() {
+		names[def.Name] = struct{}{}
 	}
 	return a, names
 }
@@ -688,7 +685,7 @@ func TestContextOnlyDeployment_RevisionOpsAbsent(t *testing.T) {
 	// takes the stdio server down instead of answering the caller.
 	for _, tc := range []struct {
 		name string
-		h    func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		h    func(context.Context, map[string]any) (any, error)
 	}{
 		{"tesseract_get_revision", a.handleTesseractGetRevision},
 		{"tesseract_deprecate", a.handleTesseractDeprecate},
@@ -745,9 +742,8 @@ func TestReadDomainVocabularyIsExactlyThese(t *testing.T) {
 // offers a caller answers a real read.
 func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 	a, _, _, _ := crossDomainSurfaces(t)
-	srv := server.NewMCPServer("advertised", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("advertised", "0.0.0")
 	a.RegisterAllTools(srv)
-	tools := srv.ListTools()
 
 	// A probe per domain this test knows how to exercise. A domain advertised
 	// without an entry here is an error, not a skip — that is what makes a
@@ -761,11 +757,11 @@ func TestCrossDomainToolsServeEveryDomainTheyAdvertise(t *testing.T) {
 	}
 
 	for _, name := range []string{"tesseract_get", "tesseract_history"} {
-		st, ok := tools[name]
+		st, ok := toolDef(srv, name)
 		if !ok {
 			t.Fatalf("%s is not registered", name)
 		}
-		advertised := advertisedDomains(t, name, st.Tool.InputSchema.Properties)
+		advertised := advertisedDomains(t, name, toolSchemaProperties(st.InputSchema))
 
 		// Non-vacuity, stated as a floor rather than an equality: an equality
 		// against 3 would itself have to be edited when a fourth domain lands,
@@ -1278,7 +1274,7 @@ func TestLegacySelectorDoesNotResolveTrimmedKnowledgeIdentity(t *testing.T) {
 	for _, selector := range selectors {
 		for _, handler := range []struct {
 			name string
-			call func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+			call func(context.Context, map[string]any) (any, error)
 		}{
 			{"current", a.handleTesseractGet},
 			{"history", a.handleTesseractHistory},
@@ -1406,7 +1402,7 @@ func TestItemIDSelectorRejectsMixedPartialAndEmptyForms(t *testing.T) {
 	for i, args := range cases {
 		for _, handler := range []struct {
 			name string
-			call func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+			call func(context.Context, map[string]any) (any, error)
 		}{
 			{"get", a.handleTesseractGet},
 			{"history", a.handleTesseractHistory},

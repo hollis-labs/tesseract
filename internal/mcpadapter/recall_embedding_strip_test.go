@@ -9,7 +9,6 @@ import (
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // BLG-20260416-037 guard. memory_recall and tesseract_lookup must not ship
@@ -99,26 +98,22 @@ func TestMemoryRecall_OmitsEmbeddingVector(t *testing.T) {
 		"payload_summary": "Dark mode preference",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent")
-	}
-	if strings.Contains(textContent.Text, "embedding_vector") {
+	text := mustJSONText(t, res)
+	if strings.Contains(text, "embedding_vector") {
 		t.Fatalf("embedding_vector must not appear in memory_recall response")
 	}
-	if len(textContent.Text) > 4096 {
-		t.Fatalf("recall response unexpectedly large (%d bytes); vector may still be leaking", len(textContent.Text))
+	if len(text) > 4096 {
+		t.Fatalf("recall response unexpectedly large (%d bytes); vector may still be leaking", len(text))
 	}
 	var results []map[string]any
-	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, text), &results); err != nil {
 		t.Fatalf("unmarshal recall: %v", err)
 	}
 	if len(results) == 0 {
@@ -144,23 +139,19 @@ func TestTesseractLookup_OmitsEmbeddingVector(t *testing.T) {
 		"payload_summary": "Dark mode preference",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent")
-	}
-	if strings.Contains(textContent.Text, "embedding_vector") {
+	text := mustJSONText(t, res)
+	if strings.Contains(text, "embedding_vector") {
 		t.Fatalf("embedding_vector must not appear in tesseract_lookup response")
 	}
-	if len(textContent.Text) > 4096 {
-		t.Fatalf("lookup response unexpectedly large (%d bytes); vector may still be leaking", len(textContent.Text))
+	if len(text) > 4096 {
+		t.Fatalf("lookup response unexpectedly large (%d bytes); vector may still be leaking", len(text))
 	}
 }
 
@@ -184,8 +175,7 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 		"payload_summary": "Dark mode preference",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "similarity",
 		"query":      "dark mode preference",
@@ -194,15 +184,12 @@ func TestMemoryRecall_SimilarityStillRanks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent")
-	}
-	if strings.Contains(textContent.Text, "embedding_vector") {
+	text := mustJSONText(t, res)
+	if strings.Contains(text, "embedding_vector") {
 		t.Fatalf("embedding_vector must not appear even with ranking=similarity")
 	}
 	var results []map[string]any
-	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, text), &results); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(results) == 0 {

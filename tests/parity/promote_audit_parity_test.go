@@ -39,9 +39,8 @@ import (
 	"testing"
 	"time"
 
-	mcpclient "github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextcli"
@@ -258,45 +257,60 @@ func drivePromoteOverMCP(t *testing.T) promoteStageEvents {
 	mem := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
 	adapter := &mcpadapter.Adapter{Store: cs, Token: token, MemoryStore: mem, KnowledgeStore: knowledge.New(mem)}
 
-	mcpSrv := server.NewMCPServer("promote-parity", "0.0.0", server.WithToolCapabilities(true))
+	mcpSrv := gomcpserver.NewServer("promote-parity", "0.0.0")
 	adapter.RegisterAllTools(mcpSrv)
 
-	cl, err := mcpclient.NewInProcessClient(mcpSrv)
+	// go-mcp has no client package of its own yet (tracked separately), so
+	// this drives the real protocol layer directly over the official SDK's
+	// in-memory transport pair — an actual client/server round trip, not
+	// Server.CallTool (which bypasses the protocol layer). That is the point
+	// of this test: "going through the registered tool ... keeps this honest
+	// about what an agent actually reaches."
+	ctx := context.Background()
+	serverTransport, clientTransport := mcpsdk.NewInMemoryTransports()
+	serverSession, err := mcpSrv.SDKServer().Connect(ctx, serverTransport, nil)
 	if err != nil {
-		t.Fatalf("in-process MCP client: %v", err)
+		t.Fatalf("connect MCP server session: %v", err)
 	}
-	t.Cleanup(func() { _ = cl.Close() })
-	if err := cl.Start(context.Background()); err != nil {
-		t.Fatalf("start MCP client: %v", err)
+	t.Cleanup(func() { _ = serverSession.Close() })
+
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "promote-parity", Version: "0.0.0"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect MCP client session: %v", err)
 	}
-	initReq := mcp.InitializeRequest{}
-	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initReq.Params.ClientInfo = mcp.Implementation{Name: "promote-parity", Version: "0.0.0"}
-	if _, err := cl.Initialize(context.Background(), initReq); err != nil {
-		t.Fatalf("initialize MCP client: %v", err)
-	}
+	t.Cleanup(func() { _ = clientSession.Close() })
 
 	probe := newAuditProbe(t, cs)
 
 	call := func(args map[string]any) map[string]any {
 		t.Helper()
-		req := mcp.CallToolRequest{}
-		req.Params.Name = "context_promote"
-		req.Params.Arguments = args
-		res, err := cl.CallTool(context.Background(), req)
+		res, err := clientSession.CallTool(context.Background(), &mcpsdk.CallToolParams{
+			Name: "context_promote", Arguments: args,
+		})
 		if err != nil {
 			t.Fatalf("context_promote %v: %v", args["stage"], err)
 		}
-		if len(res.Content) == 0 {
-			t.Fatalf("context_promote %v returned no content", args["stage"])
-		}
-		text, ok := res.Content[0].(mcp.TextContent)
-		if !ok {
-			t.Fatalf("context_promote %v returned %T, want TextContent", args["stage"], res.Content[0])
-		}
 		var out map[string]any
-		if err := json.Unmarshal([]byte(text.Text), &out); err != nil {
-			t.Fatalf("decode context_promote %v result %q: %v", args["stage"], text.Text, err)
+		if res.StructuredContent != nil {
+			data, marshalErr := json.Marshal(res.StructuredContent)
+			if marshalErr != nil {
+				t.Fatalf("marshal context_promote %v structured content: %v", args["stage"], marshalErr)
+			}
+			if err := json.Unmarshal(data, &out); err != nil {
+				t.Fatalf("decode context_promote %v structured content %s: %v", args["stage"], data, err)
+			}
+		} else {
+			if len(res.Content) == 0 {
+				t.Fatalf("context_promote %v returned no content", args["stage"])
+			}
+			text, ok := res.Content[0].(*mcpsdk.TextContent)
+			if !ok {
+				t.Fatalf("context_promote %v returned %T, want *mcpsdk.TextContent", args["stage"], res.Content[0])
+			}
+			if err := json.Unmarshal([]byte(text.Text), &out); err != nil {
+				t.Fatalf("decode context_promote %v result %q: %v", args["stage"], text.Text, err)
+			}
 		}
 		if code, bad := out["code"].(string); bad {
 			t.Fatalf("context_promote %v failed: %s — %v", args["stage"], code, out["message"])

@@ -8,7 +8,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // newMemoryAdapter creates an Adapter wired to both context and memory stores,
@@ -41,8 +40,7 @@ func writeViaHandler(t *testing.T, a *Adapter, args map[string]any) map[string]a
 	if _, ok := args["actor"]; !ok {
 		args["actor"] = "user"
 	}
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
+	req := args
 	res, err := a.handleMemoryWrite(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleMemoryWrite: %v", err)
@@ -99,8 +97,7 @@ func TestMemoryGet_AfterWrite(t *testing.T) {
 		"payload_summary": "User prefers dark mode",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",
 		"key":       "user.prefs",
@@ -117,8 +114,7 @@ func TestMemoryGet_AfterWrite(t *testing.T) {
 
 func TestMemoryGet_NotFound(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:read")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",
 		"key":       "nonexistent",
@@ -161,8 +157,7 @@ func TestMemoryGet_ReinforcesAccess(t *testing.T) {
 		t.Fatalf("GetState before: %v", err)
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",
 		"key":       "user.prefs",
@@ -212,8 +207,7 @@ func TestMemoryGetRevision_ReinforcesAccess(t *testing.T) {
 		t.Fatalf("GetState before: %v", err)
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"revision_id": revID}
+	req := map[string]any{"revision_id": revID}
 	if _, callErr := a.handleTesseractGetRevision(context.Background(), req); callErr != nil {
 		t.Fatalf("handleTesseractGetRevision: %v", callErr)
 	}
@@ -253,8 +247,7 @@ func TestMemoryRecall_DoesNotReinforceAccess(t *testing.T) {
 		t.Fatalf("GetState before: %v", err)
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": []any{"user/chrispian/memory/notes"},
 		"ranking":    "activation",
 	}
@@ -301,8 +294,7 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 		"payload_summary": "Second version",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",
 		"key":       "user.prefs",
@@ -313,12 +305,8 @@ func TestMemoryHistory_TwoRevisions(t *testing.T) {
 	}
 
 	// Parse as array.
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent")
-	}
 	var revs []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &revs); err != nil {
+	if err := json.Unmarshal([]byte(mustJSONText(t, res)), &revs); err != nil {
 		t.Fatalf("unmarshal history: %v", err)
 	}
 	if len(revs) != 2 {
@@ -342,20 +330,15 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 		"payload_summary": "Dark mode preference",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 	}
 	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	textContent, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent")
-	}
 	var results []map[string]any
-	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
+	if err := json.Unmarshal(recallResultsJSON(t, mustJSONText(t, res)), &results); err != nil {
 		t.Fatalf("unmarshal recall: %v", err)
 	}
 	if len(results) == 0 {
@@ -365,8 +348,7 @@ func TestMemoryRecall_ReturnsResults(t *testing.T) {
 
 func TestMemoryRecall_SimilarityUnavailable(t *testing.T) {
 	a := newMemoryAdapter(t, "memory:read")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "similarity",
 		"query":      "dark mode",
@@ -403,8 +385,7 @@ func TestMemoryPromote_SessionToUser(t *testing.T) {
 		t.Fatalf("expected memory_id from write, got %v", written["memory_id"])
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"source_namespace": "user/chrispian/session/sess-001/memory/notes",
 		"source_memory_id": memoryID,
 		"target_namespace": "user/chrispian/memory/notes",
@@ -444,8 +425,7 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 	}
 
 	// Deprecate the only revision.
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"revision_id": revisionID,
 	}
 	res, err := a.handleTesseractDeprecate(context.Background(), req)
@@ -458,8 +438,7 @@ func TestMemoryDeprecate_Success(t *testing.T) {
 	}
 
 	// Subsequent get should return not_found (only revision was deprecated).
-	getReq := mcp.CallToolRequest{}
-	getReq.Params.Arguments = map[string]any{
+	getReq := map[string]any{
 		"domain":    "memory",
 		"namespace": "user/chrispian/memory/notes",
 		"key":       "user.prefs",
@@ -498,8 +477,7 @@ func TestMemoryWrite_UserScopeRejectionTeachesCorrectScope(t *testing.T) {
 			if tc.actor != nil {
 				args["actor"] = tc.actor
 			}
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = args
+			req := args
 			res, err := a.handleMemoryWrite(context.Background(), req)
 			if err != nil {
 				t.Fatalf("handleMemoryWrite: %v", err)

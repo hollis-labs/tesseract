@@ -2,13 +2,55 @@ package mcpadapter
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
 
-	mcpsanitize "github.com/hollis-labs/go-mcp-sanitize"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcpsanitize "github.com/hollis-labs/go-mcp/sanitize"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// runThroughSanitize composes go-mcp/sanitize's Middleware exactly the way
+// Adapter.Run installs it — once, on the raw SDK server, ahead of tool
+// dispatch, operating on mcpsdk.MethodHandler/mcpsdk.Request rather than on
+// a per-tool gomcpserver.ToolHandler (see Adapter.addTool's doc comment for
+// why sanitize moved out of the per-tool chain).
+//
+// This drives the middleware directly rather than standing up a live
+// client/server session over go-mcp's in-memory transport: the behavior
+// under test is "sanitize cleans the arguments before the tool handler sees
+// them", which this reaches without the protocol round trip. next captures
+// the decoded, sanitized arguments and calls the real handler with them, the
+// same way adaptHandler's JSON-decode-then-dispatch does.
+func runThroughSanitize(t *testing.T, logger *slog.Logger, toolName string, args map[string]any, h func(context.Context, map[string]any) (any, error)) (any, error) {
+	t.Helper()
+	var result any
+	var handlerErr error
+	next := func(ctx context.Context, method string, req mcpsdk.Request) (mcpsdk.Result, error) {
+		call, ok := req.(*mcpsdk.CallToolRequest)
+		if !ok {
+			t.Fatalf("expected *mcpsdk.CallToolRequest, got %T", req)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(call.Params.Arguments, &decoded); err != nil {
+			t.Fatalf("decode sanitized arguments: %v", err)
+		}
+		result, handlerErr = h(ctx, decoded)
+		return &mcpsdk.CallToolResult{}, nil
+	}
+	wrapped := mcpsanitize.Middleware(logger)(next)
+
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+	call := &mcpsdk.CallToolRequest{Params: &mcpsdk.CallToolParamsRaw{Name: toolName, Arguments: argsJSON}}
+	if _, err := wrapped(context.Background(), "tools/call", call); err != nil {
+		t.Fatalf("sanitize middleware error: %v", err)
+	}
+	return result, handlerErr
+}
 
 // TestSanitizeMiddleware_PollutedMemoryWrite exercises the go-mcp-sanitize
 // middleware against the smoking-gun shape captured in revision
@@ -50,15 +92,9 @@ func TestSanitizeMiddleware_PollutedMemoryWrite(t *testing.T) {
 		"tags":            `["decision","captured_during_session","test"]`,
 	}
 
-	// Wrap the handler with the same middleware addTool installs. This
+	// Run through the middleware the way Adapter.Run installs it. This
 	// mirrors the production wiring exactly.
-	wrapped := mcpsanitize.Middleware(a.Logger)(a.handleMemoryWrite)
-
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "memory_write"
-	req.Params.Arguments = args
-
-	res, err := wrapped(context.Background(), req)
+	res, err := runThroughSanitize(t, a.Logger, "memory_write", args, a.handleMemoryWrite)
 	if err != nil {
 		t.Fatalf("wrapped handler error: %v", err)
 	}
@@ -113,13 +149,7 @@ func TestSanitizeMiddleware_CleanCallPassesThrough(t *testing.T) {
 		"payload_body":    "Clean body, no markup at all.",
 	}
 
-	wrapped := mcpsanitize.Middleware(a.Logger)(a.handleMemoryWrite)
-
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "memory_write"
-	req.Params.Arguments = args
-
-	res, err := wrapped(context.Background(), req)
+	res, err := runThroughSanitize(t, a.Logger, "memory_write", args, a.handleMemoryWrite)
 	if err != nil {
 		t.Fatalf("wrapped handler error: %v", err)
 	}

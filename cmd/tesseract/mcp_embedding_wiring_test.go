@@ -11,10 +11,9 @@ import (
 	"testing"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestProductionMCPAdapterSharesConfiguredSubsystemEmbedder(t *testing.T) {
@@ -142,7 +141,7 @@ func TestProductionMCPEmbeddingToolsEndToEnd(t *testing.T) {
 	})
 
 	adapter := newMCPAdapter(store, "", mem, cfg, &bytes.Buffer{})
-	mcpServer := server.NewMCPServer("production-construction-contract", "test")
+	mcpServer := gomcpserver.NewServer("production-construction-contract", "test")
 	adapter.RegisterAllTools(mcpServer)
 
 	mars := appendMCPContractRecord(t, store, "knowledge/space", "mars", `{"title":"Mars","content":"Mars is known as the red planet."}`)
@@ -224,7 +223,7 @@ func TestProductionMCPEmbeddingToolsReportDisabledRuntime(t *testing.T) {
 
 	var logs bytes.Buffer
 	adapter := newMCPAdapter(store, "", mem, cfg, &logs)
-	mcpServer := server.NewMCPServer("disabled-production-contract", "test")
+	mcpServer := gomcpserver.NewServer("disabled-production-contract", "test")
 	adapter.RegisterAllTools(mcpServer)
 	if !strings.Contains(logs.String(), "embedding tools disabled") || !strings.Contains(logs.String(), "return embedding_unavailable") {
 		t.Fatalf("disabled embedding runtime was not observable at startup: %q", logs.String())
@@ -259,29 +258,19 @@ func appendMCPContractRecord(t *testing.T, store *contextstore.Store, namespace,
 	return record
 }
 
-func callRegisteredMCPTool(ctx context.Context, t *testing.T, mcpServer *server.MCPServer, name string, args map[string]any) map[string]any {
+func callRegisteredMCPTool(ctx context.Context, t *testing.T, mcpServer *gomcpserver.Server, name string, args map[string]any) map[string]any {
 	t.Helper()
-	tool := mcpServer.GetTool(name)
-	if tool == nil {
-		t.Fatalf("production adapter did not register %s", name)
-	}
-	req := mcp.CallToolRequest{}
-	req.Params.Name = name
-	req.Params.Arguments = args
-	result, err := tool.Handler(ctx, req)
+	result, err := mcpServer.CallTool(ctx, name, args)
 	if err != nil {
 		t.Fatalf("%s transport error: %v", name, err)
 	}
-	if result == nil || len(result.Content) != 1 {
-		t.Fatalf("%s result has no single content item: %#v", name, result)
-	}
-	content, ok := result.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("%s content type = %T, want mcp.TextContent", name, result.Content[0])
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("%s marshal result: %v", name, err)
 	}
 	var body map[string]any
-	if err := json.Unmarshal([]byte(content.Text), &body); err != nil {
-		t.Fatalf("decode %s result %q: %v", name, content.Text, err)
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("decode %s result %s: %v", name, data, err)
 	}
 	return body
 }

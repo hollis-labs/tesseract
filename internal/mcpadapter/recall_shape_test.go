@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // CW-20260825-0005 guard. memory_recall and tesseract_lookup serialize
@@ -36,22 +34,18 @@ func recallShapeAdapter(t *testing.T) *Adapter {
 // envelope.
 func callRecall(t *testing.T, a *Adapter, args map[string]any) []map[string]any {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
+	req := args
 	res, err := a.handleTesseractRecall(context.Background(), req)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	text, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
+	text := mustJSONText(t, res)
 	var out []map[string]any
-	if err := json.Unmarshal(recallResultsJSON(t, text.Text), &out); err != nil {
-		t.Fatalf("unmarshal recall (raw=%s): %v", text.Text, err)
+	if err := json.Unmarshal(recallResultsJSON(t, text), &out); err != nil {
+		t.Fatalf("unmarshal recall (raw=%s): %v", text, err)
 	}
 	if len(out) == 0 {
-		t.Fatalf("expected at least one result, raw=%s", text.Text)
+		t.Fatalf("expected at least one result, raw=%s", text)
 	}
 	return out
 }
@@ -160,8 +154,7 @@ func TestMemoryRecall_ChronologicalOmitsScore_EveryMode(t *testing.T) {
 func TestTesseractLookup_ResultKeysAreSnakeCase(t *testing.T) {
 	a := recallShapeAdapter(t)
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": `["user/chrispian/memory/notes"]`,
 		"ranking":    "activation",
 	}
@@ -169,18 +162,15 @@ func TestTesseractLookup_ResultKeysAreSnakeCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	text, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
+	text := mustJSONText(t, res)
 	var envelope struct {
 		Results []map[string]any `json:"results"`
 	}
-	if err := json.Unmarshal([]byte(text.Text), &envelope); err != nil {
-		t.Fatalf("unmarshal lookup (raw=%s): %v", text.Text, err)
+	if err := json.Unmarshal([]byte(text), &envelope); err != nil {
+		t.Fatalf("unmarshal lookup (raw=%s): %v", text, err)
 	}
 	if len(envelope.Results) == 0 {
-		t.Fatalf("expected at least one result, raw=%s", text.Text)
+		t.Fatalf("expected at least one result, raw=%s", text)
 	}
 	// No payload_mode argument — this exercises the config default, which is
 	// summary, so state is projected away.

@@ -10,55 +10,70 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func (a *Adapter) registerTypedTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("context_typed_write",
-		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for a worked `context_typed_write` payload on this surface and on its HTTP peer POST /v1/context/typed-write, "+
+	a.addTool(s, gomcpTool("context_typed_write",
+		"Read this first: call `tesseract_skills start-here` for a worked `context_typed_write` payload on this surface and on its HTTP peer POST /v1/context/typed-write, "+
 			"then `context_registry_list` with kind=types for the `record_type` vocabulary this deployment accepts. "+
 			"Three registry rules reject a write rather than relax it: an unregistered `record_type`, a `status` the type does not allow, and a payload missing a field the type requires (e.g. task/spec requires `title`). "+
-			"Writes a typed context record with type, status, and optional TTL/pointers/provenance."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Target namespace")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithString("payload", mcp.Required(), mcp.Description("JSON payload")),
-		mcp.WithString("record_type", mcp.Description("Context type (e.g. task/spec, decision/adr)")),
-		mcp.WithString("status", mcp.Description("Status: draft|reviewed|canonical|deprecated (default: draft)")),
-		mcp.WithString("ttl", mcp.Description("Optional TTL as RFC3339 timestamp")),
-		mcp.WithString("pointers", mcp.Description("Comma-separated list of pointer references")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
-	), a.handleTypedWrite)
+			"Writes a typed context record with type, status, and optional TTL/pointers/provenance.",
+		inputSchema(
+			strProp("namespace", "Target namespace", true),
+			strProp("key", "Record key", true),
+			strProp("payload", "JSON payload", true),
+			strProp("record_type", "Context type (e.g. task/spec, decision/adr)", false),
+			strProp("status", "Status: draft|reviewed|canonical|deprecated (default: draft)", false),
+			strProp("ttl", "Optional TTL as RFC3339 timestamp", false),
+			strProp("pointers", "Comma-separated list of pointer references", false),
+			strProp("actor", "Actor identity (default: mcp-agent)", false),
+		),
+		toolAnnotations{},
+		a.handleTypedWrite,
+	))
 
-	a.addTool(s, mcp.NewTool("context_status_set",
-		mcp.WithDescription("Read this first: call `tesseract_skills promotion` — it covers this tool alongside cross-namespace promotion, which it is NOT, and names the one argument on the whole write surface that the two doors spell differently (`status` here, `to_status` on POST /v1/context/status/promote). "+
+	a.addTool(s, gomcpTool("context_status_set",
+		"Read this first: call `tesseract_skills promotion` — it covers this tool alongside cross-namespace promotion, which it is NOT, and names the one argument on the whole write surface that the two doors spell differently (`status` here, `to_status` on POST /v1/context/status/promote). "+
 			"Moves a context record to a different lifecycle status, in place, in its own namespace. Requires 'write' scope. "+
-			"`status` names the target and selects which transition rules apply — see its description."),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithString("status", mcp.Description(statusSetArgDescription)),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: user)")),
-	), a.handleStatusSet)
+			"`status` names the target and selects which transition rules apply — see its description.",
+		inputSchema(
+			strProp("namespace", "Record namespace", true),
+			strProp("key", "Record key", true),
+			strProp("status", statusSetArgDescription, false),
+			strProp("actor", "Actor identity (default: user)", false),
+		),
+		toolAnnotations{},
+		a.handleStatusSet,
+	))
 
-	a.addTool(s, mcp.NewTool("context_typed_view",
-		mcp.WithDescription("Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `tesseract_skills views` for what a view is and what it deliberately does not do."),
-		mcp.WithString("view_id", mcp.Required(), mcp.Description("View ID: task_exec, strategy, or custom")),
-		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs (default: all)")),
-		mcp.WithNumber("max_items", mcp.Description("Max items to return")),
-		mcp.WithBoolean("include_payload", mcp.Description("Include payload in results (default: true)")),
-	), a.handleTypedView)
+	a.addTool(s, gomcpTool("context_typed_view",
+		"Retrieve records matching a named view (e.g. task_exec, strategy) with type-based ranking. See `tesseract_skills views` for what a view is and what it deliberately does not do.",
+		inputSchema(
+			strProp("view_id", "View ID: task_exec, strategy, or custom", true),
+			strProp("namespaces", "Comma-separated namespace globs (default: all)", false),
+			numProp("max_items", "Max items to return", false),
+			boolProp("include_payload", "Include payload in results (default: true)", false),
+		),
+		toolAnnotations{},
+		a.handleTypedView,
+	))
 
-	a.addTool(s, mcp.NewTool("context_pack",
-		mcp.WithDescription("Assemble a budget-bounded bundle of context records. "+
+	a.addTool(s, gomcpTool("context_pack",
+		"Assemble a budget-bounded bundle of context records. "+
 			"`shape` selects how the bundle is chosen and what envelope comes back — the two shapes take different arguments; see its description. "+
-			"See `tesseract_skills context-packet` for the budget vocabulary both shapes share."),
-		mcp.WithString("shape", mcp.Description(packShapeArgDescription)),
-		mcp.WithString("view_id", mcp.Description("shape=list only, required there: view ID — task_exec, strategy, or custom")),
-		mcp.WithString("namespaces", mcp.Description("Comma-separated namespace globs. shape=list: narrows the view (default: all). shape=packet: the records to include.")),
-		mcp.WithNumber("max_items", mcp.Description("Max items (default: 50 on both shapes)")),
-		mcp.WithNumber("max_tokens_estimate", mcp.Description("Max tokens estimate (default: 8000 on both shapes)")),
-		mcp.WithBoolean("include_pins", mcp.Description("shape=packet only: prepend user/pins/* records (default true)")),
-		mcp.WithNumber("payload_max_bytes", mcp.Description("shape=packet only. "+payloadMaxBytesArgDescription)),
-	), a.handleContextPackShape)
+			"See `tesseract_skills context-packet` for the budget vocabulary both shapes share.",
+		inputSchema(
+			strProp("shape", packShapeArgDescription, false),
+			strProp("view_id", "shape=list only, required there: view ID — task_exec, strategy, or custom", false),
+			strProp("namespaces", "Comma-separated namespace globs. shape=list: narrows the view (default: all). shape=packet: the records to include.", false),
+			numProp("max_items", "Max items (default: 50 on both shapes)", false),
+			numProp("max_tokens_estimate", "Max tokens estimate (default: 8000 on both shapes)", false),
+			boolProp("include_pins", "shape=packet only: prepend user/pins/* records (default true)", false),
+			numProp("payload_max_bytes", "shape=packet only. "+payloadMaxBytesArgDescription, false),
+		),
+		toolAnnotations{},
+		a.handleContextPackShape,
+	))
 }
 
 // ── Merged-tool argument vocabulary ──────────────────────────────────────────
@@ -88,16 +103,16 @@ const (
 
 // handleContextPackShape serves the merged context_pack. `shape` selects the
 // arm; the two arms are the pre-merge handlers unchanged.
-func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	shape := req.GetString("shape", "list")
+func (a *Adapter) handleContextPackShape(ctx context.Context, req map[string]any) (any, error) {
+	shape := argString(req, "shape", "list")
 
 	// Reject the OTHER shape's knobs. These are declared arguments of this
 	// tool, so strictArgsMiddleware has already accepted them by name — only
 	// the handler knows that `view_id` means nothing under shape=packet.
 	// That is why this check cannot be folded into the generic one.
-	reject := func(shapeName string, knobs ...string) *mcp.CallToolResult {
+	reject := func(shapeName string, knobs ...string) any {
 		for _, knob := range knobs {
-			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
+			if raw, ok := req[knob]; ok && raw != nil && raw != "" {
 				return toolError(codeValidationError, knob+" is not accepted under shape="+shapeName)
 			}
 		}
@@ -139,42 +154,46 @@ func (a *Adapter) handleContextPackShape(ctx context.Context, req mcp.CallToolRe
 // The retired context_status_promote spelled the target `to_status`. That name
 // is refused by strictArgsMiddleware, which names `status` in the refusal —
 // see retiredArgGuidance.
-func (a *Adapter) handleStatusSet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if req.GetString("status", "") == "deprecated" {
+func (a *Adapter) handleStatusSet(ctx context.Context, req map[string]any) (any, error) {
+	if argString(req, "status", "") == "deprecated" {
 		return a.handleStatusDeprecate(ctx, req)
 	}
-	return a.handleStatusPromote(ctx, req, req.GetString("status", ""))
+	return a.handleStatusPromote(ctx, req, argString(req, "status", ""))
 }
 
 // ── Session Snapshot ──────────────────────────────────────────────────────────
 
 func (a *Adapter) registerSessionTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("context_session_write",
-		mcp.WithDescription("Read this first: call `tesseract_skills context-packet` for how a snapshot is read back at the next boot — the fields below are only worth filling in as well as the thing that will consume them. "+
-			"Writes a structured session snapshot to Tesseract and auto-embeds it for semantic search. Combines `context_typed_write` + `context_embed` into one call with an enforced session schema."),
-		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
-		mcp.WithString("project_id", mcp.Required(), mcp.Description("Project identifier (used in namespace)")),
-		mcp.WithString("summary", mcp.Required(), mcp.Description("Brief session summary (1-3 sentences)")),
-		mcp.WithString("decisions", mcp.Description("JSON array of decisions made during the session")),
-		mcp.WithString("tasks_touched", mcp.Description("JSON array of task IDs worked on")),
-		mcp.WithString("context_learned", mcp.Description("Key context or insights gained")),
-		mcp.WithString("open_questions", mcp.Description("JSON array of unresolved questions")),
-		mcp.WithString("handoff_notes", mcp.Description("Notes for the next session/agent")),
-		mcp.WithString("actor", mcp.Description("Actor identity (default: mcp-agent)")),
-	), a.handleSessionWrite)
+	a.addTool(s, gomcpTool("context_session_write",
+		"Read this first: call `tesseract_skills context-packet` for how a snapshot is read back at the next boot — the fields below are only worth filling in as well as the thing that will consume them. "+
+			"Writes a structured session snapshot to Tesseract and auto-embeds it for semantic search. Combines `context_typed_write` + `context_embed` into one call with an enforced session schema.",
+		inputSchema(
+			strProp("session_id", "Session identifier", true),
+			strProp("project_id", "Project identifier (used in namespace)", true),
+			strProp("summary", "Brief session summary (1-3 sentences)", true),
+			strProp("decisions", "JSON array of decisions made during the session", false),
+			strProp("tasks_touched", "JSON array of task IDs worked on", false),
+			strProp("context_learned", "Key context or insights gained", false),
+			strProp("open_questions", "JSON array of unresolved questions", false),
+			strProp("handoff_notes", "Notes for the next session/agent", false),
+			strProp("actor", "Actor identity (default: mcp-agent)", false),
+		),
+		toolAnnotations{},
+		a.handleSessionWrite,
+	))
 }
 
-func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleSessionWrite(ctx context.Context, req map[string]any) (any, error) {
 	// Auth: require write scope
 	errResult, claims := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	sessionID := req.GetString("session_id", "")
-	projectID := req.GetString("project_id", "")
-	summary := req.GetString("summary", "")
-	actor := req.GetString("actor", "mcp-agent")
+	sessionID := argString(req, "session_id", "")
+	projectID := argString(req, "project_id", "")
+	summary := argString(req, "summary", "")
+	actor := argString(req, "actor", "mcp-agent")
 
 	if sessionID == "" || projectID == "" || summary == "" {
 		return toolError(codeValidationError, "session_id, project_id, and summary are required"), nil
@@ -198,7 +217,7 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 	}
 
 	// Parse optional JSON array fields
-	if v := req.GetString("decisions", ""); v != "" {
+	if v := argString(req, "decisions", ""); v != "" {
 		var arr []any
 		if err := json.Unmarshal([]byte(v), &arr); err == nil {
 			payload["decisions"] = arr
@@ -206,7 +225,7 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 			payload["decisions"] = []string{v}
 		}
 	}
-	if v := req.GetString("tasks_touched", ""); v != "" {
+	if v := argString(req, "tasks_touched", ""); v != "" {
 		var arr []any
 		if err := json.Unmarshal([]byte(v), &arr); err == nil {
 			payload["tasks_touched"] = arr
@@ -214,10 +233,10 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 			payload["tasks_touched"] = []string{v}
 		}
 	}
-	if v := req.GetString("context_learned", ""); v != "" {
+	if v := argString(req, "context_learned", ""); v != "" {
 		payload["context_learned"] = v
 	}
-	if v := req.GetString("open_questions", ""); v != "" {
+	if v := argString(req, "open_questions", ""); v != "" {
 		var arr []any
 		if err := json.Unmarshal([]byte(v), &arr); err == nil {
 			payload["open_questions"] = arr
@@ -225,7 +244,7 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req mcp.CallToolReques
 			payload["open_questions"] = []string{v}
 		}
 	}
-	if v := req.GetString("handoff_notes", ""); v != "" {
+	if v := argString(req, "handoff_notes", ""); v != "" {
 		payload["handoff_notes"] = v
 	}
 
@@ -301,20 +320,20 @@ func (a *Adapter) getRegistry() *typeregistry.Registry {
 	return typeregistry.Default()
 }
 
-func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTypedWrite(ctx context.Context, req map[string]any) (any, error) {
 	errResult, claims := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	ns := req.GetString("namespace", "")
-	key := req.GetString("key", "")
-	payloadStr := req.GetString("payload", "")
-	recordType := req.GetString("record_type", "")
-	status := req.GetString("status", "draft")
-	ttl := req.GetString("ttl", "")
-	pointersStr := req.GetString("pointers", "")
-	actor := req.GetString("actor", "mcp-agent")
+	ns := argString(req, "namespace", "")
+	key := argString(req, "key", "")
+	payloadStr := argString(req, "payload", "")
+	recordType := argString(req, "record_type", "")
+	status := argString(req, "status", "draft")
+	ttl := argString(req, "ttl", "")
+	pointersStr := argString(req, "pointers", "")
+	actor := argString(req, "actor", "mcp-agent")
 
 	if !globsPermit(claims.NamespaceGlobs, ns) {
 		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing to: "+ns), nil
@@ -397,15 +416,15 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req mcp.CallToolRequest)
 // handleStatusPromote is the promotion path of context_status_set. toStatus is
 // resolved by the dispatcher rather than read here, because the merged tool
 // spells it `status`; empty still means "next in the chain".
-func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolRequest, toStatus string) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleStatusPromote(ctx context.Context, req map[string]any, toStatus string) (any, error) {
 	errResult, _ := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	ns := req.GetString("namespace", "")
-	key := req.GetString("key", "")
-	actor := req.GetString("actor", "user")
+	ns := argString(req, "namespace", "")
+	key := argString(req, "key", "")
+	actor := argString(req, "actor", "user")
 
 	if ns == "" || key == "" {
 		return toolError(codeValidationError, "namespace and key are required"), nil
@@ -451,15 +470,15 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req mcp.CallToolReque
 	}), nil
 }
 
-func (a *Adapter) handleStatusDeprecate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleStatusDeprecate(ctx context.Context, req map[string]any) (any, error) {
 	errResult, _ := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	ns := req.GetString("namespace", "")
-	key := req.GetString("key", "")
-	actor := req.GetString("actor", "user")
+	ns := argString(req, "namespace", "")
+	key := argString(req, "key", "")
+	actor := argString(req, "actor", "user")
 
 	if ns == "" || key == "" {
 		return toolError(codeValidationError, "namespace and key are required"), nil
@@ -492,14 +511,14 @@ func (a *Adapter) handleStatusDeprecate(ctx context.Context, req mcp.CallToolReq
 	}), nil
 }
 
-func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTypedView(_ context.Context, req map[string]any) (any, error) {
 	ctx := context.Background()
-	viewID := req.GetString("view_id", "")
+	viewID := argString(req, "view_id", "")
 	if viewID == "" {
 		return toolError(codeValidationError, "view_id is required"), nil
 	}
 
-	nsStr := req.GetString("namespaces", "")
+	nsStr := argString(req, "namespaces", "")
 	var namespaces []string
 	if nsStr != "" {
 		for _, ns := range strings.Split(nsStr, ",") {
@@ -512,8 +531,8 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 		namespaces = []string{"*"}
 	}
 
-	maxItems := req.GetInt("max_items", 0)
-	includePayload := req.GetBool("include_payload", true)
+	maxItems := argInt(req, "max_items", 0)
+	includePayload := argBool(req, "include_payload", true)
 
 	reg := a.getRegistry()
 	viewDef, ok := reg.GetView(viewID)
@@ -599,14 +618,14 @@ func (a *Adapter) handleTypedView(_ context.Context, req mcp.CallToolRequest) (*
 	}), nil
 }
 
-func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleContextPack(_ context.Context, req map[string]any) (any, error) {
 	ctx := context.Background()
-	viewID := req.GetString("view_id", "")
+	viewID := argString(req, "view_id", "")
 	if viewID == "" {
 		return toolError(codeValidationError, "view_id is required"), nil
 	}
 
-	nsStr := req.GetString("namespaces", "")
+	nsStr := argString(req, "namespaces", "")
 	var namespaces []string
 	if nsStr != "" {
 		for _, ns := range strings.Split(nsStr, ",") {
@@ -619,8 +638,8 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 		namespaces = []string{"*"}
 	}
 
-	maxItems := req.GetInt("max_items", 50)
-	maxTokens := req.GetInt("max_tokens_estimate", 8000)
+	maxItems := argInt(req, "max_items", 50)
+	maxTokens := argInt(req, "max_tokens_estimate", 8000)
 
 	reg := a.getRegistry()
 	viewDef, ok := reg.GetView(viewID)
@@ -699,14 +718,14 @@ func (a *Adapter) handleContextPack(_ context.Context, req mcp.CallToolRequest) 
 	}), nil
 }
 
-func (a *Adapter) handleTypesList(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTypesList(_ context.Context, _ map[string]any) (any, error) {
 	reg := a.getRegistry()
 	return toolJSON(map[string]any{
 		"types": reg.ListContextTypes(),
 	}), nil
 }
 
-func (a *Adapter) handleViewsList(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleViewsList(_ context.Context, _ map[string]any) (any, error) {
 	reg := a.getRegistry()
 	return toolJSON(map[string]any{
 		"views": reg.ListViews(),

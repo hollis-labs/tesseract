@@ -10,7 +10,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ingestModeArgDescription documents the arm selector on context_ingest.
@@ -23,37 +22,41 @@ const ingestModeArgDescription = "What is being ingested, which decides how it i
 	"MCP-only: chunked ingest has no HTTP peer."
 
 func (a *Adapter) registerBulkTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("context_ingest",
-		mcp.WithDescription("Read this first: call `tesseract_skills start-here` for the per-record payload shape — each entry of `items` is the same object `context_typed_write` takes, and one malformed entry in a batch of fifty is reported per-item rather than failing the call. "+
+	a.addTool(s, gomcpTool("context_ingest",
+		"Read this first: call `tesseract_skills start-here` for the per-record payload shape — each entry of `items` is the same object `context_typed_write` takes, and one malformed entry in a batch of fifty is reported per-item rather than failing the call. "+
 			"Writes records into the context store in batch. "+
 			"`mode` selects whether the input is a list of records or one document to be chunked — see its description. "+
-			"Requires 'write' scope."),
-		mcp.WithString("mode", mcp.Description(ingestModeArgDescription)),
-		// Per-mode requiredness is enforced in the handlers, not in the schema:
-		// the two modes require disjoint argument sets, so a schema-level
-		// Required() would demand `items` on a chunked call.
-		mcp.WithString("items", mcp.Description("mode=bulk, required there: JSON array of items. Each item: {namespace, key, payload (JSON string or object), record_type?, status?, ttl?, pointers? (comma-sep), actor?}")),
-		mcp.WithBoolean("embed", mcp.Description("mode=bulk only: auto-embed each record after writing (default: false). Requires a configured embedding provider. mode=chunked always embeds when a provider is configured.")),
-		mcp.WithBoolean("stop_on_error", mcp.Description("mode=bulk only: stop processing on first error (default: false). When false, errors are collected per-item.")),
-		mcp.WithString("namespace", mcp.Description("mode=chunked, required there: target namespace")),
-		mcp.WithString("key_prefix", mcp.Description("mode=chunked, required there: key prefix — chunks are named <prefix>/chunk-000, chunk-001, etc.")),
-		mcp.WithString("text", mcp.Description("mode=chunked, required there: full document text to chunk")),
-		mcp.WithString("record_type", mcp.Description("mode=chunked only: context type for chunks (default: brief/summary). Under mode=bulk this is a per-item field, not a tool argument.")),
-		mcp.WithString("strategy", mcp.Description("mode=chunked only: chunking strategy — fixed, sentence, paragraph (default: sentence)")),
-		mcp.WithNumber("max_chars", mcp.Description("mode=chunked only: max characters per chunk (default: 1000)")),
-		mcp.WithNumber("overlap_pct", mcp.Description("mode=chunked only: overlap percentage for the fixed strategy (default: 10, range 0-50)")),
-		mcp.WithString("actor", mcp.Description("mode=chunked only: actor identity (default: mcp-agent). Under mode=bulk this is a per-item field, not a tool argument.")),
-	), a.handleContextIngest)
+			"Requires 'write' scope.",
+		inputSchema(
+			strProp("mode", ingestModeArgDescription, false),
+			// Per-mode requiredness is enforced in the handlers, not in the
+			// schema: the two modes require disjoint argument sets, so a
+			// schema-level required flag would demand `items` on a chunked call.
+			strProp("items", "mode=bulk, required there: JSON array of items. Each item: {namespace, key, payload (JSON string or object), record_type?, status?, ttl?, pointers? (comma-sep), actor?}", false),
+			boolProp("embed", "mode=bulk only: auto-embed each record after writing (default: false). Requires a configured embedding provider. mode=chunked always embeds when a provider is configured.", false),
+			boolProp("stop_on_error", "mode=bulk only: stop processing on first error (default: false). When false, errors are collected per-item.", false),
+			strProp("namespace", "mode=chunked, required there: target namespace", false),
+			strProp("key_prefix", "mode=chunked, required there: key prefix — chunks are named <prefix>/chunk-000, chunk-001, etc.", false),
+			strProp("text", "mode=chunked, required there: full document text to chunk", false),
+			strProp("record_type", "mode=chunked only: context type for chunks (default: brief/summary). Under mode=bulk this is a per-item field, not a tool argument.", false),
+			strProp("strategy", "mode=chunked only: chunking strategy — fixed, sentence, paragraph (default: sentence)", false),
+			numProp("max_chars", "mode=chunked only: max characters per chunk (default: 1000)", false),
+			numProp("overlap_pct", "mode=chunked only: overlap percentage for the fixed strategy (default: 10, range 0-50)", false),
+			strProp("actor", "mode=chunked only: actor identity (default: mcp-agent). Under mode=bulk this is a per-item field, not a tool argument.", false),
+		),
+		toolAnnotations{},
+		a.handleContextIngest,
+	))
 }
 
 // handleContextIngest serves the merged context_ingest. `mode` selects the arm;
 // the two arms are the pre-merge handlers unchanged.
-func (a *Adapter) handleContextIngest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	mode := req.GetString("mode", "bulk")
+func (a *Adapter) handleContextIngest(ctx context.Context, req map[string]any) (any, error) {
+	mode := argString(req, "mode", "bulk")
 
-	reject := func(modeName string, knobs ...string) *mcp.CallToolResult {
+	reject := func(modeName string, knobs ...string) any {
 		for _, knob := range knobs {
-			if raw, ok := req.GetArguments()[knob]; ok && raw != nil && raw != "" {
+			if raw, ok := req[knob]; ok && raw != nil && raw != "" {
 				return toolError(codeValidationError, knob+" is not accepted under mode="+modeName)
 			}
 		}
@@ -98,13 +101,13 @@ type bulkResult struct {
 	Embedded bool   `json:"embedded,omitempty"`
 }
 
-func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleBulkIngest(ctx context.Context, req map[string]any) (any, error) {
 	errResult, claims := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	itemsStr := req.GetString("items", "")
+	itemsStr := argString(req, "items", "")
 	if itemsStr == "" {
 		return toolError(codeValidationError, "items is required"), nil
 	}
@@ -120,8 +123,8 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 		return toolError(codeValidationError, "max 100 items per batch"), nil
 	}
 
-	embed := req.GetBool("embed", false)
-	stopOnError := req.GetBool("stop_on_error", false)
+	embed := argBool(req, "embed", false)
+	stopOnError := argBool(req, "stop_on_error", false)
 
 	reg := a.getRegistry()
 	results := make([]bulkResult, 0, len(items))
@@ -327,20 +330,20 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req mcp.CallToolRequest)
 	}), nil
 }
 
-func (a *Adapter) handleChunkedIngest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleChunkedIngest(ctx context.Context, req map[string]any) (any, error) {
 	errResult, claims := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
 	}
 
-	ns := req.GetString("namespace", "")
-	keyPrefix := req.GetString("key_prefix", "")
-	text := req.GetString("text", "")
-	recordType := req.GetString("record_type", "brief/summary")
-	strategyStr := req.GetString("strategy", "sentence")
-	maxChars := req.GetInt("max_chars", 1000)
-	overlapPct := req.GetInt("overlap_pct", 10)
-	actor := req.GetString("actor", "mcp-agent")
+	ns := argString(req, "namespace", "")
+	keyPrefix := argString(req, "key_prefix", "")
+	text := argString(req, "text", "")
+	recordType := argString(req, "record_type", "brief/summary")
+	strategyStr := argString(req, "strategy", "sentence")
+	maxChars := argInt(req, "max_chars", 1000)
+	overlapPct := argInt(req, "overlap_pct", 10)
+	actor := argString(req, "actor", "mcp-agent")
 
 	if ns == "" || keyPrefix == "" || text == "" {
 		return toolError(codeValidationError, "namespace, key_prefix, and text are required"), nil

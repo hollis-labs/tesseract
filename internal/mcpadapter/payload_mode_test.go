@@ -6,10 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // CW-20260825-0003. payload_mode projects recall/lookup results to keys,
@@ -45,17 +44,11 @@ func projAdapter(t *testing.T) *Adapter {
 // recallRaw returns the raw JSON text of a memory_recall response.
 func recallRaw(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	res, err := a.handleTesseractRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	text, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
-	return text.Text
+	return mustJSONText(t, res)
 }
 
 func recallArgs(mode string) map[string]any {
@@ -154,16 +147,15 @@ func TestPayloadMode_ToolDescriptionStatesHydratePattern(t *testing.T) {
 	a := New(cs, "")
 	a.MemoryStore = ms
 
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
-	registered := srv.ListTools()
 
 	for _, name := range []string{"tesseract_recall"} {
-		st, ok := registered[name]
+		st, ok := toolDef(srv, name)
 		if !ok {
 			t.Fatalf("tool %q not registered", name)
 		}
-		desc := st.Tool.Description
+		desc := st.Description
 		for _, want := range []string{"payload_mode", "recall → choose → hydrate", "tesseract_get_revision"} {
 			if !strings.Contains(desc, want) {
 				t.Errorf("%s description missing %q", name, want)
@@ -172,10 +164,10 @@ func TestPayloadMode_ToolDescriptionStatesHydratePattern(t *testing.T) {
 		// The hydration tool named must be one this surface registers. The
 		// name is checked against the live registry rather than against a
 		// literal, so it cannot go stale independently of the surface.
-		if _, ok := registered["tesseract_get_revision"]; !ok {
+		if _, ok := toolDef(srv, "tesseract_get_revision"); !ok {
 			t.Errorf("%s description names tesseract_get_revision, which no adapter registers", name)
 		}
-		if _, ok := st.Tool.InputSchema.Properties["payload_mode"]; !ok {
+		if _, ok := toolSchemaProperties(st.InputSchema)["payload_mode"]; !ok {
 			t.Errorf("%s does not declare a payload_mode argument in its input schema", name)
 		}
 	}
@@ -325,8 +317,7 @@ func TestPayloadMode_LookupProjectsAndKeepsFacets(t *testing.T) {
 	} {
 		t.Run("mode="+tc.mode, func(t *testing.T) {
 			a := projAdapter(t)
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = map[string]any{
+			req := map[string]any{
 				"namespaces":   `["user/chrispian/memory/notes"]`,
 				"ranking":      "activation",
 				"payload_mode": tc.mode,
@@ -335,7 +326,7 @@ func TestPayloadMode_LookupProjectsAndKeepsFacets(t *testing.T) {
 			if err != nil {
 				t.Fatalf("handleTesseractRecall: %v", err)
 			}
-			raw := res.Content[0].(mcp.TextContent).Text
+			raw := mustJSONText(t, res)
 
 			if got := strings.Contains(raw, projTestBody); got != tc.wantBody {
 				t.Errorf("body present = %v, want %v; raw=%s", got, tc.wantBody, raw)

@@ -8,7 +8,6 @@ import (
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type cancellationWaitingEmbedder struct {
@@ -56,13 +55,12 @@ func TestEmbeddingMCPToolsPropagateRequestCancellationToProvider(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		call func(*Adapter, context.Context) (*mcp.CallToolResult, error)
+		call func(*Adapter, context.Context) (any, error)
 	}{
 		{
 			name: "context_embed",
-			call: func(adapter *Adapter, ctx context.Context) (*mcp.CallToolResult, error) {
-				req := mcp.CallToolRequest{}
-				req.Params.Arguments = map[string]any{
+			call: func(adapter *Adapter, ctx context.Context) (any, error) {
+				req := map[string]any{
 					"record_id": record.RecordID,
 					"namespace": record.Namespace,
 					"key":       record.Key,
@@ -72,17 +70,15 @@ func TestEmbeddingMCPToolsPropagateRequestCancellationToProvider(t *testing.T) {
 		},
 		{
 			name: "context_search",
-			call: func(adapter *Adapter, ctx context.Context) (*mcp.CallToolResult, error) {
-				req := mcp.CallToolRequest{}
-				req.Params.Arguments = map[string]any{"query": "red planet", "threshold": -1.0}
+			call: func(adapter *Adapter, ctx context.Context) (any, error) {
+				req := map[string]any{"query": "red planet", "threshold": -1.0}
 				return adapter.handleSearch(ctx, req)
 			},
 		},
 		{
 			name: "context_rag_query",
-			call: func(adapter *Adapter, ctx context.Context) (*mcp.CallToolResult, error) {
-				req := mcp.CallToolRequest{}
-				req.Params.Arguments = map[string]any{"query": "red planet", "threshold": -1.0}
+			call: func(adapter *Adapter, ctx context.Context) (any, error) {
+				req := map[string]any{"query": "red planet", "threshold": -1.0}
 				return adapter.handleRAGQuery(ctx, req)
 			},
 		},
@@ -101,7 +97,7 @@ func TestEmbeddingMCPToolsPropagateRequestCancellationToProvider(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
 			type outcome struct {
-				result *mcp.CallToolResult
+				result any
 				err    error
 			}
 			done := make(chan outcome, 1)

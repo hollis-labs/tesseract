@@ -27,7 +27,6 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const parityTicketID = "CW-20260519-0032"
@@ -106,16 +105,15 @@ type searchModeDoors struct {
 }
 
 func newSearchModeDoors(a *Adapter, srv *contextapi.Server) searchModeDoors {
-	callMCP := func(h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) func(*testing.T, map[string]any) (string, bool) {
+	callMCP := func(h func(context.Context, map[string]any) (any, error)) func(*testing.T, map[string]any) (string, bool) {
 		return func(t *testing.T, args map[string]any) (string, bool) {
 			t.Helper()
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = args
+			req := args
 			res, err := h(context.Background(), req)
 			if err != nil {
 				t.Fatalf("MCP call: %v", err)
 			}
-			raw := res.Content[0].(mcp.TextContent).Text
+			raw := mustJSONText(t, res)
 			return raw, !isToolError(raw)
 		}
 	}

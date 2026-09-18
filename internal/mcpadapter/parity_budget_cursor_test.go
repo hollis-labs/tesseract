@@ -31,7 +31,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // bothSurfaces wires one contextstore to an MCP adapter and an HTTP server so
@@ -86,13 +85,11 @@ func TestBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 	// the manifest is zero and the raw text carries the error code.
 	callMCP := func(t *testing.T, args map[string]any) (string, memory.Manifest) {
 		t.Helper()
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := a.handleTesseractRecall(context.Background(), req)
+		res, err := a.handleTesseractRecall(context.Background(), args)
 		if err != nil {
 			t.Fatalf("MCP recall: %v", err)
 		}
-		raw := res.Content[0].(mcp.TextContent).Text
+		raw := mustJSONText(t, res)
 		m, _ := tryManifest([]byte(raw))
 		return raw, m
 	}
@@ -268,13 +265,11 @@ func TestHistoryBudgetCursorParity_MCPvsHTTP(t *testing.T) {
 
 	mcpHistory := func(t *testing.T, args map[string]any) (string, memory.Manifest) {
 		t.Helper()
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := a.handleTesseractHistory(context.Background(), req)
+		res, err := a.handleTesseractHistory(context.Background(), args)
 		if err != nil {
 			t.Fatalf("MCP history: %v", err)
 		}
-		raw := res.Content[0].(mcp.TextContent).Text
+		raw := mustJSONText(t, res)
 		m, _ := tryManifest([]byte(raw))
 		return raw, m
 	}

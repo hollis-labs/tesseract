@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
@@ -282,12 +282,12 @@ func TestSurfaceCatalogWaivers(t *testing.T) {
 // fully-wired adapter registers equals the set of catalog rows with MCP != "".
 func TestMCPRegistrationMatchesCatalog(t *testing.T) {
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("parity-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("parity-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
 	registered := make(map[string]struct{})
-	for name := range srv.ListTools() {
-		registered[name] = struct{}{}
+	for _, def := range srv.ToolDefinitions() {
+		registered[def.Name] = struct{}{}
 	}
 
 	expected := make(map[string]struct{})

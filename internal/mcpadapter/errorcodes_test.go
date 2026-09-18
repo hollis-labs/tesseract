@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // Error-code guards for the MCP tool surface. See errorcodes.go for why the
@@ -272,14 +272,14 @@ func registeredToolText(t *testing.T) map[string]string {
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
 
-	srv := server.NewMCPServer("errorcode-guard", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("errorcode-guard", "0.0.0")
 	a.RegisterAllTools(srv)
 
 	out := map[string]string{}
-	for name, st := range srv.ListTools() {
+	for _, st := range srv.ToolDefinitions() {
 		var b strings.Builder
-		b.WriteString(st.Tool.Description)
-		for _, raw := range st.Tool.InputSchema.Properties {
+		b.WriteString(st.Description)
+		for _, raw := range toolSchemaProperties(st.InputSchema) {
 			prop, ok := raw.(map[string]any)
 			if !ok {
 				continue
@@ -289,7 +289,7 @@ func registeredToolText(t *testing.T) map[string]string {
 				b.WriteString(desc)
 			}
 		}
-		out[name] = b.String()
+		out[st.Name] = b.String()
 	}
 	if len(out) == 0 {
 		t.Fatal("registered zero tools — the adapter is not wired, so a clean result here would be meaningless")
@@ -307,16 +307,16 @@ func argumentNames(t *testing.T) map[string]map[string]struct{} {
 	a.MemoryStore = ms
 	a.KnowledgeStore = knowledge.New(ms)
 
-	srv := server.NewMCPServer("errorcode-guard-args", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("errorcode-guard-args", "0.0.0")
 	a.RegisterAllTools(srv)
 
 	out := map[string]map[string]struct{}{}
-	for name, st := range srv.ListTools() {
+	for _, st := range srv.ToolDefinitions() {
 		args := map[string]struct{}{}
-		for arg := range st.Tool.InputSchema.Properties {
+		for arg := range toolSchemaProperties(st.InputSchema) {
 			args[arg] = struct{}{}
 		}
-		out[name] = args
+		out[st.Name] = args
 	}
 	return out
 }

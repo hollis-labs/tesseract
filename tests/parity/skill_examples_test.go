@@ -34,7 +34,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 
 	"github.com/hollis-labs/tesseract/internal/mcpadapter/skills"
 )
@@ -258,12 +258,12 @@ var skillPointerRE = regexp.MustCompile("`tesseract_skills ([a-z][a-z-]*)`")
 func registeredToolDescriptions(t *testing.T) map[string]string {
 	t.Helper()
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("skill-examples-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("skill-examples-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
 	out := map[string]string{}
-	for name, st := range srv.ListTools() {
-		out[name] = st.Tool.Description
+	for _, def := range srv.ToolDefinitions() {
+		out[def.Name] = def.Description
 	}
 	return out
 }

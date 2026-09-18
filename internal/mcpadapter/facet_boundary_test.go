@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/tesseract/internal/knowledge"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func validMemoryToolArgs() map[string]any {
@@ -91,8 +90,7 @@ func TestMCPWriteToolsEnforceDomainFacetContract(t *testing.T) {
 			if tc.mutate != nil {
 				tc.mutate(args)
 			}
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = args
+			req := args
 			res, err := handler(context.Background(), req)
 			if err != nil {
 				t.Fatalf("handler transport error: %v", err)

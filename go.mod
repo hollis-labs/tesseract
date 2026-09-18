@@ -8,14 +8,13 @@ require (
 	github.com/hollis-labs/go-embed-contracts v0.1.1
 	github.com/hollis-labs/go-llm-contracts v0.3.0
 	github.com/hollis-labs/go-llm-types v0.3.0
-	github.com/hollis-labs/go-mcp v0.2.1-0.20260913034025-aab5e56ca9d2
-	github.com/hollis-labs/go-mcp-sanitize v0.1.1
+	github.com/hollis-labs/go-mcp v0.4.3
 	github.com/hollis-labs/go-modelsdev v0.2.0
 	github.com/hollis-labs/go-otel v0.6.1
 	github.com/hollis-labs/go-queue v0.2.0
 	github.com/hollis-labs/go-webui v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.4.0
-	github.com/mark3labs/mcp-go v1.0.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/openai/openai-go/v3 v3.56.0
 	go.opentelemetry.io/otel v1.46.0
@@ -41,8 +40,8 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
-	github.com/spf13/cast v1.10.0 // indirect
+	github.com/segmentio/asm v1.1.3 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
@@ -64,9 +63,11 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260904194346-d0f1323225a4 // indirect
 	google.golang.org/grpc v1.83.2 // indirect

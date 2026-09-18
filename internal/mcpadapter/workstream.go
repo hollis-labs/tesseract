@@ -2,11 +2,10 @@ package mcpadapter
 
 import (
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func workstreamWriteArg(req mcp.CallToolRequest) (*string, *mcp.CallToolResult) {
-	raw, present := req.GetArguments()["workstream_id"]
+func workstreamWriteArg(req map[string]any) (*string, any) {
+	raw, present := req["workstream_id"]
 	if !present {
 		return nil, nil
 	}
@@ -23,8 +22,8 @@ func workstreamWriteArg(req mcp.CallToolRequest) (*string, *mcp.CallToolResult) 
 // workstreamReadArg distinguishes an omitted selector from a malformed one.
 // GetString defaults every non-string value to "", which would otherwise turn
 // null, booleans, numbers, objects, and arrays into an unfiltered read.
-func workstreamReadArg(req mcp.CallToolRequest) (string, *mcp.CallToolResult) {
-	raw, present := req.GetArguments()["workstream_id"]
+func workstreamReadArg(req map[string]any) (string, any) {
+	raw, present := req["workstream_id"]
 	if !present {
 		return "", nil
 	}
