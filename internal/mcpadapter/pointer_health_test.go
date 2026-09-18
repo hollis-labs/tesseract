@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // CW-20260825-0015. Pointer health is surfaced on lookup results and is
@@ -70,17 +69,11 @@ func pointerHealthAdapter(t *testing.T) (*Adapter, string, string) {
 
 func lookupRaw(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	res, err := a.handleTesseractRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	text, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
-	return text.Text
+	return mustJSONText(t, res)
 }
 
 // TestLookupSurfacesPointerHealthUnderDefaultProjection is the discoverability
@@ -163,14 +156,14 @@ func TestLookupPointerHealthRejectsUnknownStatus(t *testing.T) {
 // rendering reaches the registered tool.
 func TestRecallToolDescribesPointerHealthVocabulary(t *testing.T) {
 	a, _, _ := pointerHealthAdapter(t)
-	srv := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("test", "0.0.0")
 	a.RegisterAllTools(srv)
 
-	st, ok := srv.ListTools()["tesseract_recall"]
+	st, ok := toolDef(srv, "tesseract_recall")
 	if !ok {
 		t.Fatal("tesseract_recall not registered")
 	}
-	schema, err := st.Tool.InputSchema.MarshalJSON()
+	schema, err := json.Marshal(st.InputSchema)
 	if err != nil {
 		t.Fatalf("marshal schema: %v", err)
 	}

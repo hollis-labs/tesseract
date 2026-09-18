@@ -3,8 +3,6 @@ package mcpadapter
 import (
 	"context"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestViewsEvaluate_MatchesHTTPEnvelope locks in the response shape parity
@@ -13,8 +11,7 @@ import (
 // single parser across both surfaces.
 func TestViewsEvaluate_MatchesHTTPEnvelope(t *testing.T) {
 	a := newMemoryAdapter(t)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"selector":        `{"namespaces":["app/test/*"]}`,
 		"full_evaluation": true,
 	}
@@ -48,8 +45,7 @@ func TestViewsEvaluate_MatchesHTTPEnvelope(t *testing.T) {
 // non-integer values (matches the HTTP peer which decodes into Go's int).
 func TestViewsEvaluate_RejectsFractionalLimit(t *testing.T) {
 	a := newMemoryAdapter(t)
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"selector":        `{"namespaces":["app/test/*"]}`,
 		"full_evaluation": true,
 		"limit":           2.5,

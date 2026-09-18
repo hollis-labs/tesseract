@@ -3,18 +3,18 @@ package mcpadapter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -25,23 +25,25 @@ const sampledTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7
 
 func TestTetherProvenanceIsNormalizedBeforeArgumentEarlyReturns(t *testing.T) {
 	for _, args := range []any{nil, map[string]any{}, map[string]any{"_traceparent": sampledTraceparent}} {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+		var req map[string]any
+		if m, ok := args.(map[string]any); ok {
+			req = m
+		}
+		ctx := gomcpserver.WithMeta(context.Background(), map[string]any{
 			"unrelated":         "preserved",
 			tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": "tether-session", "workstream_id": "ws-12"},
-		}}
-		handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, got mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		})
+		handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, got map[string]any) (any, error) {
 			wc := memory.WriteContextFromContext(ctx)
 			if wc == nil || wc.Issuer != "tether" || wc.Verification != "unverified" || wc.SessionID != "tether-session" || wc.WorkstreamID != "ws-12" {
 				t.Fatalf("normalized context = %#v", wc)
 			}
-			if got.Params.Meta.AdditionalFields["unrelated"] != "preserved" {
-				t.Fatalf("unrelated _meta changed: %#v", got.Params.Meta)
+			if gomcpserver.MetaFromContext(ctx)["unrelated"] != "preserved" {
+				t.Fatalf("unrelated _meta changed: %#v", gomcpserver.MetaFromContext(ctx))
 			}
-			return &mcp.CallToolResult{}, nil
+			return "{}", nil
 		})
-		if _, err := handler(context.Background(), req); err != nil {
+		if _, err := handler(ctx, req); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -51,17 +53,16 @@ func TestMalformedTetherProvenanceIsDiscardedWithBoundedDiagnostic(t *testing.T)
 	secret := strings.Repeat("sensitive-", 200)
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	req := mcp.CallToolRequest{}
-	req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+	ctx := gomcpserver.WithMeta(context.Background(), map[string]any{
 		tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": secret},
-	}}
-	handler := gatewayMetadataMiddleware(logger, func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	})
+	handler := gatewayMetadataMiddleware(logger, func(ctx context.Context, _ map[string]any) (any, error) {
 		if wc := memory.WriteContextFromContext(ctx); wc != nil {
 			t.Fatalf("malformed context reached handler: %#v", wc)
 		}
-		return &mcp.CallToolResult{}, nil
+		return "{}", nil
 	})
-	if _, err := handler(context.Background(), req); err != nil {
+	if _, err := handler(ctx, map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := logs.String(); !strings.Contains(got, "reason=oversized_or_unencodable") || strings.Contains(got, secret) || len(got) > 512 {
@@ -84,7 +85,7 @@ func TestTetherProvenanceParserIsClosedAndOptional(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, reason := parseTetherProvenance(&mcp.Meta{AdditionalFields: map[string]any{tetherProvenanceKey: tc.envelope}})
+			got, reason := parseTetherProvenance(map[string]any{tetherProvenanceKey: tc.envelope})
 			if reason != tc.reason || got.SessionID != "" {
 				t.Fatalf("got context=%#v reason=%q, want discarded reason=%q", got, reason, tc.reason)
 			}
@@ -96,10 +97,8 @@ func TestWriteToolsRefuseForgedProvenanceArguments(t *testing.T) {
 	srv := registeredSurface(t)
 	for _, name := range []string{"memory_write", "knowledge_write", "event_write", "workspace_write"} {
 		for _, argument := range []string{"provenance", "verification"} {
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = map[string]any{argument: "verified"}
-			res, err := srv.ListTools()[name].Handler(context.Background(), req)
-			if err != nil || !strings.Contains(resultText(t, res), argument) {
+			res, err := srv.CallTool(context.Background(), name, map[string]any{argument: "verified"})
+			if err != nil || !strings.Contains(mustJSONText(t, res), argument) {
 				t.Fatalf("%s accepted %s: result=%#v err=%v", name, argument, res, err)
 			}
 		}
@@ -108,7 +107,7 @@ func TestWriteToolsRefuseForgedProvenanceArguments(t *testing.T) {
 
 // registeredSurface returns a server carrying every tool this adapter exposes,
 // wired against a throwaway store.
-func registeredSurface(t *testing.T) *server.MCPServer {
+func registeredSurface(t *testing.T) *gomcpserver.Server {
 	t.Helper()
 	cs := newTestStore(t)
 	ms := memory.NewStore(cs.DB(), nil, "", 0, memory.NoopQueue{})
@@ -118,7 +117,7 @@ func registeredSurface(t *testing.T) *server.MCPServer {
 	a.EventStore = event.New(ms)
 	a.WorkspaceStore = workspace.NewStore(cs.DB())
 
-	srv := server.NewMCPServer("strictargs", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("strictargs", "0.0.0")
 	a.RegisterAllTools(srv)
 	return srv
 }
@@ -141,34 +140,30 @@ func registeredSurface(t *testing.T) *server.MCPServer {
 // and it runs against a throwaway store with no token.
 func TestEveryRegisteredToolRefusesAnUndeclaredArgument(t *testing.T) {
 	srv := registeredSurface(t)
-	tools := srv.ListTools()
-	if len(tools) == 0 {
+	defs := srv.ToolDefinitions()
+	if len(defs) == 0 {
 		t.Fatal("registered zero tools — a clean result here would be meaningless")
 	}
 
-	names := make([]string, 0, len(tools))
-	for name := range tools {
-		names = append(names, name)
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
 	}
 	sort.Strings(names)
 
 	const undeclared = "definitely_not_a_declared_argument"
 	for _, name := range names {
-		st := tools[name]
-		if _, declared := st.Tool.InputSchema.Properties[undeclared]; declared {
+		st, _ := toolDef(srv, name)
+		if _, declared := toolSchemaProperties(st.InputSchema)[undeclared]; declared {
 			t.Fatalf("tool %q declares the probe name; pick another probe", name)
 		}
 
-		req := mcp.CallToolRequest{}
-		req.Params.Name = name
-		req.Params.Arguments = map[string]any{undeclared: "x"}
-
-		res, err := st.Handler(context.Background(), req)
+		res, err := srv.CallTool(context.Background(), name, map[string]any{undeclared: "x"})
 		if err != nil {
 			t.Errorf("tool %q: handler returned a transport error for an undeclared argument: %v", name, err)
 			continue
 		}
-		text := resultText(t, res)
+		text := mustJSONText(t, res)
 		if !strings.Contains(text, undeclared) || !strings.Contains(text, string(codeValidationError)) {
 			t.Errorf("tool %q ACCEPTED an argument it does not declare.\n"+
 				"    Every tool must be registered through Adapter.addTool, which installs\n"+
@@ -187,23 +182,18 @@ func TestEveryRegisteredToolRefusesAnUndeclaredArgument(t *testing.T) {
 // landed with the strip rather than after it.
 func TestGatewayMetadataIsStrippedAheadOfStrictness(t *testing.T) {
 	srv := registeredSurface(t)
-	st, ok := srv.ListTools()["tesseract_skills"]
-	if !ok {
+	if _, ok := toolDef(srv, "tesseract_skills"); !ok {
 		t.Fatal("tesseract_skills is not registered")
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "tesseract_skills"
-	req.Params.Arguments = map[string]any{
+	res, err := srv.CallTool(context.Background(), "tesseract_skills", map[string]any{
 		"_traceparent": sampledTraceparent,
 		"_tracestate":  "hollis=abc",
-	}
-
-	res, err := st.Handler(context.Background(), req)
+	})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
-	text := resultText(t, res)
+	text := mustJSONText(t, res)
 	if strings.Contains(text, "_traceparent") || strings.Contains(text, "_tracestate") {
 		t.Fatalf("gateway metadata reached the strict check instead of being stripped: %s", text)
 	}
@@ -229,17 +219,12 @@ func TestGatewayMetadataKeysArePinned(t *testing.T) {
 // for a silent bypass.
 func TestUnknownUnderscoreKeyIsStillRefused(t *testing.T) {
 	srv := registeredSurface(t)
-	st := srv.ListTools()["tesseract_skills"]
 
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "tesseract_skills"
-	req.Params.Arguments = map[string]any{"_not_a_gateway_key": "x"}
-
-	res, err := st.Handler(context.Background(), req)
+	res, err := srv.CallTool(context.Background(), "tesseract_skills", map[string]any{"_not_a_gateway_key": "x"})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
-	if text := resultText(t, res); !strings.Contains(text, "_not_a_gateway_key") {
+	if text := mustJSONText(t, res); !strings.Contains(text, "_not_a_gateway_key") {
 		t.Fatalf("an unknown underscore-prefixed key was accepted: %s", text)
 	}
 }
@@ -251,15 +236,13 @@ func TestUnknownUnderscoreKeyIsStillRefused(t *testing.T) {
 func TestGatewayMetadataCarriesTheUpstreamTraceForward(t *testing.T) {
 	var seen gatewayMetadata
 	var remote trace.SpanContext
-	handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	handler := gatewayMetadataMiddleware(slog.Default(), func(ctx context.Context, _ map[string]any) (any, error) {
 		seen = gatewayMetadataFromContext(ctx)
 		remote = trace.SpanContextFromContext(ctx)
-		return mcp.NewToolResultText("{}"), nil
+		return "{}", nil
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "anything"
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"_traceparent": sampledTraceparent,
 		"namespace":    "user/chrispian/memory/notes",
 	}
@@ -289,14 +272,12 @@ func TestGatewayMetadataCarriesTheUpstreamTraceForward(t *testing.T) {
 func TestGatewayMetadataLeavesOrdinaryCallsAlone(t *testing.T) {
 	want := map[string]any{"namespace": "user/chrispian/memory/notes", "limit": 5}
 	var got map[string]any
-	handler := gatewayMetadataMiddleware(slog.Default(), func(_ context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		got = r.GetArguments()
-		return mcp.NewToolResultText("{}"), nil
+	handler := gatewayMetadataMiddleware(slog.Default(), func(_ context.Context, r map[string]any) (any, error) {
+		got = r
+		return "{}", nil
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = want
-	if _, err := handler(context.Background(), req); err != nil {
+	if _, err := handler(context.Background(), want); err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -304,7 +285,7 @@ func TestGatewayMetadataLeavesOrdinaryCallsAlone(t *testing.T) {
 	}
 }
 
-// TestStripDoesNotMutateTheCallersMap: mcp-go hands one map down the chain, so
+// TestStripDoesNotMutateTheCallersMap: go-mcp hands one map down the chain, so
 // editing it in place would change what every other middleware sees.
 func TestStripDoesNotMutateTheCallersMap(t *testing.T) {
 	args := map[string]any{"_traceparent": sampledTraceparent, "namespace": "ns"}
@@ -328,14 +309,11 @@ func TestStripDoesNotMutateTheCallersMap(t *testing.T) {
 // leaves the caller to guess, and guessing is what produced the key.
 func TestRetiredPayloadDataIsRefusedWithASuggestion(t *testing.T) {
 	srv := registeredSurface(t)
-	st, ok := srv.ListTools()["memory_write"]
-	if !ok {
+	if _, ok := toolDef(srv, "memory_write"); !ok {
 		t.Fatal("memory_write is not registered")
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "memory_write"
-	req.Params.Arguments = map[string]any{
+	res, err := srv.CallTool(context.Background(), "memory_write", map[string]any{
 		"namespace":       "user/chrispian/memory/notes",
 		"memory_key":      "test.data_typo",
 		"author_agent_id": "claude",
@@ -345,13 +323,11 @@ func TestRetiredPayloadDataIsRefusedWithASuggestion(t *testing.T) {
 		"payload_summary": "a summary",
 		"payload_data":    map[string]any{"severity": "high"},
 		"data":            map[string]any{"severity": "low"},
-	}
-
-	res, err := st.Handler(context.Background(), req)
+	})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
-	text := resultText(t, res)
+	text := mustJSONText(t, res)
 	for _, want := range []string{"`payload_data`", "`data`", "memory_write", "now named"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the refusal does not mention %s.\n  got: %s", want, text)
@@ -389,21 +365,16 @@ func TestRetiredArgKeepsItsGuidance(t *testing.T) {
 		{"context_registry_list", "namespace", "`name`"},
 		{"context_pack", "payload_mode", "payload_max_bytes=512"},
 	} {
-		st, ok := srv.ListTools()[tc.tool]
-		if !ok {
+		if _, ok := toolDef(srv, tc.tool); !ok {
 			t.Errorf("tool %q is not registered", tc.tool)
 			continue
 		}
-		req := mcp.CallToolRequest{}
-		req.Params.Name = tc.tool
-		req.Params.Arguments = map[string]any{tc.arg: "x"}
-
-		res, err := st.Handler(context.Background(), req)
+		res, err := srv.CallTool(context.Background(), tc.tool, map[string]any{tc.arg: "x"})
 		if err != nil {
 			t.Errorf("%s(%s): handler error: %v", tc.tool, tc.arg, err)
 			continue
 		}
-		text := resultText(t, res)
+		text := mustJSONText(t, res)
 		if !strings.Contains(text, tc.want) {
 			t.Errorf("%s(%s) was refused without its migration guidance.\n  want the message to name %q\n  got: %s",
 				tc.tool, tc.arg, tc.want, text)
@@ -420,15 +391,14 @@ func TestRetiredArgKeepsItsGuidance(t *testing.T) {
 // schema; this map only explains refusals the schema already produces.
 func TestRetiredArgsAreNotDeclared(t *testing.T) {
 	srv := registeredSurface(t)
-	tools := srv.ListTools()
 
 	for toolName, retired := range retiredArgGuidance {
-		st, ok := tools[toolName]
+		st, ok := toolDef(srv, toolName)
 		if !ok {
 			t.Errorf("retiredArgGuidance names tool %q, which is not registered", toolName)
 			continue
 		}
-		declared, err := declaredArgNames(st.Tool)
+		declared, err := declaredArgNames(gomcpserver.Tool{Name: st.Name, InputSchema: st.InputSchema})
 		if err != nil {
 			t.Fatalf("declaredArgNames(%s): %v", toolName, err)
 		}
@@ -471,39 +441,20 @@ func TestSuggestArgNames(t *testing.T) {
 	}
 }
 
-// TestDeclaredArgNamesReadsRawInputSchema covers mcp-go's hand-written-schema
-// escape hatch. Nothing in this repo uses it today; a tool that started to
-// would otherwise declare zero properties here and refuse every argument it has.
-func TestDeclaredArgNamesReadsRawInputSchema(t *testing.T) {
-	tool := mcp.NewTool("raw_schema_tool")
-	tool.RawInputSchema = []byte(`{"type":"object","properties":{"alpha":{"type":"string"}}}`)
-
-	got, err := declaredArgNames(tool)
-	if err != nil {
-		t.Fatalf("declaredArgNames: %v", err)
+// TestDeclaredArgNamesRejectsASchemaShapeItCannotIntrospect covers go-mcp's
+// hand-written-schema escape hatch (Tool.InputSchema is `any`; anything that
+// JSON-marshals to valid JSON Schema is accepted on the wire). Nothing in this
+// repo builds a schema that way today — every tool goes through schema.go's
+// inputSchema, a map[string]any — but declaredArgNames must refuse to guess at
+// a tool built some other way rather than silently declaring zero properties
+// and refusing every argument it has.
+func TestDeclaredArgNamesRejectsASchemaShapeItCannotIntrospect(t *testing.T) {
+	tool := gomcpserver.Tool{
+		Name:        "raw_schema_tool",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"alpha":{"type":"string"}}}`),
 	}
-	if _, ok := got["alpha"]; !ok || len(got) != 1 {
-		t.Fatalf("declaredArgNames read %v, want exactly {alpha}", sortedNames(got))
-	}
-
-	tool.RawInputSchema = []byte(`{ this is not json`)
 	if _, err := declaredArgNames(tool); err == nil {
-		t.Fatal("an unparseable RawInputSchema was accepted; a tool whose accepted set " +
-			"is unknown cannot be protected, so registering it must fail")
+		t.Fatal("a tool whose InputSchema is not the map[string]any shape this package builds was accepted; " +
+			"a tool whose accepted set is unknown cannot be protected, so registering it must fail")
 	}
-}
-
-// resultText pulls the text payload out of a tool result.
-func resultText(t *testing.T, res *mcp.CallToolResult) string {
-	t.Helper()
-	if res == nil {
-		t.Fatal("nil tool result")
-	}
-	var b strings.Builder
-	for _, c := range res.Content {
-		if text, ok := c.(mcp.TextContent); ok {
-			b.WriteString(text.Text)
-		}
-	}
-	return b.String()
 }

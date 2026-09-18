@@ -31,22 +31,14 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-// callTool builds a CallToolRequest from a plain argument map.
-func mergedToolRequest(args map[string]any) mcp.CallToolRequest {
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	return req
-}
-
 // mustCall runs a handler and decodes its body, failing on a transport error.
-func mustCall(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), args map[string]any) map[string]any {
+func mustCall(t *testing.T, h func(context.Context, map[string]any) (any, error), args map[string]any) map[string]any {
 	t.Helper()
-	res, err := h(context.Background(), mergedToolRequest(args))
+	res, err := h(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handler returned a Go error (tools answer with an error BODY, never this): %v", err)
 	}
@@ -63,15 +55,12 @@ func mustCall(t *testing.T, h func(context.Context, mcp.CallToolRequest) (*mcp.C
 // no longer performs it — and would keep passing if the middleware were removed.
 func mustCallRegistered(t *testing.T, a *Adapter, toolName string, args map[string]any) map[string]any {
 	t.Helper()
-	srv := server.NewMCPServer("merged-tools-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("merged-tools-test", "0.0.0")
 	a.RegisterAllTools(srv)
-	st, ok := srv.ListTools()[toolName]
-	if !ok {
+	if _, ok := toolDef(srv, toolName); !ok {
 		t.Fatalf("tool %q is not registered on this adapter", toolName)
 	}
-	req := mergedToolRequest(args)
-	req.Params.Name = toolName
-	res, err := st.Handler(context.Background(), req)
+	res, err := srv.CallTool(context.Background(), toolName, args)
 	if err != nil {
 		t.Fatalf("handler returned a Go error (tools answer with an error BODY, never this): %v", err)
 	}
@@ -1016,7 +1005,7 @@ func TestRetiredArg_BudgetNamesAreRefusedNotIgnored(t *testing.T) {
 	// else.
 	for _, tc := range []struct {
 		name    string
-		handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		handler func(context.Context, map[string]any) (any, error)
 		args    map[string]any
 	}{
 		{"context_plan", a.handleContextPlan,
@@ -1344,10 +1333,15 @@ func TestPromoteGate_PositiveControl(t *testing.T) {
 //
 // head_only cut rec.Payload at 512 bytes and handed the prefix to
 // json.RawMessage. The prefix of a JSON object is not valid JSON, so the
-// ENCLOSING json.Marshal failed, and toolJSON used to discard that error — so
-// an oversized record came back as an empty tool result rather than a
-// truncated one. This test reproduces the invalid old representation, verifies
-// the response path now reports it, then shows the cap does not share it.
+// ENCLOSING json.Marshal failed — under mark3labs, toolJSON used to discard
+// that error, so an oversized record came back as an empty tool result rather
+// than a truncated one. Under go-mcp, toolJSON no longer marshals anything
+// itself (see TestToolJSONIsAPassThrough in serialization_test.go); a value
+// this malformed now fails to marshal at go-mcp's own dispatch layer, as a
+// protocol-level error, which is go-mcp's contract to keep, not this
+// package's to re-assert. What this test still proves is the retirement
+// case itself: the old shorten-in-place mechanism does not marshal, and the
+// cap mechanism that replaced it does.
 func TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot(t *testing.T) {
 	payload := []byte(`{"body":"` + strings.Repeat("x", 600) + `"}`)
 
@@ -1355,14 +1349,6 @@ func TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot(t *testin
 	oldStyle := map[string]any{"key": "k", "payload": json.RawMessage(payload[:512])}
 	if body, err := json.Marshal(oldStyle); err == nil {
 		t.Fatalf("the head_only mechanism marshaled cleanly (%d bytes) — this test's premise is stale", len(body))
-	}
-	got := textOf(t, toolJSON(oldStyle))
-	var failure map[string]any
-	if err := json.Unmarshal([]byte(got), &failure); err != nil {
-		t.Fatalf("marshal failure result is not JSON: %q: %v", got, err)
-	}
-	if failure["code"] != "internal_error" {
-		t.Fatalf("marshal failure code = %v, want internal_error (body=%s)", failure["code"], got)
 	}
 
 	// Positive control: untruncated, the same shape marshals fine, so the
@@ -1392,16 +1378,12 @@ func TestPayloadMaxBytes_HeadOnlyReturnedAnEmptyResultAndTheCapDoesNot(t *testin
 	}
 }
 
-func textOf(t *testing.T, res *mcp.CallToolResult) string {
+func textOf(t *testing.T, res any) string {
 	t.Helper()
-	if res == nil || len(res.Content) == 0 {
+	if res == nil {
 		return ""
 	}
-	tc, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[0])
-	}
-	return tc.Text
+	return mustJSONText(t, res)
 }
 
 // TestPayloadMaxBytes_UncappedPayloadIsUnchanged pins that the cap is inert

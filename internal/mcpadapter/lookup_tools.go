@@ -8,102 +8,99 @@ import (
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func (a *Adapter) registerRecallTool(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("tesseract_recall",
-		mcp.WithDescription(
-			"**Typed ranked recall across Tesseract items.** The default corpus remains memory + knowledge; event and workspace are opt-in through `domains`. Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
-				"• **The event log is opt-in.** A call that does not pass `domains` covers memory and knowledge only; add `\"event\"` to search the narrative log. That default is deliberate — a reasoning log runs an order of magnitude or two above a curated corpus, so including it by default would make every unqualified recall a log search. To read the log in ORDER rather than by rank, use `event_list`.\n"+
-				"• **Kind of content:** revisions and opt-in mutable workspace items matching query + filters, as typed alternatives.\n"+
-				"• **Result shape:** each result carries exactly one of `revision` or workspace `item`, plus `score` when the ranking has one. Workspace items carry `item_id`, never `revision_id`.\n"+
-				manifestResultShapeDescription+
-				"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
-				"• **Just-in-time pattern — recall → choose → hydrate.** Hydrate revision hits with `tesseract_get_revision`; hydrate workspace hits with `tesseract_get item_id=...`.\n"+
-				touchLoopDescription+
-				"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries stable `item_id`; revision results also carry `revision_id`. Under projections, a missing body means withheld rather than empty.\n"+
-				"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
-				"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
-				"• **`estimate_only`:** size a recall before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
-				"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
-				"• **Scope:** `memory:read`.\n"+
-				"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration** — prior sessions already paid for a lot of this, and an unread store is just a slower filesystem.\n"+
-				"• **What a hit is evidence of, and where that stops.** A returned record is reasoning that held up when it was written: a good source of assumptions, dependencies and consequences a current change might otherwise miss. It is **not** a ruling on the instruction in front of you. A `canonical` status, confident prose, or the same claim echoed in two records does not by itself outrank a clear current direction. If a record surfaces a consequence that is live now, raise that consequence on its own terms rather than leading with a contradiction. And sparse or low-confidence results mean fall back to the filesystem or the web as normal — they are not evidence that the answer does not exist.\n"+
-				"• **Don't use this for:** deterministic selection — use `context_view` (with `full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
-				"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
+	a.addTool(s, gomcpTool("tesseract_recall",
+		"**Typed ranked recall across Tesseract items.** The default corpus remains memory + knowledge; event and workspace are opt-in through `domains`. Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
+			"• **The event log is opt-in.** A call that does not pass `domains` covers memory and knowledge only; add `\"event\"` to search the narrative log. That default is deliberate — a reasoning log runs an order of magnitude or two above a curated corpus, so including it by default would make every unqualified recall a log search. To read the log in ORDER rather than by rank, use `event_list`.\n"+
+			"• **Kind of content:** revisions and opt-in mutable workspace items matching query + filters, as typed alternatives.\n"+
+			"• **Result shape:** each result carries exactly one of `revision` or workspace `item`, plus `score` when the ranking has one. Workspace items carry `item_id`, never `revision_id`.\n"+
+			manifestResultShapeDescription+
+			"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
+			"• **Just-in-time pattern — recall → choose → hydrate.** Hydrate revision hits with `tesseract_get_revision`; hydrate workspace hits with `tesseract_get item_id=...`.\n"+
+			touchLoopDescription+
+			"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries stable `item_id`; revision results also carry `revision_id`. Under projections, a missing body means withheld rather than empty.\n"+
+			"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
+			"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
+			"• **`estimate_only`:** size a recall before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
+			"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
+			"• **Scope:** `memory:read`.\n"+
+			"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration** — prior sessions already paid for a lot of this, and an unread store is just a slower filesystem.\n"+
+			"• **What a hit is evidence of, and where that stops.** A returned record is reasoning that held up when it was written: a good source of assumptions, dependencies and consequences a current change might otherwise miss. It is **not** a ruling on the instruction in front of you. A `canonical` status, confident prose, or the same claim echoed in two records does not by itself outrank a clear current direction. If a record surfaces a consequence that is live now, raise that consequence on its own terms rather than leading with a contradiction. And sparse or low-confidence results mean fall back to the filesystem or the web as normal — they are not evidence that the answer does not exist.\n"+
+			"• **Don't use this for:** deterministic selection — use `context_view` (with `full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
+			"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
+		inputSchema(
+			strProp("namespaces", "JSON array of namespace strings. The first segment is the SCOPE TYPE — one of "+memory.ScopeList()+" — and the second its id; `system` is a singleton and takes no id. "+
+				"Memory and event use a typed tail; knowledge and workspace have free depth after their domain segment. "+
+				"**Append `/*` to sweep a prefix at ANY tier**: project/* (every project), project/tether/* (one project, every domain), project/tether/knowledge/* (its knowledge). "+
+				"The bare forms {scope}/{id}/memory and {scope}/{id}/event also match every type, as a grandfathered shorthand — but a bare knowledge namespace is EXACT, not a prefix, so use the explicit /* there. "+
+				"e.g. [\"project/tesseract/memory/decisions\",\"project/tesseract/knowledge/*\"].", true),
+			strProp("query", "Semantic query (required for similarity or relevance ranking)", false),
+			strProp("workstream_id", "Exact opaque workstream association filter, applied before ranking and limits.", false),
+			strProp("ranking", "activation|chronological|similarity|relevance (default: relevance when query is set, else activation). "+
+				"`activation` is defined only over domains that take part in activation, so asking for it over `event` is a validation_error rather than an ordering by a constant; an event-only recall that names no ranking resolves to `chronological`.", false),
+			strProp("search_mode", searchModeArgDescription, false),
+			strProp("revision_scope", "current|timeline (default: current)", false),
+			numProp("limit", recallLimitArgDescription, false),
+			strProp("domains", "JSON array of domain filters: memory, knowledge, event, workspace. "+
+				"Omitting it covers the curated corpus (memory + knowledge). Event and workspace are opt-in. Workspace supports lexical relevance, activation and chronological ranking; it rejects semantic, similarity, timeline and revision-only filters.", false),
+			strProp("facet_kinds", "JSON array of facet kind filters (knowledge), e.g. [\"package\",\"doc\"]", false),
+			strProp("facet_sources", "JSON array of facet source filters (knowledge), e.g. [\"filesystem\",\"obsidian\"]", false),
+			// Rendered from the vocabulary rather than restated, so this cannot
+			// advertise a status the filter does not accept.
+			strProp("pointer_health",
+				"JSON array of pointer verification statuses (knowledge). Allowed: "+
+					strings.Join(memory.PointerHealthStatusVocabulary(), ", ")+
+					". `unresolvable` = a resolver got a definitive negative (missing file, HTTP 404/410). "+
+					"`unverifiable` = it could not tell (timeout, 403, rate limit, or a scheme with no resolver) — NOT evidence of death. "+
+					"`unchecked` = the pointer names something external and nobody has looked yet. "+
+					"`not_applicable` = scheme `nil`, the record declares it has no external source. "+
+					"Filtering happens in SQL before `limit`, so [\"unresolvable\"] enumerates the dead set rather than sampling it.", false),
+			// Rendered from the vocabulary rather than restated, so this cannot
+			// advertise a relation the filter does not accept.
+			strProp("related_to",
+				"JSON array of memory KEYS to expand along the link graph — the fourth retrieval signal, "+
+					"alongside similarity, lexical and chronological. Results are narrowed to entries adjacent "+
+					"to one of these keys IN EITHER DIRECTION: entries the anchor links to via `[[wikilink]]`, "+
+					"and entries that link to the anchor. Undirected because \"what is related to this decision\" "+
+					"means both the records it cites and the records citing it, and a forward-only answer makes "+
+					"a heavily-cited entry look unreferenced. "+
+					"Anchors are KEYS (what a `[[link]]` names), not revision or memory ids. "+
+					"An anchor with no edges yields no results rather than an error — the graph is legitimately "+
+					"sparse. A link whose target names no entry is retained but not traversable, so a key that "+
+					"was renamed away is cited by rows you can read and cannot walk. "+
+					"Combines with every other filter: `related_to` selects the neighborhood, `query` and "+
+					"`ranking` order it.", false),
+			strProp("related_relations",
+				"JSON array narrowing which edge types count as adjacency for `related_to`. Allowed: "+
+					strings.Join(memory.LinkRelationVocabulary(), ", ")+
+					". Omit for both. `references` is a `[[wikilink]]` parsed from a payload. `supersedes` is "+
+					"revision lineage, and it is ALWAYS intra-entry — Tesseract rejects a supersedes edge "+
+					"crossing memories — so `related_relations: [\"supersedes\"]` returns the anchor's own entry "+
+					"and nothing else. That is the lineage query: pair it with `revision_scope: \"timeline\"` to "+
+					"get the entry's revision history through the graph. "+
+					"No effect without `related_to`.", false),
+			strProp("state_filters", stateFiltersArgDescription, false),
+			strProp("derived_from", "JSON array of derived_from filters", false),
+			strProp("statuses", "JSON array of status filters", false),
+			strProp("tags", "JSON array of tag filters", false),
+			numProp("confidence_min", "Minimum confidence", false),
+			numProp("similarity_min", similarityMinArgDescription, false),
+			strProp("since", "RFC3339 lower bound", false),
+			strProp("until", "RFC3339 upper bound", false),
+			strProp("payload_mode", payloadModeArgDescription, false),
+			strProp("cursor", cursorArgDescription, false),
+			numProp("budget_bytes", budgetBytesArgDescription, false),
+			numProp("budget_tokens", budgetTokensArgDescription, false),
+			boolProp("estimate_only", estimateOnlyArgDescription, false),
 		),
-		mcp.WithString("namespaces", mcp.Required(), mcp.Description("JSON array of namespace strings. The first segment is the SCOPE TYPE — one of "+memory.ScopeList()+" — and the second its id; `system` is a singleton and takes no id. "+
-			"Memory and event use a typed tail; knowledge and workspace have free depth after their domain segment. "+
-			"**Append `/*` to sweep a prefix at ANY tier**: project/* (every project), project/tether/* (one project, every domain), project/tether/knowledge/* (its knowledge). "+
-			"The bare forms {scope}/{id}/memory and {scope}/{id}/event also match every type, as a grandfathered shorthand — but a bare knowledge namespace is EXACT, not a prefix, so use the explicit /* there. "+
-			"e.g. [\"project/tesseract/memory/decisions\",\"project/tesseract/knowledge/*\"].")),
-		mcp.WithString("query", mcp.Description("Semantic query (required for similarity or relevance ranking)")),
-		mcp.WithString("workstream_id", mcp.Description("Exact opaque workstream association filter, applied before ranking and limits.")),
-		mcp.WithString("ranking", mcp.Description("activation|chronological|similarity|relevance (default: relevance when query is set, else activation). "+
-			"`activation` is defined only over domains that take part in activation, so asking for it over `event` is a validation_error rather than an ordering by a constant; an event-only recall that names no ranking resolves to `chronological`.")),
-		mcp.WithString("search_mode", mcp.Description(searchModeArgDescription)),
-		mcp.WithString("revision_scope", mcp.Description("current|timeline (default: current)")),
-		mcp.WithNumber("limit", mcp.Description(recallLimitArgDescription)),
-		mcp.WithString("domains", mcp.Description("JSON array of domain filters: memory, knowledge, event, workspace. "+
-			"Omitting it covers the curated corpus (memory + knowledge). Event and workspace are opt-in. Workspace supports lexical relevance, activation and chronological ranking; it rejects semantic, similarity, timeline and revision-only filters.")),
-		mcp.WithString("facet_kinds", mcp.Description("JSON array of facet kind filters (knowledge), e.g. [\"package\",\"doc\"]")),
-		mcp.WithString("facet_sources", mcp.Description("JSON array of facet source filters (knowledge), e.g. [\"filesystem\",\"obsidian\"]")),
-		// Rendered from the vocabulary rather than restated, so this cannot
-		// advertise a status the filter does not accept.
-		mcp.WithString("pointer_health", mcp.Description(
-			"JSON array of pointer verification statuses (knowledge). Allowed: "+
-				strings.Join(memory.PointerHealthStatusVocabulary(), ", ")+
-				". `unresolvable` = a resolver got a definitive negative (missing file, HTTP 404/410). "+
-				"`unverifiable` = it could not tell (timeout, 403, rate limit, or a scheme with no resolver) — NOT evidence of death. "+
-				"`unchecked` = the pointer names something external and nobody has looked yet. "+
-				"`not_applicable` = scheme `nil`, the record declares it has no external source. "+
-				"Filtering happens in SQL before `limit`, so [\"unresolvable\"] enumerates the dead set rather than sampling it.")),
-		// Rendered from the vocabulary rather than restated, so this cannot
-		// advertise a relation the filter does not accept.
-		mcp.WithString("related_to", mcp.Description(
-			"JSON array of memory KEYS to expand along the link graph — the fourth retrieval signal, "+
-				"alongside similarity, lexical and chronological. Results are narrowed to entries adjacent "+
-				"to one of these keys IN EITHER DIRECTION: entries the anchor links to via `[[wikilink]]`, "+
-				"and entries that link to the anchor. Undirected because \"what is related to this decision\" "+
-				"means both the records it cites and the records citing it, and a forward-only answer makes "+
-				"a heavily-cited entry look unreferenced. "+
-				"Anchors are KEYS (what a `[[link]]` names), not revision or memory ids. "+
-				"An anchor with no edges yields no results rather than an error — the graph is legitimately "+
-				"sparse. A link whose target names no entry is retained but not traversable, so a key that "+
-				"was renamed away is cited by rows you can read and cannot walk. "+
-				"Combines with every other filter: `related_to` selects the neighborhood, `query` and "+
-				"`ranking` order it.")),
-		mcp.WithString("related_relations", mcp.Description(
-			"JSON array narrowing which edge types count as adjacency for `related_to`. Allowed: "+
-				strings.Join(memory.LinkRelationVocabulary(), ", ")+
-				". Omit for both. `references` is a `[[wikilink]]` parsed from a payload. `supersedes` is "+
-				"revision lineage, and it is ALWAYS intra-entry — Tesseract rejects a supersedes edge "+
-				"crossing memories — so `related_relations: [\"supersedes\"]` returns the anchor's own entry "+
-				"and nothing else. That is the lineage query: pair it with `revision_scope: \"timeline\"` to "+
-				"get the entry's revision history through the graph. "+
-				"No effect without `related_to`.")),
-		mcp.WithString("state_filters", mcp.Description(stateFiltersArgDescription)),
-		mcp.WithString("derived_from", mcp.Description("JSON array of derived_from filters")),
-		mcp.WithString("statuses", mcp.Description("JSON array of status filters")),
-		mcp.WithString("tags", mcp.Description("JSON array of tag filters")),
-		mcp.WithNumber("confidence_min", mcp.Description("Minimum confidence")),
-		mcp.WithNumber("similarity_min", mcp.Description(similarityMinArgDescription)),
-		mcp.WithString("since", mcp.Description("RFC3339 lower bound")),
-		mcp.WithString("until", mcp.Description("RFC3339 upper bound")),
-		mcp.WithString("payload_mode", mcp.Description(payloadModeArgDescription)),
-		mcp.WithString("cursor", mcp.Description(cursorArgDescription)),
-		mcp.WithNumber("budget_bytes", mcp.Description(budgetBytesArgDescription)),
-		mcp.WithNumber("budget_tokens", mcp.Description(budgetTokensArgDescription)),
-		mcp.WithBoolean("estimate_only", mcp.Description(estimateOnlyArgDescription)),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithIdempotentHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleTesseractRecall)
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
+		a.handleTesseractRecall,
+	))
 }
 
-func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleTesseractRecall(ctx context.Context, req map[string]any) (any, error) {
 	res, claims := a.checkScope(ctx, "memory:read")
 	if res != nil {
 		return res, nil
@@ -118,7 +115,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 		return pageErr, nil
 	}
 
-	unmarshalStrings := func(field string) ([]string, *mcp.CallToolResult) {
+	unmarshalStrings := func(field string) ([]string, any) {
 		out, _, err := parseStringArrayArg(req, field)
 		if err != nil {
 			return nil, toolError(codeValidationError, field+" "+err.Error())
@@ -210,14 +207,14 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 	}
 
 	var since, until *time.Time
-	if raw := req.GetString("since", ""); raw != "" {
+	if raw := argString(req, "since", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			return toolError(codeValidationError, "since must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
 		}
 		since = &t
 	}
-	if raw := req.GetString("until", ""); raw != "" {
+	if raw := argString(req, "until", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			return toolError(codeValidationError, "until must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern: the error is reported to the caller as a tool result, not returned to the transport
@@ -236,18 +233,18 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req mcp.CallToolReq
 
 	in := memory.RecallInput{
 		Namespaces:    namespaces,
-		RevisionScope: memory.RevisionScope(req.GetString("revision_scope", "")),
-		Ranking:       memory.Ranking(req.GetString("ranking", "")),
+		RevisionScope: memory.RevisionScope(argString(req, "revision_scope", "")),
+		Ranking:       memory.Ranking(argString(req, "ranking", "")),
 		// See handleMemoryRecall: validated by RecallPaged, not here, so this
 		// door and its HTTP peer cannot drift on the accepted vocabulary.
-		SearchMode: memory.SearchMode(req.GetString("search_mode", "")),
-		Query:      req.GetString("query", ""),
+		SearchMode: memory.SearchMode(argString(req, "search_mode", "")),
+		Query:      argString(req, "query", ""),
 		Filters: memory.RecallFilters{
 			WorkstreamID:  workstreamID,
 			DerivedFrom:   derivedFrom,
 			Statuses:      statuses,
 			Tags:          tags,
-			ConfidenceMin: req.GetFloat("confidence_min", 0),
+			ConfidenceMin: argFloat(req, "confidence_min", 0),
 			// See handleMemoryRecall: validated by RecallPaged, not here, so
 			// this door and its HTTP peer cannot drift on the accepted range
 			// or on which rankings admit a similarity floor.

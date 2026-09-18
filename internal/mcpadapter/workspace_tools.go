@@ -15,7 +15,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func (a *Adapter) itemService() *itemservice.Service {
@@ -23,58 +22,64 @@ func (a *Adapter) itemService() *itemservice.Service {
 }
 
 func (a *Adapter) registerWorkspaceTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("workspace_write",
-		mcp.WithDescription("Create or conditionally edit one mutable workspace item. Namespace selects create; item_id + version_token select edit. Creates return a small created/replayed receipt and edits return a fresh version token. Keyless creates require idempotency_key. Content is overwritten in place and workspace retains no revision history."),
-		mcp.WithString("namespace", mcp.Description("Create selector: exact workspace namespace.")),
-		mcp.WithString("item_id", mcp.Description("Edit selector: stable workspace item ID.")),
-		mcp.WithString("version_token", mcp.Description("Edit selector: current concurrency token.")),
-		mcp.WithString("idempotency_key", mcp.Description("Opaque retry key; required for keyless create and optional for keyed create.")),
-		mcp.WithString("key", mcp.Description("Optional exact human key. On edit, use clear_fields to remove it.")),
-		mcp.WithString("workstream_id", mcp.Description("Optional opaque association. On edit, use clear_fields to remove it.")),
-		mcp.WithString("summary", mcp.Description("Required non-empty summary on create; optional replacement on edit.")),
-		mcp.WithString("body", mcp.Description("Optional body. On edit, use clear_fields to remove it.")),
-		mcp.WithString("data", mcp.Description(payloadDataArgDescription)),
-		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
-		mcp.WithString("tags", mcp.Description("JSON array of strings. Supplying it replaces the full tag list.")),
-		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
-		mcp.WithString("clear_fields", mcp.Description("Edit only: JSON array drawn from key, body, data, tags, consumer_state, workstream_id.")),
-		mcp.WithString("author_agent_id", mcp.Description("Required author agent ID.")),
-		mcp.WithString("author_version", mcp.Description("Optional author version.")),
-		mcp.WithString("session_id", mcp.Description("Required authoring session ID.")),
-		mcp.WithReadOnlyHintAnnotation(false), mcp.WithIdempotentHintAnnotation(false),
-		mcp.WithDestructiveHintAnnotation(false), mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleWorkspaceWrite)
+	a.addTool(s, gomcpTool("workspace_write",
+		"Create or conditionally edit one mutable workspace item. Namespace selects create; item_id + version_token select edit. Creates return a small created/replayed receipt and edits return a fresh version token. Keyless creates require idempotency_key. Content is overwritten in place and workspace retains no revision history.",
+		inputSchema(
+			strProp("namespace", "Create selector: exact workspace namespace.", false),
+			strProp("item_id", "Edit selector: stable workspace item ID.", false),
+			strProp("version_token", "Edit selector: current concurrency token.", false),
+			strProp("idempotency_key", "Opaque retry key; required for keyless create and optional for keyed create.", false),
+			strProp("key", "Optional exact human key. On edit, use clear_fields to remove it.", false),
+			strProp("workstream_id", "Optional opaque association. On edit, use clear_fields to remove it.", false),
+			strProp("summary", "Required non-empty summary on create; optional replacement on edit.", false),
+			strProp("body", "Optional body. On edit, use clear_fields to remove it.", false),
+			strProp("data", payloadDataArgDescription, false),
+			strProp("data_schema_hash", payloadDataSchemaHashArgDescription, false),
+			strProp("tags", "JSON array of strings. Supplying it replaces the full tag list.", false),
+			strProp("consumer_state", consumerStateArgDescription, false),
+			strProp("clear_fields", "Edit only: JSON array drawn from key, body, data, tags, consumer_state, workstream_id.", false),
+			strProp("author_agent_id", "Required author agent ID.", false),
+			strProp("author_version", "Optional author version.", false),
+			strProp("session_id", "Required authoring session ID.", false),
+		),
+		toolAnnotations{},
+		a.handleWorkspaceWrite,
+	))
 
-	a.addTool(s, mcp.NewTool("workspace_delete",
-		mcp.WithDescription("Conditionally delete one workspace item's content while retaining its minimal identity tombstone. Repeating a delete returns the original deleted receipt. Errors distinguish version_conflict, deleted content reads, and not_found identities."),
-		mcp.WithString("item_id", mcp.Required(), mcp.Description("Stable workspace item ID.")),
-		mcp.WithString("version_token", mcp.Required(), mcp.Description("Current concurrency token.")),
-		mcp.WithReadOnlyHintAnnotation(false), mcp.WithIdempotentHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(true), mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleWorkspaceDelete)
+	a.addTool(s, gomcpTool("workspace_delete",
+		"Conditionally delete one workspace item's content while retaining its minimal identity tombstone. Repeating a delete returns the original deleted receipt. Errors distinguish version_conflict, deleted content reads, and not_found identities.",
+		inputSchema(
+			strProp("item_id", "Stable workspace item ID.", true),
+			strProp("version_token", "Current concurrency token.", true),
+		),
+		toolAnnotations{IdempotentHint: true, DestructiveHint: true},
+		a.handleWorkspaceDelete,
+	))
 
-	a.addTool(s, mcp.NewTool("workspace_promote",
-		mcp.WithDescription("Promote reviewed live workspace content to a memory, knowledge, or event item through request, approve, and apply. The request freezes destination metadata and association; apply atomically verifies the source version and target preconditions, writes one revision, and records a replay receipt."),
-		mcp.WithString("stage", mcp.Required(), mcp.Description("Required stage: request | approve | apply. Each stage checks only its matching promote.request, promote.approve, or promote.apply scope.")),
-		mcp.WithString("source_item_id"), mcp.WithString("source_version_token"),
-		mcp.WithString("request_id"), mcp.WithString("actor"), mcp.WithString("reason"), mcp.WithString("notes"),
-		mcp.WithString("target_domain"), mcp.WithString("target_namespace"), mcp.WithString("target_key"),
-		mcp.WithString("target_item_id"), mcp.WithString("expected_target_revision_id"),
-		mcp.WithString("target_author_agent_id"), mcp.WithString("target_author_version"), mcp.WithString("target_session_id"),
-		mcp.WithString("target_tags", mcp.Description("JSON array of destination tags.")),
-		mcp.WithString("target_consumer_state", mcp.Description("JSON object stored as destination consumer_state.")),
-		mcp.WithNumber("target_confidence"), mcp.WithNumber("target_ttl_seconds"),
-		mcp.WithString("target_data_schema_hash"), mcp.WithString("target_workstream_id"),
-		mcp.WithString("target_status"), mcp.WithString("target_trigger"), mcp.WithString("target_derived_from"),
-		mcp.WithString("target_kind"), mcp.WithString("target_source"),
-		mcp.WithString("target_pointer_scheme"), mcp.WithString("target_pointer_locator"), mcp.WithString("target_pointer_resolved_at"),
-		mcp.WithReadOnlyHintAnnotation(false), mcp.WithIdempotentHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false), mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleWorkspacePromote)
+	a.addTool(s, gomcpTool("workspace_promote",
+		"Promote reviewed live workspace content to a memory, knowledge, or event item through request, approve, and apply. The request freezes destination metadata and association; apply atomically verifies the source version and target preconditions, writes one revision, and records a replay receipt.",
+		inputSchema(
+			strProp("stage", "Required stage: request | approve | apply. Each stage checks only its matching promote.request, promote.approve, or promote.apply scope.", true),
+			strProp("source_item_id", "", false), strProp("source_version_token", "", false),
+			strProp("request_id", "", false), strProp("actor", "", false), strProp("reason", "", false), strProp("notes", "", false),
+			strProp("target_domain", "", false), strProp("target_namespace", "", false), strProp("target_key", "", false),
+			strProp("target_item_id", "", false), strProp("expected_target_revision_id", "", false),
+			strProp("target_author_agent_id", "", false), strProp("target_author_version", "", false), strProp("target_session_id", "", false),
+			strProp("target_tags", "JSON array of destination tags.", false),
+			strProp("target_consumer_state", "JSON object stored as destination consumer_state.", false),
+			numProp("target_confidence", "", false), numProp("target_ttl_seconds", "", false),
+			strProp("target_data_schema_hash", "", false), strProp("target_workstream_id", "", false),
+			strProp("target_status", "", false), strProp("target_trigger", "", false), strProp("target_derived_from", "", false),
+			strProp("target_kind", "", false), strProp("target_source", "", false),
+			strProp("target_pointer_scheme", "", false), strProp("target_pointer_locator", "", false), strProp("target_pointer_resolved_at", "", false),
+		),
+		toolAnnotations{IdempotentHint: true},
+		a.handleWorkspacePromote,
+	))
 }
 
-func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	stage := req.GetString("stage", "")
+func (a *Adapter) handleWorkspacePromote(ctx context.Context, req map[string]any) (any, error) {
+	stage := argString(req, "stage", "")
 	if stage != "request" && stage != "approve" && stage != "apply" {
 		return toolError(codeValidationError, "stage is required and must be request, approve, or apply"), nil
 	}
@@ -85,7 +90,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 	if res != nil {
 		return res, nil
 	}
-	args := req.GetArguments()
+	args := req
 	for name, value := range args {
 		if value == nil {
 			return toolError(codeValidationError, name+" must not be null; omit it instead"), nil
@@ -102,7 +107,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 		if _, ok := args["notes"]; ok {
 			return toolError(codeValidationError, "notes is valid only for approve"), nil
 		}
-		sourceID, token, actor := req.GetString("source_item_id", ""), req.GetString("source_version_token", ""), req.GetString("actor", "")
+		sourceID, token, actor := argString(req, "source_item_id", ""), argString(req, "source_version_token", ""), argString(req, "actor", "")
 		if strings.TrimSpace(sourceID) == "" || strings.TrimSpace(token) == "" || strings.TrimSpace(actor) == "" {
 			return toolError(codeValidationError, "source_item_id, source_version_token, and actor are required for request"), nil
 		}
@@ -139,7 +144,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 				return denied, nil
 			}
 		}
-		receipt, err := a.WorkspacePromotionStore.Request(ctx, promotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: req.GetString("reason", ""), Target: target})
+		receipt, err := a.WorkspacePromotionStore.Request(ctx, promotion.RequestInput{SourceItemID: sourceID, SourceVersionToken: token, Actor: actor, Reason: argString(req, "reason", ""), Target: target})
 		if err != nil {
 			return workspacePromotionToolError(err), nil
 		}
@@ -152,7 +157,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 			return toolError(codeValidationError, name+" is not valid for stage="+stage), nil
 		}
 	}
-	requestID, actor := req.GetString("request_id", ""), req.GetString("actor", "")
+	requestID, actor := argString(req, "request_id", ""), argString(req, "actor", "")
 	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(actor) == "" {
 		return toolError(codeValidationError, "request_id and actor are required for "+stage), nil
 	}
@@ -164,7 +169,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 		return denied, nil
 	}
 	if stage == "approve" {
-		approvalReceipt, approvalErr := a.WorkspacePromotionStore.Approve(ctx, promotion.ApproveInput{RequestID: requestID, Actor: actor, Notes: req.GetString("notes", "")})
+		approvalReceipt, approvalErr := a.WorkspacePromotionStore.Approve(ctx, promotion.ApproveInput{RequestID: requestID, Actor: actor, Notes: argString(req, "notes", "")})
 		if approvalErr != nil {
 			return workspacePromotionToolError(approvalErr), nil
 		}
@@ -177,7 +182,7 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req mcp.CallToolRe
 	return toolJSON(receipt), nil
 }
 
-func validateWorkspacePromotionArgTypes(args map[string]any) *mcp.CallToolResult {
+func validateWorkspacePromotionArgTypes(args map[string]any) any {
 	stringFields := []string{
 		"stage", "source_item_id", "source_version_token", "request_id", "actor", "reason", "notes",
 		"target_domain", "target_namespace", "target_key", "target_item_id", "expected_target_revision_id",
@@ -204,8 +209,8 @@ func validateWorkspacePromotionArgTypes(args map[string]any) *mcp.CallToolResult
 	return nil
 }
 
-func workspacePromotionTarget(req mcp.CallToolRequest) (promotion.Target, *mcp.CallToolResult) {
-	args := req.GetArguments()
+func workspacePromotionTarget(req map[string]any) (promotion.Target, any) {
+	args := req
 	if _, hasItem := args["target_item_id"]; hasItem {
 		for _, redundant := range []string{"target_domain", "target_namespace", "target_key"} {
 			if _, ok := args[redundant]; ok {
@@ -214,13 +219,13 @@ func workspacePromotionTarget(req mcp.CallToolRequest) (promotion.Target, *mcp.C
 		}
 	}
 	target := promotion.Target{
-		Domain: domains.Domain(req.GetString("target_domain", "")), Namespace: req.GetString("target_namespace", ""), Key: req.GetString("target_key", ""),
-		ItemID: req.GetString("target_item_id", ""), ExpectedRevisionID: req.GetString("expected_target_revision_id", ""),
-		Author:    memory.Author{AgentID: req.GetString("target_author_agent_id", ""), AgentVersion: req.GetString("target_author_version", "")},
-		SessionID: req.GetString("target_session_id", ""), Confidence: req.GetFloat("target_confidence", 0),
-		DataSchemaHash: req.GetString("target_data_schema_hash", ""), Status: memory.Status(req.GetString("target_status", "")),
-		Trigger: memory.Trigger(req.GetString("target_trigger", "")), DerivedFrom: memory.DerivedFrom(req.GetString("target_derived_from", "")),
-		Kind: req.GetString("target_kind", ""), Source: req.GetString("target_source", ""),
+		Domain: domains.Domain(argString(req, "target_domain", "")), Namespace: argString(req, "target_namespace", ""), Key: argString(req, "target_key", ""),
+		ItemID: argString(req, "target_item_id", ""), ExpectedRevisionID: argString(req, "expected_target_revision_id", ""),
+		Author:    memory.Author{AgentID: argString(req, "target_author_agent_id", ""), AgentVersion: argString(req, "target_author_version", "")},
+		SessionID: argString(req, "target_session_id", ""), Confidence: argFloat(req, "target_confidence", 0),
+		DataSchemaHash: argString(req, "target_data_schema_hash", ""), Status: memory.Status(argString(req, "target_status", "")),
+		Trigger: memory.Trigger(argString(req, "target_trigger", "")), DerivedFrom: memory.DerivedFrom(argString(req, "target_derived_from", "")),
+		Kind: argString(req, "target_kind", ""), Source: argString(req, "target_source", ""),
 	}
 	tags, _, err := parseStringArrayArg(req, "target_tags")
 	if err != nil {
@@ -260,9 +265,9 @@ func workspacePromotionTarget(req mcp.CallToolRequest) (promotion.Target, *mcp.C
 		_ = scheme
 		_ = locator
 		_ = resolved
-		target.Pointer = &memory.Pointer{Scheme: req.GetString("target_pointer_scheme", ""), Locator: req.GetString("target_pointer_locator", "")}
+		target.Pointer = &memory.Pointer{Scheme: argString(req, "target_pointer_scheme", ""), Locator: argString(req, "target_pointer_locator", "")}
 		if resolvedOK {
-			parsed, err := time.Parse(time.RFC3339Nano, req.GetString("target_pointer_resolved_at", ""))
+			parsed, err := time.Parse(time.RFC3339Nano, argString(req, "target_pointer_resolved_at", ""))
 			if err != nil {
 				return target, toolError(codeValidationError, "target_pointer_resolved_at must be RFC3339")
 			}
@@ -272,8 +277,8 @@ func workspacePromotionTarget(req mcp.CallToolRequest) (promotion.Target, *mcp.C
 	return target, nil
 }
 
-func workstreamWriteArgFor(req mcp.CallToolRequest, key string) (*string, *mcp.CallToolResult) {
-	raw, ok := req.GetArguments()[key]
+func workstreamWriteArgFor(req map[string]any, key string) (*string, any) {
+	raw, ok := req[key]
 	if !ok {
 		return nil, nil
 	}
@@ -287,7 +292,7 @@ func workstreamWriteArgFor(req mcp.CallToolRequest, key string) (*string, *mcp.C
 	return &value, nil
 }
 
-func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contextstore.AuthToken, op string, namespaces ...string) *mcp.CallToolResult {
+func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contextstore.AuthToken, op string, namespaces ...string) any {
 	for _, namespace := range namespaces {
 		if namespace == "" {
 			return toolError(codeValidationError, "source and target namespaces are required")
@@ -309,7 +314,7 @@ func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contex
 	return nil
 }
 
-func workspacePromotionToolError(err error) *mcp.CallToolResult {
+func workspacePromotionToolError(err error) any {
 	switch {
 	case errors.Is(err, promotion.ErrInvalidInput), errors.Is(err, memory.ErrInvalidInput):
 		return toolError(codeValidationError, err.Error())
@@ -328,12 +333,12 @@ func workspacePromotionToolError(err error) *mcp.CallToolResult {
 	}
 }
 
-func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req map[string]any) (any, error) {
 	res, claims := a.checkScope(ctx, "memory:write")
 	if res != nil {
 		return res, nil
 	}
-	args := req.GetArguments()
+	args := req
 	_, hasNamespace := args["namespace"]
 	_, hasItemID := args["item_id"]
 	_, hasVersion := args["version_token"]
@@ -344,7 +349,7 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 		if _, ok := args["clear_fields"]; ok {
 			return toolError(codeValidationError, "clear_fields is valid only for edit"), nil
 		}
-		ns := req.GetString("namespace", "")
+		ns := argString(req, "namespace", "")
 		if !globsPermit(claims.NamespaceGlobs, ns) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+ns), nil
 		}
@@ -357,10 +362,10 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 			return workstreamErr, nil
 		}
 		create := workspace.CreateRequest{CreateInput: workspace.CreateInput{
-			Namespace: ns, Key: req.GetString("key", ""), WorkstreamID: workstreamID, Summary: req.GetString("summary", ""), Body: req.GetString("body", ""),
-			Data: payloadDataArg(req), DataSchemaHash: req.GetString("data_schema_hash", ""), Tags: tags,
-			ConsumerState: consumerStateArg(req), Author: memory.Author{AgentID: req.GetString("author_agent_id", ""), AgentVersion: req.GetString("author_version", "")}, SessionID: req.GetString("session_id", ""),
-		}, IdempotencyKey: req.GetString("idempotency_key", "")}
+			Namespace: ns, Key: argString(req, "key", ""), WorkstreamID: workstreamID, Summary: argString(req, "summary", ""), Body: argString(req, "body", ""),
+			Data: payloadDataArg(req), DataSchemaHash: argString(req, "data_schema_hash", ""), Tags: tags,
+			ConsumerState: consumerStateArg(req), Author: memory.Author{AgentID: argString(req, "author_agent_id", ""), AgentVersion: argString(req, "author_version", "")}, SessionID: argString(req, "session_id", ""),
+		}, IdempotencyKey: argString(req, "idempotency_key", "")}
 		receipt, err := a.WorkspaceStore.CreateWithReceipt(ctx, create)
 		if err != nil {
 			return workspaceToolError(err), nil
@@ -375,7 +380,7 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 			return toolError(codeValidationError, createOnly+" is valid only for create"), nil
 		}
 	}
-	meta, err := a.itemService().LookupMetadata(ctx, req.GetString("item_id", ""))
+	meta, err := a.itemService().LookupMetadata(ctx, argString(req, "item_id", ""))
 	if err != nil {
 		return workspaceToolError(err), nil
 	}
@@ -396,12 +401,12 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req mcp.CallToolRequ
 	return toolJSON(workspace.MutationReceipt{Status: "updated", ItemID: item.ItemID, VersionToken: item.VersionToken}), nil
 }
 
-func workspaceEditInput(req mcp.CallToolRequest) (workspace.EditInput, *mcp.CallToolResult) {
-	args := req.GetArguments()
-	in := workspace.EditInput{ItemID: req.GetString("item_id", ""), VersionToken: req.GetString("version_token", ""), Author: memory.Author{AgentID: req.GetString("author_agent_id", ""), AgentVersion: req.GetString("author_version", "")}, SessionID: req.GetString("session_id", "")}
+func workspaceEditInput(req map[string]any) (workspace.EditInput, any) {
+	args := req
+	in := workspace.EditInput{ItemID: argString(req, "item_id", ""), VersionToken: argString(req, "version_token", ""), Author: memory.Author{AgentID: argString(req, "author_agent_id", ""), AgentVersion: argString(req, "author_version", "")}, SessionID: argString(req, "session_id", "")}
 	for name, dst := range map[string]**string{"key": &in.Key, "summary": &in.Summary, "body": &in.Body, "data_schema_hash": &in.DataSchemaHash} {
 		if _, ok := args[name]; ok {
-			v := req.GetString(name, "")
+			v := argString(req, name, "")
 			*dst = &v
 		}
 	}
@@ -439,13 +444,13 @@ func workspaceEditInput(req mcp.CallToolRequest) (workspace.EditInput, *mcp.Call
 	return in, nil
 }
 
-func (a *Adapter) handleWorkspaceDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleWorkspaceDelete(ctx context.Context, req map[string]any) (any, error) {
 	res, claims := a.checkScope(ctx, "memory:write")
 	if res != nil {
 		return res, nil
 	}
-	itemID := strings.TrimSpace(req.GetString("item_id", ""))
-	token := req.GetString("version_token", "")
+	itemID := strings.TrimSpace(argString(req, "item_id", ""))
+	token := argString(req, "version_token", "")
 	if itemID == "" || token == "" {
 		return toolError(codeValidationError, "item_id and version_token are required"), nil
 	}
@@ -466,7 +471,7 @@ func (a *Adapter) handleWorkspaceDelete(ctx context.Context, req mcp.CallToolReq
 	return toolJSON(receipt), nil
 }
 
-func workspaceToolError(err error) *mcp.CallToolResult {
+func workspaceToolError(err error) any {
 	switch {
 	case errors.Is(err, workspace.ErrInvalidInput):
 		return toolError(codeValidationError, err.Error())
@@ -487,7 +492,7 @@ func workspaceToolError(err error) *mcp.CallToolResult {
 	}
 }
 
-func workspaceDeleteToolError(err error) *mcp.CallToolResult {
+func workspaceDeleteToolError(err error) any {
 	switch {
 	case errors.Is(err, workspace.ErrInvalidInput):
 		return toolError(codeValidationError, err.Error())

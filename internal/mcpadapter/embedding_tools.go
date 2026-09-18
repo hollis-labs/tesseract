@@ -8,37 +8,44 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func (a *Adapter) registerEmbeddingTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("context_embed",
-		mcp.WithDescription("Generate and store an embedding for a record. Requires a configured embedding provider. Idempotent: re-embedding overwrites the previous vector. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("record_id", mcp.Required(), mcp.Description("Record ID to embed")),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Record namespace")),
-		mcp.WithString("key", mcp.Required(), mcp.Description("Record key")),
-		mcp.WithString("model", mcp.Description("Embedding model (default: provider's configured model)")),
-	), a.handleEmbed)
+	a.addTool(s, gomcpTool("context_embed",
+		"Generate and store an embedding for a record. Requires a configured embedding provider. Idempotent: re-embedding overwrites the previous vector. See `tesseract_skills start-here` for the primitive model.",
+		inputSchema(
+			strProp("record_id", "Record ID to embed", true),
+			strProp("namespace", "Record namespace", true),
+			strProp("key", "Record key", true),
+			strProp("model", "Embedding model (default: provider's configured model)", false),
+		),
+		toolAnnotations{},
+		a.handleEmbed,
+	))
 
-	a.addTool(s, mcp.NewTool("context_search",
-		mcp.WithDescription("Semantic search across records using embeddings. Returns ranked results by cosine similarity. Requires a configured embedding provider. See `tesseract_skills start-here` for the primitive model."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Search query text")),
-		mcp.WithNumber("limit", mcp.Description("Max results to return (default 10, max 25)")),
-		mcp.WithString("namespace", mcp.Description("Namespace prefix filter")),
-		mcp.WithString("type", mcp.Description("Record type filter")),
-		mcp.WithString("tags", mcp.Description("Comma-separated tag filter (any match)")),
-		mcp.WithNumber("threshold", mcp.Description("Minimum similarity score (default 0.7)")),
-	), a.handleSearch)
+	a.addTool(s, gomcpTool("context_search",
+		"Semantic search across records using embeddings. Returns ranked results by cosine similarity. Requires a configured embedding provider. See `tesseract_skills start-here` for the primitive model.",
+		inputSchema(
+			strProp("query", "Search query text", true),
+			numProp("limit", "Max results to return (default 10, max 25)", false),
+			strProp("namespace", "Namespace prefix filter", false),
+			strProp("type", "Record type filter", false),
+			strProp("tags", "Comma-separated tag filter (any match)", false),
+			numProp("threshold", "Minimum similarity score (default 0.7)", false),
+		),
+		toolAnnotations{},
+		a.handleSearch,
+	))
 }
 
-func (a *Adapter) handleEmbed(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleEmbed(ctx context.Context, req map[string]any) (any, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}
 
-	recordID := req.GetString("record_id", "")
-	ns := req.GetString("namespace", "")
-	key := req.GetString("key", "")
+	recordID := argString(req, "record_id", "")
+	ns := argString(req, "namespace", "")
+	key := argString(req, "key", "")
 	if recordID == "" || ns == "" || key == "" {
 		return toolError(codeValidationError, "record_id, namespace, and key are required"), nil
 	}
@@ -56,7 +63,7 @@ func (a *Adapter) handleEmbed(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 
 	// Generate embedding.
-	model := req.GetString("model", a.EmbeddingModel)
+	model := argString(req, "model", a.EmbeddingModel)
 	result, err := a.EmbeddingProvider.Embed(ctx, text, model)
 	if err != nil {
 		return toolError(codeEmbeddingError, fmt.Sprintf("embedding generation failed: %v", err)), nil
@@ -82,17 +89,17 @@ func (a *Adapter) handleEmbed(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}), nil
 }
 
-func (a *Adapter) handleSearch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleSearch(ctx context.Context, req map[string]any) (any, error) {
 	if a.EmbeddingProvider == nil {
 		return toolError(codeEmbeddingUnavailable, "no embedding provider configured"), nil
 	}
 
-	query := req.GetString("query", "")
+	query := argString(req, "query", "")
 	if query == "" {
 		return toolError(codeValidationError, "query is required"), nil
 	}
 
-	limit := int(req.GetFloat("limit", 10))
+	limit := int(argFloat(req, "limit", 10))
 	if limit <= 0 {
 		limit = 10
 	}
@@ -100,19 +107,19 @@ func (a *Adapter) handleSearch(ctx context.Context, req mcp.CallToolRequest) (*m
 		limit = 25
 	}
 
-	threshold := req.GetFloat("threshold", 0.7)
+	threshold := argFloat(req, "threshold", 0.7)
 
 	// Build filter.
 	filter := contextstore.EmbeddingFilter{
 		Model: a.EmbeddingModel,
 	}
-	if ns := req.GetString("namespace", ""); ns != "" {
+	if ns := argString(req, "namespace", ""); ns != "" {
 		filter.Namespaces = []string{ns}
 	}
-	if t := req.GetString("type", ""); t != "" {
+	if t := argString(req, "type", ""); t != "" {
 		filter.Types = []string{t}
 	}
-	if tags := req.GetString("tags", ""); tags != "" {
+	if tags := argString(req, "tags", ""); tags != "" {
 		for _, tag := range strings.Split(tags, ",") {
 			tag = strings.TrimSpace(tag)
 			if tag != "" {

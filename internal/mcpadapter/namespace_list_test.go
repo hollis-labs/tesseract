@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
@@ -238,11 +238,10 @@ func TestNamespacesList_ListKnobsRefusedOnNonListArms(t *testing.T) {
 func TestNamespaceListKnobsCoversTheRegisteredSchema(t *testing.T) {
 	s := newTestStore(t)
 	a := New(s, "")
-	srv := server.NewMCPServer("knob-drift-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("knob-drift-test", "0.0.0")
 	a.RegisterAllTools(srv)
 
-	tools := srv.ListTools()
-	tool, ok := tools["context_registry_list"]
+	tool, ok := toolDef(srv, "context_registry_list")
 	if !ok {
 		t.Fatal("context_registry_list is not registered")
 	}
@@ -251,7 +250,7 @@ func TestNamespaceListKnobsCoversTheRegisteredSchema(t *testing.T) {
 	// every other declared argument shapes the list.
 	structural := map[string]bool{"kind": true, "name": true}
 	var declared []string
-	for prop := range tool.Tool.InputSchema.Properties {
+	for prop := range toolSchemaProperties(tool.InputSchema) {
 		if !structural[prop] {
 			declared = append(declared, prop)
 		}

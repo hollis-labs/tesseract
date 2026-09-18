@@ -5,28 +5,29 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/workspace"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestRegisteredWorkspaceWriteCapturesTetherProvenance(t *testing.T) {
 	a := workspaceAdapter(t)
-	srv := server.NewMCPServer("provenance-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("provenance-test", "0.0.0")
 	a.RegisterAllTools(srv)
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "workspace_write"
-	req.Params.Arguments = map[string]any{
+	args := map[string]any{
 		"namespace": mcpWorkspaceNS, "idempotency_key": "provenance-create", "summary": "received",
 		"author_agent_id": "mcp-test", "session_id": "author-session",
 	}
-	req.Params.Meta = &mcp.Meta{AdditionalFields: map[string]any{
+	// WithMeta is go-mcp's own way for a caller driving a handler directly
+	// (here, via Server.CallTool, which bypasses the protocol layer and so
+	// installs no _meta of its own) to supply the protocol-level _meta object
+	// a real client call would carry.
+	ctx := gomcpserver.WithMeta(context.Background(), map[string]any{
 		tetherProvenanceKey: map[string]any{"schema_version": float64(1), "session_id": "tether-session", "workstream_id": "ws-received"},
-	}}
-	res, err := srv.ListTools()["workspace_write"].Handler(context.Background(), req)
+	})
+	res, err := srv.CallTool(ctx, "workspace_write", args)
 	if err != nil {
 		t.Fatal(err)
 	}

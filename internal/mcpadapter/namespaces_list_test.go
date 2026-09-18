@@ -3,8 +3,6 @@ package mcpadapter
 import (
 	"context"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestNamespacesList_PrefixIsStringPrefixNotGlob locks the contract that the
@@ -52,8 +50,7 @@ func TestNamespacesList_PrefixIsStringPrefixNotGlob(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := mcp.CallToolRequest{}
-			req.Params.Arguments = map[string]any{"prefix": tc.prefix, "limit": float64(50)}
+			req := map[string]any{"prefix": tc.prefix, "limit": float64(50)}
 			res, err := a.handleNamespacesList(ctx, req)
 			if err != nil {
 				t.Fatalf("handle: %v", err)

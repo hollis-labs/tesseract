@@ -30,7 +30,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const touchNS = "user/chrispian/memory/notes"
@@ -99,13 +98,12 @@ type touchWire struct {
 
 func touchViaMCP(t *testing.T, a *Adapter, args map[string]any) touchWire {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
+	req := args
 	res, err := a.handleTesseractTouch(context.Background(), req)
 	if err != nil {
 		t.Fatalf("tesseract_touch: %v", err)
 	}
-	raw := res.Content[0].(mcp.TextContent).Text
+	raw := mustJSONText(t, res)
 	var out touchWire
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		t.Fatalf("decode MCP touch response: %v; raw=%s", err, raw)
@@ -335,13 +333,12 @@ func TestTouchParity_OversizedBatchRefusedByBothDoors(t *testing.T) {
 		quoted[i] = `"` + id + `"`
 	}
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"revision_ids": ids}
+	req := map[string]any{"revision_ids": ids}
 	res, err := a.handleTesseractTouch(context.Background(), req)
 	if err != nil {
 		t.Fatalf("tesseract_touch: %v", err)
 	}
-	mcpRaw := res.Content[0].(mcp.TextContent).Text
+	mcpRaw := mustJSONText(t, res)
 	if !strings.Contains(mcpRaw, `"code":"validation_error"`) {
 		t.Errorf("MCP door did not refuse an oversized batch: %s", mcpRaw)
 	}

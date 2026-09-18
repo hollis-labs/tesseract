@@ -3,27 +3,98 @@ package mcpadapter
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// argString, argInt, argFloat and argBool replace mark3labs'
+// CallToolRequest.GetString/GetInt/GetFloat/GetBool: go-mcp hands a handler a
+// plain map[string]any with no accessor methods of its own, so this package
+// gets its own — with the exact same per-type coercions mark3labs' versions
+// used, so behavior is unchanged by the port.
+
+// argString returns a string argument by key, or defaultValue if not found or
+// not a string.
+func argString(args map[string]any, key, defaultValue string) string {
+	if val, ok := args[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return defaultValue
+}
+
+// argInt returns an int argument by key, or defaultValue if not found or not
+// convertible to int.
+func argInt(args map[string]any, key string, defaultValue int) int {
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case int:
+			return v
+		case float64:
+			return int(v)
+		case string:
+			if i, err := strconv.Atoi(v); err == nil {
+				return i
+			}
+		}
+	}
+	return defaultValue
+}
+
+// argFloat returns a float64 argument by key, or defaultValue if not found or
+// not convertible to float64.
+func argFloat(args map[string]any, key string, defaultValue float64) float64 {
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case float64:
+			return v
+		case int:
+			return float64(v)
+		case string:
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				return f
+			}
+		}
+	}
+	return defaultValue
+}
+
+// argBool returns a bool argument by key, or defaultValue if not found or not
+// convertible to bool.
+func argBool(args map[string]any, key string, defaultValue bool) bool {
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case bool:
+			return v
+		case string:
+			if b, err := strconv.ParseBool(v); err == nil {
+				return b
+			}
+		case int:
+			return v != 0
+		case float64:
+			return v != 0
+		}
+	}
+	return defaultValue
+}
+
 // parseStringArrayArg extracts a JSON-array-of-strings argument from an MCP
-// request, accepting BOTH a native JSON array (sent by clients that don't
-// stringify, including the mux MCP proxy) and a JSON-encoded string (sent by
-// clients that honor the WithString schema declaration).
+// tool call's arguments, accepting BOTH a native JSON array (sent by clients
+// that don't stringify, including the mux MCP proxy) and a JSON-encoded string
+// (sent by clients that honor the WithString schema declaration).
 //
 // Returns (values, present, error). `present` is true whenever the key exists
 // in the request arguments; this lets callers distinguish "unset" from
 // "deliberately empty list" if needed.
 //
-// Schemas in this package declare these arrays as `mcp.WithString` for
+// Schemas in this package declare these arrays as a string property for
 // historical reasons. Without this helper the native-array path silently
-// drops the value because `req.GetString` returns "" for non-string args
-// (mark3labs/mcp-go v0.47: tools.go GetString casts via val.(string)).
-func parseStringArrayArg(req mcp.CallToolRequest, key string) ([]string, bool, error) {
-	args := req.GetArguments()
+// drops the value because a naive string read returns "" for non-string args.
+func parseStringArrayArg(args map[string]any, key string) ([]string, bool, error) {
 	raw, ok := args[key]
 	if !ok || raw == nil {
 		return nil, false, nil
@@ -80,8 +151,8 @@ const stateFiltersArgDescription = "JSON array of consumer-state filters, e.g. "
 // to the bind parameter, since a bag holding `false` and one holding `"false"`
 // are different rows. Decoding through []string would flatten exactly that
 // distinction and answer the wrong question with no error.
-func parseStateFiltersArg(req mcp.CallToolRequest) ([]memory.StateFilter, *mcp.CallToolResult) {
-	raw, ok := req.GetArguments()["state_filters"]
+func parseStateFiltersArg(args map[string]any) ([]memory.StateFilter, any) {
+	raw, ok := args["state_filters"]
 	if !ok || raw == nil {
 		return nil, nil
 	}
@@ -143,8 +214,8 @@ const consumerStateArgDescription = "Optional JSON OBJECT stored as this revisio
 // turns a currently-succeeding call into an error on a shipped surface, which
 // is a change to this tool's contract and belongs in its own task rather than
 // riding along with payload.data. Filed as CW-20260912-0045.
-func consumerStateArg(req mcp.CallToolRequest) json.RawMessage {
-	raw, ok := req.GetArguments()["consumer_state"]
+func consumerStateArg(args map[string]any) json.RawMessage {
+	raw, ok := args["consumer_state"]
 	if !ok || raw == nil {
 		return nil
 	}
@@ -199,18 +270,18 @@ const payloadDataSchemaHashArgDescription = "Optional hex sha256 recording WHICH
 // TWO SHAPES, ONE OF WHICH PRESERVES BYTES. The JSON-encoded string survives
 // the decoded arguments path unchanged. Native objects on that path have
 // already passed through float64, so re-marshaling can round large integers
-// and change key order and whitespace. mcp-go also preserves RawArguments,
-// but our sanitizer and strict-argument middleware operate on GetArguments().
-// Reading RawArguments here would bypass their recovered/sanitized values
-// and undeclared-argument protections. Keep this handler on the checked path;
-// use the string form when exact bytes matter.
+// and change key order and whitespace. go-mcp's official-SDK dispatch also
+// decodes CallToolRequest.Params.Arguments once, upstream of this handler, so
+// there is no separate raw-bytes path to prefer here either — the args map is
+// the one path a sanitized, strict-argument-checked call reaches this
+// function through.
 //
 // ABSENT IS NOT NULL. `data: null` is a value the caller supplied, and
 // the store rejects a literal null as a non-object. Collapsing it into "not
 // sent" would make MCP silently accept something HTTP refuses, and would hide a
 // client bug that produced null where an object was meant.
-func payloadDataArg(req mcp.CallToolRequest) json.RawMessage {
-	raw, ok := req.GetArguments()["data"]
+func payloadDataArg(args map[string]any) json.RawMessage {
+	raw, ok := args["data"]
 	if !ok {
 		return nil
 	}

@@ -6,9 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // The MCP door for payload.data (CW-20260912-0036).
@@ -144,7 +143,7 @@ func TestPayloadDataExplicitNullIsRefusedNotDropped(t *testing.T) {
 // create another revision, whether alone or alongside their replacements.
 func TestFlatDataWriteContractAcrossMCPDoors(t *testing.T) {
 	a, _, ms, _ := crossDomainSurfaces(t)
-	srv := server.NewMCPServer("flat-write", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("flat-write", "0.0.0")
 	a.RegisterAllTools(srv)
 	const raw = `{ "z":9007199254740993, "a":1e+09, "z":9007199254740995 }`
 	hash := strings.Repeat("a", 64)
@@ -154,7 +153,6 @@ func TestFlatDataWriteContractAcrossMCPDoors(t *testing.T) {
 		{"event_write", xdEventNS, "key", "summary", "body"},
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
-			st := srv.ListTools()[tc.tool]
 			args := map[string]any{
 				"namespace": tc.ns, tc.keyField: "flat.data", tc.summaryField: "summary", tc.bodyField: "body",
 				"author_agent_id": "test", "session_id": "s1", "data": raw, "data_schema_hash": hash,
@@ -174,19 +172,11 @@ func TestFlatDataWriteContractAcrossMCPDoors(t *testing.T) {
 			}
 			call := func(args map[string]any) string {
 				t.Helper()
-				wire, err := json.Marshal(map[string]any{"params": map[string]any{"name": tc.tool, "arguments": args}})
+				result, err := srv.CallTool(context.Background(), tc.tool, args)
 				if err != nil {
 					t.Fatal(err)
 				}
-				var req mcp.CallToolRequest
-				if err = json.Unmarshal(wire, &req); err != nil {
-					t.Fatal(err)
-				}
-				result, err := st.Handler(context.Background(), req)
-				if err != nil {
-					t.Fatal(err)
-				}
-				return resultText(t, result)
+				return mustJSONText(t, result)
 			}
 			result := call(args)
 			var written memory.Revision

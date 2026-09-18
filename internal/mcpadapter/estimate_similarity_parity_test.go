@@ -29,7 +29,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ── Fixture ──────────────────────────────────────────────────────────────────
@@ -183,13 +182,11 @@ func estimateSurfaces(t *testing.T) (*Adapter, *contextapi.Server) {
 
 func estCall(t *testing.T, a *Adapter, args map[string]any) string {
 	t.Helper()
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = args
-	res, err := a.handleTesseractRecall(context.Background(), req)
+	res, err := a.handleTesseractRecall(context.Background(), args)
 	if err != nil {
 		t.Fatalf("tesseract_recall: %v", err)
 	}
-	return res.Content[0].(mcp.TextContent).Text
+	return mustJSONText(t, res)
 }
 
 func callRoute(t *testing.T, srv *contextapi.Server, route, body string) (int, string) {

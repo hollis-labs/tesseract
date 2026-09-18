@@ -11,7 +11,7 @@ import (
 
 	"github.com/hollis-labs/go-mcp/staleness"
 	"github.com/hollis-labs/tesseract/internal/runtimeimage"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const runtimeCapability = "hollis-labs.dev/mcp-runtime"
@@ -61,20 +61,45 @@ func newRuntimeObserver() *runtimeObserver {
 		pid: os.Getpid(), parent: os.Getppid(), reason: "launch-context-unavailable"}
 }
 
-func (a *Adapter) acceptRuntimeContext(_ context.Context, _ any, req *mcp.InitializeRequest) {
+// runtimeObserverMiddleware intercepts the "initialize" request so the
+// runtime observer can inspect the client's launch-context capability before
+// the handshake completes.
+//
+// go-mcp deliberately does not wrap initialize/session lifecycle (see its
+// README: "Prompts, resources, and session lifecycle are not wrapped").
+// mark3labs exposed this via server.Hooks.AddBeforeInitialize; the official
+// SDK has no equivalent hook, so this installs directly on the SDK server via
+// AddReceivingMiddleware — the same install point sanitize.Middleware uses —
+// and passes every method through unconditionally, including "initialize"
+// itself: this is observation, never a gate.
+func runtimeObserverMiddleware(a *Adapter) mcpsdk.Middleware {
+	return func(next mcpsdk.MethodHandler) mcpsdk.MethodHandler {
+		return func(ctx context.Context, method string, req mcpsdk.Request) (mcpsdk.Result, error) {
+			if initReq, ok := req.(*mcpsdk.InitializeRequest); ok {
+				a.acceptRuntimeContext(initReq)
+			}
+			return next(ctx, method, req)
+		}
+	}
+}
+
+func (a *Adapter) acceptRuntimeContext(req *mcpsdk.InitializeRequest) {
 	if a.runtime == nil {
 		return
 	}
 	a.runtime.accept(req)
 }
 
-func (o *runtimeObserver) accept(req *mcp.InitializeRequest) {
+func (o *runtimeObserver) accept(req *mcpsdk.InitializeRequest) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.initialized {
 		return
 	}
 	o.initialized = true
+	if req.Params == nil || req.Params.Capabilities == nil || req.Params.ClientInfo == nil {
+		return
+	}
 	raw, exists := req.Params.Capabilities.Experimental[runtimeCapability]
 	if !exists {
 		return
@@ -138,14 +163,16 @@ func (o *runtimeObserver) observe(ctx context.Context, version string) runtimeRe
 }
 
 func (a *Adapter) registerRuntimeTool(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("tesseract_runtime_get",
-		mcp.WithDescription("Observe this MCP process's verified running image and the replacement selected by its owning proxy. Returns same, different replacement available, or unknown with evidence. Does not exit, restart, reserve a retry, or change background workers. Missing owner context, unverified wrappers, PATH/relative selectors and unavailable image proof stay unknown.")),
-		func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	a.addTool(s, gomcpTool("tesseract_runtime_get",
+		"Observe this MCP process's verified running image and the replacement selected by its owning proxy. Returns same, different replacement available, or unknown with evidence. Does not exit, restart, reserve a retry, or change background workers. Missing owner context, unverified wrappers, PATH/relative selectors and unavailable image proof stay unknown.",
+		inputSchema(),
+		toolAnnotations{},
+		func(ctx context.Context, _ map[string]any) (any, error) {
 			if a.runtime == nil {
 				return toolJSON(runtimeReport{SchemaVersion: 1, Mode: "observation-only", PID: os.Getpid(),
 					Version: a.version(), ObservedAt: time.Now().UTC(), Reservation: "none",
 					Observation: staleness.Observation{State: staleness.Unknown, Reason: "observer-unavailable"}}), nil
 			}
 			return toolJSON(a.runtime.observe(ctx, a.version())), nil
-		})
+		}))
 }

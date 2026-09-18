@@ -8,7 +8,6 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // domainBoundaryLine is the memory/knowledge fork, in the shortest form that
@@ -30,52 +29,50 @@ const domainBoundaryLine = "• **Which domain:** **knowledge is content you go 
 	"Full statement, with what it does not cover: `tesseract_skills start-here`.\n"
 
 func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
-	a.addTool(s, mcp.NewTool("knowledge_write",
-		mcp.WithDescription(
-			"**Write a knowledge revision** — reference content a later session will go looking for by name.\n"+
-				"• **Read this first:** call `tesseract_skills knowledge` before composing a body. It carries the canonical request shape as a copy-pasteable payload on both this surface and HTTP (which nests `pointer` and `author` where this one takes them flat), and states what belongs in `body` versus `pointer_locator` — the single decision that determines whether the entry still carries anything once the pointer rots.\n"+
-				"• **Kind of content:** records carrying `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
-				"• **Scope:** `memory:write`.\n"+
-				domainBoundaryLine+
-				"• **Use this when:** a project's canonical, an ADR, a playbook or template, an investigation dossier, a doc or package reference — something someone will come back for deliberately. Whether it points at anything outside Tesseract is a separate question: `pointer_scheme: \"nil\"` is a first-class answer.\n"+
-				"• **Don't use this for:** content nobody would know to ask for — a decision and its rationale, a limitation, a deferred follow-up, what a session learned. Recall is how those get found, so they are `memory_write`. Generic records — use `context_write`.\n"+
-				"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
+	a.addTool(s, gomcpTool("knowledge_write",
+		"**Write a knowledge revision** — reference content a later session will go looking for by name.\n"+
+			"• **Read this first:** call `tesseract_skills knowledge` before composing a body. It carries the canonical request shape as a copy-pasteable payload on both this surface and HTTP (which nests `pointer` and `author` where this one takes them flat), and states what belongs in `body` versus `pointer_locator` — the single decision that determines whether the entry still carries anything once the pointer rots.\n"+
+			"• **Kind of content:** records carrying `kind`/`source`/`pointer` facets. `kind` is a closed vocabulary — see the `kind` parameter.\n"+
+			"• **Scope:** `memory:write`.\n"+
+			domainBoundaryLine+
+			"• **Use this when:** a project's canonical, an ADR, a playbook or template, an investigation dossier, a doc or package reference — something someone will come back for deliberately. Whether it points at anything outside Tesseract is a separate question: `pointer_scheme: \"nil\"` is a first-class answer.\n"+
+			"• **Don't use this for:** content nobody would know to ask for — a decision and its rationale, a limitation, a deferred follow-up, what a session learned. Recall is how those get found, so they are `memory_write`. Generic records — use `context_write`.\n"+
+			"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
+		inputSchema(
+			strProp("namespace", "Knowledge namespace; must contain a 'knowledge' segment (e.g. project/tesseract/knowledge/framework)", true),
+			strProp("key", "Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
+				"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.", false),
+			strProp("workstream_id", "Optional opaque workstream association. Omit to preserve; send an empty string to clear.", false),
+			// The allowed set is rendered from the enforced vocabulary rather than
+			// restated, so this description cannot advertise a set the write path
+			// does not accept.
+			strProp("kind",
+				"Facet: the kind of entry. Closed vocabulary — any other value is rejected. Allowed: "+
+					memory.KnowledgeKindList(), true),
+			strProp("source", "Facet: where this knowledge came from (e.g. filesystem, obsidian, nil, web, manual)", true),
+			strProp("pointer_scheme", "Pointer scheme (e.g. file, http, https, obsidian, nil)", true),
+			strProp("pointer_locator", "Pointer locator: scheme-specific address (path, URL, vault id, ...)", true),
+			strProp("pointer_resolved_at", "Optional RFC3339 timestamp for when the pointer was last verified. Defaults to now.", false),
+			strProp("summary", "Short summary text (feeds embeddings)", true),
+			strProp("body", "Optional longer body (feeds embeddings when present)", false),
+			strProp("author_agent_id", "Agent ID of the writer", true),
+			strProp("author_version", "Agent version string", false),
+			strProp("session_id", "Session identifier", true),
+			strProp("consumer_state", consumerStateArgDescription, false),
+			strProp("data", payloadDataArgDescription, false),
+			strProp("data_schema_hash", payloadDataSchemaHashArgDescription, false),
+			strProp("tags", "Optional JSON array of string tags", false),
+			numProp("ttl_seconds", "Optional TTL in seconds (0 = no expiry)", false),
+			numProp("confidence", "Confidence score in [0, 1.0] (default 0.9)", false),
+			strProp("supersedes", "Optional revision_id this entry supersedes", false),
+			strProp("actor", "Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.", false),
 		),
-		mcp.WithString("namespace", mcp.Required(), mcp.Description("Knowledge namespace; must contain a 'knowledge' segment (e.g. project/tesseract/knowledge/framework)")),
-		mcp.WithString("key", mcp.Description("Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
-			"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.")),
-		mcp.WithString("workstream_id", mcp.Description("Optional opaque workstream association. Omit to preserve; send an empty string to clear.")),
-		// The allowed set is rendered from the enforced vocabulary rather than
-		// restated, so this description cannot advertise a set the write path
-		// does not accept.
-		mcp.WithString("kind", mcp.Required(), mcp.Description(
-			"Facet: the kind of entry. Closed vocabulary — any other value is rejected. Allowed: "+
-				memory.KnowledgeKindList())),
-		mcp.WithString("source", mcp.Required(), mcp.Description("Facet: where this knowledge came from (e.g. filesystem, obsidian, nil, web, manual)")),
-		mcp.WithString("pointer_scheme", mcp.Required(), mcp.Description("Pointer scheme (e.g. file, http, https, obsidian, nil)")),
-		mcp.WithString("pointer_locator", mcp.Required(), mcp.Description("Pointer locator: scheme-specific address (path, URL, vault id, ...)")),
-		mcp.WithString("pointer_resolved_at", mcp.Description("Optional RFC3339 timestamp for when the pointer was last verified. Defaults to now.")),
-		mcp.WithString("summary", mcp.Required(), mcp.Description("Short summary text (feeds embeddings)")),
-		mcp.WithString("body", mcp.Description("Optional longer body (feeds embeddings when present)")),
-		mcp.WithString("author_agent_id", mcp.Required(), mcp.Description("Agent ID of the writer")),
-		mcp.WithString("author_version", mcp.Description("Agent version string")),
-		mcp.WithString("session_id", mcp.Required(), mcp.Description("Session identifier")),
-		mcp.WithString("consumer_state", mcp.Description(consumerStateArgDescription)),
-		mcp.WithString("data", mcp.Description(payloadDataArgDescription)),
-		mcp.WithString("data_schema_hash", mcp.Description(payloadDataSchemaHashArgDescription)),
-		mcp.WithString("tags", mcp.Description("Optional JSON array of string tags")),
-		mcp.WithNumber("ttl_seconds", mcp.Description("Optional TTL in seconds (0 = no expiry)")),
-		mcp.WithNumber("confidence", mcp.Description("Confidence score in [0, 1.0] (default 0.9)")),
-		mcp.WithString("supersedes", mcp.Description("Optional revision_id this entry supersedes")),
-		mcp.WithString("actor", mcp.Description("Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.")),
-		mcp.WithReadOnlyHintAnnotation(false),
-		mcp.WithIdempotentHintAnnotation(false),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	), a.handleKnowledgeWrite)
+		toolAnnotations{},
+		a.handleKnowledgeWrite,
+	))
 }
 
-func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req map[string]any) (any, error) {
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
 	}
@@ -86,10 +83,10 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	pointer := memory.Pointer{
-		Scheme:  req.GetString("pointer_scheme", ""),
-		Locator: req.GetString("pointer_locator", ""),
+		Scheme:  argString(req, "pointer_scheme", ""),
+		Locator: argString(req, "pointer_locator", ""),
 	}
-	if raw := req.GetString("pointer_resolved_at", ""); raw != "" {
+	if raw := argString(req, "pointer_resolved_at", ""); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			return toolError(codeValidationError, "pointer_resolved_at must be RFC3339: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
@@ -97,17 +94,17 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 		pointer.ResolvedAt = &t
 	}
 
-	ttlSeconds := int64(req.GetFloat("ttl_seconds", 0))
+	ttlSeconds := int64(argFloat(req, "ttl_seconds", 0))
 	workstreamID, workstreamErr := workstreamWriteArg(req)
 	if workstreamErr != nil {
 		return workstreamErr, nil
 	}
 
-	actor := req.GetString("actor", "")
+	actor := argString(req, "actor", "")
 	if actor == "" {
 		actor = "agent"
 	}
-	ns := req.GetString("namespace", "")
+	ns := argString(req, "namespace", "")
 	if policyErr := a.policy().CanWrite("", actor, ns); policyErr != nil {
 		return toolError(codeNamespaceNotPermitted, policyErr.Error()), nil
 	}
@@ -115,24 +112,24 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req mcp.CallToolRequ
 	in := knowledge.WriteInput{
 		Namespace:      ns,
 		Actor:          actor,
-		Key:            req.GetString("key", ""),
+		Key:            argString(req, "key", ""),
 		WorkstreamID:   workstreamID,
-		Kind:           req.GetString("kind", ""),
-		Source:         req.GetString("source", ""),
+		Kind:           argString(req, "kind", ""),
+		Source:         argString(req, "source", ""),
 		Pointer:        pointer,
-		Summary:        req.GetString("summary", ""),
-		Body:           req.GetString("body", ""),
+		Summary:        argString(req, "summary", ""),
+		Body:           argString(req, "body", ""),
 		Data:           payloadDataArg(req),
-		DataSchemaHash: req.GetString("data_schema_hash", ""),
+		DataSchemaHash: argString(req, "data_schema_hash", ""),
 		Author: memory.Author{
-			AgentID:      req.GetString("author_agent_id", ""),
-			AgentVersion: req.GetString("author_version", ""),
+			AgentID:      argString(req, "author_agent_id", ""),
+			AgentVersion: argString(req, "author_version", ""),
 		},
-		SessionID:     req.GetString("session_id", ""),
+		SessionID:     argString(req, "session_id", ""),
 		Tags:          tags,
 		TTL:           time.Duration(ttlSeconds) * time.Second,
-		Confidence:    req.GetFloat("confidence", 0),
-		Supersedes:    req.GetString("supersedes", ""),
+		Confidence:    argFloat(req, "confidence", 0),
+		Supersedes:    argString(req, "supersedes", ""),
 		ConsumerState: consumerStateArg(req),
 	}
 

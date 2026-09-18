@@ -46,7 +46,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 )
 
 // ── Scan scope ─────────────────────────────────────────────────────────
@@ -392,13 +392,13 @@ func TestShippedProseNamesOnlyRegisteredTools(t *testing.T) {
 // reads it.
 func TestToolDescriptionsNameOnlyRegisteredTools(t *testing.T) {
 	adapter := newFullyWiredAdapter(t)
-	srv := server.NewMCPServer("toolname-drift-test", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("toolname-drift-test", "0.0.0")
 	adapter.RegisterAllTools(srv)
 	ts := newToolShape(registeredToolNames(t))
 
-	for name, tool := range srv.ListTools() {
-		for _, h := range ts.unresolved(extractCandidates(name, tool.Tool.Description)) {
-			t.Errorf("tool %q description references %q, which no adapter registers", name, h.Token)
+	for _, def := range srv.ToolDefinitions() {
+		for _, h := range ts.unresolved(extractCandidates(def.Name, def.Description)) {
+			t.Errorf("tool %q description references %q, which no adapter registers", def.Name, h.Token)
 		}
 	}
 }

@@ -2,31 +2,23 @@ package mcpadapter
 
 import (
 	"encoding/json"
-	"strings"
+	"reflect"
 	"testing"
 )
 
-func TestToolJSONMarshalFailureIsExplicit(t *testing.T) {
-	result := toolJSON(map[string]any{
-		"payload": json.RawMessage(`{"unfinished":`),
-	})
-	body := textOf(t, result)
-	if body == "" {
-		t.Fatal("marshal failure returned an empty successful-looking tool result")
-	}
-
-	var failure struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal([]byte(body), &failure); err != nil {
-		t.Fatalf("marshal failure result is not valid JSON: %q: %v", body, err)
-	}
-	if failure.Code != string(codeInternalError) {
-		t.Fatalf("code = %q, want %q (body=%s)", failure.Code, codeInternalError, body)
-	}
-	if !strings.Contains(failure.Message, "failed to serialize MCP tool result") {
-		t.Fatalf("message does not identify serialization failure: %q", failure.Message)
+// TestToolJSONIsAPassThrough pins toolJSON's current contract under go-mcp:
+// unlike the mark3labs-era version, it does not marshal anything itself
+// (and so cannot fail to) — it hands the value back unchanged for go-mcp's
+// own ToolHandler dispatch to JSON-marshal into StructuredContent and a
+// mirrored text block. A value that WOULD fail to marshal (e.g. malformed
+// json.RawMessage) is go-mcp's problem now, reported as a protocol-level
+// error (ErrCodeInternal) rather than folded into tool result content —
+// see server.adaptHandler in go-mcp/server/server.go. That boundary is
+// go-mcp's own and has no equivalent to assert from this package.
+func TestToolJSONIsAPassThrough(t *testing.T) {
+	v := map[string]any{"payload": json.RawMessage(`{"unfinished":`)}
+	if got := toolJSON(v); !reflect.DeepEqual(got, v) {
+		t.Fatalf("toolJSON(v) = %#v, want v unchanged: %#v", got, v)
 	}
 }
 

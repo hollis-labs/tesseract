@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/server"
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/event"
@@ -133,12 +133,14 @@ func registeredToolArgs(t *testing.T) map[string]map[string]any {
 	adapter.EventStore = event.New(mem)
 	adapter.WorkspaceStore = workspace.NewStore(cs.DB())
 
-	srv := server.NewMCPServer("request-parity", "0.0.0", server.WithToolCapabilities(true))
+	srv := gomcpserver.NewServer("request-parity", "0.0.0")
 	adapter.RegisterAllTools(srv)
 
 	args := map[string]map[string]any{}
-	for name, tool := range srv.ListTools() {
-		args[name] = tool.Tool.InputSchema.Properties
+	for _, tool := range srv.ToolDefinitions() {
+		schema, _ := tool.InputSchema.(map[string]any)
+		props, _ := schema["properties"].(map[string]any)
+		args[tool.Name] = props
 	}
 	return args
 }

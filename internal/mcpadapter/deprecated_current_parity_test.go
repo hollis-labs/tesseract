@@ -11,7 +11,6 @@ import (
 	"github.com/hollis-labs/tesseract/domains"
 
 	"github.com/hollis-labs/tesseract/internal/memory"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func seedDeprecatedCurrentParity(t *testing.T, store *memory.Store) (terminal, superseded, replacement, active string) {
@@ -101,13 +100,11 @@ func TestDeprecatedCurrent_MCPAndHTTPContracts(t *testing.T) {
 		if explicitDeprecated {
 			args["statuses"] = `["deprecated"]`
 		}
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		result, err := adapter.handleTesseractRecall(context.Background(), req)
+		result, err := adapter.handleTesseractRecall(context.Background(), args)
 		if err != nil {
 			t.Fatalf("MCP recall: %v", err)
 		}
-		return result.Content[0].(mcp.TextContent).Text
+		return mustJSONText(t, result)
 	}
 	httpCall := func(path string) func(*testing.T, bool) string {
 		return func(t *testing.T, explicitDeprecated bool) string {

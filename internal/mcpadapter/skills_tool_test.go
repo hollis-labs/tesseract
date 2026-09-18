@@ -5,28 +5,21 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestTesseractSkills_Index(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
-	res, err := a.handleTesseractSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("handleTesseractSkills: %v", err)
 	}
-	if res == nil || len(res.Content) == 0 {
+	if res == nil {
 		t.Fatal("empty result")
 	}
-	tc, ok := res.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("want TextContent, got %T", res.Content[0])
-	}
 	var arr []map[string]any
-	if err := json.Unmarshal([]byte(tc.Text), &arr); err != nil {
-		t.Fatalf("unmarshal %q: %v", tc.Text, err)
+	text := mustJSONText(t, res)
+	if err := json.Unmarshal([]byte(text), &arr); err != nil {
+		t.Fatalf("unmarshal %q: %v", text, err)
 	}
 	if len(arr) == 0 {
 		t.Fatal("index had 0 entries")
@@ -38,29 +31,25 @@ func TestTesseractSkills_Index(t *testing.T) {
 
 func TestTesseractSkills_GetByName(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"name": "start-here"}
-	res, err := a.handleTesseractSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), map[string]any{"name": "start-here"})
 	if err != nil {
 		t.Fatalf("handleTesseractSkills: %v", err)
 	}
-	if res == nil || len(res.Content) == 0 {
-		t.Fatal("empty result")
-	}
-	tc, ok := res.Content[0].(mcp.TextContent)
+	// handleTesseractSkills returns the skill's markdown body verbatim as a
+	// string for a named lookup -- go-mcp's ToolHandler contract treats a
+	// string result as text content, not something to JSON-marshal.
+	body, ok := res.(string)
 	if !ok {
-		t.Fatalf("want TextContent, got %T", res.Content[0])
+		t.Fatalf("want a string result, got %T", res)
 	}
-	if !strings.Contains(tc.Text, "Tesseract") {
+	if !strings.Contains(body, "Tesseract") {
 		t.Errorf("body missing expected content")
 	}
 }
 
 func TestTesseractSkills_UnknownName_ReturnsToolError(t *testing.T) {
 	a := New(newTestStore(t), "")
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"name": "does-not-exist"}
-	res, err := a.handleTesseractSkills(context.Background(), req)
+	res, err := a.handleTesseractSkills(context.Background(), map[string]any{"name": "does-not-exist"})
 	if err != nil {
 		t.Fatalf("handler returned err: %v", err)
 	}

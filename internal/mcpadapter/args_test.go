@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestMemoryWrite_TagsAcceptBothForms covers CW-20260519-0039 — clients that
@@ -107,8 +105,7 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 		"payload_summary": "untagged",
 	})
 
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{
+	req := map[string]any{
 		"namespaces": []any{"user/chrispian/memory/notes"},
 		"tags":       []any{"decision"},
 	}
@@ -116,10 +113,10 @@ func TestMemoryRecall_TagFilterNativeArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleTesseractRecall: %v", err)
 	}
-	textContent := res.Content[0].(mcp.TextContent)
+	text := mustJSONText(t, res)
 	var results []map[string]any
-	if err := json.Unmarshal(recallResultsJSON(t, textContent.Text), &results); err != nil {
-		t.Fatalf("unmarshal results (raw=%s): %v", textContent.Text, err)
+	if err := json.Unmarshal(recallResultsJSON(t, text), &results); err != nil {
+		t.Fatalf("unmarshal results (raw=%s): %v", text, err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 tagged result, got %d", len(results))
