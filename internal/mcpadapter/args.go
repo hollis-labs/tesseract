@@ -129,20 +129,11 @@ func parseStringArrayArg(args map[string]any, key string) ([]string, bool, error
 // argument on the recall doors (CW-20260909-0036).
 const stateFiltersArgDescription = "JSON array of consumer-state filters, e.g. " +
 	`[{"field":"section","values":["now","soon"]},{"field":"completed","values":[false]}]` +
-	". Narrows results to revisions whose `consumer_state` bag carries one of `values` at `field`. " +
-	"**`consumer_state` is not `state`.** The `state` block on a full-mode result is Tesseract's own " +
-	"activation bookkeeping for the entry; `consumer_state` is the writer's operational bag on one " +
-	"revision, and only the second is filterable or writable. " +
-	"**Values are JSON, not strings that look like it** — `[false]` matches a bag holding the literal " +
-	"false, `[\"false\"]` matches one holding the string. Strings, numbers and booleans only; a null is " +
-	"refused because an absent key and a null are indistinguishable to an index. " +
-	"Values within one filter OR together; separate filters AND. Naming the same field twice is a " +
-	"validation_error rather than an intersection nobody meant. " +
-	"Set membership only — there is no range or negation, so `due before tomorrow` is not expressible. " +
-	"Filtering happens in SQL before `limit`, so it enumerates a population rather than sampling one. " +
-	"Any lowercase-identifier field name is accepted; a type's declared `hot_fields` are the subset " +
-	"carrying an index (`todos`: completed, external_ref, kind, section), and filtering on any other " +
-	"field is correct but scans."
+	". Narrows to revisions whose `consumer_state` bag carries one of `values` at `field` — " +
+	"**not** the `state` block a full-mode result carries, which is Tesseract's own activation bookkeeping. " +
+	"**Values are JSON, not strings that look like it** — `[false]` matches the literal false, `[\"false\"]` matches the string; a null is refused. " +
+	"Values within one filter OR together; separate filters AND; naming the same field twice is a validation_error. " +
+	"See `tesseract_skills recall-and-ranking` for indexed `hot_fields`, the set-membership-only limits, and the SQL-before-`limit` guarantee."
 
 // parseStateFiltersArg decodes the `state_filters` argument.
 //

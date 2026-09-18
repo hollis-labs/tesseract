@@ -278,30 +278,12 @@ const payloadModeArgDescription = "How much of each result to return: " +
 // service_unavailable code this path never emits, and multi-word phrase search
 // the mode does not do — and a description that overstates is worse than a
 // missing one, because an agent branches on it.
-var searchModeArgDescription = "Which retrieval signal answers the query, under ranking=relevance: " +
+var searchModeArgDescription = "Which retrieval signal answers the query, under `ranking=relevance`: " +
 	strings.Join(memory.SearchModeVocabulary(), " | ") + " (default: hybrid). " +
-	"`hybrid` fuses keyword and semantic matching — the right default when you are describing a topic in your own words. " +
-	"`lexical` runs keyword (BM25) matching alone, ordered by match strength, with every term required. " +
-	"Reach for it when you know the exact string you are looking for and fusion would only blur it: " +
-	"a ticket ID (CW-20260519-0032), a function or symbol name, a dotted or slashed path, a memory_key. " +
-	"Semantic similarity is the wrong tool for an identifier — it returns things that MEAN something like your query, " +
-	"and an identifier means nothing, it only matches. " +
-	"`memory_key` is indexed and weighted ABOVE the prose columns, so searching an exact key returns the record that " +
-	"OWNS that key ahead of the records that merely cite it. " +
-	"`namespace` is deliberately NOT in the index — it is already an exact filter via the required `namespaces` " +
-	"argument, so name it there rather than in the query. " +
-	"What `lexical` binds as an adjacent phrase is a PUNCTUATION-joined run: CW-20260519-0032 finds that ticket rather than " +
-	"documents mentioning CW, 20260519 and 0032 in unrelated places. " +
-	"What it does NOT do is multi-word phrase search — space-separated words are each required to appear, not to appear together, " +
-	"so `sqlite NOT NULL` finds documents carrying all three words anywhere rather than the phrase. " +
-	"AND, OR and NOT are matched as literal words here, not as operators (they ARE operators under hybrid). " +
-	"A query containing a non-ASCII letter is a validation_error rather than an empty page: lexical tokens are [A-Za-z0-9_] only. " +
-	"`score` is absent under `lexical` because the order is the signal. " +
-	"`semantic` runs embedding (cosine) matching alone, ordered by similarity. " +
-	"Reach for it when you know the words in the corpus will NOT be the words in your query. " +
-	"It is a similarity_unavailable error when no embedder is configured — it never falls back to keyword matching, " +
-	"because getting keyword results labeled semantic is worse than being told. " +
-	"`lexical` and `semantic` require ranking=relevance (the default when a query is set); passing them with another ranking is a validation_error."
+	"`hybrid` fuses keyword (BM25) and semantic (cosine) matching — the right default for a topic described in your own words. " +
+	"`lexical` requires every word to appear (not as a phrase) and rejects a non-ASCII query as a validation_error; reach for it on an exact identifier — a ticket ID, symbol, path, or `memory_key`, which it weights above prose — since semantic similarity is the wrong tool for a string that only matches and means nothing. " +
+	"`semantic` is pure cosine similarity and answers `similarity_unavailable` rather than silently falling back to keyword matching when no embedder is configured. " +
+	"Passing `search_mode` under any other ranking is a validation_error. See `tesseract_skills recall-and-ranking` for the phrase-search limits, operator handling, and full comparison."
 
 // Shared parameter blurbs for the budget/cursor knobs. One string per knob so
 // the recall and history tools cannot drift apart, and so the HTTP peers'
@@ -338,16 +320,14 @@ const (
 	// the ranking/search_mode restriction, and validation_error as the code
 	// emitted on each. The contrast with confidence_min is stated because the
 	// two are easy to reach for interchangeably and measure different things.
-	similarityMinArgDescription = "Floor on cosine similarity between your query and each result. " +
-		"Results scoring below it are dropped before `limit` applies, so this narrows the qualifying set rather than thinning a page of it. " +
-		"Range [-1, 1]; anything outside is a validation_error. " +
+	similarityMinArgDescription = "Floor on cosine similarity between your query and each result; results below it are dropped before `limit` applies. " +
+		"Range [-1, 1] — outside it is a validation_error. " +
 		// Rendered from the store's own statement of the rule rather than
 		// restated here, so this description and the fingerprint guard's
 		// failure message cannot describe two different floors.
 		"Omit for no floor — 0.0 is NOT the same as omitting it: " + memory.SimilarityMinBoundaryRule + ". " +
-		"Only honored where cosine similarity is the score: `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`. " +
-		"Passing it under any other combination — including the default `search_mode=hybrid`, whose score is an RRF fusion rather than a similarity — is a validation_error rather than a silently ignored knob. " +
-		"NOT the same as `confidence_min`, which filters on the confidence the memory's author recorded when writing it; a result can match your query closely and still have been written tentatively."
+		"Only honored under `ranking=similarity`, or `ranking=relevance` with `search_mode=semantic`; passing it elsewhere — including the default `search_mode=hybrid` — is a validation_error rather than a silently ignored knob. " +
+		"NOT the same as `confidence_min`, which filters on the author's recorded confidence, not on query match."
 
 	// estimateOnlyArgDescription documents the pre-flight knob. Its central
 	// claim — that the numbers equal what the same call without it returns —
@@ -358,14 +338,10 @@ const (
 	// estimateEnvelope's Go doc: a caller comparing an estimate against a real
 	// read can see the shape but cannot see a comment, so the rule that ties
 	// the two together has to travel with the tool.
-	estimateOnlyArgDescription = "Return the envelope describing the results without the results themselves — the pre-flight for deciding whether to spend context on a read. " +
-		"The response is the envelope THIS tool returns, minus `results`: `tesseract_recall` answers `{facets, manifest, estimate_only: true}`. " +
-		"An estimate reports exactly what its own read would report and never a field that read cannot return, which is what makes every number in it checkable against the real call. " +
-		"There is no `results` key at all; an absent array means withheld, never empty. " +
-		"The numbers are exact, not approximate: `results_total`, `results_returned`, `bytes_returned` and `tokens_estimate` — and every facet count, where the tool has facets — are the same values the identical call WITHOUT this argument reports, under the same `payload_mode`. " +
-		"Because `bytes_returned` depends on `payload_mode`, estimate under the mode you intend to read at. " +
-		"It is worth most where a read would be cut short: under `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would. " +
-		"`manifest.next_cursor` from an estimate is a valid cursor for the real read — this changes what is serialized, never which rows match or in what order."
+	estimateOnlyArgDescription = "Return the envelope without the results — the pre-flight for deciding whether a read is worth its cost. " +
+		"`tesseract_recall` answers `{facets, manifest, estimate_only: true}`; there is no `results` key at all, so an absent array means withheld, never empty. " +
+		"The numbers are exact, not approximate — they equal what the identical call WITHOUT this flag reports, under the same `payload_mode`, never a field that read cannot return. " +
+		"Under a binding `budget_bytes` or `budget_tokens` the estimate carries the same `truncated`, `truncation_reason` and `next_cursor` the real read would, and that cursor is a valid cursor for the real read."
 
 	// touchLoopDescription states the reinforcement contract on the two tools
 	// that return ranked results. Shared so they cannot describe the loop
@@ -375,14 +351,10 @@ const (
 	//
 	// The under- vs over-reporting sentence is caller guidance the ranking
 	// depends on and is worded to be read as a rule, not a preference.
-	touchLoopDescription = "• **Recall does not reinforce a result merely for returning it.** Being returned by a search is the ranker's guess about what you need, and letting a guess reinforce itself is how popular-because-returned beats actually-useful within a few cycles. " +
-		"Use **recall → choose → hydrate/use → touch**: a deliberate `tesseract_get` or `tesseract_get_revision` reinforces once, while `tesseract_touch` supplies the use signal for projected hits you did not fetch. Touching an already-fetched hit adds a second reinforcement, so do that only when the extra signal is intentional. " +
-		"Touch only what genuinely shaped the turn. **Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.**\n"
+	touchLoopDescription = "• **recall → use → touch.** Recall does not reinforce a result merely for returning it — a deliberate `tesseract_get` or `tesseract_get_revision` reinforces once, and `tesseract_touch` covers the rest, called after the reasoning rather than on arrival. " +
+		"Under-reporting is fine; over-reporting is worse than silence, because it teaches the ranking that noise is signal.\n"
 
-	manifestResultShapeDescription = "• **Envelope:** `{results, manifest}`. `manifest` carries `results_total`, `results_returned`, " +
-		"`bytes_returned`, `tokens_estimate`, `truncated`, `truncation_reason`, and `next_cursor`. " +
-		"Every field is always present: `truncated: false` means you got everything, and `next_cursor: null` means there is nothing left. " +
-		"Never infer completeness from the array length.\n"
+	manifestResultShapeDescription = "• **Envelope:** `{results, facets, manifest}`. Check `manifest.truncated` and `next_cursor` before assuming array length means completeness.\n"
 )
 
 func (a *Adapter) policy() *contextpolicy.Engine {

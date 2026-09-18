@@ -12,24 +12,16 @@ import (
 
 func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 	a.addTool(s, gomcpTool("tesseract_recall",
-		"**Typed ranked recall across Tesseract items.** The default corpus remains memory + knowledge; event and workspace are opt-in through `domains`. Multi-knob: activation / chronological / similarity / relevance. Returns ranked results + facet histograms.\n"+
-			"• **The event log is opt-in.** A call that does not pass `domains` covers memory and knowledge only; add `\"event\"` to search the narrative log. That default is deliberate — a reasoning log runs an order of magnitude or two above a curated corpus, so including it by default would make every unqualified recall a log search. To read the log in ORDER rather than by rank, use `event_list`.\n"+
-			"• **Kind of content:** revisions and opt-in mutable workspace items matching query + filters, as typed alternatives.\n"+
-			"• **Result shape:** each result carries exactly one of `revision` or workspace `item`, plus `score` when the ranking has one. Workspace items carry `item_id`, never `revision_id`.\n"+
+		"**Typed ranked recall across Tesseract items.** Default corpus is memory + knowledge; event and workspace are opt-in via `domains`. Ranking: `activation` | `chronological` | `similarity` | `relevance` (relevance is multi-arm — see `search_mode`).\n"+
+			"• **Kind of content:** revisions and opt-in mutable workspace items matching query + filters, as typed alternatives — each result carries exactly one of `revision` or workspace `item`, plus `score` when the ranking has one.\n"+
 			manifestResultShapeDescription+
-			"• **`score`:** ranking-relative, comparable only within one response. `activation` → activation strength; `similarity` → cosine similarity (can be 0 or negative); `relevance` → RRF-fused BM25 + cosine. **Absent under `chronological`** — order is carried by array order plus `revision.created_at`.\n"+
-			"• **Just-in-time pattern — recall → choose → hydrate.** Hydrate revision hits with `tesseract_get_revision`; hydrate workspace hits with `tesseract_get item_id=...`.\n"+
-			touchLoopDescription+
-			"• **`payload_mode`:** `keys` | `summary` | `full`; server-configured default. Every result carries stable `item_id`; revision results also carry `revision_id`. Under projections, a missing body means withheld rather than empty.\n"+
-			"• **`pointer_health`:** on each knowledge result under `summary` and `full` (not `keys`). Says whether the entry's pointer was actually resolved, and when — the body is the durable half of a knowledge entry, the pointer is the half that rots. **Absent means the revision has no pointer at all**, never that it is healthy. Filter with the `pointer_health` argument to enumerate suspect entries by query instead of discovering them by failure.\n"+
-			"• **`facets`:** counted from the returned rows before projection, so changing `payload_mode` never changes them. They describe **only what `limit` returned**, not the full match set — the counts sum to the number of results, so do not read them as a corpus histogram.\n"+
-			"• **`estimate_only`:** size a recall before paying for it. Returns `{facets, manifest, estimate_only: true}` with no `results` key — the counts, byte totals and every facet count are exactly what the same call without it returns under the same `payload_mode`.\n"+
-			"• **`similarity_min`:** a floor on how closely a result must actually resemble your query. Applies under `ranking=similarity` or `ranking=relevance` + `search_mode=semantic`; a validation_error elsewhere. Distinct from `confidence_min`, which filters on the author's recorded confidence.\n"+
 			"• **Scope:** `memory:read`.\n"+
-			"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one — in either domain or both. **Prefer this BEFORE filesystem or web exploration** — prior sessions already paid for a lot of this, and an unread store is just a slower filesystem.\n"+
-			"• **What a hit is evidence of, and where that stops.** A returned record is reasoning that held up when it was written: a good source of assumptions, dependencies and consequences a current change might otherwise miss. It is **not** a ruling on the instruction in front of you. A `canonical` status, confident prose, or the same claim echoed in two records does not by itself outrank a clear current direction. If a record surfaces a consequence that is live now, raise that consequence on its own terms rather than leading with a contradiction. And sparse or low-confidence results mean fall back to the filesystem or the web as normal — they are not evidence that the answer does not exist.\n"+
-			"• **Don't use this for:** deterministic selection — use `context_view` (with `full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
-			"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes; `tesseract_skills facets-and-kinds` for facet filters.",
+			"• **Use this when:** you want the best-match entries for a query, or the top-of-mind entries without one, in one domain or several. **Prefer this BEFORE filesystem or web exploration** — prior sessions already paid for a lot of this, and an unread store is just a slower filesystem. The narrative log is excluded by default; pass `domains: [\"event\"]` to include it, or use `event_list` to read it in order.\n"+
+			"• **A hit is evidence, not a ruling.** It's reasoning that held up when written — weigh the assumptions and consequences it surfaces, but confident prose or a `canonical` status does not by itself outrank a clear current instruction. Sparse or low-confidence results are not proof the answer doesn't exist; fall back to the filesystem or the web as normal.\n"+
+			"• **Just-in-time — recall → choose → hydrate.** Hydrate revision hits with `tesseract_get_revision`; hydrate workspace hits with `tesseract_get item_id=...`. `payload_mode` sets how much of each result you get before that step.\n"+
+			touchLoopDescription+
+			"• **Don't use this for:** deterministic selection — use `context_view` (`full_evaluation: true` for the full selector). To narrow to one domain, pass `domains`, not a different tool.\n"+
+			"• **Deeper:** `tesseract_skills recall-and-ranking` for ranking modes, `search_mode`, payload/paging/budgets, `related_to`, `state_filters` and the touch loop in full; `tesseract_skills facets-and-kinds` for facet filters.",
 		inputSchema(
 			strProp("namespaces", "JSON array of namespace strings. The first segment is the SCOPE TYPE — one of "+memory.ScopeList()+" — and the second its id; `system` is a singleton and takes no id. "+
 				"Memory and event use a typed tail; knowledge and workspace have free depth after their domain segment. "+
@@ -60,27 +52,15 @@ func (a *Adapter) registerRecallTool(s *toolRegistrar) {
 			// Rendered from the vocabulary rather than restated, so this cannot
 			// advertise a relation the filter does not accept.
 			strProp("related_to",
-				"JSON array of memory KEYS to expand along the link graph — the fourth retrieval signal, "+
-					"alongside similarity, lexical and chronological. Results are narrowed to entries adjacent "+
-					"to one of these keys IN EITHER DIRECTION: entries the anchor links to via `[[wikilink]]`, "+
-					"and entries that link to the anchor. Undirected because \"what is related to this decision\" "+
-					"means both the records it cites and the records citing it, and a forward-only answer makes "+
-					"a heavily-cited entry look unreferenced. "+
-					"Anchors are KEYS (what a `[[link]]` names), not revision or memory ids. "+
-					"An anchor with no edges yields no results rather than an error — the graph is legitimately "+
-					"sparse. A link whose target names no entry is retained but not traversable, so a key that "+
-					"was renamed away is cited by rows you can read and cannot walk. "+
-					"Combines with every other filter: `related_to` selects the neighborhood, `query` and "+
-					"`ranking` order it.", false),
+				"JSON array of memory KEYS (what a `[[wikilink]]` names, not revision or memory ids) to narrow to entries adjacent in the link graph, IN EITHER DIRECTION — the fourth retrieval signal alongside similarity, lexical and chronological. "+
+					"An anchor with no edges yields no results rather than an error. Combines with every other filter: `related_to` selects the neighborhood, `query`/`ranking` order it. "+
+					"See `tesseract_skills recall-and-ranking` for how unresolved links behave.", false),
 			strProp("related_relations",
 				"JSON array narrowing which edge types count as adjacency for `related_to`. Allowed: "+
 					strings.Join(memory.LinkRelationVocabulary(), ", ")+
-					". Omit for both. `references` is a `[[wikilink]]` parsed from a payload. `supersedes` is "+
-					"revision lineage, and it is ALWAYS intra-entry — Tesseract rejects a supersedes edge "+
-					"crossing memories — so `related_relations: [\"supersedes\"]` returns the anchor's own entry "+
-					"and nothing else. That is the lineage query: pair it with `revision_scope: \"timeline\"` to "+
-					"get the entry's revision history through the graph. "+
-					"No effect without `related_to`.", false),
+					". Omit for both; no effect without `related_to`, and a value outside this set is a validation_error. "+
+					"`supersedes` is ALWAYS intra-entry, so `related_relations: [\"supersedes\"]` returns only the anchor's own entry — pair it with `revision_scope: \"timeline\"` for the lineage query. "+
+					"See `tesseract_skills recall-and-ranking`.", false),
 			strProp("state_filters", stateFiltersArgDescription, false),
 			strProp("derived_from", "JSON array of derived_from filters", false),
 			strProp("statuses", "JSON array of status filters", false),
