@@ -126,6 +126,48 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
 
 The value of `supersedes` is a `revision_id`, which is what `tesseract_recall`, `tesseract_get` and `tesseract_history` all carry on every result. It is not an `item_id`/`memory_id` — those two response fields carry the same stable item identity, and `memory_promote` retains `source_memory_id` for compatibility. Full field lists for both shapes are in `tesseract_skills memory`.
 
+## Guarded writes: create-only and expected-revision
+
+By default a revisioned write is unconditional, and two things follow that a writer who shares records with others has to know:
+
+- **A key that already exists is appended to, silently.** Writing an existing `(namespace, key)` adds a revision and makes it the head. Nothing tells you the key was taken, and nothing marks the old head superseded unless you passed `supersedes`.
+- **`supersedes` is not checked against the head.** It has to exist and belong to the same item; it does not have to be current. Two writers who read the same revision and each supersede it both succeed. The later one wins the head, and the other's revision stays in history with no signal that it was displaced.
+
+That is the right default for one session appending to its own notes. It is the wrong one when other writers can reach the same records, so `memory_write` and `knowledge_write` take two opt-in guards. Both are off unless you pass them, so no existing call changes:
+
+| Argument | The write is refused unless… | Error |
+|---|---|---|
+| `create_only: true` | the key has no item yet | `key_conflict` |
+| `expected_revision_id` | that revision is the key's current head | `revision_conflict` |
+
+Both are checked inside the write's own transaction, so a guard is a real compare-and-set: of several writers who name the same head, exactly one succeeds. A refused write leaves nothing behind. The two cannot be combined — one demands the key be new and the other that it exist — and `expected_revision_id` needs a key, because a keyless write always creates a new item and there is no head to compare against. A key that has no item at all fails `expected_revision_id` too.
+
+The edit idiom is read, change, then write against what you read. Only `expected_revision_id` and `supersedes` are new here; the rest is the ordinary full write:
+
+```json
+{
+  "namespace": "project/tesseract/knowledge/framework",
+  "key": "framework.go-providers",
+  "kind": "package",
+  "source": "manual",
+  "pointer_scheme": "nil",
+  "pointer_locator": "framework/go-providers",
+  "summary": "go-providers: multi-provider AI adapter",
+  "author_agent_id": "claude",
+  "session_id": "2026-09-19:atlas",
+  "expected_revision_id": "01HXA...",
+  "supersedes": "01HXA..."
+}
+```
+
+`expected_revision_id` says what the head must be; `supersedes` says what to deprecate. They are independent: pass the same revision to both to replace it, or only the guard to append without deprecating anything.
+
+A refused write names the head it lost to — in the message on MCP, and on HTTP in `details.current_revision_id`, where the refusal is a `409` (`details` also carries `item_id` and echoes `expected_revision_id`). Re-read that revision, apply your change to it, and retry with its id. Nothing retries for you.
+
+A write's response now says what it did. `write_outcome` is `created` when the write minted the item and `appended` when it added a revision to one that already existed; `previous_revision_id` names the head it followed, and is absent when the item was created. That is not `supersedes`, which is what you asked to deprecate rather than what was there. Both fields appear only on the response to a write, never on a read.
+
+The guards add no partial update — a revision still carries every field you send, so an edit resupplies the ones that did not change — and they do not let a supersede cross entries.
+
 ## Dedup
 
 `memory_write` accepts two dedup modes:

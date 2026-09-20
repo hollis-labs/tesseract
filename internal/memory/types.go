@@ -36,25 +36,31 @@ import (
 //
 // ON THE AUTHORITY OF THOSE ONE-LINERS. The values have been a closed
 // vocabulary with no per-value definition anywhere in this repo since they were
-// declared, which is most of why they get chosen by name alone. Two are pinned
-// by code — knowledge.Store.Write stamps DerivedFromReference unconditionally,
-// and event defaults to DerivedFromObservation — and the rest are DESCRIBED
-// FROM SETTLED USE rather than specified: measured 2026-09-12 over 2022
+// declared, which is most of why they get chosen by name alone. Two are
+// defaults in code — knowledge.Store.Write supplies DerivedFromReference when a
+// writer omits the field, and event defaults to DerivedFromObservation — and
+// the rest are DESCRIBED FROM SETTLED USE rather than specified: measured
+// 2026-09-12 over 2022
 // memory-domain revisions, `feedback` carries corrections and working
 // instructions ("subagents given a read-only prompt implement anyway"), and
 // `project` carries facts about a thing ("this repo has one unpushed commit").
 // Those readings are consistent across the corpus, and they are still a
 // reading.
 //
-// DerivedFromReference is the one to be careful with, and on the KNOWLEDGE
-// domain it is not a choice at all: knowledge.Store.Write hard-codes it for
-// every write, so all 200 current knowledge entries carry it across all 11
-// kinds. The field is a constant there — it carries no information, and every
-// knowledge entry takes the uniform 0.9 weight regardless of content, which
-// nobody chose. That is CW-20260912-0012's subject, deliberately not fixed
-// here. On the memory surface it is merely unsettled: 22 revisions carry it, 4
-// under a namespace type retired in 2026-09. Treat a memory revision stamped
-// `reference` as unclassified rather than as meaning something specific.
+// DerivedFromReference is the one to be careful with. Until CW-20260912-0012,
+// knowledge.Store.Write stamped it on every write, so every knowledge revision
+// written before that change (200 heads when measured on 2026-09-12) carries it
+// across all 11 kinds regardless of content: on those rows the field is a
+// constant that carries no information, and they take a uniform 0.9 weight
+// nobody chose. They were deliberately not backfilled — inventing a value
+// nobody supplied is the failure CW-20260910-0046 closed on the memory side —
+// so the boundary is permanent. Knowledge writers may now choose the value, but
+// an omitted one still becomes `reference`, so on a newer row `reference` means
+// either "the writer chose it" or "the writer said nothing", and the stored row
+// cannot tell those apart. On the memory surface it is merely unsettled: 22
+// revisions carry it, 4 under a namespace type retired in 2026-09. Treat a
+// memory revision stamped `reference` as unclassified rather than as meaning
+// something specific.
 type DerivedFrom string
 
 const (
@@ -112,6 +118,21 @@ func (t Trigger) Valid() bool {
 	}
 	return false
 }
+
+// WriteOutcome says what a write did to the item it targeted. It appears only
+// on the value a write returns; see Revision.WriteOutcome.
+type WriteOutcome string
+
+const (
+	// WriteOutcomeCreated: the write minted a new item. Every keyless write is
+	// one, and so is the first write to a key.
+	WriteOutcomeCreated WriteOutcome = "created"
+	// WriteOutcomeAppended: the write added a revision to an item that already
+	// existed, which becomes its head. Nothing about the write says the caller
+	// meant that — a duplicate key appends silently unless the caller asked for
+	// CreateOnly or ExpectedRevisionID.
+	WriteOutcomeAppended WriteOutcome = "appended"
+)
 
 // Author identifies who wrote a memory revision.
 type Author struct {
@@ -234,6 +255,17 @@ type Revision struct {
 	EmbeddingModel  string          `json:"embedding_model,omitempty"`
 	EmbeddingVector []float32       `json:"-"` // never serialized — BLG-20260416-037
 	DedupMatch      string          `json:"dedup_match,omitempty"`
+
+	// WriteOutcome and PreviousRevisionID describe the WRITE that produced this
+	// revision, not the revision. They are set only on the value a write returns
+	// and are empty — and so omitted — on every read, the way DedupMatch is.
+	//
+	// PreviousRevisionID is the item's head at the moment of the write, whether
+	// or not the write declared it superseded. It is not Supersedes: that is what
+	// the caller asked to deprecate, and this is what was actually there. It is
+	// empty when the write created the item.
+	WriteOutcome       WriteOutcome `json:"write_outcome,omitempty"`
+	PreviousRevisionID string       `json:"previous_revision_id,omitempty"`
 }
 
 // State is the mutable per-memory state (D9). Lives in memory_state table.

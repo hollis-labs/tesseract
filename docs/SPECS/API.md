@@ -198,7 +198,7 @@ creation and recovery.
 
 | Method and path | Additional authorization | Contract |
 |---|---|---|
-| `POST /v1/memory/write` | namespace | Append a memory-domain revision. |
+| `POST /v1/memory/write` | namespace | Append a memory-domain revision. Opt-in write guards below. |
 | `POST /v1/memory/recall` | each namespace | Typed ranked recall. The default remains memory + knowledge; workspace and event are opt-in through `filters.domains`. |
 | `GET /v1/memory/revisions/{id}` | — | Read one exact revision by `revision_id`. |
 | `GET /v1/items/{item_id}` | resolved namespace | Read a current revision or workspace item by stable identity; works for keyless items. Workspace returns its current item shape and reinforces use. |
@@ -209,7 +209,7 @@ creation and recovery.
 | `POST /v1/memory/touch` | resolved namespace for `item_ids` | Reinforce deliberately used `revision_ids` or current `item_ids`; pass exactly one selector. Deleted workspace IDs are reported under `deleted`. |
 | `POST /v1/memory/deprecate` | — | Deprecate one revision by ID. |
 | `POST /v1/memory/promote` | source + target namespaces | Promote session-scoped memory to user/project scope. |
-| `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. |
+| `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. Optional `status` and `derived_from` (default `canonical` and `reference`); opt-in write guards below. |
 | `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `key`. |
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
 | `POST /v1/event/write` | namespace | Append one event-log entry. `key` optional; a keyless write appends a new entry. |
@@ -235,6 +235,59 @@ compatibility. Workspace has no `memory_id` or `revision_id`: its current conten
 so they reach keyless items. Existing per-domain namespace/key routes remain supported.
 `revision_id` still selects one exact immutable revision and must not be treated as an item
 ID.
+
+#### Write guards on revisioned writes
+
+A revisioned write is unconditional by default: writing an existing `(namespace, key)`
+appends a revision that becomes the head, and `supersedes` is checked for existence and
+lineage but not against the head. `POST /v1/memory/write` and `POST /v1/knowledge/write`
+accept two opt-in guards for writers that share records with others. Both default off, so a
+request that omits them behaves as before.
+
+| Field | Refused with `409` unless… | Code |
+|---|---|---|
+| `create_only: true` | the key has no item yet | `key_conflict` |
+| `expected_revision_id` | that revision is the key's current head | `revision_conflict` |
+
+The check runs inside the write's own transaction, so of several writers naming the same
+head exactly one succeeds, and a refused write changes nothing. The two cannot be combined
+and `expected_revision_id` requires a key; either mistake is `400 validation_error`. A key
+with no item fails `expected_revision_id`. `expected_revision_id` is independent of
+`supersedes`: the guard says what the head must be, `supersedes` says what to deprecate.
+
+A `409` names the head the write lost to, so a caller can re-read and retry without a second
+lookup that could race another writer:
+
+```json
+{
+  "code": "revision_conflict",
+  "message": "memory revision conflict: expected_revision_id 01HXA... is not the current revision of ...",
+  "details": {
+    "namespace": "project/atlas/knowledge/register",
+    "key": "ATLAS-INIT-013",
+    "item_id": "01HXB...",
+    "current_revision_id": "01HXC...",
+    "expected_revision_id": "01HXA..."
+  }
+}
+```
+
+`details` carries `item_id` and `current_revision_id` only when the key has an item. A
+`key_conflict` carries the same fields without `expected_revision_id`. The status codes
+match workspace's `key_conflict` and `version_conflict`; a revisioned item's head is a
+revision rather than a `version_token`, hence the separate `revision_conflict`.
+
+Every successful write response carries two additive fields, present only on the response to
+a write and never on a read: `write_outcome` (`created` when the write minted the item,
+`appended` when it added a revision to an existing one) and `previous_revision_id` (the head
+the write followed; absent when created). `previous_revision_id` is what was there, not what
+`supersedes` asked to deprecate.
+
+`POST /v1/knowledge/write` also accepts `status` (`draft`, `reviewed` or `canonical`) and
+`derived_from` (`user`, `feedback`, `project`, `reference` or `observation`). Both are recall
+ranking weights. Omitted, they are `canonical` and `reference`, which is what every knowledge
+write was stamped before they could be chosen. Knowledge written earlier keeps those values
+and was not backfilled.
 
 ### Retrieval and synthesis
 

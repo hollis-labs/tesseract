@@ -42,11 +42,12 @@ a value outside them is a `validation_error`, not a new category.
 | `confidence` | yes | float in `[0, 1.0]`. **Weights recall** as a direct multiplier. |
 | `author_agent_id` | yes | who wrote it. |
 | `session_id` | yes | the session that produced it, for correlating a turn's writes. |
-| `memory_key` | no | a descriptive lookup key for an evolving concept; re-writing the same key appends a revision to the item. See *Keyed vs. unkeyed*. |
+| `memory_key` | no | a descriptive lookup key for an evolving concept; re-writing the same key appends a revision to the item, unless you pass `create_only`. See *Keyed vs. unkeyed*. |
 | `status` | no | `draft` (default) \| `reviewed` \| `canonical`. **Weights recall**: 0.6 / 0.9 / 1.0, and a deprecated revision drops to 0.1. |
 | `data` | no | the record's OWN fields as a JSON object, stored verbatim and never interpreted — not indexed, not embedded, not searched. See below. |
 | `data_schema_hash` | no | optional hex sha256 recording which schema `data` claims; stored, never validated. |
 | `supersedes`, `author_version`, `tags`, `ttl_seconds`, `payload_body`, `consumer_state`, `dedup`, `dedup_threshold` | no | see the mapping table and the `consumer_state` section below. |
+| `create_only`, `expected_revision_id` | no | opt-in guards that refuse a write to a key that already exists, or one whose head is not the revision you read. Stated once, in *Guarded writes* in `tesseract_skills revisions`. |
 
 **The `{type}` segment** — `decisions`, `feedback`, `followups`, `learnings`,
 `limitations`, `notes`, `outcomes`, `todos`. `notes` is the catch-all when no
@@ -381,7 +382,7 @@ Note what step 3 does **not** contain. Ten revisions came back, two were read, o
 2. **Get head** - `tesseract_get item_id=<item_id>` returns the current revision, including for a keyless memory. The legacy `domain="memory"` + namespace + key selector remains supported. Reinforces.
 3. **Get revision** - `tesseract_get_revision` fetches one exact immutable version by `revision_id`. Reinforces.
 4. **Get history** - `tesseract_history item_id=<item_id>` returns the full revision chain newest first. The legacy keyed selector remains supported.
-5. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated.
+5. **Supersede** - pass `supersedes=<revision_id>` on write to mark an explicit ancestor; the old revision is auto-deprecated. `supersedes` is not checked against the head, so to refuse a stale base pass `expected_revision_id` as well (*Guarded writes*, `tesseract_skills revisions`).
 6. **Deprecate** - `tesseract_deprecate` when a revision is wrong or outdated. Soft; history survives.
 
 Recall's ranking modes — `relevance` (the default when `query` is set), `activation` (the default without one), `chronological`, `similarity` — are covered in `tesseract_skills recall-and-ranking`, along with everything that bounds a read.

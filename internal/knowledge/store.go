@@ -75,6 +75,24 @@ type WriteInput struct {
 	Confidence float64
 	Supersedes string
 
+	// Status and DerivedFrom are the revision's lifecycle state and the kind of
+	// input that caused it to exist. Both are recall ranking multipliers
+	// (statusWeights, derivedFromWeights in internal/memory/ranking.go), so a
+	// value is a claim that moves the entry up or down what a later session
+	// reads.
+	//
+	// Both are optional, and omitted they are `canonical` and `reference` —
+	// exactly what every knowledge write was stamped before CW-20260912-0012 — so
+	// a writer that says nothing is unchanged, in ranking too. Values are
+	// validated by the shared write path like any other revision's.
+	Status      memory.Status
+	DerivedFrom memory.DerivedFrom
+
+	// CreateOnly and ExpectedRevisionID are the opt-in write guards, off by
+	// default. See memory.WriteInput and internal/memory/writeguards.go.
+	CreateOnly         bool
+	ExpectedRevisionID string
+
 	// ConsumerState is the writer's operational JSON bag for this entry
 	// (CW-20260909-0036). Optional and usually absent — a knowledge entry is a
 	// thing you come back for by name, and most of them have no lifecycle
@@ -99,22 +117,36 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 		pointer.ResolvedAt = &now
 	}
 
+	// The historical constants are now the defaults for a writer that names
+	// neither. Which one applied is not recorded: a revision stamped `reference`
+	// was either chosen or defaulted, and nothing on the row says which.
+	status := in.Status
+	if status == "" {
+		status = memory.StatusCanonical
+	}
+	derivedFrom := in.DerivedFrom
+	if derivedFrom == "" {
+		derivedFrom = memory.DerivedFromReference
+	}
+
 	memIn := memory.WriteInput{
-		Domain:       domains.Knowledge,
-		Namespace:    in.Namespace,
-		Actor:        in.Actor,
-		ClientID:     in.ClientID,
-		MemoryKey:    in.Key,
-		WorkstreamID: in.WorkstreamID,
-		Supersedes:   in.Supersedes,
-		Status:       memory.StatusCanonical,
-		Author:       in.Author,
-		// Knowledge writes originate from indexers or manual capture; use
-		// `reference` as the closest derived_from bucket and `manual` as the
-		// generic trigger. Indexer plugins will refine this later.
+		Domain:             domains.Knowledge,
+		Namespace:          in.Namespace,
+		Actor:              in.Actor,
+		ClientID:           in.ClientID,
+		MemoryKey:          in.Key,
+		WorkstreamID:       in.WorkstreamID,
+		Supersedes:         in.Supersedes,
+		CreateOnly:         in.CreateOnly,
+		ExpectedRevisionID: in.ExpectedRevisionID,
+		Status:             status,
+		Author:             in.Author,
+		// `manual` stays a constant. There is no automatic knowledge ingestion, so
+		// it is honest, and it is not a ranking weight, so nothing gains by
+		// letting a writer vary it.
 		Trigger:        memory.TriggerManual,
 		SessionID:      in.SessionID,
-		DerivedFrom:    memory.DerivedFromReference,
+		DerivedFrom:    derivedFrom,
 		Confidence:     confidence,
 		Tags:           in.Tags,
 		TTL:            in.TTL,

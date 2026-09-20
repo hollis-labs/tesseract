@@ -75,19 +75,23 @@ func (s *Store) writeRevisionInTx(ctx context.Context, tx *sql.Tx, in WriteInput
 	}
 
 	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
-	memoryID := fixedItemID
-	if memoryID == "" {
+	var item resolvedItem
+	if fixedItemID == "" {
+		if in.ExpectedRevisionID != "" && in.MemoryKey == "" {
+			return Revision{}, fmt.Errorf("%w: expected_revision_id requires a key: "+
+				"a keyless write always creates a new item, so there is no head to compare against", ErrInvalidInput)
+		}
 		var err error
-		memoryID, err = resolveOrCreateMemory(ctx, tx, in.Domain, in.Namespace, in.MemoryKey)
+		item, err = resolveOrCreateMemory(ctx, tx, in.Domain, in.Namespace, in.MemoryKey)
 		if err != nil {
 			return Revision{}, fmt.Errorf("resolve memory: %w", err)
 		}
 	} else {
-		var storedDomain, namespace, key string
-		err := tx.QueryRowContext(ctx, `SELECT domain, namespace, COALESCE(memory_key, '') FROM memory_state WHERE memory_id = ?`, memoryID).
-			Scan(&storedDomain, &namespace, &key)
+		var storedDomain, namespace, key, head string
+		err := tx.QueryRowContext(ctx, `SELECT domain, namespace, COALESCE(memory_key, ''), COALESCE(current_revision, '') FROM memory_state WHERE memory_id = ?`, fixedItemID).
+			Scan(&storedDomain, &namespace, &key, &head)
 		if errors.Is(err, sql.ErrNoRows) {
-			return Revision{}, fmt.Errorf("%w: item_id %s", ErrNotFound, memoryID)
+			return Revision{}, fmt.Errorf("%w: item_id %s", ErrNotFound, fixedItemID)
 		}
 		if err != nil {
 			return Revision{}, fmt.Errorf("resolve target item: %w", err)
@@ -95,7 +99,16 @@ func (s *Store) writeRevisionInTx(ctx context.Context, tx *sql.Tx, in WriteInput
 		if storedDomain != string(in.Domain) || namespace != in.Namespace || key != in.MemoryKey {
 			return Revision{}, fmt.Errorf("%w: target item selector no longer matches", ErrInvalidInput)
 		}
+		item = resolvedItem{ID: fixedItemID, CurrentRevisionID: head}
 	}
+	// The guards are checked before anything is inserted, against the head this
+	// transaction sees. A rejected write leaves nothing behind: the caller rolls
+	// the transaction back, which also discards a memory_state row this call just
+	// created.
+	if err := checkWriteGuards(in, item); err != nil {
+		return Revision{}, err
+	}
+	memoryID := item.ID
 	workstreamID, err := resolveRevisionWorkstream(ctx, tx, memoryID, in.WorkstreamID)
 	if err != nil {
 		return Revision{}, err
@@ -198,6 +211,10 @@ INSERT INTO memory_revisions (
 		return Revision{}, fmt.Errorf("update state: %w", err)
 	}
 
+	outcome := WriteOutcomeAppended
+	if item.Created {
+		outcome = WriteOutcomeCreated
+	}
 	return Revision{
 		RevisionID: revisionID, ItemID: memoryID, MemoryID: memoryID, Domain: in.Domain,
 		Namespace: in.Namespace, MemoryKey: in.MemoryKey, WorkstreamID: workstreamID, Provenance: provenance,
@@ -205,6 +222,7 @@ INSERT INTO memory_revisions (
 		SessionID: in.SessionID, DerivedFrom: in.DerivedFrom, Confidence: in.Confidence, Tags: tags,
 		TTLSeconds: ttlSeconds, ExpiresAt: expiresAt, Payload: payload, Facets: in.Facets,
 		ConsumerState: in.ConsumerState,
+		WriteOutcome:  outcome, PreviousRevisionID: item.CurrentRevisionID,
 	}, nil
 }
 

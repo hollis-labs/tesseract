@@ -255,6 +255,16 @@ type knowledgeWriteRequest struct {
 	Confidence     float64         `json:"confidence,omitempty"`
 	Supersedes     string          `json:"supersedes,omitempty"`
 
+	// Status and DerivedFrom are recall ranking weights the caller may now
+	// choose (CW-20260912-0012). Omitted, they are canonical and reference.
+	Status      memory.Status      `json:"status,omitempty"`
+	DerivedFrom memory.DerivedFrom `json:"derived_from,omitempty"`
+
+	// CreateOnly and ExpectedRevisionID are the opt-in write guards
+	// (CW-20260919-0019), off by default. A failed guard answers 409.
+	CreateOnly         bool   `json:"create_only,omitempty"`
+	ExpectedRevisionID string `json:"expected_revision_id,omitempty"`
+
 	// ConsumerState is the caller's operational JSON bag (CW-20260909-0036).
 	ConsumerState json.RawMessage `json:"consumer_state,omitempty"`
 }
@@ -305,12 +315,20 @@ func (s *Server) handleKnowledgeWrite(w http.ResponseWriter, r *http.Request) {
 		TTL:            time.Duration(req.TTLSeconds) * time.Second,
 		Confidence:     req.Confidence,
 		Supersedes:     req.Supersedes,
-		ConsumerState:  req.ConsumerState,
+		Status:         req.Status,
+		DerivedFrom:    req.DerivedFrom,
+
+		CreateOnly:         req.CreateOnly,
+		ExpectedRevisionID: req.ExpectedRevisionID,
+		ConsumerState:      req.ConsumerState,
 	})
 	if err != nil {
 		var spv *contextpolicy.ScopePolicyViolation
 		if errors.As(err, &spv) {
 			writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+			return
+		}
+		if writeGuardError(w, err) {
 			return
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {
