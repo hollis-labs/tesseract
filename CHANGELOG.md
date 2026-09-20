@@ -10,6 +10,28 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
+- **`GET /v1/recall` says when its response is a window.** `meta` gains `total`
+  (every row that matched before `limit`), `truncated`, and — only when
+  truncated — `truncation_reason` and `paged_route`. Until now `meta` carried
+  only what was returned, so a result cut off by `limit` looked exactly like a
+  complete one, and the route silently ignored a `cursor` it has no way to
+  honor. Hit by the Tesseract Explorer and by Atlas's fetchers (CW-20260919-0020).
+
+  Additive, because the mux catalog's boot profiles build 116 slot URLs on this
+  route: `namespace`, `limit`, `returned` and `format` are unchanged, the default
+  `limit` is still 15, and the 500-row ceiling is preserved. Past it the reason
+  is `ceiling` rather than `limit`, since raising `limit` cannot help. `total` is
+  exact here — the route takes no query — and comes from `RecallPage`, which
+  `Recall` is the first page of, so the window is the same rows at no extra cost.
+  The workspace path reports its paged engine's manifest. Refusing an undeclared
+  parameter such as `cursor`, per the refuse-rather-than-ignore rule, is not done
+  here and is a separate decision.
+
+  `docs/SPECS/API.md` now compares the three recall routes: `GET /v1/recall`
+  takes one selector (a namespace or a `/*` prefix) and does not page;
+  `POST /v1/tesseract/lookup` and `POST /v1/memory/recall` run the same engine,
+  take a list of selectors and page by `cursor`, and differ in request shape.
+
 - **`boot_prompt` is a canonical knowledge kind, the twelfth.** A rendered
   briefing an agent authored for a human to hand to another agent — prose, not
   slots, addressed by id and never searched for. Added on Chrispian's direction
