@@ -10,6 +10,21 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
+- **A `not_found` for a ULID-shaped ID now says when that ID would have been
+  minted.** On `tesseract_get` and `tesseract_history` by `item_id`, on
+  `tesseract_get_revision`, and on their HTTP peers (`GET /v1/items/{id}`,
+  `.../history`, `GET /v1/memory/revisions/{id}`), the error gains a `details`
+  object — `field`, `id`, `minted_at`, `age_seconds` — decoded from the ID's
+  first ten characters. It exists because an agent can report an ID from a write
+  that never happened (Nanite chat c395, 2026-09-19), and "not found" alone gave
+  a verifier nothing to tell an invented ID from a deleted or mistyped one.
+
+  Additive: the `message` is byte-for-byte what it was, and `details` is absent
+  (MCP) or `null` (HTTP) for an ID that is not a ULID and for a lookup by key.
+  It states a fact about the string and draws no conclusion. MCP errors gain a
+  `details` object for the first time, the peer of the one HTTP errors already
+  carry. (CW-20260919-0008.)
+
 - **`boot_prompt` is a canonical knowledge kind, the twelfth.** A rendered
   briefing an agent authored for a human to hand to another agent — prose, not
   slots, addressed by id and never searched for. Added on Chrispian's direction

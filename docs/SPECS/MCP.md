@@ -84,7 +84,11 @@ narrowest useful scopes and namespace globs.
 - Tool arguments are defined by the schemas advertised during MCP discovery.
 - Tool application errors are returned as JSON text with `code` and `message`,
   for example `{"code":"validation_error","message":"..."}`. They are tool
-  results rather than MCP transport failures.
+  results rather than MCP transport failures. An error whose caller can act on
+  facts the message only states in prose also carries a `details` object, as
+  HTTP errors do; it is absent, never empty, when there is nothing to add.
+  `tesseract_get`, `tesseract_history` and `tesseract_get_revision` use it for a
+  `not_found` on a ULID-shaped ID (see `tesseract_skills revisions`).
 - Successful results are JSON text unless a discovery skill intentionally
   returns Markdown.
 - Collection tools apply response budgets and deterministic ordering. A budget

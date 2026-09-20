@@ -62,6 +62,31 @@ Errors use this envelope:
 `401 auth_required`, `403 insufficient_scope`,
 `403 namespace_not_permitted`, and `403 policy_denied`.
 
+A `404 not_found` for an ID lookup carries an object in `details` when the ID is a
+well-formed ULID: `GET /v1/items/{item_id}`, `GET /v1/items/{item_id}/history` and
+`GET /v1/memory/revisions/{revision_id}`. The message is unchanged.
+
+```json
+{
+  "code": "not_found",
+  "message": "item_id not found: 01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+  "details": {
+    "field": "item_id",
+    "id": "01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+    "minted_at": "2026-09-18T05:19:56.919Z",
+    "age_seconds": 131760
+  }
+}
+```
+
+The first ten characters of a ULID encode the millisecond it was minted, so
+`minted_at` is when an ID with that prefix would have been minted and `age_seconds` is
+how long before the server's now that was; it is negative when the ID's timestamp is
+ahead of the server's clock. `field` is `item_id` or `revision_id`. This states a fact
+about the string and draws no conclusion about whether Tesseract minted it. An ID that is
+not a ULID, and a lookup by `namespace` and `key`, answer with `"details": null`, exactly
+as before.
+
 ## Authentication and authorization
 
 There are three actual runtime postures, not separate read and write modes:

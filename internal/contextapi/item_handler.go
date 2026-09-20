@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
@@ -71,7 +72,10 @@ func (s *Server) handleItemRead(w http.ResponseWriter, r *http.Request) {
 	meta, err := s.itemService().LookupMetadata(r.Context(), itemID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "item_id not found: "+itemID, nil)
+			// details is nil unless the ID is ULID-shaped, so anything else answers
+			// exactly as it did before. See memory.NotFoundDetails.
+			writeError(w, http.StatusNotFound, "not_found", "item_id not found: "+itemID,
+				memory.NotFoundDetails("item_id", itemID, time.Now()))
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
