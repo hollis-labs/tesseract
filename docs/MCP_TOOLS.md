@@ -150,14 +150,14 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup); memory revisions cannot carry knowledge facets; optional `consumer_state` JSON bag |
+| `memory_write` | `memory:write` | `POST /v1/memory/write` | `tesseract_skills memory` | New revision (optional semantic dedup); memory revisions cannot carry knowledge facets; optional `consumer_state` JSON bag; opt-in `create_only` / `expected_revision_id` guards (`key_conflict` / `revision_conflict`, `409` on HTTP); the response reports `write_outcome` and `previous_revision_id` |
 | `memory_promote` | `memory:write` | `POST /v1/memory/promote` | `tesseract_skills promotion` | Promote session → user / project |
 
 ### Knowledge
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Write with required canonical `kind`, non-empty `source`, and complete `pointer` facets (scheme `nil` when there is no external source) |
+| `knowledge_write` | `memory:write` | `POST /v1/knowledge/write` | `tesseract_skills knowledge` | Write with required canonical `kind`, non-empty `source`, and complete `pointer` facets (scheme `nil` when there is no external source); optional `status` and `derived_from` (recall ranking weights, default `canonical` and `reference`); the same opt-in `create_only` / `expected_revision_id` guards and write-response fields as `memory_write` |
 
 ### Event
 

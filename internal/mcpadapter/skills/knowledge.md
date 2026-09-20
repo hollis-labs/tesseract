@@ -68,7 +68,7 @@ From the `knowledge_write` MCP declaration:
 - `author_agent_id` (required)
 - `session_id` (required)
 
-Optional: `key` (logical slug), `workstream_id` (opaque exact association), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `data`, `data_schema_hash`, `consumer_state`.
+Optional: `key` (logical slug), `workstream_id` (opaque exact association), `pointer_resolved_at` (RFC3339; defaults to now), `body`, `author_version`, `tags`, `ttl_seconds`, `confidence` (defaults to `0.9`), `supersedes`, `status` and `derived_from` (see below), `create_only` and `expected_revision_id` (the opt-in guards, below), `data`, `data_schema_hash`, `consumer_state`.
 
 `workstream_id` follows the shared revision rule: omission preserves an existing
 item's association, an explicit empty string clears it, and exact filtering is
@@ -81,7 +81,13 @@ All three HTTP write routes take top-level `summary`, `body`, `data` and `data_s
 
 `pointer_resolved_at` is **your assertion at write time**, not a verification — nothing checks the pointer on the write path, by design, because a pointer that is unreachable now may be reachable in an hour. Whether a pointer actually resolves is answered by pointer health, below.
 
-Every knowledge write is stamped `Domain=knowledge`, `status=canonical`, `trigger=manual`, `derived_from=reference` - these are fixed at the write path, not caller-controlled.
+Every knowledge write is stamped `Domain=knowledge` and `trigger=manual`. Both are fixed: `manual` is honest, since nothing ingests knowledge automatically, and it is not a ranking weight.
+
+`status` and `derived_from` are yours to choose, and both are **recall ranking weights** — a value is a claim that moves the entry up or down what a later session reads, so choose it rather than leave it to chance. `status` is `draft`, `reviewed` or `canonical` (default `canonical`); write `draft` for something not yet settled, and it ranks below a canonical entry. `derived_from` is `user`, `feedback`, `project`, `reference` or `observation` (default `reference`); choose it by what caused the entry to exist, not by what it is about — a `session_close` records what its author observed, while a `doc` or `pointer` is a `reference`. The values are defined in `tesseract_skills memory`.
+
+Left out, they are `canonical` and `reference`, which is exactly what every knowledge write was stamped before you could choose, so a writer that says nothing ranks as it always did. Two consequences. Knowledge written before this could be chosen carries `reference` on every row regardless of content, and was not backfilled. And on a newer row, `reference` means either "the writer chose it" or "the writer said nothing" — the row cannot tell you which.
+
+Writing against the current head, or refusing a key that already exists, is a pair of opt-in guards, `expected_revision_id` and `create_only`. They are stated once, in *Guarded writes* in `tesseract_skills revisions`, and are identical here and on `memory_write`.
 
 ## Example
 
@@ -135,7 +141,7 @@ The mapping, for every field whose name or shape changes between the two:
 | `tags` (JSON-encoded string) | `tags` (JSON array) |
 | `summary`, `body` | top-level on both; all HTTP write routes use this flat content shape |
 
-Everything else — `namespace`, `key`, `kind`, `source`, `session_id`, `ttl_seconds`, `confidence`, `supersedes` — carries across unchanged.
+Everything else — `namespace`, `key`, `kind`, `source`, `session_id`, `ttl_seconds`, `confidence`, `supersedes`, `status`, `derived_from`, `create_only`, `expected_revision_id` — carries across unchanged.
 
 When the external artifact genuinely is the point, use a real scheme — and **verify the path exists before you write it**. A pointer is only ever as good as the moment it was written:
 

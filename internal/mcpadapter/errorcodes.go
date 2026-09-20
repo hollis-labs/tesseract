@@ -37,6 +37,7 @@ const (
 	codeDeleted             errorCode = "deleted"
 	codeHistoryUnavailable  errorCode = "history_unavailable"
 	codeKeyConflict         errorCode = "key_conflict"
+	codeRevisionConflict    errorCode = "revision_conflict"
 	codeVersionConflict     errorCode = "version_conflict"
 	codeIdempotencyConflict errorCode = "idempotency_conflict"
 
