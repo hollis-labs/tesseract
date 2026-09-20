@@ -45,6 +45,20 @@ type WriteInput struct {
 	DataSchemaHash string
 	Facets         Facets
 
+	// CreateOnly makes the write fail with ErrKeyConflict if the key already has
+	// an item, instead of appending a revision to it. ExpectedRevisionID makes it
+	// fail with ErrRevisionConflict unless that revision is the item's current
+	// head. Both default off, so an unguarded write is exactly what it was, and
+	// they cannot be combined: the first demands the key be new and the second
+	// that it exist. See writeguards.go for why they exist and where they are
+	// checked.
+	//
+	// ExpectedRevisionID is independent of Supersedes: the guard says what the
+	// head must be, Supersedes says what to deprecate. An edit that wants both
+	// passes the same revision to each.
+	CreateOnly         bool
+	ExpectedRevisionID string
+
 	// ConsumerState is the consumer's operational JSON bag for this revision
 	// (CW-20260909-0036). Empty writes SQL NULL, which is what every revision
 	// predating migration 19 carries and what any writer that has nothing to
@@ -165,23 +179,27 @@ func resolveRevisionWorkstream(ctx context.Context, tx *sql.Tx, memoryID string,
 // resolveOrCreateMemory finds an existing memory_state by (namespace, key)
 // or creates a new one. For keyless writes (key == ""), always creates new.
 // Domain is stamped on creation and never changes for a given memory_id.
-func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, domain domains.Domain, namespace, key string) (string, error) {
+//
+// It reports whether it created the item and, when it did not, the item's head,
+// because both are facts about the item as this transaction sees it: the opt-in
+// write guards compare against them and the write's response reports them.
+func resolveOrCreateMemory(ctx context.Context, tx *sql.Tx, domain domains.Domain, namespace, key string) (resolvedItem, error) {
 	if key != "" {
-		var existing, existingDomain string
+		var existing, existingDomain, head string
 		row := tx.QueryRowContext(ctx,
-			`SELECT memory_id, domain FROM memory_state WHERE namespace = ? AND memory_key = ?`,
+			`SELECT memory_id, domain, COALESCE(current_revision, '') FROM memory_state WHERE namespace = ? AND memory_key = ?`,
 			namespace, key,
 		)
-		err := row.Scan(&existing, &existingDomain)
+		err := row.Scan(&existing, &existingDomain, &head)
 		if err == nil {
 			if existingDomain != string(domain) {
-				return "", fmt.Errorf("%w: memory %s/%s exists under domain %q, cannot write as %q",
+				return resolvedItem{}, fmt.Errorf("%w: memory %s/%s exists under domain %q, cannot write as %q",
 					ErrInvalidInput, namespace, key, existingDomain, domain)
 			}
-			return existing, nil
+			return resolvedItem{ID: existing, CurrentRevisionID: head}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return "", err
+			return resolvedItem{}, err
 		}
 		// Fall through to create.
 	}
@@ -197,9 +215,9 @@ VALUES (?, ?, ?, ?, 1.0, 0, ?)`,
 		memoryID, string(domain), namespace, keyVal, time.Now().UTC().Format(memoryTimeFormat),
 	)
 	if err != nil {
-		return "", fmt.Errorf("insert memory_state: %w", err)
+		return resolvedItem{}, fmt.Errorf("insert memory_state: %w", err)
 	}
-	return memoryID, nil
+	return resolvedItem{ID: memoryID, Created: true}, nil
 }
 
 // deprecateRevisionTx is the ONE authorized mutation of
@@ -307,6 +325,10 @@ func validateWriteInput(in WriteInput) error {
 	}
 	if in.DedupThreshold < 0 || in.DedupThreshold > 1.0 {
 		return fmt.Errorf("%w: dedup_threshold must be in [0, 1.0], got %f", ErrInvalidInput, in.DedupThreshold)
+	}
+	if in.CreateOnly && in.ExpectedRevisionID != "" {
+		return fmt.Errorf("%w: create_only and expected_revision_id cannot be combined: "+
+			"create_only requires the key to be new, expected_revision_id requires it to exist", ErrInvalidInput)
 	}
 	return nil
 }

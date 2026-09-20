@@ -64,6 +64,14 @@ type Trigger = internal.Trigger
 // WriteInput carries all fields for a new revision write.
 type WriteInput = internal.WriteInput
 
+// WriteOutcome says whether a write created an item or appended to one. It is
+// set only on the Revision a write returns.
+type WriteOutcome = internal.WriteOutcome
+
+// WriteConflict is the error a failed opt-in write guard returns: it wraps
+// ErrKeyConflict or ErrRevisionConflict and names the head the write lost to.
+type WriteConflict = internal.WriteConflict
+
 // RecallInput carries parameters for a recall query.
 type RecallInput = internal.RecallInput
 
@@ -187,6 +195,9 @@ const (
 	TriggerPromotion   = internal.TriggerPromotion
 	TriggerManual      = internal.TriggerManual
 
+	WriteOutcomeCreated  = internal.WriteOutcomeCreated
+	WriteOutcomeAppended = internal.WriteOutcomeAppended
+
 	RankingActivation    = internal.RankingActivation
 	RankingChronological = internal.RankingChronological
 	RankingSimilarity    = internal.RankingSimilarity
@@ -240,6 +251,8 @@ var (
 	ErrInvalidCursor       = internal.ErrInvalidCursor
 	ErrInvalidNamespace    = internal.ErrInvalidNamespace
 	ErrInvalidKey          = internal.ErrInvalidKey
+	ErrKeyConflict         = internal.ErrKeyConflict
+	ErrRevisionConflict    = internal.ErrRevisionConflict
 )
 
 // ---- Re-exported functions ----
