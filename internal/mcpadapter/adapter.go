@@ -572,6 +572,27 @@ func toolError(code errorCode, message string) any {
 	return map[string]string{"code": string(code), "message": message}
 }
 
+// toolErrorWithDetails is toolError plus a structured `details` object, for a
+// failure whose caller can act on facts the message states only in prose. It is
+// the MCP peer of the `details` field HTTP errors already carry.
+//
+// Empty details return exactly toolError's shape, with no `details` key at all,
+// so a call site can pass whatever a helper produced without a branch and an
+// error that has nothing to add is unchanged on the wire.
+// TestToolErrorWithDetails_EmptyDetailsIsExactlyToolError holds the two shapes
+// together. This does not call toolError to get there because the constants-only
+// guard in errorcodes_test.go polices every toolError call site, and forwarding
+// a parameter is not a constant.
+//
+// The code is an errorCode for the reason toolError's is, and that guard polices
+// this function's call sites the same way.
+func toolErrorWithDetails(code errorCode, message string, details map[string]any) any {
+	if len(details) == 0 {
+		return map[string]string{"code": string(code), "message": message}
+	}
+	return map[string]any{"code": string(code), "message": message, "details": details}
+}
+
 // toolJSON returns v for go-mcp to marshal into StructuredContent and a
 // mirrored text block. Kept as a named pass-through, rather than inlining `v`
 // at every call site, so every handler in this package still reads

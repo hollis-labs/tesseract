@@ -104,7 +104,8 @@ func definedErrorCodes(t *testing.T) map[string]string {
 	return out
 }
 
-// toolErrorCallSite is one `toolError(...)` invocation.
+// toolErrorCallSite is one `toolError(...)` or `toolErrorWithDetails(...)`
+// invocation. Both take the code first, and both must take a constant.
 type toolErrorCallSite struct {
 	Pos     string // file:line
 	CodeArg ast.Expr
@@ -121,7 +122,7 @@ func toolErrorCallSites(t *testing.T) []toolErrorCallSite {
 				return true
 			}
 			fn, ok := call.Fun.(*ast.Ident)
-			if !ok || fn.Name != "toolError" || len(call.Args) == 0 {
+			if !ok || (fn.Name != "toolError" && fn.Name != "toolErrorWithDetails") || len(call.Args) == 0 {
 				return true
 			}
 			p := fset.Position(call.Pos())

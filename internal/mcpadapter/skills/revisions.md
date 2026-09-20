@@ -16,6 +16,29 @@ Every write in Tesseract creates a new revision. The service never mutates exist
 - **Version token (`version_token`)** — concurrency token for mutable items in `workspace`. Rotates on every edit; workspace retains no revision history.
 - **Timestamp** — RFC3339Nano (nanosecond precision). Tie-breaking falls back to revision ID lex order for same-millisecond writes.
 
+## When an ID is not found
+
+`tesseract_get` and `tesseract_history` by `item_id`, and `tesseract_get_revision`, answer `not_found` for an ID that resolves to nothing. Their HTTP peers (`GET /v1/items/{item_id}`, `.../history`, `GET /v1/memory/revisions/{revision_id}`) do the same. When that ID is a well-formed ULID, the error also carries a `details` object saying what the ID itself says. The message is unchanged.
+
+```json
+{
+  "code": "not_found",
+  "message": "memory not found: item_id 01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+  "details": {
+    "field": "item_id",
+    "id": "01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+    "minted_at": "2026-09-18T05:19:56.919Z",
+    "age_seconds": 131760
+  }
+}
+```
+
+The first ten characters of a ULID encode the millisecond it was minted. `minted_at` is when an ID with that prefix would have been minted; `age_seconds` is how long before the server's now that was, and is negative when the ID's timestamp is ahead of the server's clock.
+
+That is a fact about the string, not a verdict: Tesseract does not say whether the ID is real. What it lets you see is that an ID which would have been minted a day and a half before an agent claimed to have written it is not that write's result, and that an ID minted seconds ago which still does not resolve is a genuine problem worth chasing.
+
+`details` is absent when there is nothing to decode — an ID that is not a ULID, or a lookup by `(domain, namespace, key)`, which has no ID to read — and the error is then exactly what it was.
+
 ## Head vs. history
 
 - `tesseract_get` — returns the current revision for `item_id`, including keyless items. The complete legacy `(domain, namespace, key)` selector remains supported and domain-filtered.

@@ -62,6 +62,31 @@ Errors use this envelope:
 `401 auth_required`, `403 insufficient_scope`,
 `403 namespace_not_permitted`, and `403 policy_denied`.
 
+A `404 not_found` for an ID lookup carries an object in `details` when the ID is a
+well-formed ULID: `GET /v1/items/{item_id}`, `GET /v1/items/{item_id}/history` and
+`GET /v1/memory/revisions/{revision_id}`. The message is unchanged.
+
+```json
+{
+  "code": "not_found",
+  "message": "item_id not found: 01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+  "details": {
+    "field": "item_id",
+    "id": "01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+    "minted_at": "2026-09-18T05:19:56.919Z",
+    "age_seconds": 131760
+  }
+}
+```
+
+The first ten characters of a ULID encode the millisecond it was minted, so
+`minted_at` is when an ID with that prefix would have been minted and `age_seconds` is
+how long before the server's now that was; it is negative when the ID's timestamp is
+ahead of the server's clock. `field` is `item_id` or `revision_id`. This states a fact
+about the string and draws no conclusion about whether Tesseract minted it. An ID that is
+not a ULID, and a lookup by `namespace` and `key`, answer with `"details": null`, exactly
+as before.
+
 ## Authentication and authorization
 
 There are three actual runtime postures, not separate read and write modes:
@@ -294,12 +319,59 @@ and was not backfilled.
 | Method and path | Additional authorization | Contract |
 |---|---|---|
 | `POST /v1/tesseract/lookup` | each namespace | Cross-domain ranked lookup with filters, facets, cursors, and payload budgets. |
-| `GET /v1/recall` | namespace | Script-oriented typed recall. Requires `namespace`; accepts comma-separated `tags` and `domains`, plus `limit` and `format=brief|full`. Workspace and event remain opt-in. |
+| `GET /v1/recall` | namespace | Script-oriented typed recall. Requires `namespace`; accepts comma-separated `tags` and `domains`, plus `limit` and `format=brief|full`. Workspace and event remain opt-in. `meta` says whether the response is everything or a window; see below. |
 | `POST /v1/synthesis/ask` | — | Recall sources and ask the configured LLM; returns answer, numbered sources, and usage/cost metadata. |
 
 Synthesis returns `503 synthesis_unavailable` unless a provider and its API key
 are configured. Provider data egress is described in the repository security
 guidance.
+
+#### Choosing a recall route
+
+Three routes rank and return revisions. Only two of them page.
+
+| Route | Namespaces | Filters | Pages | Response |
+|---|---|---|---|---|
+| `GET /v1/recall` | one selector: a namespace or a `/*` prefix | query parameters: `tags`, `domains`, `workstream_id`, `limit`, `format` | no | `{results, facets, meta}` |
+| `POST /v1/tesseract/lookup` | a list of selectors | flat snake_case body fields | `cursor` | `{results, facets, manifest}` |
+| `POST /v1/memory/recall` | a list of selectors | a nested `filters` object keyed by Go field names (`DerivedFrom`, `Tags`, ...), plus flat `search_mode`, `payload_mode` and `similarity_min` | `cursor` | `{results, manifest}` |
+
+The two `POST` routes run the same recall engine and return the same `manifest`
+(`results_total`, `truncated`, `next_cursor`); both accept `budget_bytes`,
+`budget_tokens` and `estimate_only`. They differ in request shape, and lookup adds a
+facet histogram computed from the rows it returned, so it describes the page and not
+the whole match set. When moving a script off `GET /v1/recall`, prefer
+`POST /v1/tesseract/lookup`: its filters are flat and snake_case, as the query
+parameters are. `GET /v1/recall` takes one selector, not a list, so sweeping several
+disjoint namespaces with it costs one call each.
+
+`GET /v1/recall` has no cursor, and it ignores a `cursor` parameter rather than refusing
+it, so a caller who sends one gets the first page again. Its `meta` therefore says
+whether that page was everything:
+
+```json
+{
+  "meta": {
+    "namespace": "user/chrispian/memory/notes",
+    "limit": 15,
+    "returned": 15,
+    "format": "brief",
+    "total": 42,
+    "truncated": true,
+    "truncation_reason": "limit",
+    "paged_route": "POST /v1/tesseract/lookup"
+  }
+}
+```
+
+`namespace`, `limit`, `returned` and `format` are what they always were. `total` counts
+every row that matched before `limit` was applied; this route takes no query, so it is
+exact. `truncated` is always present, and `false` states that `returned` is everything.
+`truncation_reason` and `paged_route` appear only when `truncated` is true. The reason is
+`limit` when the caller's own limit cut the set and raising it helps; `ceiling` when the
+caller asked for more than this route's 500-row ceiling, which raising `limit` does not
+move; and `payload_mode_limit_cap` on the workspace path, where the paged engine caps a
+full projection. The 500-row ceiling is unchanged.
 
 ## Core request examples
 

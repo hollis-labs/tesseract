@@ -53,6 +53,60 @@ type recallMeta struct {
 	Limit     int    `json:"limit"`
 	Returned  int    `json:"returned"`
 	Format    string `json:"format"`
+
+	// Total, Truncated, TruncationReason and PagedRoute say whether Returned is
+	// everything or a window (CW-20260919-0020). They are additive: the four
+	// fields above are exactly what they were, because the boot profiles in the
+	// mux catalog build their slot URLs on this route and read them.
+	//
+	// Total and Truncated are always present, and never omitted when zero or
+	// false: `truncated: false` is the statement that Returned is everything, and
+	// a caller must be able to read it rather than infer it from an absence.
+	//
+	// Total counts every row that matched before Limit was applied. This route
+	// takes no query, so it ranks by activation or chronology and Total is exact,
+	// not the fused-arm bound it is under ranking=relevance.
+	Total     int  `json:"total"`
+	Truncated bool `json:"truncated"`
+
+	// TruncationReason is set only when Truncated is: `limit` (the caller's own
+	// limit cut the set; raising it helps), `ceiling` (the caller asked for more
+	// than this route's 500-row ceiling; raising it does not help), or
+	// `payload_mode_limit_cap` (the workspace path's projection cap).
+	TruncationReason string `json:"truncation_reason,omitempty"`
+
+	// PagedRoute names the route that pages by cursor, set only when Truncated is.
+	// This one has no cursor by design of its original contract, and ignores a
+	// `cursor` parameter rather than refusing it, so a caller who sends one gets
+	// the first page again. Nothing on this response can be resumed.
+	PagedRoute string `json:"paged_route,omitempty"`
+}
+
+// recallTruncatedByCeiling is recallMeta.TruncationReason when the caller asked
+// for more rows than this route will ever return. It is this route's own reason:
+// the manifest vocabulary has no name for the legacy 500-row clamp, and
+// payload_mode_limit_cap would say something false, since format=full is not
+// capped here.
+const recallTruncatedByCeiling = "ceiling"
+
+// recallPagedRoute is where a caller goes when this route cut its result short.
+// POST /v1/memory/recall is its sibling and runs the same engine; the lookup
+// route is named here because its request is the flat, snake_case shape a caller
+// moving off this route's query parameters already has. See docs/SPECS/API.md.
+const recallPagedRoute = "POST /v1/tesseract/lookup"
+
+// newRecallMeta builds the response meta, and is the one place the additive
+// fields are derived, so the two paths below cannot disagree about them.
+func newRecallMeta(namespace string, limit int, format string, returned, total int, truncated bool, reason string) recallMeta {
+	meta := recallMeta{
+		Namespace: namespace, Limit: limit, Returned: returned, Format: format,
+		Total: total, Truncated: truncated,
+	}
+	if truncated {
+		meta.TruncationReason = reason
+		meta.PagedRoute = recallPagedRoute
+	}
+	return meta
 }
 
 // handleRecall serves GET /v1/recall — a read-only, query-param-driven recall
@@ -148,7 +202,10 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		// has no cursor, and both brief and full historically accepted up to the
 		// revision store's 500-row ceiling; the additive workspace pager's full
 		// projection cap must not shorten that legacy response.
-		results, err := s.itemRevisionStore().Recall(r.Context(), in)
+		// RecallPage rather than Recall: Recall is RecallPage's first page with
+		// Total discarded, and Total is what lets meta say whether the response was
+		// cut short. The window is the same rows.
+		recalled, err := s.itemRevisionStore().RecallPage(r.Context(), in)
 		if err != nil {
 			if errors.Is(err, memory.ErrEmbedderUnavailable) {
 				writeError(w, http.StatusServiceUnavailable, "similarity_unavailable", err.Error(), nil)
@@ -161,6 +218,7 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "recall_failed", err.Error(), nil)
 			return
 		}
+		results := recalled.Results
 
 		facets := buildFacets(results)
 		var items any = results
@@ -178,9 +236,16 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 			}
 			items = brief
 		}
+		truncated := recalled.Total > len(results)
+		reason := memory.TruncationLimit
+		if limit > memory.MaxRecallLimit {
+			// The store clamps silently to its ceiling. Raising limit cannot help,
+			// and saying `limit` would send the caller to try.
+			reason = recallTruncatedByCeiling
+		}
 		writeJSON(w, http.StatusOK, recallResponse{
 			Results: items, Facets: facets,
-			Meta: recallMeta{Namespace: namespace, Limit: limit, Returned: len(results), Format: format},
+			Meta: newRecallMeta(namespace, limit, format, len(results), recalled.Total, truncated, reason),
 		})
 		return
 	}
@@ -230,15 +295,13 @@ func (s *Server) handleRecall(w http.ResponseWriter, r *http.Request) {
 		items = page.Results
 	}
 
+	// The paged engine already computed all of this. The workspace path reports it
+	// as the manifest does, including payload_mode_limit_cap, its projection cap.
 	writeJSON(w, http.StatusOK, recallResponse{
 		Results: items,
 		Facets:  facets,
-		Meta: recallMeta{
-			Namespace: namespace,
-			Limit:     limit,
-			Returned:  len(page.Kept),
-			Format:    format,
-		},
+		Meta: newRecallMeta(namespace, limit, format, len(page.Kept),
+			page.Manifest.ResultsTotal, page.Manifest.Truncated, page.Manifest.TruncationReason),
 	})
 }
 

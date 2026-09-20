@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -195,6 +196,18 @@ func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims con
 		return nil, memory.State{}, domainUnavailable(string(state.Domain)), nil
 	}
 	return store, state, nil, nil
+}
+
+// itemLookupToolError is workspaceToolError for a lookup of one item ID, with
+// one addition: when the ID is not found and is shaped like a ULID, the error
+// also carries what the ID itself says — when it would have been minted and how
+// long ago. The message is untouched, so a client that reads only the message
+// sees exactly what it always did. See memory.NotFoundDetails for why.
+func itemLookupToolError(err error, field, id string) any {
+	if errors.Is(err, memory.ErrNotFound) {
+		return toolErrorWithDetails(codeNotFound, err.Error(), memory.NotFoundDetails(field, id, time.Now()))
+	}
+	return workspaceToolError(err)
 }
 
 // ── Registration ─────────────────────────────────────────────────────────────
@@ -460,7 +473,7 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req map[string]any) (a
 	if selector.ByItemID() {
 		meta, err := a.itemService().LookupMetadata(ctx, selector.ItemID)
 		if err != nil {
-			return workspaceToolError(err), nil
+			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
 		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
@@ -572,7 +585,7 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req map[string]any
 	if selector.ByItemID() {
 		meta, err := a.itemService().LookupMetadata(ctx, selector.ItemID)
 		if err != nil {
-			return workspaceToolError(err), nil
+			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
 		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
@@ -680,7 +693,7 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req map[string
 	rev, err := store.GetRevisionByIDReinforced(ctx, revisionID)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			return toolError(codeNotFound, err.Error()), nil
+			return toolErrorWithDetails(codeNotFound, err.Error(), memory.NotFoundDetails("revision_id", revisionID, time.Now())), nil
 		}
 		return nil, err
 	}

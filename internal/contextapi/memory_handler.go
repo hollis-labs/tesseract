@@ -321,7 +321,8 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 	rev, err := s.MemoryStore.GetRevisionByIDReinforced(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+			writeError(w, http.StatusNotFound, "not_found", err.Error(),
+				memory.NotFoundDetails("revision_id", id, time.Now()))
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)
