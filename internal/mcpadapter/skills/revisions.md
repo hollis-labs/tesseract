@@ -16,6 +16,29 @@ Every write in Tesseract creates a new revision. The service never mutates exist
 - **Version token (`version_token`)** — concurrency token for mutable items in `workspace`. Rotates on every edit; workspace retains no revision history.
 - **Timestamp** — RFC3339Nano (nanosecond precision). Tie-breaking falls back to revision ID lex order for same-millisecond writes.
 
+## When an ID is not found
+
+`tesseract_get` and `tesseract_history` by `item_id`, and `tesseract_get_revision`, answer `not_found` for an ID that resolves to nothing. Their HTTP peers (`GET /v1/items/{item_id}`, `.../history`, `GET /v1/memory/revisions/{revision_id}`) do the same. When that ID is a well-formed ULID, the error also carries a `details` object saying what the ID itself says. The message is unchanged.
+
+```json
+{
+  "code": "not_found",
+  "message": "memory not found: item_id 01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+  "details": {
+    "field": "item_id",
+    "id": "01M2SFA0ZQ3K4N6P7R8T9V0WXY",
+    "minted_at": "2026-09-18T05:19:56.919Z",
+    "age_seconds": 131760
+  }
+}
+```
+
+The first ten characters of a ULID encode the millisecond it was minted. `minted_at` is when an ID with that prefix would have been minted; `age_seconds` is how long before the server's now that was, and is negative when the ID's timestamp is ahead of the server's clock.
+
+That is a fact about the string, not a verdict: Tesseract does not say whether the ID is real. What it lets you see is that an ID which would have been minted a day and a half before an agent claimed to have written it is not that write's result, and that an ID minted seconds ago which still does not resolve is a genuine problem worth chasing.
+
+`details` is absent when there is nothing to decode — an ID that is not a ULID, or a lookup by `(domain, namespace, key)`, which has no ID to read — and the error is then exactly what it was.
+
 ## Head vs. history
 
 - `tesseract_get` — returns the current revision for `item_id`, including keyless items. The complete legacy `(domain, namespace, key)` selector remains supported and domain-filtered.
@@ -125,6 +148,48 @@ curl -sS -X POST "$TESSERACT_URL/v1/memory/write" \
 ```
 
 The value of `supersedes` is a `revision_id`, which is what `tesseract_recall`, `tesseract_get` and `tesseract_history` all carry on every result. It is not an `item_id`/`memory_id` — those two response fields carry the same stable item identity, and `memory_promote` retains `source_memory_id` for compatibility. Full field lists for both shapes are in `tesseract_skills memory`.
+
+## Guarded writes: create-only and expected-revision
+
+By default a revisioned write is unconditional, and two things follow that a writer who shares records with others has to know:
+
+- **A key that already exists is appended to, silently.** Writing an existing `(namespace, key)` adds a revision and makes it the head. Nothing tells you the key was taken, and nothing marks the old head superseded unless you passed `supersedes`.
+- **`supersedes` is not checked against the head.** It has to exist and belong to the same item; it does not have to be current. Two writers who read the same revision and each supersede it both succeed. The later one wins the head, and the other's revision stays in history with no signal that it was displaced.
+
+That is the right default for one session appending to its own notes. It is the wrong one when other writers can reach the same records, so `memory_write` and `knowledge_write` take two opt-in guards. Both are off unless you pass them, so no existing call changes:
+
+| Argument | The write is refused unless… | Error |
+|---|---|---|
+| `create_only: true` | the key has no item yet | `key_conflict` |
+| `expected_revision_id` | that revision is the key's current head | `revision_conflict` |
+
+Both are checked inside the write's own transaction, so a guard is a real compare-and-set: of several writers who name the same head, exactly one succeeds. A refused write leaves nothing behind. The two cannot be combined — one demands the key be new and the other that it exist — and `expected_revision_id` needs a key, because a keyless write always creates a new item and there is no head to compare against. A key that has no item at all fails `expected_revision_id` too.
+
+The edit idiom is read, change, then write against what you read. Only `expected_revision_id` and `supersedes` are new here; the rest is the ordinary full write:
+
+```json
+{
+  "namespace": "project/tesseract/knowledge/framework",
+  "key": "framework.go-providers",
+  "kind": "package",
+  "source": "manual",
+  "pointer_scheme": "nil",
+  "pointer_locator": "framework/go-providers",
+  "summary": "go-providers: multi-provider AI adapter",
+  "author_agent_id": "claude",
+  "session_id": "2026-09-19:atlas",
+  "expected_revision_id": "01HXA...",
+  "supersedes": "01HXA..."
+}
+```
+
+`expected_revision_id` says what the head must be; `supersedes` says what to deprecate. They are independent: pass the same revision to both to replace it, or only the guard to append without deprecating anything.
+
+A refused write names the head it lost to — in the message on MCP, and on HTTP in `details.current_revision_id`, where the refusal is a `409` (`details` also carries `item_id` and echoes `expected_revision_id`). Re-read that revision, apply your change to it, and retry with its id. Nothing retries for you.
+
+A write's response now says what it did. `write_outcome` is `created` when the write minted the item and `appended` when it added a revision to one that already existed; `previous_revision_id` names the head it followed, and is absent when the item was created. That is not `supersedes`, which is what you asked to deprecate rather than what was there. Both fields appear only on the response to a write, never on a read.
+
+The guards add no partial update — a revision still carries every field you send, so an edit resupplies the ones that did not change — and they do not let a supersede cross entries.
 
 ## Dedup
 

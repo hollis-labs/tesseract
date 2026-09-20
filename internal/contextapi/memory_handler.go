@@ -56,6 +56,11 @@ type memoryWriteRequest struct {
 	Dedup          string             `json:"dedup,omitempty"`
 	DedupThreshold float64            `json:"dedup_threshold,omitempty"`
 
+	// CreateOnly and ExpectedRevisionID are the opt-in write guards
+	// (CW-20260919-0019), off by default. A failed guard answers 409.
+	CreateOnly         bool   `json:"create_only,omitempty"`
+	ExpectedRevisionID string `json:"expected_revision_id,omitempty"`
+
 	// ConsumerState is the caller's own operational JSON bag for this revision
 	// (CW-20260909-0036). Nested as an object here, matching the rest of this
 	// surface; the MCP peer takes the same fact as a JSON-encoded string
@@ -126,6 +131,9 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		Dedup:          req.Dedup,
 		DedupThreshold: req.DedupThreshold,
 		ConsumerState:  req.ConsumerState,
+
+		CreateOnly:         req.CreateOnly,
+		ExpectedRevisionID: req.ExpectedRevisionID,
 	}
 
 	rev, err := s.MemoryStore.WriteRevision(r.Context(), in)
@@ -133,6 +141,9 @@ func (s *Server) handleMemoryWrite(w http.ResponseWriter, r *http.Request) {
 		var spv *contextpolicy.ScopePolicyViolation
 		if errors.As(err, &spv) {
 			writeError(w, http.StatusForbidden, "policy_denied", err.Error(), nil)
+			return
+		}
+		if writeGuardError(w, err) {
 			return
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {
@@ -310,7 +321,8 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 	rev, err := s.MemoryStore.GetRevisionByIDReinforced(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+			writeError(w, http.StatusNotFound, "not_found", err.Error(),
+				memory.NotFoundDetails("revision_id", id, time.Now()))
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "read_failed", err.Error(), nil)

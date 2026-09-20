@@ -10,6 +10,38 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
+- **Opt-in write guards on `memory_write` and `knowledge_write`, and a write
+  response that says what it did.** `create_only` refuses a key that already has
+  an item (`key_conflict`); `expected_revision_id` refuses a write unless that
+  revision is the key's current head (`revision_conflict`). Both are off by
+  default, so no existing caller changes, and both are checked inside the
+  write's own transaction, so of several writers naming one head exactly one
+  succeeds. On HTTP a refusal is a `409` carrying `details.current_revision_id`.
+  They close two gaps confirmed against a throwaway store: a duplicate key
+  silently became the new head, and `supersedes` was never checked against the
+  head, so two writers from one read both succeeded and the later one won.
+
+  Every write response now carries `write_outcome` (`created` or `appended`) and
+  `previous_revision_id` (the head it followed). Reads carry neither. Additive:
+  nothing that reads a write response needs to change. The semantics are stated
+  once, in *Guarded writes* in `tesseract_skills revisions`. (CW-20260919-0019,
+  for the Atlas write path.)
+
+- **A `not_found` for a ULID-shaped ID now says when that ID would have been
+  minted.** On `tesseract_get` and `tesseract_history` by `item_id`, on
+  `tesseract_get_revision`, and on their HTTP peers (`GET /v1/items/{id}`,
+  `.../history`, `GET /v1/memory/revisions/{id}`), the error gains a `details`
+  object — `field`, `id`, `minted_at`, `age_seconds` — decoded from the ID's
+  first ten characters. It exists because an agent can report an ID from a write
+  that never happened (Nanite chat c395, 2026-09-19), and "not found" alone gave
+  a verifier nothing to tell an invented ID from a deleted or mistyped one.
+
+  Additive: the `message` is byte-for-byte what it was, and `details` is absent
+  (MCP) or `null` (HTTP) for an ID that is not a ULID and for a lookup by key.
+  It states a fact about the string and draws no conclusion. MCP errors gain a
+  `details` object for the first time, the peer of the one HTTP errors already
+  carry. (CW-20260919-0008.)
+
 - **`GET /v1/recall` says when its response is a window.** `meta` gains `total`
   (every row that matched before `limit`), `truncated`, and — only when
   truncated — `truncation_reason` and `paged_route`. Until now `meta` carried
@@ -84,6 +116,16 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
   it. `has_more` answers the question a total stands in for.
 
 ### Changed
+
+- **`knowledge_write` takes `status` and `derived_from`.** Both were fixed at
+  `canonical` and `reference` on every knowledge write, and both are recall
+  ranking multipliers, so knowledge could neither say that something was
+  provisional nor be ranked by what caused it. Omitted, they are still
+  `canonical` and `reference`, so no existing writer, and no ranking, changes.
+  Existing knowledge rows were not backfilled — that would invent a value nobody
+  supplied — which leaves a permanent boundary: on a newer row `reference` means
+  "chosen" or "defaulted", and the row cannot say which. `trigger` stays fixed at
+  `manual`. (CW-20260912-0012.)
 
 - **`origin` is renamed to `derived_from` on every surface. Breaking, and the
   old name is refused rather than ignored.** The five values are unchanged:

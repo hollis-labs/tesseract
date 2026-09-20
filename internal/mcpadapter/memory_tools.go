@@ -49,6 +49,8 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 			strProp("data_schema_hash", payloadDataSchemaHashArgDescription, false),
 			strProp("dedup", "Dedup mode: none (default) or semantic", false),
 			numProp("dedup_threshold", "Similarity threshold override for semantic dedup (0 = use config default 0.85)", false),
+			boolProp("create_only", createOnlyArgDescription, false),
+			strProp("expected_revision_id", expectedRevisionIDArgDescription, false),
 			strProp("actor", "Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.", false),
 		),
 		toolAnnotations{},
@@ -133,6 +135,9 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req map[string]any) (an
 		Dedup:          argString(req, "dedup", ""),
 		DedupThreshold: argFloat(req, "dedup_threshold", 0),
 		ConsumerState:  consumerStateArg(req),
+
+		CreateOnly:         argBool(req, "create_only", false),
+		ExpectedRevisionID: argString(req, "expected_revision_id", ""),
 	}
 
 	rev, err := a.MemoryStore.WriteRevision(ctx, in)
@@ -140,6 +145,9 @@ func (a *Adapter) handleMemoryWrite(ctx context.Context, req map[string]any) (an
 		var spv *contextpolicy.ScopePolicyViolation
 		if errors.As(err, &spv) {
 			return toolError(codeNamespaceNotPermitted, err.Error()), nil
+		}
+		if res, ok := writeGuardToolError(err); ok {
+			return res, nil
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			return toolError(codeValidationError, err.Error()), nil

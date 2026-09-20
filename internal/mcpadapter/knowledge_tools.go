@@ -40,7 +40,7 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 			"• **Deeper:** `tesseract_skills facets-and-kinds` for facet vocabulary.",
 		inputSchema(
 			strProp("namespace", "Knowledge namespace; must contain a 'knowledge' segment (e.g. project/tesseract/knowledge/framework)", true),
-			strProp("key", "Optional logical key (slug, path, id) — same key on re-write creates a new revision. "+
+			strProp("key", "Optional logical key (slug, path, id) — same key on re-write creates a new revision, unless create_only is set. "+
 				"Free-form: knowledge keys are NOT held to the memory domain's lowercase dot-notation rule, so hyphens, slashes and mixed case from an external source are accepted as written.", false),
 			strProp("workstream_id", "Optional opaque workstream association. Omit to preserve; send an empty string to clear.", false),
 			// The allowed set is rendered from the enforced vocabulary rather than
@@ -65,6 +65,10 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 			numProp("ttl_seconds", "Optional TTL in seconds (0 = no expiry)", false),
 			numProp("confidence", "Confidence score in [0, 1.0] (default 0.9)", false),
 			strProp("supersedes", "Optional revision_id this entry supersedes", false),
+			strProp("status", "Optional revision status: draft|reviewed|canonical (default: canonical). It is a recall ranking weight, so a draft ranks below a canonical entry.", false),
+			strProp("derived_from", "Optional kind of input that caused this entry to exist: user|feedback|project|reference|observation (default: reference). It is a recall ranking weight — choose it by what caused the entry, not by what it is about.", false),
+			boolProp("create_only", createOnlyArgDescription, false),
+			strProp("expected_revision_id", expectedRevisionIDArgDescription, false),
 			strProp("actor", "Actor asserting the write (default: agent). Writing to user/ namespaces requires actor=user.", false),
 		),
 		toolAnnotations{},
@@ -125,12 +129,16 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req map[string]any) 
 			AgentID:      argString(req, "author_agent_id", ""),
 			AgentVersion: argString(req, "author_version", ""),
 		},
-		SessionID:     argString(req, "session_id", ""),
-		Tags:          tags,
-		TTL:           time.Duration(ttlSeconds) * time.Second,
-		Confidence:    argFloat(req, "confidence", 0),
-		Supersedes:    argString(req, "supersedes", ""),
-		ConsumerState: consumerStateArg(req),
+		SessionID:          argString(req, "session_id", ""),
+		Tags:               tags,
+		TTL:                time.Duration(ttlSeconds) * time.Second,
+		Confidence:         argFloat(req, "confidence", 0),
+		Supersedes:         argString(req, "supersedes", ""),
+		Status:             memory.Status(argString(req, "status", "")),
+		DerivedFrom:        memory.DerivedFrom(argString(req, "derived_from", "")),
+		CreateOnly:         argBool(req, "create_only", false),
+		ExpectedRevisionID: argString(req, "expected_revision_id", ""),
+		ConsumerState:      consumerStateArg(req),
 	}
 
 	rev, err := a.KnowledgeStore.Write(ctx, in)
@@ -138,6 +146,9 @@ func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req map[string]any) 
 		var spv *contextpolicy.ScopePolicyViolation
 		if errors.As(err, &spv) {
 			return toolError(codeNamespaceNotPermitted, err.Error()), nil
+		}
+		if res, ok := writeGuardToolError(err); ok {
+			return res, nil
 		}
 		if errors.Is(err, memory.ErrInvalidInput) {
 			return toolError(codeValidationError, err.Error()), nil
