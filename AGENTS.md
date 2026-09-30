@@ -44,13 +44,11 @@ agent-facing prose — the MCP tool descriptions and `internal/mcpadapter/skills
 — and run `make drift-report`. Report-only means nothing invokes it
 automatically, not that a failure is invisible; the exit code stands.
 
-**`make deploy-check` after every deploy.** `cerberus sync → apply → reload`
-deploys the API service and NOT the work the embed queue performs, and a green
-return proves nothing — `apply` has been seen succeeding both by writing a plist
-and by doing nothing at all ("already current"), each time leaving the old
-process serving. The check compares the deployed artifact against the build by
-hash, asserts the running process started after that artifact was written, and
-names any queue holder that predates its own binary.
+**`make deploy-check` after deploying a long-running instance.** A service
+manager reporting success proves nothing about which binary is serving. The
+check compares the deployed artifact against the build by hash, asserts the
+running process started after that artifact was written, and names any embed
+queue holder that predates its own binary.
 
 ## Boundaries
 
@@ -85,8 +83,8 @@ one tool and declared by fourteen.
 The gateway strip is not an underscore exception. Exactly `_traceparent` and
 `_tracestate` are accepted and removed, because mux writes trace context into
 the arguments map; any other `_name` is refused like any other undeclared name.
-It comes out when every DEPLOYED mux is past CW-20260907-0026 — not when that
-task merges.
+It comes out once no deployed gateway still writes trace context into the
+arguments map — not when the change that stops it merges.
 
 Revisioned-domain writes never mutate: `AppendRecord` allocates the next
 revision and advances `heads` in one transaction. Workspace is the explicit
@@ -106,7 +104,7 @@ for their own domain — `memory_write` and `/v1/memory/write` stamp `memory`,
 `knowledge.Store.Write` and `event.Store.Write` stamp theirs — so a caller
 never fills it in; a direct store caller must. It stopped defaulting because a
 default is indistinguishable from a choice in the audit log, which is how
-`Deprecate` stamped every domain as `memory` until CW-20260910-0069.
+`Deprecate` stamped every domain as `memory`.
 
 The embed queue is shared, and the daemon owns it. `serve` publishes a claim in
 `queue.db` and runs its worker unconditionally; `mcp` reads that claim and runs
