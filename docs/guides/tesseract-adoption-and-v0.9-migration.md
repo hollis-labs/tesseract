@@ -196,7 +196,7 @@ Run the stdio server from the same resolved layout as the daemon:
     "tesseract": {
       "type": "stdio",
       "command": "/absolute/path/to/tesseract",
-      "args": ["mcp", "--token", "<capability-token>"]
+      "args": ["mcp", "--token-file", "/path/to/protected/token"]
     }
   }
 }

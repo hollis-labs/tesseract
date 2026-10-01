@@ -47,7 +47,7 @@ Start from [`../examples/mcp.json`](../examples/mcp.json):
   "mcpServers": {
     "tesseract": {
       "command": "tesseract",
-      "args": ["mcp", "--token", "<capability-token>"]
+      "args": ["mcp", "--token-file", "/path/to/protected/token"]
     }
   }
 }
@@ -64,8 +64,11 @@ registry.
 
 ## Scope a session to a namespace
 
-`tesseract mcp` reads its token once, from `--token`, so scope belongs to the
-server process rather than to the agent. To confine one kind of session to a
+`tesseract mcp` reads its token once: `--token-file` takes precedence over
+nonblank `TESSERACT_MCP_TOKEN`, then legacy `--token`. An unreadable or empty
+file fails startup. Use a `0600` token file to keep the credential off argv;
+environment input still permits same-user reads through Linux `/proc`.
+Scope belongs to the server process rather than to the agent. To confine one kind of session to a
 project, mint a token for it and launch that session's MCP server with that
 token. Sessions launched with a different token, or a different host
 configuration, are unaffected.

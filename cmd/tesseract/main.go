@@ -222,7 +222,7 @@ func topLevelCommands() []topLevelCommand {
 			Name:        "mcp",
 			Summary:     "run the MCP adapter over stdio",
 			Description: "Speaks the Model Context Protocol on stdin/stdout, for an agent runtime that\n  launches tesseract as an MCP server.",
-			FlagSet:     func() *flag.FlagSet { fs, _ := newMCPFlagSet(); return fs },
+			FlagSet:     func() *flag.FlagSet { fs, _, _ := newMCPFlagSet(); return fs },
 		},
 		{
 			Name:        "context",
@@ -712,16 +712,32 @@ func parseServeArgs(args []string) (serveConfig, error) {
 
 // newMCPFlagSet builds the mcp flagset. Split out for the same reason as
 // newServeFlagSet: `tesseract mcp --help` prints the parser's own flags.
-func newMCPFlagSet() (*flag.FlagSet, *string) {
+func newMCPFlagSet() (*flag.FlagSet, *string, *string) {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	return fs, fs.String("token", "", "capability token for mutating MCP tools")
+	token := fs.String("token", "", "capability token (legacy; prefer TESSERACT_MCP_TOKEN or --token-file)")
+	tokenFile := fs.String("token-file", "", "file containing the capability token; overrides TESSERACT_MCP_TOKEN and --token")
+	return fs, token, tokenFile
 }
 
 func parseMCPArgs(args []string) (string, error) {
-	fs, token := newMCPFlagSet()
+	fs, token, tokenFile := newMCPFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return "", err
+	}
+	if *tokenFile != "" {
+		data, err := os.ReadFile(*tokenFile)
+		if err != nil {
+			return "", fmt.Errorf("read MCP token file: %w", err)
+		}
+		value := strings.TrimSpace(string(data))
+		if value == "" {
+			return "", fmt.Errorf("MCP token file is empty")
+		}
+		return value, nil
+	}
+	if value := strings.TrimSpace(os.Getenv("TESSERACT_MCP_TOKEN")); value != "" {
+		return value, nil
 	}
 	return strings.TrimSpace(*token), nil
 }
