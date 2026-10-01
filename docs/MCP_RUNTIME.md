@@ -19,13 +19,17 @@ when this tool is called.
 
 ## Owner and selector evidence
 
-A mux with the PR47 runtime contract passes `hollis-labs.dev/mcp-runtime` in
+A Tether proxy with the runtime contract passes `hollis-labs.dev/mcp-runtime` in
 upstream initialize capabilities. Tesseract accepts the version-1 observation
-contract only from `agent-mux-proxy`, with the current child's PID, its captured
+contract only from `tether-proxy`, with the current child's PID, its captured
 parent PID, and a well-formed owner instance ID. This correlates local process
 metadata; it does not authenticate the sender or verify the owner's executable.
 Unknown fields, arguments, environment values and asserted exit permission are
 not retained or returned. Display version is metadata, never image proof.
+
+Deploy this Tesseract binary together with renamed Tether at cutover. Before
+that cutover, running agents identify as `agent-mux-proxy`; this binary rejects
+that old name and reports `unknown` without inspecting a replacement file.
 
 Only an absolute launch selector with `relaunch_lookup: "selector"` is inspected.
 Symlinks are resolved afresh on each call. A proxy's pre-spawn `resolved_path`

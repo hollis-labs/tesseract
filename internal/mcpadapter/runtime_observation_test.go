@@ -21,7 +21,7 @@ func observationIdentity(data []byte) staleness.Identity {
 
 func observationRequest(path string) *mcpsdk.InitializeRequest {
 	return &mcpsdk.InitializeRequest{Params: &mcpsdk.InitializeParams{
-		ClientInfo: &mcpsdk.Implementation{Name: "agent-mux-proxy", Version: "review"},
+		ClientInfo: &mcpsdk.Implementation{Name: "tether-proxy", Version: "review"},
 		Capabilities: &mcpsdk.ClientCapabilities{Experimental: map[string]any{
 			runtimeCapability: map[string]any{
 				"schema_version": 1, "mode": "observation-only",
@@ -38,7 +38,7 @@ func TestRuntimeObservationRequiresCurrentParentAndLeaf(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original"), 0700); err != nil { // #nosec G306 -- Executable fixture inside t.TempDir; the observer requires an execute bit.
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"valid", "old-owner", "wrong-leaf", "direct-host", "wrong-schema", "path-selector", "relative-selector", "redacted", "missing"} {
+	for _, mode := range []string{"valid", "old-owner", "wrong-leaf", "direct-host", "old-proxy", "wrong-schema", "path-selector", "relative-selector", "redacted", "missing"} {
 		t.Run(mode, func(t *testing.T) {
 			req := observationRequest(path)
 			raw := req.Params.Capabilities.Experimental[runtimeCapability].(map[string]any)
@@ -49,6 +49,8 @@ func TestRuntimeObservationRequiresCurrentParentAndLeaf(t *testing.T) {
 				raw["launch"].(map[string]any)["pid"] = 201
 			case "direct-host":
 				req.Params.ClientInfo.Name = "unknown-host"
+			case "old-proxy":
+				req.Params.ClientInfo.Name = "agent-mux-proxy"
 			case "wrong-schema":
 				raw["schema_version"] = 2
 			case "path-selector":

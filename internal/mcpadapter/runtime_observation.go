@@ -110,7 +110,7 @@ func (o *runtimeObserver) accept(req *mcpsdk.InitializeRequest) {
 		return
 	}
 	var launch runtimeContext
-	if json.Unmarshal(data, &launch) != nil || req.Params.ClientInfo.Name != "agent-mux-proxy" ||
+	if json.Unmarshal(data, &launch) != nil || req.Params.ClientInfo.Name != "tether-proxy" ||
 		launch.SchemaVersion != 1 || launch.Mode != "observation-only" || launch.Owner.SchemaVersion != 1 ||
 		launch.Owner.PID != o.parent || launch.Launch.PID != o.pid ||
 		!processIDPattern.MatchString(launch.Owner.InstanceID) {

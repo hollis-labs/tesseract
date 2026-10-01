@@ -117,6 +117,11 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- MCP runtime observation accepts only the renamed Tether client identity
+  `tether-proxy`. Deploy this binary together with renamed Tether at cutover:
+  existing `agent-mux-proxy` clients receive `unknown` observations. There is
+  no compatibility alias. (CW-20261001-0649; CW-20260926-0007.)
+
 - **`knowledge_write` takes `status` and `derived_from`.** Both were fixed at
   `canonical` and `reference` on every knowledge write, and both are recall
   ranking multipliers, so knowledge could neither say that something was
