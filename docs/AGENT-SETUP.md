@@ -62,6 +62,51 @@ control.
 Restart the MCP host after changing its configuration so it refreshes the tool
 registry.
 
+## Scope a session to a namespace
+
+`tesseract mcp` reads its token once, from `--token`, so scope belongs to the
+server process rather than to the agent. To confine one kind of session to a
+project, mint a token for it and launch that session's MCP server with that
+token. Sessions launched with a different token, or a different host
+configuration, are unaffected.
+
+```bash
+tesseract context token create \
+  --name billing-session \
+  --client-id app:billing-session \
+  --scopes memory:read,memory:write \
+  --namespaces 'project/billing/*' \
+  --ttl 72h
+```
+
+Put the new token in that session's host configuration, in the same shape as
+the example above.
+
+How the namespace globs behave:
+
+- **Omitting `--namespaces` grants every namespace** (`*`), not none. Omitting
+  `--scopes` grants the default scope set, which does not include `memory:read`
+  or `memory:write`.
+- A trailing `/*` is a prefix match: `project/billing/*` covers everything
+  beneath that project, in every domain. Other patterns are shell-style globs
+  in which `*` stops at `/`.
+- **The globs are a ceiling, not a default.** A call that names a namespace
+  outside them returns `namespace_not_permitted`. A recall selector wider than
+  the globs, such as `project/*` against a `project/billing/*` token, is refused
+  rather than narrowed. Nothing fills in a namespace a call left out;
+  `tesseract_recall` still requires `namespaces`.
+- **A token has one scope set and one glob list.** Every scope applies to every
+  glob, so a token cannot be read-only on one glob and read-write on another.
+- Revoking a token (`tesseract context token revoke <token-id>`) or letting it
+  expire takes effect on the next scoped call; the running server does not need
+  a restart. `tesseract context token list` shows each token's scopes and
+  globs.
+
+This limits what a trusted agent can reach; it does not isolate reads. Tools
+whose `Scope` column in [MCP tools](MCP_TOOLS.md) is `—` need no token and
+ignore these globs, and `context_view` with `full_evaluation: true` does not
+filter by them. See [Known limitations](OPERATIONS.md#known-limitations).
+
 ## Discover before calling
 
 Call `tesseract_skills` first, then load `start-here` and the domain-specific
@@ -163,7 +208,9 @@ promotion stage.
 
 ### `namespace_not_permitted`
 
-The target does not match the token's namespace globs.
+The target does not match the token's namespace globs. A recall selector that
+is wider than the globs is refused rather than narrowed to them; see
+[Scope a session to a namespace](#scope-a-session-to-a-namespace).
 
 ### `embedding_unavailable`
 

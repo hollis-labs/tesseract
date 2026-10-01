@@ -10,6 +10,12 @@ ITERATION ?=
 RUN_DATE ?= $(shell date +%F)
 PROFILE ?= orchestrator
 RUNLOG_OUT ?=
+# This module builds from its own go.mod. A go.work in an ancestor directory
+# (a developer's multi-module workspace) that does not list it makes every go
+# command run from here fail with "not one of the workspace modules", so
+# workspace mode is pinned off for every target, not only the hermetic ones:
+# `build` and `install` fail the same way.
+export GOWORK := off
 # Tests and contract helpers must not inherit developer-only path or benchmark
 # overrides. In particular, TESS_MEASURE_DB opts otherwise-skipped tests into
 # opening and mutating the named store. Provider keys are cleared as well so a

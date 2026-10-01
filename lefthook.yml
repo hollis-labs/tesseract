@@ -43,10 +43,16 @@ pre-commit:
     go-lint:
       # Only lints new/modified code so existing warnings don't block commits.
       glob: "*.go"
+      # These call go directly rather than through make, so they pin workspace
+      # mode off themselves. See the GOWORK note at the top of the Makefile.
+      env:
+        GOWORK: "off"
       run: golangci-lint run --new
 
     go-vet:
       glob: "*.go"
+      env:
+        GOWORK: "off"
       run: go vet ./...
 
     # ── Frontend parallel group ───────────────────────────────────────
