@@ -20,7 +20,7 @@ resources:
         # Loopback-only: the hardened build (CW-20260904-0076) refuses to bind
         # all interfaces without auth. Every consumer reaches it via 127.0.0.1.
         - 127.0.0.1:8089
-      dir: /Users/chrispian/dev/hollis-labs/apps/tesseract
+      dir: ~/dev/hollis-labs/apps/tesseract
       # No root env override is set, and there is no longer one to set:
       # CONTEXTD_ROOT's deprecation shim was removed in CW-20260825-0013,
       # so the variable is inert. tesseract resolves every path via
@@ -51,7 +51,7 @@ resources:
         - npm
         - run
         - dev
-      dir: /Users/chrispian/dev/hollis-labs/apps/tesseract/frontend
+      dir: ~/dev/hollis-labs/apps/tesseract/frontend
       mode: dev_session
       port: 5173
       run_from: workspace
@@ -62,3 +62,16 @@ resources:
       - vite
       - v2
 registry_urn: msg://agent/agent-mux/prj_4sj839lwz0
+  - name: Tesseract DB Backup
+    type: process
+    project: tesseract
+    connector: local
+    config:
+      command:
+        - sqlite-backup
+        - --db=./main.db
+        - --dest=~/dev/backups/tesseract
+        - --interval=1h
+        - --keep-hourly=48
+        - --keep-daily=14
+      dir: .
