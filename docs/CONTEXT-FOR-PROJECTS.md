@@ -26,7 +26,7 @@ wants Tesseract-backed working context. It is optional: the MCP tool schemas and
      "mcpServers": {
        "tesseract": {
          "command": "tesseract",
-         "args": ["mcp", "--token", "<capability-token>"]
+         "args": ["mcp", "--token-file", "/path/to/protected/token"]
        }
      }
    }

@@ -188,8 +188,14 @@ Tesseract can run as an MCP stdio server; a separate HTTP daemon is not
 required:
 
 ```bash
-./tesseract mcp --token '<capability-token>'
+./tesseract mcp --token-file /path/to/protected/token
 ```
+
+The token is read once at startup: `--token-file` takes precedence over a nonblank
+`TESSERACT_MCP_TOKEN`, which takes precedence over the legacy `--token` flag.
+An unreadable or empty token file fails startup. Keep token files outside source
+control with mode `0600`. Environment input removes the token from argv, but
+same-user processes can still read the process environment on Linux.
 
 Use [`examples/mcp.json`](examples/mcp.json) as a client configuration starting
 point. The token controls mutations, memory/knowledge read scopes, and some

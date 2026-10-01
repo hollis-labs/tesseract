@@ -34,7 +34,7 @@ Then configure an MCP host to launch the binary from `PATH`:
     "tesseract": {
       "type": "stdio",
       "command": "tesseract",
-      "args": ["mcp", "--token", "<capability-token>"]
+      "args": ["mcp", "--token-file", "/path/to/protected/token"]
     }
   }
 }
@@ -44,7 +44,13 @@ Run `tesseract path` in the same environment to confirm the data root. The
 token is a store-backed managed token; HTTP's `--static-token` value is not a
 stored capability token and cannot be substituted here.
 
-`--token` may be omitted when the client will use only tools whose catalog
+`--token-file` takes precedence over nonblank `TESSERACT_MCP_TOKEN`, then
+legacy `--token`. File contents and other token inputs are trimmed. An unreadable
+or empty file fails startup without falling back. Protect token files with mode
+`0600`. Environment input keeps the token off argv, though same-user processes
+can still read it from the process environment on Linux.
+
+All token inputs may be omitted when the client will use only tools whose catalog
 scope is `—`. A scoped tool called without a token returns `auth_required`.
 
 ## Discovery
@@ -59,7 +65,7 @@ Tesseract is `context_write`; the host adds the prefix.
 
 ## Authorization
 
-- The token supplied to `tesseract mcp --token` is validated against the local
+- The token supplied to `tesseract mcp` is validated against the local
   `auth_tokens` store whenever a scoped tool runs.
 - Each scoped tool checks the exact scope shown in
   [MCP_TOOLS.md](../MCP_TOOLS.md). Promotion checks

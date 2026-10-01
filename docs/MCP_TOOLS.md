@@ -18,7 +18,7 @@ unless the row is marked **MCP-only**.
       "tesseract": {
         "type": "stdio",
         "command": "tesseract",
-        "args": ["mcp", "--token", "<hex-capability-token>"]
+        "args": ["mcp", "--token-file", "/path/to/protected/token"]
       }
     }
   }
@@ -28,8 +28,8 @@ unless the row is marked **MCP-only**.
   CLI and HTTP server. Run `tesseract path` in the MCP host's environment to
   print the exact data, config, cache, and state paths before configuring it;
   that command creates nothing.
-- **Capability token:** a store-backed token supplied with `mcp --token` is
-  required only for tools whose catalog row names a scope. Scope and namespace
+- **Capability token:** a store-backed token supplied with `mcp --token-file`,
+  `TESSERACT_MCP_TOKEN`, or legacy `mcp --token` is required only for tools whose catalog row names a scope. Scope and namespace
   claims are checked per tool. HTTP's `--static-token` value is not an MCP
   capability token.
 - **Shared semantics:** tools and HTTP peers use the same store/domain services; deliberate argument or envelope differences are called out below.
