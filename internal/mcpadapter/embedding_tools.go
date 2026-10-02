@@ -19,7 +19,7 @@ func (a *Adapter) registerEmbeddingTools(s *toolRegistrar) {
 			strProp("key", "Record key", true),
 			strProp("model", "Embedding model (default: provider's configured model)", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{OpenWorldHint: true},
 		a.handleEmbed,
 	))
 
@@ -33,7 +33,7 @@ func (a *Adapter) registerEmbeddingTools(s *toolRegistrar) {
 			strProp("tags", "Comma-separated tag filter (any match)", false),
 			numProp("threshold", "Minimum similarity score (default 0.7)", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, OpenWorldHint: true},
 		a.handleSearch,
 	))
 }

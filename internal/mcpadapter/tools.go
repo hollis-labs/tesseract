@@ -34,7 +34,7 @@ func (a *Adapter) registerTools(s *toolRegistrar) {
 			numProp("limit", "Max records to return. Under the default arm: default 10, max 25, returns summaries — use `tesseract_get` with domain=\"context\" for the full record. "+
 				"Under `full_evaluation: true`: overrides selector.limit (0 = use selector's own limit or the store default).", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleContextView,
 	))
 
@@ -104,7 +104,7 @@ func (a *Adapter) registerTools(s *toolRegistrar) {
 				"Not to be confused with `budget_tokens` on the recall/lookup tools, which is a response serialization ceiling rather than an assembly budget.", false),
 			numProp("payload_max_bytes", payloadMaxBytesArgDescription, false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleContextPlan,
 	))
 
@@ -147,7 +147,7 @@ func (a *Adapter) registerTools(s *toolRegistrar) {
 				"Bound to the sort and dir it was issued under — resuming it under a different ordering is a validation_error, not a page with holes in it. "+
 				"Page until next_cursor is absent to see the complete set.", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleRegistryList,
 	))
 

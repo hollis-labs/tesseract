@@ -428,6 +428,7 @@ func (a *Adapter) version() string {
 // This is the one place that holds the raw server, and it hands the helpers a
 // toolRegistrar instead — see that type for why.
 func (a *Adapter) RegisterAllTools(srv *gomcpserver.Server) {
+	srv.SDKServer().AddReceivingMiddleware(toolFailureMiddleware)
 	s := &toolRegistrar{adapter: a, server: srv}
 	a.registerRuntimeTool(s)
 	a.registerTools(s)
@@ -562,14 +563,16 @@ func (a *Adapter) checkScope(ctx context.Context, scope string) (any, contextsto
 // toolError returns a value carrying a JSON error body agents can parse.
 // go-mcp's ToolHandler JSON-marshals whatever a handler returns into
 // StructuredContent and a mirrored text block (see server.ToolHandler), so
-// returning the map directly reproduces the wire shape mark3labs'
+// toolFailureMiddleware marks this typed body as an MCP tool failure while
+// preserving StructuredContent and mirrored text. Returning it reproduces the
+// wire shape mark3labs'
 // mcp.NewToolResultText(json.Marshal(...)) used to build by hand.
 //
 // code is an errorCode rather than a string so that a call site cannot name a
 // code that does not exist. The wire shape is unchanged — the constant's value
 // is the same literal that used to be written here.
 func toolError(code errorCode, message string) any {
-	return map[string]string{"code": string(code), "message": message}
+	return toolFailure{"code": string(code), "message": message}
 }
 
 // toolErrorWithDetails is toolError plus a structured `details` object, for a
@@ -588,9 +591,9 @@ func toolError(code errorCode, message string) any {
 // this function's call sites the same way.
 func toolErrorWithDetails(code errorCode, message string, details map[string]any) any {
 	if len(details) == 0 {
-		return map[string]string{"code": string(code), "message": message}
+		return toolFailure{"code": string(code), "message": message}
 	}
-	return map[string]any{"code": string(code), "message": message, "details": details}
+	return toolFailure{"code": string(code), "message": message, "details": details}
 }
 
 // toolJSON returns v for go-mcp to marshal into StructuredContent and a

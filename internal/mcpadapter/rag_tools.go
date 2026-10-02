@@ -21,7 +21,7 @@ func (a *Adapter) registerRAGTools(s *toolRegistrar) {
 			numProp("max_tokens", "Approximate max tokens in combined results (default: 4000)", false),
 			boolProp("include_metadata", "Include record metadata (namespace, key, type) in results (default: true)", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, OpenWorldHint: true},
 		a.handleRAGQuery,
 	))
 }

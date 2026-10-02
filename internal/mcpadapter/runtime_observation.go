@@ -166,7 +166,7 @@ func (a *Adapter) registerRuntimeTool(s *toolRegistrar) {
 	a.addTool(s, gomcpTool("tesseract_runtime_get",
 		"Observe this MCP process's verified running image and the replacement selected by its owning proxy. Returns same, different replacement available, or unknown with evidence. Does not exit, restart, reserve a retry, or change background workers. Missing owner context, unverified wrappers, PATH/relative selectors and unavailable image proof stay unknown.",
 		inputSchema(),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		func(ctx context.Context, _ map[string]any) (any, error) {
 			if a.runtime == nil {
 				return toolJSON(runtimeReport{SchemaVersion: 1, Mode: "observation-only", PID: os.Getpid(),

@@ -54,7 +54,7 @@ func (a *Adapter) registerTypedTools(s *toolRegistrar) {
 			numProp("max_items", "Max items to return", false),
 			boolProp("include_payload", "Include payload in results (default: true)", false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleTypedView,
 	))
 
@@ -71,7 +71,7 @@ func (a *Adapter) registerTypedTools(s *toolRegistrar) {
 			boolProp("include_pins", "shape=packet only: prepend user/pins/* records (default true)", false),
 			numProp("payload_max_bytes", "shape=packet only. "+payloadMaxBytesArgDescription, false),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleContextPackShape,
 	))
 }
@@ -358,10 +358,14 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req map[string]any) (any
 	// Validate required fields for the type.
 	if recordType != "" {
 		var payloadMap map[string]any
-		if err := json.Unmarshal(payload, &payloadMap); err == nil {
-			if err := reg.ValidateContextRequiredFields(recordType, payloadMap); err != nil {
-				return toolError(codeValidationError, err.Error()), nil
-			}
+		// Non-object JSON cannot supply required top-level fields. Still run
+		// the validator so the refusal names the fields the caller must add.
+		// Types with no required fields retain their existing JSON support.
+		if json.Unmarshal(payload, &payloadMap) != nil {
+			payloadMap = nil
+		}
+		if err := reg.ValidateContextRequiredFields(recordType, payloadMap); err != nil {
+			return toolError(codeValidationError, err.Error()), nil
 		}
 	}
 

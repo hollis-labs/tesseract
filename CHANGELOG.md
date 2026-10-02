@@ -200,6 +200,13 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Fixed
 
+- MCP tool refusals now set `isError: true` while retaining their structured
+  `code`, `message`, and optional `details`. Tool discovery supplies titles and
+  accurate read-only hints for context retrieval. Typed writes cannot bypass
+  required-field validation with scalar or array JSON; refusals name the fields
+  to add. Types without required fields retain arbitrary JSON support.
+  (CW-20260912-0049.)
+
 - **`tesseract_touch` reports what it moved, not what it asked to move.**
   `touched` counted the reinforcement requests it issued, which was exact for
   as long as every domain participated in activation. Event is the first that
