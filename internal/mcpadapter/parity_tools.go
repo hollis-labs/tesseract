@@ -19,7 +19,7 @@ func (a *Adapter) registerParityTools(s *toolRegistrar) {
 		inputSchema(
 			strProp("selector", "JSON object matching contextstore.Selector (namespaces, keys, revision_scope, tags_any, types, statuses, limit)", true),
 		),
-		toolAnnotations{},
+		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleContextEstimate,
 	))
 }

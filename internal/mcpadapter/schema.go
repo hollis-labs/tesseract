@@ -1,6 +1,10 @@
 package mcpadapter
 
-import gomcpserver "github.com/hollis-labs/go-mcp/server"
+import (
+	"strings"
+
+	gomcpserver "github.com/hollis-labs/go-mcp/server"
+)
 
 // propDef is one property of a tool's input schema, plus whether it belongs
 // in the schema's `required` list. go-mcp's server.Tool.InputSchema is `any`
@@ -68,7 +72,14 @@ type toolAnnotations struct {
 // gomcpTool builds a go-mcp server.Tool from the pieces every registration in
 // this package supplies, replacing mark3labs' mcp.NewTool(...) call.
 func gomcpTool(name, description string, schema map[string]any, ann toolAnnotations, handler gomcpserver.ToolHandler) gomcpserver.Tool {
+	words := strings.Split(name, "_")
+	for i, word := range words {
+		if word != "" {
+			words[i] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
 	return gomcpserver.Tool{
+		Title:           strings.Join(words, " "),
 		Name:            name,
 		Description:     description,
 		InputSchema:     schema,
