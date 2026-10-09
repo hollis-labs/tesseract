@@ -337,13 +337,19 @@ func TestMVPCapabilityTokenCreateListRevoke(t *testing.T) {
 	ctx := context.Background()
 
 	// Bootstrap: need an admin token to call the create endpoint.
-	adminToken, _, err := srv.Store.IssueAuthToken(ctx, "admin", time.Hour)
+	adminToken, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{Label: "admin", Scopes: []string{"admin"}, TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("issue admin: %v", err)
 	}
 
+	// Model the confidential local transport required for one-time issuance.
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.RemoteAddr = "127.0.0.1:12345"
+		srv.ServeHTTP(w, r)
+	})
+
 	// Create a scoped token via API.
-	createRes := performWithHeaders(t, srv, http.MethodPost, "/v1/auth/tokens/create", map[string]any{
+	createRes := performWithHeaders(t, local, http.MethodPost, "/v1/auth/tokens/create", map[string]any{
 		"name":            "integration-agent",
 		"client_id":       "app:integration",
 		"scopes":          []string{"write", "packet"},
@@ -388,7 +394,10 @@ func TestMVPCapabilityTokenCreateListRevoke(t *testing.T) {
 
 	// Revoke by ID.
 	revokeRes := performWithHeaders(t, srv, http.MethodPost, "/v1/auth/tokens/revoke", map[string]any{
-		"id": tokenID,
+		"principal_id":        tokenID,
+		"credential_id":       tokenID,
+		"expected_generation": 1,
+		"idempotency_key":     "integration-revoke",
 	}, map[string]string{"Authorization": "Bearer " + adminToken})
 	if revokeRes.Code != http.StatusOK {
 		t.Fatalf("token revoke: %d %s", revokeRes.Code, revokeRes.Body)
