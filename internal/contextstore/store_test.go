@@ -293,22 +293,23 @@ func TestAuthTokenLifecycle(t *testing.T) {
 	}
 
 	rotated, _, err := s.RotateAuthToken(context.Background(), token, "rotated", time.Hour)
-	if err != nil {
-		t.Fatalf("rotate: %v", err)
+	if !errors.Is(err, ErrCredentialUnsupported) || rotated != "" {
+		t.Fatal("legacy rotation must refuse before effects")
+	}
+	if err := s.ValidateAuthToken(context.Background(), token); err != nil {
+		t.Fatal("legacy refusal invalidated original")
+	}
+	if err := s.RevokeAuthToken(context.Background(), token); err != nil {
+		t.Fatal(err)
 	}
 	if err := s.ValidateAuthToken(context.Background(), token); !errors.Is(err, ErrAuthTokenRevoked) {
-		t.Fatalf("expected revoked old token, got %v", err)
+		t.Fatal("local owner revoke did not invalidate token")
 	}
-	if err := s.ValidateAuthToken(context.Background(), rotated); err != nil {
-		t.Fatalf("validate rotated token: %v", err)
+	meta, err = s.GetAuthToken(context.Background(), meta.TokenID)
+	if err != nil || meta.Generation != 2 {
+		t.Fatal("local owner revoke did not atomically advance family")
 	}
 
-	if err := s.RevokeAuthToken(context.Background(), rotated); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-	if err := s.ValidateAuthToken(context.Background(), rotated); !errors.Is(err, ErrAuthTokenRevoked) {
-		t.Fatalf("expected revoked rotated token, got %v", err)
-	}
 }
 
 func TestReadinessHealthyAndDegraded(t *testing.T) {
