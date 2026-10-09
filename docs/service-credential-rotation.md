@@ -5,8 +5,8 @@ upstream. Rotation preserves the existing service identity and grants.
 It does not rotate the Tether operator token or grant the service new access.
 
 Source implementation and isolated fixtures do not perform an operator
-cutover. The live procedure is separately coordinated in CW-20261009-0042
-after both Tesseract and Hadron issuers are installed.
+cutover. The live cutover is coordinated separately after both Tesseract and Hadron
+issuers are installed.
 
 ## Preserve the credential family
 
