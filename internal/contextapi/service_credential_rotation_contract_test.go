@@ -353,3 +353,98 @@ func TestServiceCredentialAPISchemaAndFamilyRefusalsPreserveState(t *testing.T) 
 		})
 	}
 }
+
+func TestServiceCredentialAPIAlreadyRevokedRefusalRetainsSafeMetadata(t *testing.T) {
+	srv := newTestServer(t)
+	srv.ManagedAuth = true
+	ctx := context.Background()
+	adminRaw, _, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{Label: "administrator", Scopes: []string{"admin"}})
+	if err != nil {
+		t.Fatal("fixture administrator issuance failed")
+	}
+	old, root, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{Label: "service", ClientID: "tether-proxy", Scopes: []string{"write"}})
+	if err != nil {
+		t.Fatal("fixture service issuance failed")
+	}
+	limited, foreign, err := srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{Label: "limited", Scopes: []string{"write"}})
+	if err != nil {
+		t.Fatal("fixture limited caller issuance failed")
+	}
+	issued := rotationAPIDecode(t, rotationAPIRequest(t, srv, adminRaw, "/v1/auth/tokens/rotate", map[string]any{"principal_id": root.TokenID, "credential_id": root.TokenID, "expected_generation": 1, "idempotency_key": "issued-before-revoke"}))
+	revoked := rotationAPIDecode(t, rotationAPIRequest(t, srv, adminRaw, "/v1/auth/tokens/revoke", map[string]any{"principal_id": root.TokenID, "credential_id": root.TokenID, "expected_generation": 2, "idempotency_key": "first-revoke"}))
+	if revoked.Generation != 3 {
+		t.Fatal("fixture revoke did not reach generation three")
+	}
+	admin, err := srv.Store.AuthorizeCredentialAdmin(ctx, adminRaw)
+	if err != nil {
+		t.Fatal("fixture administrator authorization failed")
+	}
+	before, err := srv.Store.ListServiceCredentials(ctx, admin, root.TokenID)
+	if err != nil {
+		t.Fatal("fixture family read failed")
+	}
+	persistence := func() [2]int64 {
+		t.Helper()
+		var counts [2]int64
+		if srv.Store.DB().QueryRowContext(ctx, "SELECT count(*) FROM auth_credential_operations").Scan(&counts[0]) != nil || srv.Store.DB().QueryRowContext(ctx, "SELECT count(*) FROM audit_events").Scan(&counts[1]) != nil {
+			t.Fatal("fixture receipt/audit observation failed")
+		}
+		return counts
+	}
+	priorPersistence := persistence()
+	for _, mode := range []string{"authorized", "limited", "unknown", "foreign-family"} {
+		t.Run(mode, func(t *testing.T) {
+			actor, principal := adminRaw, root.TokenID
+			switch mode {
+			case "limited":
+				actor = limited
+			case "unknown":
+				actor = "unrecognized-fixture-caller"
+			case "foreign-family":
+				principal = foreign.TokenID
+			}
+			res := rotationAPIRequest(t, srv, actor, "/v1/auth/tokens/revoke", map[string]any{"principal_id": principal, "credential_id": root.TokenID, "expected_generation": 3, "idempotency_key": "new-refused-revoke-" + mode})
+			var body struct {
+				Code    string `json:"code"`
+				Details struct {
+					Current *struct {
+						PrincipalID         string `json:"principal_id"`
+						CredentialID        string `json:"credential_id"`
+						Generation          int64  `json:"generation"`
+						OperationGeneration int64  `json:"operation_generation"`
+						Status              string `json:"status"`
+						RevokedAt           string `json:"revoked_at"`
+						SecretAvailable     bool   `json:"secret_available"`
+						Replayed            bool   `json:"replayed"`
+					} `json:"current_credential"`
+				} `json:"details"`
+			}
+			if json.Unmarshal(res.Body.Bytes(), &body) != nil {
+				t.Fatal("refusal response decoding failed")
+			}
+			if mode == "authorized" {
+				m := body.Details.Current
+				if res.Code != http.StatusBadRequest || body.Code != "credential_revoked" || m == nil || m.PrincipalID != root.TokenID || m.CredentialID != root.TokenID || m.Generation != 3 || m.OperationGeneration != 0 || m.Status != "revoked" || m.RevokedAt == "" || m.SecretAvailable || m.Replayed {
+					t.Error("authorized refusal lost current revoked metadata or claimed a new operation")
+				}
+			} else if res.Code < 400 || res.Code >= 500 || body.Details.Current != nil || strings.Contains(res.Body.String(), root.TokenID) || strings.Contains(res.Body.String(), foreign.TokenID) {
+				t.Error("untrusted or foreign-family refusal leaked credential metadata")
+			}
+			for _, secret := range []string{adminRaw, old, limited, issued.Token} {
+				if strings.Contains(res.Body.String(), secret) {
+					t.Error("refusal disclosed a credential")
+				}
+			}
+			after, err := srv.Store.ListServiceCredentials(ctx, admin, root.TokenID)
+			if err != nil {
+				t.Fatal("result family read failed")
+			}
+			if after.Generation != before.Generation || !reflect.DeepEqual(rotationCredentialState(before.Credentials), rotationCredentialState(after.Credentials)) || persistence() != priorPersistence {
+				t.Error("refused operation changed family state or wrote a receipt/audit")
+			}
+		})
+	}
+	if err := srv.Store.ValidateAuthToken(ctx, issued.Token); err != nil {
+		t.Error("refusal invalidated the working replacement")
+	}
+}
