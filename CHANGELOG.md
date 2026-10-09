@@ -26,6 +26,8 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Changed
 
+- Require Go 1.26.9 and update `golang.org/x/net` to v0.60.0 to include
+  standard-library and HTTP/2 security fixes reported by `govulncheck`.
 - HTTP token create/list/revoke require a valid managed administrator, including
   the legacy routes. Issuance responses require local or TLS transport. Revoke
   now takes an exact family/credential ID, generation and idempotency key.
