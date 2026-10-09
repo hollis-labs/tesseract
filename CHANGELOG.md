@@ -8,6 +8,8 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-10-09
+
 ### Added
 
 - Managed administrator service credential issuance through
