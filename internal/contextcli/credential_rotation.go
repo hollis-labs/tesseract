@@ -14,6 +14,42 @@ import (
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 )
 
+// Reject repeated spellings before FlagSet can silently keep the last value.
+func credentialArgumentsUnique(fs *flag.FlagSet, args []string) bool {
+	seen := map[string]bool{}
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			return index == len(args)-1
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		name := strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-")
+		name, _, hasValue := strings.Cut(name, "=")
+		if name == "help" || name == "h" {
+			if seen["help"] {
+				return false
+			}
+			seen["help"] = true
+			continue
+		}
+		setting := fs.Lookup(name)
+		if setting == nil || seen[name] {
+			return false
+		}
+		seen[name] = true
+		boolean, ok := setting.Value.(interface{ IsBoolFlag() bool })
+		if !hasValue && (!ok || !boolean.IsBoolFlag()) {
+			index++
+			if index >= len(args) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func credentialLegacyArgument(args []string) bool {
 	for _, arg := range args {
 		if arg == "--token" || arg == "-token" || strings.HasPrefix(arg, "--token=") || strings.HasPrefix(arg, "-token=") {
@@ -107,6 +143,9 @@ func (c *CLI) runCredentialIssue(ctx context.Context, args []string) int {
 	adminPath := fs.String("admin-token-file", "", "owner-only managed administrator credential file")
 	secretPath := fs.String("secret-file", "", "exclusive new 0600 output file")
 	secretStdout := fs.Bool("secret-stdout", false, "write secret only to a pipe; metadata on stderr")
+	if !credentialArgumentsUnique(fs, args) {
+		return c.fail("invalid or duplicate credential command arguments")
+	}
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			fs.SetOutput(c.Stdout)
@@ -194,6 +233,9 @@ func (c *CLI) runCredentialRevoke(ctx context.Context, args []string) int {
 	generation := fs.Int64("expected-generation", 0, "current generation")
 	key := fs.String("idempotency-key", "", "unique operation key")
 	adminPath := fs.String("admin-token-file", "", "owner-only managed administrator file")
+	if !credentialArgumentsUnique(fs, args) {
+		return c.fail("invalid or duplicate credential command arguments")
+	}
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			fs.SetOutput(c.Stdout)
@@ -224,7 +266,7 @@ func (c *CLI) runCredentialList(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	principal := fs.String("principal-id", "", "family ID")
 	adminPath := fs.String("admin-token-file", "", "owner-only managed administrator file")
-	if fs.Parse(args) != nil || len(fs.Args()) != 0 {
+	if !credentialArgumentsUnique(fs, args) || fs.Parse(args) != nil || len(fs.Args()) != 0 {
 		return c.fail("invalid credential command arguments")
 	}
 	admin, err := c.credentialAdmin(ctx, *adminPath)
