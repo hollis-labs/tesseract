@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -260,15 +262,57 @@ func TestRunServeGracefulShutdownOnContextCancel(t *testing.T) {
 	}
 	defer stderr.Close()
 
+	// Choose a private test address so readiness can be observed through the
+	// real listener rather than guessing how long namespace seeding takes.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve test address: %v", err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release test address: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
+	stopped := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-stopped:
+		case <-time.After(3 * time.Second):
+			t.Error("test server did not stop during cleanup")
+		}
+	})
 	go func() {
+		defer close(stopped)
 		done <- runServe(ctx, s, stderr, serveConfig{
-			Addr:            "127.0.0.1:0",
+			Addr:            addr,
 			ShutdownTimeout: 2 * time.Second,
 		}, layout, config.Defaults())
 	}()
-	time.Sleep(50 * time.Millisecond)
+	client := &http.Client{Timeout: time.Second}
+	defer client.CloseIdleConnections()
+	startupDeadline := time.NewTimer(10 * time.Second)
+	defer startupDeadline.Stop()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		response, err := client.Get("http://" + addr + "/v1/health/readiness")
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				break
+			}
+		}
+		select {
+		case code := <-done:
+			t.Fatalf("server exited before readiness with code %d", code)
+		case <-startupDeadline.C:
+			t.Fatal("timed out waiting for test server readiness")
+		case <-poll.C:
+		}
+	}
 	cancel()
 
 	select {
