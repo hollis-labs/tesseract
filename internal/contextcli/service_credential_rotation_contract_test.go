@@ -171,7 +171,7 @@ func TestServiceCredentialCLIBrokenPipeRetainsIssuedObligation(t *testing.T) {
 }
 
 func TestServiceCredentialCLIUnsafeDeliveryRefusesBeforeIssuance(t *testing.T) {
-	for _, kind := range []string{"existing", "symlink", "buffered-stdout", "fractional-overlap", "negative-overlap", "zero-ttl", "excess-ttl", "duplicate-overlap"} {
+	for _, kind := range []string{"existing", "symlink", "buffered-stdout", "fractional-overlap", "negative-overlap", "zero-ttl", "excess-ttl", "duplicate-overlap", "duplicate-secret-file", "conflicting-sinks"} {
 		t.Run(kind, func(t *testing.T) {
 			cli, out, errOut, admin, old, principal := rotationCLIFixture(t)
 			path := filepath.Join(t.TempDir(), "secret")
@@ -189,15 +189,19 @@ func TestServiceCredentialCLIUnsafeDeliveryRefusesBeforeIssuance(t *testing.T) {
 			case "buffered-stdout":
 				args = append(args, "--secret-stdout")
 			case "fractional-overlap":
-				args = append(args, "--overlap", "1ms")
+				args[len(args)-3] = "1ms"
 			case "negative-overlap":
-				args = append(args, "--overlap", "-1s")
+				args[len(args)-3] = "-1s"
 			case "zero-ttl":
-				args = append(args, "--ttl", "0s")
+				args[len(args)-1] = "0s"
 			case "excess-ttl":
-				args = append(args, "--ttl", "8761h")
+				args[len(args)-1] = "8761h"
 			case "duplicate-overlap":
 				args = append(args, "--overlap", "15m")
+			case "duplicate-secret-file":
+				args = append(args, "-secret-file="+path)
+			case "conflicting-sinks":
+				args = append(args, "--secret-stdout")
 			}
 			if kind != "buffered-stdout" {
 				args = append(args, "--secret-file", path)
@@ -238,4 +242,55 @@ func rotationCLICredentialState(tokens []contextstore.AuthToken) []contextstore.
 		out[i] = contextstore.AuthToken{TokenID: token.TokenID, Label: token.Label, ClientID: token.ClientID, Scopes: token.Scopes, NamespaceGlobs: token.NamespaceGlobs, CreatedAt: token.CreatedAt, ExpiresAt: token.ExpiresAt, RevokedAt: token.RevokedAt}
 	}
 	return out
+}
+
+func TestServiceCredentialCLIDuplicateArgumentsPreserveGenerationAndDelivery(t *testing.T) {
+	for _, command := range []string{"rotate", "revoke"} {
+		for _, spelling := range []string{"--expected-generation", "-expected-generation=1", "--expected-generation=1"} {
+			t.Run(command+"/"+spelling, func(t *testing.T) {
+				cli, out, errOut, adminPath, old, principal := rotationCLIFixture(t)
+				ctx := context.Background()
+				adminRaw, err := os.ReadFile(adminPath)
+				if err != nil {
+					t.Fatal("fixture admin read failed")
+				}
+				admin, err := cli.Store.AuthorizeCredentialAdmin(ctx, string(adminRaw))
+				if err != nil {
+					t.Fatal("fixture admin authorization failed")
+				}
+				before, err := cli.Store.ListServiceCredentials(ctx, admin, principal)
+				if err != nil {
+					t.Fatal("fixture family read failed")
+				}
+				args := []string{"context", "token", command, "--principal-id", principal, "--credential-id", principal, "--expected-generation", "1", "--idempotency-key", "duplicate-alias", "--admin-token-file", adminPath}
+				path := filepath.Join(t.TempDir(), "not-issued")
+				if command == "rotate" {
+					args = append(args, "--secret-file", path)
+				}
+				args = append(args, spelling)
+				if spelling == "--expected-generation" {
+					args = append(args, "1")
+				}
+				if cli.Run(ctx, args) == 0 {
+					t.Error("duplicate generation argument was accepted")
+				}
+				after, err := cli.Store.ListServiceCredentials(ctx, admin, principal)
+				if err != nil {
+					t.Fatal("result family read failed")
+				}
+				if before.Generation != after.Generation || !reflect.DeepEqual(rotationCLICredentialState(before.Credentials), rotationCLICredentialState(after.Credentials)) {
+					t.Error("duplicate refusal changed durable generation or credential inventory")
+				}
+				if _, err := os.Lstat(path); !os.IsNotExist(err) {
+					t.Error("duplicate refusal created a private delivery file")
+				}
+				if err := cli.Store.ValidateAuthToken(ctx, old); err != nil {
+					t.Error("duplicate refusal invalidated predecessor")
+				}
+				if strings.Contains(out.String(), old) || strings.Contains(errOut.String(), old) || strings.Contains(out.String(), string(adminRaw)) || strings.Contains(errOut.String(), string(adminRaw)) {
+					t.Error("duplicate refusal disclosed a credential")
+				}
+			})
+		}
+	}
 }
