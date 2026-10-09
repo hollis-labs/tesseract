@@ -208,6 +208,13 @@ func TestCredentialRotationZeroOverlapRevokeAndBounds(t *testing.T) {
 	if err != nil || !replay.Replayed || replay.OperationGeneration != 3 {
 		t.Fatal("revoke metadata replay")
 	}
+	refusal := revoke
+	refusal.ExpectedGeneration = 3
+	refusal.IdempotencyKey = "new-already-revoked"
+	current, refuseErr := s.RevokeServiceCredential(ctx, admin, refusal, "http")
+	if !errors.Is(refuseErr, ErrAuthTokenRevoked) || current.Generation != 3 || current.Status != "revoked" || current.CredentialID != result.CredentialID || current.OperationGeneration != 0 {
+		t.Fatal("already-revoked refusal omitted current metadata or claimed commit")
+	}
 	if err = s.ValidateAuthToken(ctx, secret); !errors.Is(err, ErrAuthTokenRevoked) {
 		t.Fatal("revoked credential accepted")
 	}

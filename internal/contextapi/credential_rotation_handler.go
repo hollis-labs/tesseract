@@ -141,6 +141,10 @@ func (s *Server) handleCredentialRevoke(w http.ResponseWriter, r *http.Request) 
 	}
 	result, err := s.Store.RevokeServiceCredential(r.Context(), admin, in, "http")
 	if err != nil {
+		if errors.Is(err, contextstore.ErrAuthTokenRevoked) && result.CredentialID != "" {
+			writeError(w, http.StatusBadRequest, "credential_revoked", "credential is already revoked", map[string]any{"current_credential": result})
+			return
+		}
 		credentialAPIError(w, err)
 		return
 	}

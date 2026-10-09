@@ -436,7 +436,7 @@ func (s *Store) RevokeServiceCredential(ctx context.Context, admin CredentialAdm
 		return CredentialResult{}, ErrCredentialRequest
 	}
 	if m.RevokedAt != "" {
-		return CredentialResult{}, ErrAuthTokenRevoked
+		return resultFor(m, 0, false), ErrAuthTokenRevoked
 	}
 	if err = advanceCredentialGeneration(ctx, tx, in.PrincipalID, in.ExpectedGeneration); err != nil {
 		return CredentialResult{}, err

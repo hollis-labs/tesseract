@@ -254,6 +254,9 @@ func (c *CLI) runCredentialRevoke(ctx context.Context, args []string) int {
 	}
 	result, err := c.Store.RevokeServiceCredential(ctx, admin, contextstore.CredentialRevokeInput{PrincipalID: *principal, CredentialID: *id, ExpectedGeneration: *generation, IdempotencyKey: *key}, "cli")
 	if err != nil {
+		if result.CredentialID != "" {
+			_ = writeCredentialMetadata(c.Stdout, result)
+		}
 		return c.fail(err.Error())
 	}
 	if writeCredentialMetadata(c.Stdout, result) != nil {
