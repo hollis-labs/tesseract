@@ -12,6 +12,7 @@ documentation drift.
 - [Agent and MCP setup](AGENT-SETUP.md)
 - [Project integration guidance](CONTEXT-FOR-PROJECTS.md)
 - [Operations, support, backup, and upgrades](OPERATIONS.md)
+- [Service credential rotation](service-credential-rotation.md)
 - [Security policy](../SECURITY.md)
 
 ## Concepts and contracts
