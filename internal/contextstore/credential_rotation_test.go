@@ -28,6 +28,11 @@ func rotationFixture(t *testing.T) (*Store, CredentialAdmin, string, AuthToken) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, format := range []string{"%v", "%+v", "%#v"} {
+		if strings.Contains(fmt.Sprintf(format, admin), admin.digest) || strings.Contains(fmt.Sprintf(format, admin), raw) {
+			t.Fatal("administrator proof debug output disclosed verifier")
+		}
+	}
 	service, root, err := s.CreateAuthToken(context.Background(), TokenCreateInput{Label: "service", ClientID: "", Scopes: []string{"read"}, NamespaceGlobs: []string{"project/private/*"}})
 	if err != nil {
 		t.Fatal("service fixture")

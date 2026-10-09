@@ -533,3 +533,6 @@ func (s *Store) revokeLegacyCredential(ctx context.Context, id string) error {
 }
 
 func (a CredentialAdmin) String() string { return fmt.Sprintf("CredentialAdmin(%s)", a.id) }
+
+// GoString keeps debug formatting from disclosing the private verifier digest.
+func (a CredentialAdmin) GoString() string { return a.String() }
