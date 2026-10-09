@@ -3,6 +3,7 @@ package contextcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -48,6 +49,21 @@ func credentialArgumentsUnique(fs *flag.FlagSet, args []string) bool {
 		}
 	}
 	return true
+}
+
+func credentialCLIMessage(err error) string {
+	switch {
+	case errors.Is(err, contextstore.ErrCredentialForbidden):
+		return "managed administrator credential required"
+	case errors.Is(err, contextstore.ErrCredentialConflict):
+		return "credential generation or idempotency conflict"
+	case errors.Is(err, contextstore.ErrAuthTokenRevoked):
+		return "credential is already revoked"
+	case errors.Is(err, contextstore.ErrCredentialRequest), errors.Is(err, contextstore.ErrAuthTokenInvalid):
+		return "invalid credential request"
+	default:
+		return "credential operation unavailable"
+	}
 }
 
 func credentialLegacyArgument(args []string) bool {
@@ -173,7 +189,7 @@ func (c *CLI) runCredentialIssue(ctx context.Context, args []string) int {
 	input := contextstore.CredentialIssueInput{PrincipalID: *principal, CredentialID: *id, ExpectedGeneration: *generation, IdempotencyKey: *key, OverlapSeconds: ov, TTLSeconds: exp}
 	replay, err := c.Store.ReplayServiceCredentialIssue(ctx, admin, input)
 	if err != nil {
-		return c.fail(err.Error())
+		return c.fail(credentialCLIMessage(err))
 	}
 	if replay != nil {
 		out := c.Stdout
@@ -195,7 +211,7 @@ func (c *CLI) runCredentialIssue(ctx context.Context, args []string) int {
 	}
 	secret, result, err := c.Store.IssueServiceCredential(ctx, admin, input, "cli")
 	if err != nil {
-		return c.fail(err.Error())
+		return c.fail(credentialCLIMessage(err))
 	}
 	metadataOut := c.Stdout
 	if *secretStdout {
@@ -257,7 +273,7 @@ func (c *CLI) runCredentialRevoke(ctx context.Context, args []string) int {
 		if result.CredentialID != "" {
 			_ = writeCredentialMetadata(c.Stdout, result)
 		}
-		return c.fail(err.Error())
+		return c.fail(credentialCLIMessage(err))
 	}
 	if writeCredentialMetadata(c.Stdout, result) != nil {
 		return c.fail("credential metadata delivery failed")
@@ -278,7 +294,7 @@ func (c *CLI) runCredentialList(ctx context.Context, args []string) int {
 	}
 	out, err := c.Store.ListServiceCredentials(ctx, admin, *principal)
 	if err != nil {
-		return c.fail(err.Error())
+		return c.fail(credentialCLIMessage(err))
 	}
 	if writeCredentialMetadata(c.Stdout, out) != nil {
 		return c.fail("credential metadata delivery failed")
