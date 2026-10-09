@@ -3,7 +3,7 @@ package config
 import (
 	"path/filepath"
 
-	"github.com/hollis-labs/go-apppaths/paths"
+	"github.com/hollis-labs/libs/util/apppaths"
 
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 )

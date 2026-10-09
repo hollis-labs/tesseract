@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
-	queue "github.com/hollis-labs/go-queue"
+	queue "github.com/hollis-labs/libs/util/queue"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"

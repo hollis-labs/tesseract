@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
-	gomcpserver "github.com/hollis-labs/go-mcp/server"
+	gomcpserver "github.com/hollis-labs/libs/plugin-mcp/go-mcp/server"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )

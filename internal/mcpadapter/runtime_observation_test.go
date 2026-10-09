@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/go-mcp/staleness"
+	"github.com/hollis-labs/libs/plugin-mcp/go-mcp/staleness"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

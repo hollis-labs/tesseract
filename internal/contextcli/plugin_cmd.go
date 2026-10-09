@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	fplugin "github.com/hollis-labs/plugin-sdk"
+	fplugin "github.com/hollis-labs/libs/plugin-mcp/plugin-sdk"
 	"github.com/hollis-labs/tesseract/internal/plugin"
 )
 

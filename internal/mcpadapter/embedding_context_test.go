@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 

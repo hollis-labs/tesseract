@@ -8,6 +8,17 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-09
+
+### Changed
+
+- Adopt the published `substrate/llm-core`, `libs/util`, `libs/ui-go`, and
+  `libs/plugin-mcp` modules in place of their standalone predecessors. Embedded
+  consumers must use `substrate/llm-core/embedcontracts.Embedder` with
+  `WithEmbedder` and `libs/util/queue.Queue` with `WithQueue`; Go treats the old
+  import paths as distinct types. The plugin host keeps its existing in-process
+  interfaces. The released dependencies require Go 1.26.8 or newer.
+
 ### Added
 
 - **Opt-in write guards on `memory_write` and `knowledge_write`, and a write

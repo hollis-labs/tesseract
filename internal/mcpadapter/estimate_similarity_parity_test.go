@@ -23,7 +23,7 @@ import (
 
 	"github.com/hollis-labs/tesseract/domains"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"

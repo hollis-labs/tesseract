@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go/option"
-	llmtypes "github.com/hollis-labs/go-llm-types"
+	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
 )
 
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {

@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 )
 
 // Compile-time assertion: MockProvider must satisfy embedcontracts.Embedder.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	fplugin "github.com/hollis-labs/plugin-sdk"
+	fplugin "github.com/hollis-labs/libs/plugin-mcp/plugin-sdk"
 )
 
 // DiscoveredPlugin holds metadata parsed from a plugin.yaml plus the

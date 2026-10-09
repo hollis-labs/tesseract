@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/go-mcp/staleness"
+	"github.com/hollis-labs/libs/plugin-mcp/go-mcp/staleness"
 )
 
 func TestRunningImageSurvivesReplacementAndRejectsLateAcquisition(t *testing.T) {

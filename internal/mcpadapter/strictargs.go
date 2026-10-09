@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	gomcpserver "github.com/hollis-labs/go-mcp/server"
+	gomcpserver "github.com/hollis-labs/libs/plugin-mcp/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -87,7 +87,7 @@ import (
 // gateway transport metadata rather than as caller arguments.
 //
 //   - `_traceparent`: the W3C trace context mux writes into the arguments map
-//     (github.com/hollis-labs/go-otel/propagation.InjectMCP). Parsed and
+//     (github.com/hollis-labs/libs/util/otel/propagation.InjectMCP). Parsed and
 //     recorded as the upstream trace link so correlation survives the strip.
 //   - `_tracestate`: injected by the same code only when the upstream trace
 //     carries vendor state. Stripped and parsed alongside the traceparent;

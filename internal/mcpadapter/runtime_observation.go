@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollis-labs/go-mcp/staleness"
+	"github.com/hollis-labs/libs/plugin-mcp/go-mcp/staleness"
 	"github.com/hollis-labs/tesseract/internal/runtimeimage"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )

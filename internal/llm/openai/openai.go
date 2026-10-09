@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"os"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
-	llmcontracts "github.com/hollis-labs/go-llm-contracts"
-	llmtypes "github.com/hollis-labs/go-llm-types"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
+	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
+	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
 	sdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )

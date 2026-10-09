@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	queue "github.com/hollis-labs/go-queue"
+	queue "github.com/hollis-labs/libs/util/queue"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 

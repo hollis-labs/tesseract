@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
-	"github.com/hollis-labs/go-mcp/staleness"
+	"github.com/hollis-labs/libs/plugin-mcp/go-mcp/staleness"
 )
 
 // Running binds a digest to the running image using platform evidence. It must
