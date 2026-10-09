@@ -3,7 +3,7 @@ package mcpadapter
 import (
 	"strings"
 
-	gomcpserver "github.com/hollis-labs/go-mcp/server"
+	gomcpserver "github.com/hollis-labs/libs/plugin-mcp/go-mcp/server"
 )
 
 // propDef is one property of a tool's input schema, plus whether it belongs

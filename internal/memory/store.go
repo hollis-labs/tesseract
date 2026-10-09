@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	embedcontracts "github.com/hollis-labs/go-embed-contracts"
+	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 )
 
 // Store is the memory subsystem's storage handle. It shares a *sql.DB with

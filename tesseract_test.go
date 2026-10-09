@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	queue "github.com/hollis-labs/go-queue"
-	memdriver "github.com/hollis-labs/go-queue/driver/memory"
+	queue "github.com/hollis-labs/libs/util/queue"
+	memdriver "github.com/hollis-labs/libs/util/queue/driver/memory"
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/embedding"
 	"github.com/hollis-labs/tesseract/internal/memory"

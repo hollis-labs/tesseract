@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 
-	queue "github.com/hollis-labs/go-queue"
+	queue "github.com/hollis-labs/libs/util/queue"
 )
 
 // QueueAdapter bridges the internal JobQueue interface to a go-queue

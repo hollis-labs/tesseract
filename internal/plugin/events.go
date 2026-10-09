@@ -3,7 +3,7 @@ package plugin
 import (
 	"time"
 
-	fplugin "github.com/hollis-labs/plugin-sdk"
+	fplugin "github.com/hollis-labs/libs/plugin-mcp/plugin-sdk"
 )
 
 // Tesseract Event Catalog

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	llmtypes "github.com/hollis-labs/go-llm-types"
+	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
 	"github.com/openai/openai-go/v3/option"
 )
 

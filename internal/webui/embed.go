@@ -1,6 +1,6 @@
 // Package webui serves the embedded Tesseract frontend as an SPA.
 //
-// The SPA routing itself lives in github.com/hollis-labs/go-webui, which was
+// The SPA routing itself lives in github.com/hollis-labs/libs/ui-go/webui, which was
 // extracted (CW-20260515-0127) from the copy of this file that Tesseract and
 // Fragments Engine had each grown independently. This package keeps only what
 // is genuinely Tesseract's: the //go:embed of its own bundle and the mount
@@ -12,7 +12,7 @@ import (
 	"io/fs"
 	"net/http"
 
-	gowebui "github.com/hollis-labs/go-webui"
+	gowebui "github.com/hollis-labs/libs/ui-go/webui"
 )
 
 //go:embed all:dist

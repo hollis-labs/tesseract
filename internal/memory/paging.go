@@ -196,7 +196,7 @@ type Manifest struct {
 }
 
 // EstimateTokens approximates tokens from a byte count using the same
-// ~4-chars-per-token heuristic as github.com/hollis-labs/go-mcp/budget's
+// ~4-chars-per-token heuristic as github.com/hollis-labs/libs/plugin-mcp/go-mcp/budget's
 // EstimateTokens. Reimplemented over an int rather than a []byte so the
 // count can be derived from sizes already computed, without re-marshaling.
 func EstimateTokens(n int) int {

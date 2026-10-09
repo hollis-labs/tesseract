@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	memdriver "github.com/hollis-labs/go-queue/driver/memory"
+	memdriver "github.com/hollis-labs/libs/util/queue/driver/memory"
 	internalmem "github.com/hollis-labs/tesseract/internal/memory"
 )
 

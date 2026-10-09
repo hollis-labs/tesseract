@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	fplugin "github.com/hollis-labs/plugin-sdk"
+	fplugin "github.com/hollis-labs/libs/plugin-mcp/plugin-sdk"
 )
 
 // PluginConstructor creates a new plugin instance.

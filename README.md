@@ -9,7 +9,7 @@ UI, and MCP server.
 
 > **Public preview, pre-1.0.** Tesseract is in active daily internal use
 > across Hollis Labs — it's the memory this very session type recalls from
-> and writes back to — but it hasn't had a public release. Built in the
+> and writes back to. Tagged public previews are available; built in the
 > open: contracts are documented and tested, but breaking changes can still
 > land in any minor. Read [`CHANGELOG.md`](CHANGELOG.md) before upgrading.
 
@@ -74,6 +74,15 @@ capability-token model is what makes either safe.
   write-time enrichment — scoped from real public-preview usage, not
   committed to yet.
 
+## Go library dependencies
+
+From v0.11.0, Tesseract uses the published `substrate/llm-core` and `libs`
+modules. Embedded consumers supplying an embedder to `WithEmbedder` must import
+`github.com/hollis-labs/substrate/llm-core/embedcontracts`; consumers supplying a
+queue to `WithQueue` must import `github.com/hollis-labs/libs/util/queue`.
+The old standalone paths define different Go types. Update these dependencies
+together when upgrading an embedded consumer.
+
 ## Install from source
 
 The current preview is distributed as source. There are no supported prebuilt
@@ -81,7 +90,7 @@ binaries, package-manager formulae, container images, or desktop installers.
 
 Requirements:
 
-- Go 1.26.6
+- Go 1.26.8 or newer
 - Git
 - Node.js 20.19–20.x or 22.12+ with npm only when changing and rebuilding
   `frontend/`

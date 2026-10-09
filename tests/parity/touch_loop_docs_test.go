@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	gomcpserver "github.com/hollis-labs/go-mcp/server"
+	gomcpserver "github.com/hollis-labs/libs/plugin-mcp/go-mcp/server"
 )
 
 // touchLoopClaims are the claims the ticket requires the caller-facing surface

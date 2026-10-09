@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	queuesqlite "github.com/hollis-labs/go-queue/driver/sqlite"
+	queuesqlite "github.com/hollis-labs/libs/util/queue/driver/sqlite"
 
 	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/domains"
