@@ -211,13 +211,17 @@ two shapes; see [the MCP tool catalog](../MCP_TOOLS.md).
 
 | Method and path | Additional authorization | Contract |
 |---|---|---|
-| `POST /v1/auth/tokens/create` | — | Create a managed token from `name`, `client_id`, `scopes`, `namespace_globs`, and either `ttl` or `expires_at`; returns the raw token once. |
-| `GET /v1/auth/tokens/list` | — | List token metadata, never raw token values. |
-| `POST /v1/auth/tokens/revoke` | — | Revoke by token `id`. |
+| `POST /v1/auth/tokens/create` | managed `admin` | Create from `name`, `client_id`, `scopes`, `namespace_globs`, and either `ttl` or `expires_at`; returns the raw token once over loopback or TLS. |
+| `GET /v1/auth/tokens/list?principal_id=...` | managed `admin` | List family generation and credential metadata, never raw token values. |
+| `POST /v1/auth/tokens/rotate` | managed `admin` | Issue with `principal_id`, `credential_id`, `expected_generation`, `idempotency_key`, optional `overlap_seconds` and `ttl_seconds`; secret returned only on first issuance over loopback or TLS. |
+| `POST /v1/auth/tokens/revoke` | managed `admin` | Revoke the exact family credential using the four required identity/generation/idempotency fields; legacy `id`-only requests refuse. |
 
-These routes are protected whenever a token mode is enabled, but they do not
-add a second handler-level scope check. Prefer the local CLI for initial token
-creation and recovery.
+Anonymous, static-token, and non-administrator managed callers cannot manage
+credentials. Administrator authority is revalidated in the mutation transaction.
+Exact retries return metadata only, with no secret replay; issue responses use
+`Cache-Control: no-store`. Initial offline bootstrap remains separate from these
+HTTP routes. See [Service credential rotation](../service-credential-rotation.md)
+for migration, private delivery, overlap, and lost-delivery handling.
 
 ### Memory, knowledge, event, and workspace
 

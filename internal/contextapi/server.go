@@ -461,6 +461,7 @@ var apiRoutes = []apiRoute{
 	// tokens/list discloses every token's id, client, scopes, namespace globs
 	// and expiry. It is a read, and it is exactly the read an attacker wants.
 	{http.MethodPost, "/v1/auth/tokens/create", false, authRequired, (*Server).handleTokenCreate},
+	{http.MethodPost, "/v1/auth/tokens/rotate", false, authRequired, (*Server).handleCredentialIssue},
 	{http.MethodGet, "/v1/auth/tokens/list", false, authRequired, (*Server).handleTokenList},
 	{http.MethodPost, "/v1/auth/tokens/revoke", false, authRequired, (*Server).handleTokenRevoke},
 
@@ -733,9 +734,18 @@ type tokenCreateRequest struct {
 }
 
 func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.credentialAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !credentialPrivateTransport(r) {
+		credentialAPIError(w, contextstore.ErrCredentialForbidden)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	var req tokenCreateRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+	if err := decodeCredentialRequest(r, &req); err != nil {
+		credentialAPIError(w, contextstore.ErrCredentialRequest)
 		return
 	}
 	if strings.TrimSpace(req.Name) == "" {
@@ -769,7 +779,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 		ttl = parsed
 	}
 
-	token, meta, err := s.Store.CreateAuthToken(r.Context(), contextstore.TokenCreateInput{
+	token, meta, err := s.Store.CreateAuthTokenAuthorized(r.Context(), admin, contextstore.TokenCreateInput{
 		Label:          req.Name,
 		ClientID:       req.ClientID,
 		Scopes:         req.Scopes,
@@ -777,7 +787,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 		TTL:            ttl,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "auth_failed", err.Error(), nil)
+		credentialAPIError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -793,6 +803,19 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTokenList(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.credentialAdmin(w, r)
+	if !ok {
+		return
+	}
+	if principal := r.URL.Query().Get("principal_id"); principal != "" {
+		out, err := s.Store.ListServiceCredentials(r.Context(), admin, principal)
+		if err != nil {
+			credentialAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	tokens, err := s.Store.ListAuthTokens(r.Context(), 100)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list_failed", err.Error(), nil)
@@ -801,7 +824,8 @@ func (s *Server) handleTokenList(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(tokens))
 	for _, t := range tokens {
 		out = append(out, map[string]any{
-			"id":              t.TokenID,
+			"id":           t.TokenID,
+			"principal_id": t.PrincipalID, "generation": t.Generation, "last_used_at": t.LastUsedAt, "overlap_until": t.OverlapUntil,
 			"name":            t.Label,
 			"client_id":       t.ClientID,
 			"scopes":          t.Scopes,
@@ -819,20 +843,7 @@ type tokenRevokeRequest struct {
 }
 
 func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
-	var req tokenRevokeRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-		return
-	}
-	if strings.TrimSpace(req.ID) == "" {
-		writeError(w, http.StatusBadRequest, "validation_error", "id required", nil)
-		return
-	}
-	if err := s.Store.RevokeAuthTokenByID(r.Context(), req.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "revoke_failed", err.Error(), nil)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": req.ID, "revoked": true})
+	s.handleCredentialRevoke(w, r)
 }
 
 type namespaceRegisterRequest struct {

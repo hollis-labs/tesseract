@@ -311,22 +311,19 @@ func TestTokenLifecycleCommands(t *testing.T) {
 	}
 
 	out.Reset()
-	if code := cli.Run(context.Background(), []string{"context", "token", "rotate", "--token", issuePayload.Token, "--label", "admin-rotated", "--ttl", "1h", "--output", "json"}); code != 0 {
-		t.Fatalf("token rotate failed: %s", errOut.String())
+	if code := cli.Run(context.Background(), []string{"context", "token", "rotate", "--token", issuePayload.Token}); code == 0 {
+		t.Fatal("legacy raw rotation accepted")
 	}
-	var rotatePayload struct {
-		Token string `json:"token"`
+	if strings.Contains(out.String(), issuePayload.Token) || strings.Contains(errOut.String(), issuePayload.Token) {
+		t.Fatal("refusal disclosed token")
 	}
-	if err := json.Unmarshal(out.Bytes(), &rotatePayload); err != nil {
-		t.Fatalf("unmarshal rotate: %v", err)
+	if err := cli.Store.ValidateAuthToken(context.Background(), issuePayload.Token); err != nil {
+		t.Fatal("refusal invalidated original")
 	}
-	if rotatePayload.Token == "" || rotatePayload.Token == issuePayload.Token {
-		t.Fatalf("expected rotated token distinct from original")
+	if code := cli.Run(context.Background(), []string{"context", "token", "revoke", "--token", issuePayload.Token}); code == 0 {
+		t.Fatal("legacy raw revoke accepted")
 	}
 
-	if code := cli.Run(context.Background(), []string{"context", "token", "revoke", "--token", rotatePayload.Token}); code != 0 {
-		t.Fatalf("token revoke failed: %s", errOut.String())
-	}
 }
 
 func TestNamespaceSchemaShowAndPutValidation(t *testing.T) {
