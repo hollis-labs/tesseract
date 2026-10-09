@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 28
+	schemaVersion = 29
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -158,6 +158,11 @@ type AuditQuery struct {
 
 // AuthToken stores local token lifecycle metadata.
 type AuthToken struct {
+	Status         string   `json:"status,omitempty"`
+	PrincipalID    string   `json:"principal_id"`
+	Generation     int64    `json:"generation"`
+	LastUsedAt     string   `json:"last_used_at,omitempty"`
+	OverlapUntil   string   `json:"overlap_until,omitempty"`
 	TokenID        string   `json:"token_id"`
 	Label          string   `json:"label"`
 	ClientID       string   `json:"client_id,omitempty"`
@@ -1579,6 +1584,10 @@ FROM workspace_promotion_requests`); err != nil {
 					return err
 				}
 			}
+		case 29:
+			if err = migrateCredentialFamilies(ctx, tx); err != nil {
+				return err
+			}
 		}
 
 		version++
@@ -2314,7 +2323,14 @@ ON latest.namespace = r.namespace AND latest.key_name = r.key_name AND latest.ma
 // recordAuditEvent stores structured metadata for operational audit queries.
 // This is the sole write path into the audit_events table. All external
 // callers go through the Emit* helpers in audit_emit.go.
+type auditExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) error {
+	return recordAuditEventWith(ctx, s.db, event)
+}
+func recordAuditEventWith(ctx context.Context, executor auditExecutor, event AuditEvent) error {
 	if strings.TrimSpace(event.EventType) == "" {
 		return errors.New("event_type required")
 	}
@@ -2337,7 +2353,7 @@ func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) error {
 	if len(metadata) > 0 && !json.Valid(metadata) {
 		return errors.New("metadata must be valid JSON")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := executor.ExecContext(ctx, `
 INSERT INTO audit_events (event_type, actor, namespace, key_name, revision, record_id, created_at, metadata_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.EventType,
@@ -2431,6 +2447,15 @@ WHERE 1=1`
 // CreateAuthToken creates a new scoped token and returns the plaintext token plus stored metadata.
 // Scopes and NamespaceGlobs default to full access when nil or empty.
 func (s *Store) CreateAuthToken(ctx context.Context, in TokenCreateInput) (string, AuthToken, error) {
+	return s.createAuthToken(ctx, in, nil)
+}
+
+// CreateAuthTokenAuthorized revalidates the managed administrator in the insert transaction.
+func (s *Store) CreateAuthTokenAuthorized(ctx context.Context, admin CredentialAdmin, in TokenCreateInput) (string, AuthToken, error) {
+	return s.createAuthToken(ctx, in, &admin)
+}
+
+func (s *Store) createAuthToken(ctx context.Context, in TokenCreateInput, admin *CredentialAdmin) (string, AuthToken, error) {
 	label := strings.TrimSpace(in.Label)
 	if label == "" {
 		label = "default"
@@ -2470,7 +2495,25 @@ func (s *Store) CreateAuthToken(ctx context.Context, in TokenCreateInput) (strin
 		CreatedAt:      now.Format(time.RFC3339),
 		ExpiresAt:      expiresAt,
 	}
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", AuthToken{}, ErrCredentialUnavailable
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `UPDATE auth_tokens SET token_id=token_id WHERE token_id=?`, func() string {
+		if admin != nil {
+			return admin.id
+		}
+		return ""
+	}()); err != nil {
+		return "", AuthToken{}, ErrCredentialUnavailable
+	}
+	if admin != nil {
+		if err = authorizeCredentialTx(ctx, tx, *admin); err != nil {
+			return "", AuthToken{}, err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO auth_tokens (token_id, token_hash, label, client_id, scopes, namespace_globs, created_at, expires_at, revoked_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		meta.TokenID,
@@ -2484,6 +2527,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 	)
 	if err != nil {
 		return "", AuthToken{}, err
+	}
+	meta, err = readCredential(ctx, tx, "WHERE token_id=?", meta.TokenID)
+	if err != nil {
+		return "", AuthToken{}, err
+	}
+	if admin != nil {
+		if err = auditCredentialMutation(ctx, tx, admin.id, meta.PrincipalID, meta.TokenID, "create", "http", meta.Generation); err != nil {
+			return "", AuthToken{}, err
+		}
+	}
+	if tx.Commit() != nil {
+		return "", AuthToken{}, ErrCredentialUnavailable
 	}
 	return token, meta, nil
 }
@@ -2505,61 +2560,23 @@ func mustParseStringSlice(s string) []string {
 
 // RevokeAuthTokenByID marks a token revoked by its token_id.
 func (s *Store) RevokeAuthTokenByID(ctx context.Context, tokenID string) error {
-	tokenID = strings.TrimSpace(tokenID)
-	if tokenID == "" {
-		return ErrAuthTokenInvalid
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx, `
-UPDATE auth_tokens
-SET revoked_at = ?
-WHERE token_id = ? AND revoked_at IS NULL`, now, tokenID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrAuthTokenInvalid
-	}
-	return nil
+	return s.revokeLegacyCredential(ctx, tokenID)
 }
 
-// RotateAuthToken revokes the old token and issues a replacement token.
+// RotateAuthToken is retired: raw predecessor authorization cannot establish an
+// administrative actor, generation or safe one-time delivery. Use IssueServiceCredential.
 func (s *Store) RotateAuthToken(ctx context.Context, oldToken, label string, ttl time.Duration) (string, AuthToken, error) {
-	if err := s.ValidateAuthToken(ctx, oldToken); err != nil {
-		return "", AuthToken{}, err
-	}
-	if err := s.RevokeAuthToken(ctx, oldToken); err != nil {
-		return "", AuthToken{}, err
-	}
-	return s.IssueAuthToken(ctx, label, ttl)
+	return "", AuthToken{}, ErrCredentialUnsupported
 }
 
-// RevokeAuthToken marks a token revoked.
+// RevokeAuthToken is the local-store compatibility path. Public management uses
+// RevokeServiceCredential with independent admin authorization and generation CAS.
 func (s *Store) RevokeAuthToken(ctx context.Context, token string) error {
-	hash := hashToken(strings.TrimSpace(token))
-	if hash == "" {
+	var id string
+	if err := s.db.QueryRowContext(ctx, "SELECT token_id FROM auth_tokens WHERE token_hash=?", hashToken(strings.TrimSpace(token))).Scan(&id); err != nil {
 		return ErrAuthTokenInvalid
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx, `
-UPDATE auth_tokens
-SET revoked_at = ?
-WHERE token_hash = ? AND revoked_at IS NULL`, now, hash)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrAuthTokenInvalid
-	}
-	return nil
+	return s.revokeLegacyCredential(ctx, id)
 }
 
 // ValidateAuthToken verifies token presence and lifecycle state.
@@ -2570,41 +2587,7 @@ func (s *Store) ValidateAuthToken(ctx context.Context, token string) error {
 
 // ValidateAuthTokenWithClaims validates a raw token value and returns its full metadata on success.
 func (s *Store) ValidateAuthTokenWithClaims(ctx context.Context, token string) (AuthToken, error) {
-	hash := hashToken(strings.TrimSpace(token))
-	if hash == "" {
-		return AuthToken{}, ErrAuthTokenInvalid
-	}
-	var meta AuthToken
-	var scopesJSON, globsJSON string
-	err := s.db.QueryRowContext(ctx, `
-SELECT token_id, label, COALESCE(client_id,''), COALESCE(scopes,''), COALESCE(namespace_globs,''),
-       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, '')
-FROM auth_tokens
-WHERE token_hash = ?
-LIMIT 1`, hash).Scan(
-		&meta.TokenID, &meta.Label, &meta.ClientID, &scopesJSON, &globsJSON,
-		&meta.CreatedAt, &meta.ExpiresAt, &meta.RevokedAt)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return AuthToken{}, ErrAuthTokenInvalid
-		}
-		return AuthToken{}, err
-	}
-	if strings.TrimSpace(meta.RevokedAt) != "" {
-		return AuthToken{}, ErrAuthTokenRevoked
-	}
-	if strings.TrimSpace(meta.ExpiresAt) != "" {
-		t, err := time.Parse(time.RFC3339, meta.ExpiresAt)
-		if err != nil {
-			return AuthToken{}, err
-		}
-		if time.Now().UTC().After(t) {
-			return AuthToken{}, ErrAuthTokenExpired
-		}
-	}
-	meta.Scopes = mustParseStringSlice(scopesJSON)
-	meta.NamespaceGlobs = mustParseStringSlice(globsJSON)
-	return meta, nil
+	return s.validateCredential(ctx, token)
 }
 
 // ListAuthTokens returns token metadata newest-first.
@@ -2617,7 +2600,8 @@ func (s *Store) ListAuthTokens(ctx context.Context, limit int) ([]AuthToken, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT token_id, label, COALESCE(client_id,''), COALESCE(scopes,''), COALESCE(namespace_globs,''),
-       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, '')
+       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, ''), principal_id,
+COALESCE((SELECT generation FROM auth_credential_families f WHERE f.principal_id=auth_tokens.principal_id),0), last_used_at, overlap_until
 FROM auth_tokens
 ORDER BY created_at DESC, token_id DESC
 LIMIT ?`, limit)
@@ -2630,7 +2614,7 @@ LIMIT ?`, limit)
 		var token AuthToken
 		var scopesJSON, globsJSON string
 		if err := rows.Scan(&token.TokenID, &token.Label, &token.ClientID, &scopesJSON, &globsJSON,
-			&token.CreatedAt, &token.ExpiresAt, &token.RevokedAt); err != nil {
+			&token.CreatedAt, &token.ExpiresAt, &token.RevokedAt, &token.PrincipalID, &token.Generation, &token.LastUsedAt, &token.OverlapUntil); err != nil {
 			return nil, err
 		}
 		token.Scopes = mustParseStringSlice(scopesJSON)
@@ -2649,11 +2633,12 @@ func (s *Store) GetAuthToken(ctx context.Context, tokenID string) (AuthToken, er
 	var scopesJSON, globsJSON string
 	err := s.db.QueryRowContext(ctx, `
 SELECT token_id, label, COALESCE(client_id,''), COALESCE(scopes,''), COALESCE(namespace_globs,''),
-       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, '')
+       created_at, COALESCE(expires_at, ''), COALESCE(revoked_at, ''), principal_id,
+COALESCE((SELECT generation FROM auth_credential_families f WHERE f.principal_id=auth_tokens.principal_id),0), last_used_at, overlap_until
 FROM auth_tokens
 WHERE token_id = ?`, tokenID).Scan(
 		&token.TokenID, &token.Label, &token.ClientID, &scopesJSON, &globsJSON,
-		&token.CreatedAt, &token.ExpiresAt, &token.RevokedAt)
+		&token.CreatedAt, &token.ExpiresAt, &token.RevokedAt, &token.PrincipalID, &token.Generation, &token.LastUsedAt, &token.OverlapUntil)
 	if err != nil {
 		return AuthToken{}, err
 	}

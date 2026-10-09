@@ -1382,72 +1382,18 @@ func (c *CLI) runTokenIssue(ctx context.Context, args []string) int {
 }
 
 func (c *CLI) runTokenRotate(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("token rotate", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	oldToken := fs.String("token", "", "existing token")
-	label := fs.String("label", "", "new token label")
-	ttl := fs.String("ttl", "", "new token ttl (e.g. 1h)")
-	output := fs.String("output", "json", "json|table")
-	if code, done := c.parseFlags(fs, args); done {
-		return code
-	}
-	var dur time.Duration
-	if strings.TrimSpace(*ttl) != "" {
-		parsed, err := time.ParseDuration(*ttl)
-		if err != nil {
-			return c.fail("ttl must be a valid duration")
-		}
-		dur = parsed
-	}
-	token, meta, err := c.Store.RotateAuthToken(ctx, *oldToken, *label, dur)
-	if err != nil {
-		return c.fail(err.Error())
-	}
-	switch strings.TrimSpace(*output) {
-	case "json", "":
-		return c.writeJSON(map[string]any{"token": token, "meta": meta})
-	case "table":
-		w := tabwriter.NewWriter(c.Stdout, 2, 4, 2, ' ', 0)
-		_, _ = fmt.Fprintln(w, "TOKEN\tTOKEN_ID\tLABEL\tEXPIRES_AT")
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", token, meta.TokenID, meta.Label, meta.ExpiresAt)
-		_ = w.Flush()
-		return 0
-	default:
-		return c.fail("output must be json|table")
-	}
+	return c.runCredentialIssue(ctx, args)
 }
-
 func (c *CLI) runTokenRevoke(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("token revoke", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	token := fs.String("token", "", "raw token value (legacy)")
-	id := fs.String("id", "", "token-id to revoke by ID")
-	if code, done := c.parseFlags(fs, args); done {
-		return code
-	}
-
-	// Allow positional arg as token-id
-	if *id == "" && len(fs.Args()) > 0 {
-		*id = fs.Args()[0]
-	}
-
-	if *id != "" {
-		if err := c.Store.RevokeAuthTokenByID(ctx, *id); err != nil {
-			return c.fail(err.Error())
-		}
-		_, _ = fmt.Fprintf(c.Stdout, "Token %s revoked. Requests using this token will be rejected immediately.\n", *id)
-		return 0
-	}
-	if *token == "" {
-		return c.fail("usage: tesseract context token revoke <token-id>  or  --token <raw-value>")
-	}
-	if err := c.Store.RevokeAuthToken(ctx, *token); err != nil {
-		return c.fail(err.Error())
-	}
-	return c.writeJSON(map[string]any{"revoked": true})
+	return c.runCredentialRevoke(ctx, args)
 }
 
 func (c *CLI) runTokenList(ctx context.Context, args []string) int {
+	for _, arg := range args {
+		if arg == "--principal-id" || arg == "--admin-token-file" || strings.HasPrefix(arg, "--principal-id=") || strings.HasPrefix(arg, "--admin-token-file=") {
+			return c.runCredentialList(ctx, args)
+		}
+	}
 	fs := flag.NewFlagSet("token list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	limit := fs.Int("limit", 50, "limit")
