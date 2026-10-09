@@ -100,10 +100,14 @@ How the namespace globs behave:
   `tesseract_recall` still requires `namespaces`.
 - **A token has one scope set and one glob list.** Every scope applies to every
   glob, so a token cannot be read-only on one glob and read-write on another.
-- Revoking a token (`tesseract context token revoke <token-id>`) or letting it
-  expire takes effect on the next scoped call; the running server does not need
-  a restart. `tesseract context token list` shows each token's scopes and
-  globs.
+- Revoking a credential through the managed-administrator family ID, generation,
+  and idempotency contract, or letting it expire, takes effect on the next scoped
+  call; the running server does not need a restart. The legacy raw-token rotation
+  and ID-only revoke commands refuse. Managed-family listing requires
+  `--principal-id` and `--admin-token-file` and returns credential metadata. See
+  [Service credential rotation](service-credential-rotation.md) for exact commands,
+  private delivery, and consumer cutover. A running consumer may still require
+  recreation to load its new credential file.
 
 This limits what a trusted agent can reach; it does not isolate reads. Tools
 whose `Scope` column in [MCP tools](MCP_TOOLS.md) is `—` need no token and

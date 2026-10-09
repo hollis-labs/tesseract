@@ -19,6 +19,7 @@ UI, and MCP server.
 - separate memory and pointer-backed knowledge domains
 - mutable project workspace items with stable IDs and version tokens
 - namespace ownership and scoped capability tokens
+- [authorized service credential rotation](docs/service-credential-rotation.md) with bounded overlap and metadata-only retries
 - explicit request, approval, and apply stages for cross-namespace promotion
 - lexical recall plus optional OpenAI-backed embeddings and synthesis
 - a local operator UI embedded in the Go binary

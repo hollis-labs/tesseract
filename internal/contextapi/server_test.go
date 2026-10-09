@@ -1908,9 +1908,23 @@ func TestOldPromoteEndpointReturnsGone(t *testing.T) {
 
 func TestTokenCreateListRevoke(t *testing.T) {
 	s := newTestServer(t)
+	s.ManagedAuth = true
+	admin := issueTokenWithScopes(t, s, "operator", []string{"admin"}, []string{"*"})
+	request := func(method, path string, body any) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(method, path, bytes.NewReader(payload))
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Header.Set("Authorization", "Bearer "+admin)
+		res := httptest.NewRecorder()
+		s.ServeHTTP(res, req)
+		return res
+	}
 
 	// Create a scoped token.
-	createRes := performJSON(t, s, "POST", "/v1/auth/tokens/create", map[string]any{
+	createRes := request("POST", "/v1/auth/tokens/create", map[string]any{
 		"name":            "test-agent",
 		"client_id":       "app:test",
 		"scopes":          []string{"write", "packet"},
@@ -1938,7 +1952,7 @@ func TestTokenCreateListRevoke(t *testing.T) {
 	}
 
 	// List tokens — raw value must NOT be returned.
-	listRes := performJSON(t, s, "GET", "/v1/auth/tokens/list", nil)
+	listRes := request("GET", "/v1/auth/tokens/list", nil)
 	if listRes.Code != http.StatusOK {
 		t.Fatalf("token list: %d %s", listRes.Code, listRes.Body)
 	}
@@ -1969,24 +1983,38 @@ func TestTokenCreateListRevoke(t *testing.T) {
 	}
 
 	// Revoke by ID.
-	revokeRes := performJSON(t, s, "POST", "/v1/auth/tokens/revoke", map[string]any{
-		"id": tokenID,
+	revokeRes := request("POST", "/v1/auth/tokens/revoke", map[string]any{
+		"principal_id": tokenID, "credential_id": tokenID, "expected_generation": 1, "idempotency_key": "revoke-test",
 	})
 	if revokeRes.Code != http.StatusOK {
 		t.Fatalf("token revoke: %d %s", revokeRes.Code, revokeRes.Body)
 	}
 	var revokeResp map[string]any
 	json.NewDecoder(revokeRes.Body).Decode(&revokeResp)
-	if revokeResp["revoked"] != true {
+	if revokeResp["status"] != "revoked" {
 		t.Errorf("expected revoked=true, got %v", revokeResp)
 	}
 }
 
 func TestTokenCreateValidation(t *testing.T) {
 	s := newTestServer(t)
+	s.ManagedAuth = true
+	admin := issueTokenWithScopes(t, s, "operator", []string{"admin"}, []string{"*"})
+	request := func(method, path string, body any) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(method, path, bytes.NewReader(payload))
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Header.Set("Authorization", "Bearer "+admin)
+		res := httptest.NewRecorder()
+		s.ServeHTTP(res, req)
+		return res
+	}
 
 	// Missing name.
-	res := performJSON(t, s, "POST", "/v1/auth/tokens/create", map[string]any{
+	res := request("POST", "/v1/auth/tokens/create", map[string]any{
 		"client_id": "app:test",
 	})
 	if res.Code != http.StatusBadRequest {
@@ -1994,7 +2022,7 @@ func TestTokenCreateValidation(t *testing.T) {
 	}
 
 	// Invalid expires_at.
-	res2 := performJSON(t, s, "POST", "/v1/auth/tokens/create", map[string]any{
+	res2 := request("POST", "/v1/auth/tokens/create", map[string]any{
 		"name":       "bad-expiry",
 		"expires_at": "not-a-date",
 	})

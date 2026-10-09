@@ -162,7 +162,7 @@ func TestServiceModeTokenInventoryRequiresAuth(t *testing.T) {
 	srv := newServiceAuthServer(t)
 	srv.ManagedAuth = true
 
-	admin, _, err := srv.Store.IssueAuthToken(context.Background(), "admin", time.Hour)
+	admin, _, err := srv.Store.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{Label: "admin", Scopes: []string{"admin"}, TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("issue admin token: %v", err)
 	}
@@ -173,6 +173,16 @@ func TestServiceModeTokenInventoryRequiresAuth(t *testing.T) {
 	}
 	if strings.Contains(anon.Body.String(), "token_id") {
 		t.Fatalf("token inventory leaked into an unauthenticated response: %s", anon.Body.String())
+	}
+
+	limited, _, err := srv.Store.CreateAuthToken(context.Background(), contextstore.TokenCreateInput{Label: "limited", Scopes: []string{"read"}, TTL: time.Hour})
+	if err != nil {
+		t.Fatal("issue limited credential")
+	}
+	refused := serviceJSON(t, srv, http.MethodGet, "/v1/auth/tokens/list", nil,
+		map[string]string{"Authorization": "Bearer " + limited})
+	if refused.Code != http.StatusForbidden || strings.Contains(refused.Body.String(), "token_id") {
+		t.Fatal("limited credential must not disclose inventory")
 	}
 
 	authed := serviceJSON(t, srv, http.MethodGet, "/v1/auth/tokens/list", nil,

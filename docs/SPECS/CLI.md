@@ -206,15 +206,21 @@ idempotent and creates the default namespace policies when absent.
 |---|---|
 | `context token create` | `--name` (required), `--client-id`, `--scopes`, `--namespaces`, optional `--ttl` or `--expires`, `--output json|table` (default `table`) |
 | `context token issue` | Legacy/default-scope creation: `--label`, `--ttl`, `--output json|table` |
-| `context token rotate` | `--token` (raw current token), optional `--label`, `--ttl`, `--output json|table` |
-| `context token revoke <token-id>` | Preferred ID operand; legacy raw-token form is `--token`; no output flag |
-| `context token list` | `--limit` (default `50`), `--show-revoked`, `--output json|table` (default `table`) |
+| `context token rotate` | `--principal-id`, `--credential-id`, `--expected-generation`, `--idempotency-key`, `--admin-token-file`; optional `--overlap`, `--ttl`; exactly one of `--secret-file` or `--secret-stdout` |
+| `context token revoke` | `--principal-id`, `--credential-id`, `--expected-generation`, `--idempotency-key`, `--admin-token-file`; legacy ID operands and raw `--token` refuse |
+| `context token list` | Managed-family listing: `--principal-id`, `--admin-token-file`; returns metadata only |
 | `context token show <token-id>` | `--output json|table` (default `table`) |
 
-`token create` is the full-fidelity command. Comma-separate scopes and namespace
+`token create` is the full-fidelity offline bootstrap command. Comma-separate scopes and namespace
 globs. `--expires` accepts RFC3339 or `YYYY-MM-DD`; `--ttl` accepts a Go
 duration. If both are supplied, `--expires` takes precedence. The raw secret is
-shown only when created or rotated.
+shown only when created. Rotation delivers a new secret once to an exclusive
+0600 file or verified pipe; its JSON result contains metadata only. Rotation,
+revocation, and managed-family listing require a managed administrator credential.
+Raw `--token` rotation and the legacy library `RotateAuthToken` method refuse
+before effects. Migrate callers to the administrator-authorized family ID,
+generation, and idempotency contract in
+[Service credential rotation](../service-credential-rotation.md).
 
 ```bash
 tesseract context token create \

@@ -8,6 +8,34 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-10-09
+
+### Added
+
+- Managed administrator service credential issuance through
+  `POST /v1/auth/tokens/rotate` and `context token rotate`. A new credential
+  preserves the original credential family's exact identity and grants,
+  overlaps active predecessors for a bounded duration, and supports expiry,
+  per-credential revocation, generation guards, and idempotent metadata-only
+  retries. The store retains only hashes; CLI secret delivery uses a new 0600
+  file or a stdout pipe. Lost delivery leaves the issued ID visible and
+  revocable; retries never replay plaintext.
+- Credential family, generation, last-used and status metadata; atomic
+  secret-free issuance/revocation audit and backup preservation of credential
+  receipts and lifecycle state.
+
+### Changed
+
+- Require Go 1.26.9 and update `golang.org/x/net` to v0.60.0 to include
+  standard-library and HTTP/2 security fixes reported by `govulncheck`.
+- HTTP token create/list/revoke require a valid managed administrator, including
+  the legacy routes. Issuance responses require local or TLS transport. Revoke
+  now takes an exact family/credential ID, generation and idempotency key.
+- Legacy raw-token CLI rotation/revocation and the revoke-first
+  `RotateAuthToken` library method refuse before effects. Local offline
+  bootstrap remains separate. See [service credential rotation](docs/service-credential-rotation.md)
+  for commands and the lost-delivery recovery procedure.
+
 ## [0.11.0] — 2026-10-09
 
 ### Changed
