@@ -15,7 +15,9 @@ type makeContractCommandsGolden struct {
 
 func TestMakeContractCommandsContractAgainstGolden(t *testing.T) {
 	golden := loadMakeContractCommandsGolden(t)
-	cmd := exec.Command("make", "contract-commands")
+	// Keep recursive make directory banners out of the command contract.
+	// This test also runs through the supported outer make test target.
+	cmd := exec.Command("make", "--no-print-directory", "contract-commands")
 	cmd.Dir = filepath.Join("..", "..")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
