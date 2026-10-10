@@ -13,17 +13,21 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 - `context token create --secret-file PATH`: deliver the new token to an
   exclusive, no-follow, owner-only (0600) file created before the token is
   minted, with a parent-directory ownership/mode check. The token never reaches
-  stdout or stderr in this mode; stdout carries secret-free metadata and
-  `secret_delivered`. A delivery failure after commit names the issued ID, empties
-  the file and exits non-zero; an unknown commit outcome leaves the empty file in
-  place. Windows refuses the option.
+  stdout or stderr in this mode; stdout carries secret-free metadata,
+  `secret_delivered` and `sink_state`. The parent directory is opened once and the
+  file is created relative to it. A failure after commit names the exact issued
+  ID, reports separately whether the file was emptied or may still hold a valid
+  credential, and exits non-zero without authorizing a retry; an unknown commit
+  outcome leaves an empty file in place. Windows refuses the option.
 
 ### Changed
 
 - `context token create` refuses to print a token to a terminal; a pipe or file
   keeps the previous output for non-admin tokens, or use `--secret-file`.
-- Creating an `admin` token requires an explicit `--namespaces` (no implicit
-  all-namespaces grant) and `--secret-file`.
+- Creating an `admin` token requires `--secret-file` and explicit, literal-rooted
+  `--namespaces` globs (empty and `*` are refused), never an implicit
+  all-namespaces grant.
+- `golang.org/x/sys` is now a direct dependency (terminal detection).
 
 ## [0.12.0] — 2026-10-09
 

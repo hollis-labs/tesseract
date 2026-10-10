@@ -11,13 +11,18 @@ import (
 // openTokenSink creates the sink exclusively. euid is the identity that must
 // own the parent directory and the new file.
 //
-// Parent: a real directory (lstat, so a symlink is refused), owned by euid,
-// with no group/other write bit. Sink: absent, then created with
+// The parent is lstat'ed (a symlink is refused), opened ONCE as an os.Root
+// (dirfd-relative), and its identity is tied to the lstat result with SameFile.
+// Ownership and mode are then checked on the opened handle: a real directory,
+// owned by euid, no group/other write. Everything after that is relative to
+// that handle: the sink name must be absent, and is created with
 // O_CREATE|O_EXCL|O_NOFOLLOW mode 0600, forced to 0600 against the umask, and
 // verified through the open descriptor (regular, owned, single link, same
 // device as the parent). Nothing is renamed, so there is no cross-filesystem
-// case. A failure after the file exists removes it, because nothing has been
-// minted yet.
+// case. Ancestors of the parent are resolved once, when the directory is
+// opened; only the verified directory identity is relied on afterwards. A
+// failure after the file exists removes it through the same handle, because
+// nothing has been minted yet.
 func openTokenSink(path string, euid int) (*tokenSink, error) {
 	if path == "" {
 		return nil, errTokenSink
@@ -30,51 +35,48 @@ func openTokenSink(path string, euid int) (*tokenSink, error) {
 	if base == "." || base == ".." || base == string(filepath.Separator) {
 		return nil, errTokenSink
 	}
-	pinfo, err := os.Lstat(parent)
-	if err != nil || !pinfo.IsDir() || pinfo.Mode().Perm()&0o022 != 0 {
+	linfo, err := os.Lstat(parent)
+	if err != nil || !linfo.IsDir() {
 		return nil, errTokenSink
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, errTokenSink
+	}
+	refuse := func() (*tokenSink, error) {
+		_ = root.Close()
+		return nil, errTokenSink
+	}
+	pinfo, err := root.Stat(".")
+	if err != nil || !pinfo.IsDir() || !os.SameFile(linfo, pinfo) || pinfo.Mode().Perm()&0o022 != 0 {
+		return refuse()
 	}
 	pst, ok := pinfo.Sys().(*syscall.Stat_t)
 	if !ok || int(pst.Uid) != euid {
-		return nil, errTokenSink
+		return refuse()
 	}
-	if _, err := os.Lstat(abs); !os.IsNotExist(err) {
-		return nil, errTokenSink
+	if _, err := root.Lstat(base); !os.IsNotExist(err) {
+		return refuse()
 	}
-	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o600)
+	f, err := root.OpenFile(base, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
-		return nil, errTokenSink
+		return refuse()
 	}
-	discard := func() {
+	discard := func() (*tokenSink, error) {
 		_ = f.Close()
-		_ = os.Remove(abs)
+		_ = root.Remove(base)
+		return refuse()
 	}
 	if f.Chmod(0o600) != nil {
-		discard()
-		return nil, errTokenSink
+		return discard()
 	}
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
-		discard()
-		return nil, errTokenSink
+		return discard()
 	}
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || int(st.Uid) != euid || uint64(st.Nlink) != 1 || uint64(st.Dev) != uint64(pst.Dev) {
-		discard()
-		return nil, errTokenSink
+		return discard()
 	}
-	return &tokenSink{file: f, path: abs, parent: parent, info: info}, nil
-}
-
-// syncParentDir makes the new directory entry durable.
-func syncParentDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	err = d.Sync()
-	if closeErr := d.Close(); err == nil {
-		err = closeErr
-	}
-	return err
+	return &tokenSink{file: f, root: root, base: base, path: abs, info: info}, nil
 }

@@ -127,8 +127,8 @@ directory) or redirect stdout. Store it in a secret manager or protected
 environment, not in source control. Create a separate token with the `admin`
 scope when an operator must preview/apply runtime settings or create/restore
 configuration backups. An `admin` token must be created with `--secret-file` and
-an explicit `--namespaces` (a non-matching glob keeps it from also being a
-data-access credential). Static auth cannot grant `admin`.
+explicit, literal-rooted `--namespaces` globs such as `never/used/*` (a tree that
+does not exist keeps it from also being a data-access credential; `*` is refused). Static auth cannot grant `admin`.
 
 Tesseract has no TLS listener. Use TLS termination, a VPN, or an SSH tunnel for
 remote access, and ensure an upstream proxy does not log `Authorization`

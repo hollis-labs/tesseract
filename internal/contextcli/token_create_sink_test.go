@@ -58,6 +58,7 @@ type sinkMetadata struct {
 	NamespaceGlobs  []string `json:"namespace_globs"`
 	SecretFile      string   `json:"secret_file"`
 	SecretDelivered bool     `json:"secret_delivered"`
+	SinkState       string   `json:"sink_state"`
 	Token           string   `json:"token"`
 }
 
@@ -217,49 +218,164 @@ func TestTokenCreateSinkRefusesWrongOwnerBeforeCommit(t *testing.T) {
 	}
 }
 
+// Each post-commit failure must name the exact issued ID, deny delivery, report
+// the sink state separately and conservatively, and never leak the token.
 func TestTokenCreateSinkFailureAfterCommitMakesNoDeliveryClaim(t *testing.T) {
-	cli, out, errOut := newTestCLI(t)
-	var attempted string
-	prev := tokenSinkWrite
-	tokenSinkWrite = func(f *os.File, data string) error {
-		attempted = strings.TrimSpace(data)
-		_, _ = f.WriteString(data[:8]) // partial write, then failure
-		return errors.New("injected write failure")
+	boom := errors.New("injected")
+	cases := []struct {
+		name      string
+		inject    func(t *testing.T)
+		wantState string
+		wantEmpty bool
+	}{
+		{"write", func(t *testing.T) {
+			prev := tokenSinkWrite
+			tokenSinkWrite = func(f *os.File, data string) error { _, _ = f.WriteString(data[:8]); return boom }
+			t.Cleanup(func() { tokenSinkWrite = prev })
+		}, sinkEmptied, true},
+		{"file-sync", func(t *testing.T) {
+			prev := tokenSinkSync
+			n := 0
+			tokenSinkSync = func(f *os.File) error {
+				n++
+				if n == 1 {
+					return boom
+				}
+				return prev(f)
+			}
+			t.Cleanup(func() { tokenSinkSync = prev })
+		}, sinkEmptied, true},
+		{"late-directory-sync", func(t *testing.T) {
+			prev := tokenSinkDirSync
+			tokenSinkDirSync = func(*os.File) error { return boom }
+			t.Cleanup(func() { tokenSinkDirSync = prev })
+		}, sinkEmptied, true},
+		{"close-then-reopen-cleanup", func(t *testing.T) {
+			prev := tokenSinkClose
+			tokenSinkClose = func(f *os.File) error { _ = prev(f); return boom }
+			t.Cleanup(func() { tokenSinkClose = prev })
+		}, sinkEmptied, true},
+		{"cleanup-truncate-fails", func(t *testing.T) {
+			pw, pt := tokenSinkWrite, tokenSinkTruncate
+			tokenSinkWrite = func(f *os.File, data string) error { _, _ = f.WriteString(data); return boom }
+			tokenSinkTruncate = func(*os.File) error { return boom }
+			t.Cleanup(func() { tokenSinkWrite, tokenSinkTruncate = pw, pt })
+		}, sinkMayHold, false},
+		{"directory-sync-and-truncate-fail", func(t *testing.T) {
+			pd, pt := tokenSinkDirSync, tokenSinkTruncate
+			tokenSinkDirSync = func(*os.File) error { return boom }
+			tokenSinkTruncate = func(*os.File) error { return boom }
+			t.Cleanup(func() { tokenSinkDirSync, tokenSinkTruncate = pd, pt })
+		}, sinkMayHold, false},
 	}
-	t.Cleanup(func() { tokenSinkWrite = prev })
-	path := filepath.Join(privateDir(t), "admin.token")
-	before := tokenCount(t, cli)
-	if cli.Run(context.Background(), sinkCreateArgs(path)) == 0 {
-		t.Fatal("lost delivery was reported as success")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cli, out, errOut := newTestCLI(t)
+			var attempted string
+			pw := tokenSinkWrite
+			tc.inject(t)
+			wrapped := tokenSinkWrite
+			tokenSinkWrite = func(f *os.File, data string) error { attempted = strings.TrimSpace(data); return wrapped(f, data) }
+			t.Cleanup(func() { tokenSinkWrite = pw })
+			path := filepath.Join(privateDir(t), "admin.token")
+			before := tokenCount(t, cli)
+			if cli.Run(context.Background(), sinkCreateArgs(path)) == 0 {
+				t.Fatal("unconfirmed delivery was reported as success")
+			}
+			if attempted == "" {
+				t.Fatal("write hook did not run")
+			}
+			if tokenCount(t, cli) != before+1 {
+				t.Fatal("expected exactly one committed token")
+			}
+			var m sinkMetadata
+			if json.Unmarshal(out.Bytes(), &m) != nil || m.ID == "" || m.SecretDelivered || m.SinkState != tc.wantState {
+				t.Fatalf("metadata must name the ID, deny delivery and report sink state %q: %s", tc.wantState, out)
+			}
+			msg := errOut.String()
+			if !strings.Contains(msg, m.ID) || !strings.Contains(msg, "do not retry, re-mint or assume it was revoked") || !strings.Contains(msg, "reconciliation") {
+				t.Fatalf("failure message omitted the ID or the reconciliation warning: %s", msg)
+			}
+			mayHold := strings.Contains(msg, "MAY STILL CONTAIN")
+			if mayHold == tc.wantEmpty {
+				t.Fatalf("message claims the wrong sink state: %s", msg)
+			}
+			if strings.Contains(out.String(), attempted) || strings.Contains(msg, attempted) {
+				t.Fatal("token disclosed on failure")
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal("sink must be retained for reconciliation")
+			}
+			if tc.wantEmpty && len(raw) != 0 {
+				t.Fatal("sink claimed emptied but holds bytes")
+			}
+			if !tc.wantEmpty && len(raw) == 0 {
+				t.Fatal("injected cleanup failure should leave the (possibly valid) credential in place")
+			}
+			if cli.Store.ValidateAuthToken(context.Background(), attempted) != nil {
+				t.Fatal("committed credential must stay active and revocable")
+			}
+			// A repeat run on the same path refuses before minting a second credential.
+			out.Reset()
+			errOut.Reset()
+			if cli.Run(context.Background(), sinkCreateArgs(path)) == 0 || tokenCount(t, cli) != before+1 {
+				t.Fatal("repeat run on the used sink was not refused before commit")
+			}
+		})
 	}
-	if attempted == "" {
-		t.Fatal("write hook did not run")
+}
+
+// If the metadata report cannot be written, the command must not imply a usable
+// receipt or authorize a retry.
+func TestTokenCreateSinkMetadataWriteFailureDemandsReconciliation(t *testing.T) {
+	for _, deliveryFails := range []bool{false, true} {
+		cli, _, errOut := newTestCLI(t)
+		reader, writer, err := os.Pipe()
+		if err != nil || reader.Close() != nil {
+			t.Fatal("pipe fixture failed")
+		}
+		cli.Stdout = writer
+		if deliveryFails {
+			prev := tokenSinkWrite
+			tokenSinkWrite = func(*os.File, string) error { return errors.New("injected") }
+			t.Cleanup(func() { tokenSinkWrite = prev })
+		}
+		path := filepath.Join(privateDir(t), "admin.token")
+		if cli.Run(context.Background(), sinkCreateArgs(path)) == 0 {
+			t.Fatal("failed report was treated as success")
+		}
+		msg := errOut.String()
+		if !strings.Contains(msg, "reconciliation") {
+			t.Fatalf("report failure message wrong: %s", msg)
+		}
+		if !deliveryFails && !strings.Contains(msg, "not a usable receipt") {
+			t.Fatalf("success-path report failure implied a usable receipt: %s", msg)
+		}
+		if deliveryFails && !strings.Contains(msg, "metadata report itself failed") {
+			t.Fatalf("delivery+report failure not called out: %s", msg)
+		}
+		writer.Close()
 	}
-	if tokenCount(t, cli) != before+1 {
-		t.Fatal("expected exactly one committed token")
+}
+
+func TestTokenCreateSinkAcceptsOwnedAncestorSymlinkButNotSymlinkedParent(t *testing.T) {
+	cli, _, errOut := newTestCLI(t)
+	real := privateDir(t)
+	sub := filepath.Join(real, "sub")
+	if os.Mkdir(sub, 0o700) != nil {
+		t.Fatal("fixture failed")
 	}
-	var m sinkMetadata
-	if json.Unmarshal(out.Bytes(), &m) != nil || m.ID == "" || m.SecretDelivered {
-		t.Fatalf("metadata must name the issued ID and deny delivery: %s", out)
+	link := filepath.Join(t.TempDir(), "link")
+	if os.Symlink(real, link) != nil {
+		t.Fatal("fixture failed")
 	}
-	if !strings.Contains(errOut.String(), m.ID) || !strings.Contains(errOut.String(), "do not re-mint") {
-		t.Fatal("failure message omitted the issued ID or the re-mint warning")
+	// The ancestor "link" is resolved once; the verified parent is the real "sub".
+	if code := cli.Run(context.Background(), sinkCreateArgs(filepath.Join(link, "sub", "admin.token"))); code != 0 {
+		t.Fatalf("ancestor symlink with a verified real parent should work: %s", errOut)
 	}
-	if strings.Contains(out.String(), attempted) || strings.Contains(errOut.String(), attempted) {
-		t.Fatal("token disclosed on failure")
-	}
-	if raw, err := os.ReadFile(path); err != nil || len(raw) != 0 {
-		t.Fatal("failed delivery left partial token bytes in the sink")
-	}
-	if cli.Store.ValidateAuthToken(context.Background(), attempted) != nil {
-		t.Fatal("committed credential must stay active and revocable")
-	}
-	// A repeat run on the same path refuses before minting a second credential.
-	tokenSinkWrite = prev
-	out.Reset()
-	errOut.Reset()
-	if cli.Run(context.Background(), sinkCreateArgs(path)) == 0 || tokenCount(t, cli) != before+1 {
-		t.Fatal("repeat run on the used sink was not refused before commit")
+	if info, err := os.Stat(filepath.Join(sub, "admin.token")); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatal("token not in the verified real parent")
 	}
 }
 
@@ -276,7 +392,7 @@ func TestTokenCreateSinkStoreErrorLeavesEmptyMarkerAndDiscloseNothing(t *testing
 	if cli.finishTokenCreateToSink(sink, "", contextstore.AuthToken{}, contextstore.ErrCredentialUnavailable, "json") == 0 {
 		t.Fatal("store failure was reported as success")
 	}
-	if out.Len() != 0 || !strings.Contains(errOut.String(), "not established") || strings.Contains(errOut.String(), "unavailable") {
+	if out.Len() != 0 || !strings.Contains(errOut.String(), "UNKNOWN") || strings.Contains(errOut.String(), "unavailable") {
 		t.Fatalf("store failure output wrong: out=%q err=%q", out, errOut)
 	}
 	if info, err := os.Lstat(path); err != nil || info.Size() != 0 || info.Mode().Perm() != 0o600 {
@@ -291,6 +407,12 @@ func TestTokenCreateAdminRefusalsBeforeCommit(t *testing.T) {
 	cases := map[string][]string{
 		"admin-without-namespaces": {"context", "token", "create", "--name", "a", "--scopes", "admin", "--secret-file", "SINK"},
 		"admin-without-sink":       {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "never/*"},
+		"admin-star-namespace":     {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "*", "--secret-file", "SINK"},
+		"admin-star-among-globs":   {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "never/*,*", "--secret-file", "SINK"},
+		"admin-pattern-root":       {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "ne*/x/*", "--secret-file", "SINK"},
+		"admin-single-segment":     {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "never", "--secret-file", "SINK"},
+		"admin-empty-subpath":      {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", "never/", "--secret-file", "SINK"},
+		"admin-blank-namespaces":   {"context", "token", "create", "--name", "a", "--scopes", "admin", "--namespaces", " , ", "--secret-file", "SINK"},
 		"admin-among-scopes":       {"context", "token", "create", "--name", "a", "--scopes", "write, admin", "--secret-file", "SINK"},
 	}
 	for name, args := range cases {
@@ -359,13 +481,15 @@ func TestWriterIsTerminal(t *testing.T) {
 	if writerIsTerminal(&bytes.Buffer{}) {
 		t.Error("buffer treated as terminal")
 	}
-	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Skip("no /dev/null")
-	}
-	defer null.Close()
-	if writerIsTerminal(null) {
-		t.Error("/dev/null treated as terminal")
+	for _, name := range []string{os.DevNull, "/dev/zero"} {
+		dev, err := os.OpenFile(name, os.O_WRONLY, 0)
+		if err != nil {
+			continue
+		}
+		if writerIsTerminal(dev) {
+			t.Errorf("%s treated as terminal", name)
+		}
+		dev.Close()
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -375,5 +499,13 @@ func TestWriterIsTerminal(t *testing.T) {
 	defer w.Close()
 	if writerIsTerminal(w) {
 		t.Error("pipe treated as terminal")
+	}
+	regular, err := os.Create(filepath.Join(t.TempDir(), "out"))
+	if err != nil {
+		t.Fatal("file")
+	}
+	defer regular.Close()
+	if writerIsTerminal(regular) {
+		t.Error("regular file treated as terminal")
 	}
 }

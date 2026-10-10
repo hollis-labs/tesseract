@@ -1271,8 +1271,8 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 
 	// Refusals that must happen before anything is minted.
 	if containsAdminScope(scopes) {
-		if len(globs) == 0 {
-			return c.fail("an admin token needs explicit --namespaces; it does not default to every namespace")
+		if !adminNamespaceGlobsOK(globs) {
+			return c.fail("an admin token needs explicit --namespaces globs that name a literal root and a sub-path (for example never/used/*); empty, '*' and pattern-rooted globs are refused")
 		}
 		if *secretFile == "" {
 			return c.fail("an admin token must be written with --secret-file, never to stdout")

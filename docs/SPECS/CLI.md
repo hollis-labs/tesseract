@@ -218,28 +218,43 @@ shown only when created.
 
 `--secret-file PATH` delivers the new secret to a private file instead of stdout.
 The path must not exist (a symlink, including a dangling one, counts as
-existing), and its parent must be a real directory owned by the invoking user
-with no group or other write bit. The file is created before the token is
-minted with `O_EXCL|O_NOFOLLOW`, forced to mode 0600, and checked through the
+existing), and its parent must be a real directory (not a symlink) owned by the
+invoking user with no group or other write bit. The parent is opened once and
+every later step is relative to that open directory, so the checks and the
+create cannot be redirected by replacing the parent afterwards; ancestors of the
+parent are resolved once when it is opened. The file is created before the token
+is minted with `O_EXCL|O_NOFOLLOW`, forced to mode 0600, and checked through the
 open descriptor, so every unsafe sink is refused before anything is created. The
-secret is written once, synced, and the directory entry is synced; it never
-reaches stdout or stderr, on success or failure. Stdout carries metadata only:
-`id`, `name`, `client_id`, `scopes`, `namespace_globs`, `created_at`,
-`expires_at`, `secret_file` and `secret_delivered`.
+secret is written once, the file and the directory are synced, and the file is
+closed; it never reaches stdout or stderr, on success or failure, and a failure
+never falls back to stdout. Stdout carries metadata only: `id`, `name`,
+`client_id`, `scopes`, `namespace_globs`, `created_at`, `expires_at`,
+`secret_file`, `secret_delivered` and `sink_state`. This does not isolate the
+sink from other processes of the same user, who can already read the store.
 
-If delivery fails after the token was created, the command exits non-zero,
-reports `secret_delivered: false` with the issued `id`, and empties the file on
-a best-effort basis. The credential stays active and revocable by that ID; do not
-mint again or revoke until the ID is confirmed. If the create call itself fails,
-whether the token was committed cannot be established from the error: the empty
-file is left in place, so a repeat on the same path refuses, and the command
-tells you to list token metadata before retrying. Windows is unsupported and
-refuses `--secret-file`.
+If anything after the token was created fails (write, sync, directory sync or
+close), the command exits non-zero, reports `secret_delivered: false` and the
+issued `id`, and tries to empty the file. `sink_state` says what it can prove:
+`emptied` (truncated, synced and read back at size zero) or
+`may_contain_credential` (cleanup failed; the file may hold some or all of a
+valid credential and is retained for owner reconciliation). The credential stays
+active and revocable by that ID. A failure is never a license to retry, mint
+again or assume the token was revoked; reconcile by exact ID. If the metadata
+report itself cannot be written, the error text says so and is the only record:
+it is not a usable receipt. If the create call itself fails, whether the token
+was committed is UNKNOWN: an empty file is left in place, so a repeat on the
+same path refuses, and the command tells you to list token metadata before
+doing anything else. Windows is unsupported and refuses `--secret-file`.
 
-An `admin` scope in `--scopes` requires `--namespaces` to be given explicitly
-(no implicit all-namespaces grant) and requires `--secret-file`. Without
-`--secret-file`, `token create` refuses when stdout is a terminal; a pipe or file
-keeps the previous behavior for non-admin tokens. Rotation delivers a new secret once to an exclusive
+An `admin` scope in `--scopes` requires `--namespaces` globs that are explicit
+and literal-rooted: each needs a literal first path segment (no `*`, `?`, `[`,
+`\`) and a non-empty sub-path, for example `never/used/*`. Empty input and `*`
+are refused before anything is created. The CLI cannot prove that no namespace
+matches the glob; the administrator gate ignores namespace globs, so choose a
+tree that does not exist. An admin token also requires `--secret-file`. Without
+`--secret-file`, `token create` refuses when stdout is a terminal (detected with
+the terminal attributes query where the platform has one); a pipe or file keeps
+the previous behavior for non-admin tokens only. Rotation delivers a new secret once to an exclusive
 0600 file or verified pipe; its JSON result contains metadata only. Rotation,
 revocation, and managed-family listing require a managed administrator credential.
 Raw `--token` rotation and the legacy library `RotateAuthToken` method refuse

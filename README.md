@@ -188,7 +188,7 @@ When either token mode is active, every HTTP route requires
 endpoint. A static token deliberately has no `admin` scope. Mutating the
 runtime settings or its config backups therefore requires managed auth and a
 managed token created with the explicit `admin` scope (that token requires
-`--secret-file` and an explicit `--namespaces`).
+`--secret-file` and explicit, literal-rooted `--namespaces` globs).
 
 Authentication is not transport encryption. Tesseract has no built-in TLS;
 put any remotely reachable listener behind TLS, a VPN, an SSH tunnel, or a
