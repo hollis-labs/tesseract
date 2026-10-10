@@ -8,6 +8,11 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-10-10
+
+Private delivery for the first managed administrator credential (CW-20261010-0239).
+Source release only; no prebuilt binaries are published.
+
 ### Added
 
 - `context token create --secret-file PATH`: deliver the new token to an
@@ -1446,7 +1451,10 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/hollis-labs/tesseract/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/hollis-labs/tesseract/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/hollis-labs/tesseract/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/hollis-labs/tesseract/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/hollis-labs/tesseract/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hollis-labs/tesseract/compare/v0.7.0...v0.8.0
