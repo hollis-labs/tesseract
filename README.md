@@ -172,7 +172,8 @@ choose managed authentication or a static token:
   --client-id app:remote-client \
   --scopes write,promote.request,packet \
   --namespaces 'app/remote-client/*' \
-  --ttl 24h
+  --ttl 24h \
+  --secret-file ./remote-client.token   # new 0600 file; the token is never printed
 
 ./tesseract serve --managed-auth --addr 0.0.0.0:8089
 ```
@@ -186,7 +187,8 @@ When either token mode is active, every HTTP route requires
 `Authorization: Bearer <token>` except readiness and the optional metrics
 endpoint. A static token deliberately has no `admin` scope. Mutating the
 runtime settings or its config backups therefore requires managed auth and a
-managed token created with the explicit `admin` scope.
+managed token created with the explicit `admin` scope (that token requires
+`--secret-file` and an explicit `--namespaces`).
 
 Authentication is not transport encryption. Tesseract has no built-in TLS;
 put any remotely reachable listener behind TLS, a VPN, an SSH tunnel, or a

@@ -121,10 +121,14 @@ tesseract context token create \
 tesseract serve --managed-auth --addr 0.0.0.0:8089
 ```
 
-Token plaintext is displayed once. Store it in a secret manager or protected
+Token plaintext is shown once, and `token create` refuses to print it to a
+terminal: pass `--secret-file <new path>` (new owner-only file, owner-only parent
+directory) or redirect stdout. Store it in a secret manager or protected
 environment, not in source control. Create a separate token with the `admin`
 scope when an operator must preview/apply runtime settings or create/restore
-configuration backups. Static auth cannot grant `admin`.
+configuration backups. An `admin` token must be created with `--secret-file` and
+an explicit `--namespaces` (a non-matching glob keeps it from also being a
+data-access credential). Static auth cannot grant `admin`.
 
 Tesseract has no TLS listener. Use TLS termination, a VPN, or an SSH tunnel for
 remote access, and ensure an upstream proxy does not log `Authorization`

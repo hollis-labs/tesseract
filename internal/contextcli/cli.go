@@ -1222,6 +1222,7 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 	expires := fs.String("expires", "", "expiry as RFC3339 or YYYY-MM-DD")
 	ttl := fs.String("ttl", "", "expiry as Go duration (e.g. 8760h)")
 	output := fs.String("output", "table", "json|table")
+	secretFile := fs.String("secret-file", "", "write the token to this new owner-only (0600) file instead of stdout; required for admin tokens")
 	if code, done := c.parseFlags(fs, args); done {
 		return code
 	}
@@ -1268,6 +1269,25 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 		dur = parsed
 	}
 
+	// Refusals that must happen before anything is minted.
+	if containsAdminScope(scopes) {
+		if len(globs) == 0 {
+			return c.fail("an admin token needs explicit --namespaces; it does not default to every namespace")
+		}
+		if *secretFile == "" {
+			return c.fail("an admin token must be written with --secret-file, never to stdout")
+		}
+	}
+	var sink *tokenSink
+	if *secretFile != "" {
+		var err error
+		if sink, err = openTokenSink(*secretFile, tokenSinkEUID()); err != nil {
+			return c.fail(err.Error())
+		}
+	} else if tokenOutputIsTerminal(c.Stdout) {
+		return c.fail("refusing to print a token to a terminal; use --secret-file, or redirect stdout")
+	}
+
 	token, meta, err := c.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
 		Label:          *name,
 		ClientID:       *clientID,
@@ -1275,6 +1295,9 @@ func (c *CLI) runTokenCreate(ctx context.Context, args []string) int {
 		NamespaceGlobs: globs,
 		TTL:            dur,
 	})
+	if sink != nil {
+		return c.finishTokenCreateToSink(sink, token, meta, err, strings.TrimSpace(*output))
+	}
 	if err != nil {
 		return c.fail(err.Error())
 	}

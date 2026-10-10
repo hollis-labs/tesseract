@@ -29,7 +29,8 @@ tesseract context token create \
   --ttl 8760h
 ```
 
-The plaintext token is shown once. Add `memory:write` only if the agent should
+The plaintext token is shown once; `token create` refuses to print it to a terminal, so
+add `--secret-file <new path>` or redirect stdout. Add `memory:write` only if the agent should
 write the memory/knowledge revision store. Namespace globs and scopes prevent
 ungranted mutations, but they do not turn the local MCP process into a fully
 read-isolated tenant: several context and audit reads remain available.

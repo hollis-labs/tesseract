@@ -204,7 +204,7 @@ idempotent and creates the default namespace policies when absent.
 
 | Invocation | Flags and operands |
 |---|---|
-| `context token create` | `--name` (required), `--client-id`, `--scopes`, `--namespaces`, optional `--ttl` or `--expires`, `--output json|table` (default `table`) |
+| `context token create` | `--name` (required), `--client-id`, `--scopes`, `--namespaces`, optional `--ttl` or `--expires`, `--output json|table` (default `table`), optional `--secret-file` (required for an `admin` token) |
 | `context token issue` | Legacy/default-scope creation: `--label`, `--ttl`, `--output json|table` |
 | `context token rotate` | `--principal-id`, `--credential-id`, `--expected-generation`, `--idempotency-key`, `--admin-token-file`; optional `--overlap`, `--ttl`; exactly one of `--secret-file` or `--secret-stdout` |
 | `context token revoke` | `--principal-id`, `--credential-id`, `--expected-generation`, `--idempotency-key`, `--admin-token-file`; legacy ID operands and raw `--token` refuse |
@@ -214,7 +214,32 @@ idempotent and creates the default namespace policies when absent.
 `token create` is the full-fidelity offline bootstrap command. Comma-separate scopes and namespace
 globs. `--expires` accepts RFC3339 or `YYYY-MM-DD`; `--ttl` accepts a Go
 duration. If both are supplied, `--expires` takes precedence. The raw secret is
-shown only when created. Rotation delivers a new secret once to an exclusive
+shown only when created.
+
+`--secret-file PATH` delivers the new secret to a private file instead of stdout.
+The path must not exist (a symlink, including a dangling one, counts as
+existing), and its parent must be a real directory owned by the invoking user
+with no group or other write bit. The file is created before the token is
+minted with `O_EXCL|O_NOFOLLOW`, forced to mode 0600, and checked through the
+open descriptor, so every unsafe sink is refused before anything is created. The
+secret is written once, synced, and the directory entry is synced; it never
+reaches stdout or stderr, on success or failure. Stdout carries metadata only:
+`id`, `name`, `client_id`, `scopes`, `namespace_globs`, `created_at`,
+`expires_at`, `secret_file` and `secret_delivered`.
+
+If delivery fails after the token was created, the command exits non-zero,
+reports `secret_delivered: false` with the issued `id`, and empties the file on
+a best-effort basis. The credential stays active and revocable by that ID; do not
+mint again or revoke until the ID is confirmed. If the create call itself fails,
+whether the token was committed cannot be established from the error: the empty
+file is left in place, so a repeat on the same path refuses, and the command
+tells you to list token metadata before retrying. Windows is unsupported and
+refuses `--secret-file`.
+
+An `admin` scope in `--scopes` requires `--namespaces` to be given explicitly
+(no implicit all-namespaces grant) and requires `--secret-file`. Without
+`--secret-file`, `token create` refuses when stdout is a terminal; a pipe or file
+keeps the previous behavior for non-admin tokens. Rotation delivers a new secret once to an exclusive
 0600 file or verified pipe; its JSON result contains metadata only. Rotation,
 revocation, and managed-family listing require a managed administrator credential.
 Raw `--token` rotation and the legacy library `RotateAuthToken` method refuse
