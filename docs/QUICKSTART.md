@@ -117,7 +117,9 @@ Create at least one token before starting `--managed-auth`:
   --ttl 24h
 ```
 
-Copy the plaintext value immediately; it is shown once. Then start the daemon:
+The plaintext is shown once, and `token create` refuses to print it to a terminal:
+add `--secret-file ./http-client.token` (a new owner-only file in an owner-only
+directory) or redirect stdout. Then start the daemon:
 
 ```bash
 ./tesseract serve --managed-auth --addr 0.0.0.0:8089
