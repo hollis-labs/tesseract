@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	secrets "github.com/hollis-labs/go-secrets"
+	secrets "github.com/hollis-labs/libs/security/secrets"
 )
 
 func state(t *testing.T) Resolver {

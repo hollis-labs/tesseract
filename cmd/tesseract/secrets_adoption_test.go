@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	secrets "github.com/hollis-labs/go-secrets"
+	secrets "github.com/hollis-labs/libs/security/secrets"
 	"github.com/hollis-labs/tesseract/internal/config"
 )
 
