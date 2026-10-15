@@ -184,7 +184,7 @@ db, err := tesseract.Open(
 
 Without an injected embedder, embedding operations return `tesseract.ErrEmbedderUnavailable`; it is the same sentinel as `memory.ErrEmbedderUnavailable`, so `errors.Is` works through either supported facade. Pure lexical recall remains available. `ErrSimilarityUnavailable` was removed; do not retain an alias in consumer code.
 
-The `tesseract` daemon and MCP runtime currently construct the `openai` embedding provider from `embedding.provider: openai`, `embedding.model`, and `OPENAI_API_KEY`. An unsupported provider or missing credential disables embedding and leaves lexical/BM25 recall available. Explicit embedding-only, semantic-only, and RAG operations return a supported unavailable/error response; they do not report an empty semantic success. The same constructed provider instance is shared with the memory and MCP context tools.
+The `tesseract` daemon and MCP runtime currently construct the `openai` embedding provider from `embedding.provider: openai`, `embedding.model`, and the OpenAI key resolved from `embedding.api_key_ref` (default `file://tesseract/openai-api-key`, see `docs/secrets.md`). An unsupported provider or missing credential disables embedding and leaves lexical/BM25 recall available. Explicit embedding-only, semantic-only, and RAG operations return a supported unavailable/error response; they do not report an empty semantic success. The same constructed provider instance is shared with the memory and MCP context tools.
 
 ## MCP v0.9 surface
 

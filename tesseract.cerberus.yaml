@@ -25,11 +25,10 @@ resources:
       # CONTEXTD_ROOT's deprecation shim was removed in CW-20260825-0013,
       # so the variable is inert. tesseract resolves every path via
       # go-apppaths XDG defaults.
-      # The embedding provider key is a keychain reference, not a literal.
-      # Cerberus fronts this service with `cerberus run-secrets`, which
-      # resolves it in the service's own process — see CW-20260518-0087.
-      env:
-        OPENAI_API_KEY: keychain://openai/embed
+      # No credential is set here. The embedding key is a go-secrets reference
+      # resolved by the process itself (default file://tesseract/openai-api-key;
+      # on macOS set embedding.api_key_ref: keychain://openai/embed in
+      # config.yaml). See docs/secrets.md and CW-20261015-0046.
       env_file: .env
       mode: os_service
       port: 8089

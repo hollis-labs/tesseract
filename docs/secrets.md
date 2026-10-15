@@ -1,62 +1,103 @@
 # Credentials
 
-Tesseract needs one credential: an API key for the embedding provider, when
-`embedding.provider` selects a hosted one such as `openai`.
+Tesseract holds no plaintext credential in its configuration. Every secret it
+needs is a go-secrets reference (`<scheme>://<authority>/<path>`) resolved at
+the moment of use by the shared `go-secrets` library. Tesseract has no
+resolver of its own: `internal/credentials` only names the references and
+decides which failures are fatal.
 
-## How it is supplied
+References are not secrets. They may appear in `config.yaml`, in flags and in
+service definitions. A literal key placed where a reference belongs is rejected
+as an invalid reference, and the error never echoes it.
 
-**Environment only, today.** Tesseract reads `OPENAI_API_KEY` from its process
-environment (`internal/llm/openai`) and has no other channel — no config-file
-field, no keychain lookup, no secret-reference syntax. Setting the variable is
-the whole interface:
+## Which credentials exist
+
+| Credential | Used by | Default reference | Override |
+|---|---|---|---|
+| OpenAI API key | embeddings (`embedding.provider: openai`), synthesis (`synthesis.provider: openai`) | `file://tesseract/openai-api-key` | `embedding.api_key_ref`, `synthesis.api_key_ref` in `config.yaml` |
+| Anthropic API key | synthesis (`synthesis.provider: anthropic`) | `file://tesseract/anthropic-api-key` | `synthesis.api_key_ref` |
+| MCP capability token | `tesseract mcp` | none (optional) | `--token-file`, `TESSERACT_MCP_TOKEN`, `--token`, each accepting a reference |
+| Static bearer token (legacy) | `tesseract serve --static-token` | none (optional) | `--static-token` accepts a reference |
+
+Managed-auth tokens (`serve --managed-auth`) live as hashes in Tesseract's own
+store; the plaintext is shown once at creation and is the caller's to keep.
+Store the caller's copy with `secrets set` too.
+
+## Setting a value
+
+On a host without a Secret Service (the fleet's Linux hosts) use the managed
+file store. The value is read from stdin only, never argv:
 
 ```bash
-OPENAI_API_KEY=… tesseract serve
+printf %s "$KEY" | secrets set file://tesseract/openai-api-key
+secrets check file://tesseract/openai-api-key     # prints the source, never the value
 ```
 
-`ANTHROPIC_API_KEY` behaves the same way for the Anthropic client.
+Files are `0600` in `0700` directories under
+`$XDG_STATE_HOME/hollis/secrets`. `keychain://` works where a Secret Service or
+the macOS keychain exists (macOS hosts: `keychain://tesseract/openai-api-key`
+with an explicit `api_key_ref`); on Linux without one it returns `unavailable`
+with guidance. `op://vault/item/field` reads through the 1Password CLI.
 
-## What happens when it is absent
-
-Nothing fails. Tesseract logs
-
+```yaml
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+  api_key_ref: op://Hollis/OpenAI/credential   # optional; default is the file:// reference above
 ```
-warning: embedding.provider=openai but OPENAI_API_KEY not set —
-embedding disabled, falling back to BM25-only recall
-```
 
-and continues with lexical recall. Semantic search is degraded; storage,
-retrieval and every other surface are unaffected. This is the intended path for
-a developer working from a checkout without a key, so running the test suite or
-a local instance needs no credential at all.
+## Environment variables are no longer read
 
-## Deploying without plaintext
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are ignored. The environment is not a
+silent fallback. A supervisor that already injects the variable must instead
+hold a reference (`api_key_ref`) or write the value to the store once with
+`secrets set`.
 
-Because the environment is the only channel, keeping a key out of plaintext is
-the responsibility of whatever launches Tesseract. Two patterns work today:
+## `tesseract mcp` token precedence
 
-- **A supervisor that resolves the secret at start.** The process manager holds
-  a reference rather than a literal, resolves it in the moment it execs
-  Tesseract, and never writes the resolved value to disk.
-- **A wrapper that injects the variable**, such as `op run`, `aws-vault exec`,
-  `systemd-creds`, or an equivalent. Tesseract sees an ordinary environment
-  variable and needs no knowledge of the store behind it.
+Unchanged, file first: `--token-file`, then `TESSERACT_MCP_TOKEN`, then
+`--token`. Each source may be a reference.
 
-Either way, resolution happens outside Tesseract, in the process that starts it.
+- `--token-file <path>` is read through go-secrets `tokenfile`: a regular file,
+  mode exactly `0600`, owned by the caller, final component not a symlink. A
+  looser file is refused. `<path>` may instead be a reference such as
+  `file://tesseract/mcp-token`.
+- `TESSERACT_MCP_TOKEN` and `--token` are resolved when they are a reference
+  and otherwise taken as the legacy literal. A literal in argv or the
+  environment is visible to same-user processes; prefer the file or a reference.
+- A named source that cannot be read or resolved is an error. It never falls
+  through to a lower-precedence source.
 
-### Do not put the key in a `.env` beside the binary
+## Failing closed
 
-It is the pattern this codebase most often inherits from, and it is the one that
-leaks: the file is read by tooling, copied into generated service definitions,
-and printed by anything inspecting the working directory. If a launcher supports
-a secret reference, use it; if not, export the variable in the launching shell
-for that invocation.
+| Situation | Behavior |
+|---|---|
+| `api_key_ref` / `--token-file` / `--static-token` reference is missing, denied, unavailable or empty | Startup (or the command) fails with the reference name and go-secrets guidance, never the value |
+| No `api_key_ref` and the default `file://` entry is absent | Documented degrade: embeddings fall back to BM25-only recall, synthesis returns 503. Storage and every other surface are unaffected, so a checkout without keys still works |
+| Default entry exists but is denied, unreadable or empty | Error, not a degrade |
 
-## Known limitation
+## Audit table
 
-Tesseract cannot resolve a secret reference itself. A deployment where no
-supervisor can inject the variable — Tesseract embedded in another binary, or a
-hosted instance — has only the plaintext-environment channel available. Teaching
-Tesseract to accept a reference in place of a literal, resolved at the embedder
-client's construction and never logged, is planned; the graceful-degradation
-behavior above is what stands in until then.
+| Site | Before | Now |
+|---|---|---|
+| `internal/llm/openai`, `internal/llm/anthropic` | read `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` when the key argument was empty | take the key from the caller; read no environment |
+| `cmd/tesseract` embedder and synthesis construction | env presence check | `credentials.ProviderKey` (reference, fail closed when explicit) |
+| `cmd/tesseract` `mcp` token | file (any mode), env, flag | `tokenfile.Read` (strict) or reference, env/flag literal or reference |
+| `cmd/tesseract` `serve --static-token` | literal | literal or reference |
+| `internal/contextapi` admin provider status | `env_var` / `env_present` from the environment | `key_ref` / `key_present` from go-secrets (`env_var`/`env_present` kept as aliases of the same values for the shipped UI) |
+| `tesseract.cerberus.yaml` | `OPENAI_API_KEY: keychain://openai/embed` resolved by `cerberus run-secrets` | env block removed; the process resolves its own reference (macOS: set `embedding.api_key_ref: keychain://openai/embed`) |
+| `cmd/smoke` | `llmopenai.New("")` from env | resolves the default reference |
+| Tether catalog entry `mcp-servers/tesseract.yaml` (outside this repo) | stdio over `ssh` to `tesseract-mcp-stdio`; no inline credential found | owned by Tether (CW-20261015-0014); the remote wrapper chooses the token source |
+| `env.example`, `docs/QUICKSTART.md`, `docs/OPERATIONS.md`, `docs/vector-search.md`, `docs/AGENT-SETUP.md` | `export OPENAI_API_KEY=...` | `secrets set` and references |
+
+## Do not put a key in a `.env` beside the binary
+
+The file is read by tooling, copied into generated service definitions and
+printed by anything inspecting the working directory. Use a reference.
+
+## Known limits
+
+Same-user processes can read the managed store and the environment; go-secrets
+does not defend against them. There is no caching: each resolution reads the
+store (startup, and on each admin status request). Rotating a key requires a
+restart for the embedder and synthesis clients, which are built once.

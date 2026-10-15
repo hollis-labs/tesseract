@@ -28,6 +28,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/credentials"
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/fsperm"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
@@ -299,6 +300,10 @@ type Server struct {
 	QueueDB *sql.DB
 	// RuntimeConfig is the loaded Tesseract config, merged with defaults.
 	RuntimeConfig config.Config
+	// SecretResolver resolves provider key references for the admin status
+	// surface only (presence, never value). Nil means a default go-secrets
+	// resolver.
+	SecretResolver credentials.Resolver
 	// TypeRegistry holds the type vocabularies and views. May be nil, in
 	// which case the handlers use typeregistry.Default() — the process
 	// registry cmd/tesseract loads types.yaml into at boot. Set it only to
@@ -1404,9 +1409,17 @@ type adminConfigRestoreResponse struct {
 }
 
 type adminProviderStatus struct {
-	Kind         string `json:"kind"`
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
+	Kind     string `json:"kind"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	// KeyRef is the go-secrets reference the provider key is read from. A
+	// reference names where a secret lives; it is not the secret.
+	KeyRef string `json:"key_ref,omitempty"`
+	// KeyPresent reports whether KeyRef currently resolves.
+	KeyPresent bool `json:"key_present"`
+	// EnvVar and EnvPresent are deprecated aliases kept for the shipped web UI
+	// bundle: EnvVar carries KeyRef and EnvPresent mirrors KeyPresent. No
+	// environment variable is read.
 	EnvVar       string `json:"env_var,omitempty"`
 	Configured   bool   `json:"configured"`
 	Supported    bool   `json:"supported"`
@@ -1578,8 +1591,8 @@ func (s *Server) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			SynthesisSystemPromptSet: cfg.Synthesis.SystemPrompt != "",
 		},
 		Providers: adminSettingsProviders{
-			Embedding: adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
-			Synthesis: adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
+			Embedding: s.adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
+			Synthesis: s.adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
 		},
 	})
 }
@@ -1816,7 +1829,7 @@ func (s *Server) adminPaths(ctx context.Context) []adminPathInfo {
 	return paths
 }
 
-func adminEmbeddingProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
+func (s *Server) adminEmbeddingProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
 	name := strings.ToLower(strings.TrimSpace(cfg.Embedding.Provider))
 	status := adminProviderStatus{
 		Kind:         "embedding",
@@ -1830,21 +1843,20 @@ func adminEmbeddingProviderStatus(cfg config.Config, runtimeReady bool) adminPro
 	case "":
 		status.Reason = "no embedding provider configured"
 	case "openai":
-		status.EnvVar = "OPENAI_API_KEY"
-		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+		s.fillKeyStatus(&status, "openai", cfg.Embedding.APIKeyRef)
 	default:
 		status.Reason = "unsupported embedding provider"
 	}
-	if status.Configured && status.Supported && status.EnvPresent {
+	if status.Configured && status.Supported && status.KeyPresent {
 		status.Available = true
 	}
-	if status.Configured && status.Supported && !status.EnvPresent {
-		status.Reason = status.EnvVar + " not set"
+	if status.Configured && status.Supported && !status.KeyPresent {
+		status.Reason = status.KeyRef + " not set"
 	}
 	return status
 }
 
-func adminSynthesisProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
+func (s *Server) adminSynthesisProviderStatus(cfg config.Config, runtimeReady bool) adminProviderStatus {
 	name := strings.ToLower(strings.TrimSpace(cfg.Synthesis.Provider))
 	status := adminProviderStatus{
 		Kind:         "synthesis",
@@ -1858,19 +1870,17 @@ func adminSynthesisProviderStatus(cfg config.Config, runtimeReady bool) adminPro
 	case "":
 		status.Reason = "no synthesis provider configured"
 	case "openai":
-		status.EnvVar = "OPENAI_API_KEY"
-		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+		s.fillKeyStatus(&status, "openai", cfg.Synthesis.APIKeyRef)
 	case "anthropic":
-		status.EnvVar = "ANTHROPIC_API_KEY"
-		status.EnvPresent = os.Getenv(status.EnvVar) != ""
+		s.fillKeyStatus(&status, "anthropic", cfg.Synthesis.APIKeyRef)
 	default:
 		status.Reason = "unsupported synthesis provider"
 	}
-	if status.Configured && status.Supported && status.EnvPresent {
+	if status.Configured && status.Supported && status.KeyPresent {
 		status.Available = true
 	}
-	if status.Configured && status.Supported && !status.EnvPresent {
-		status.Reason = status.EnvVar + " not set"
+	if status.Configured && status.Supported && !status.KeyPresent {
+		status.Reason = status.KeyRef + " not set"
 	}
 	return status
 }
@@ -1900,6 +1910,14 @@ func adminSettingsConfigFromConfig(cfg config.Config) adminSettingsConfigInfo {
 // unexposed sections intact.
 func adminSettingsConfigToConfig(base config.Config, info adminSettingsConfigInfo) config.Config {
 	cfg := base
+	// A key reference belongs to one provider; switching provider drops it so
+	// the new provider falls back to its own default reference.
+	if np := strings.ToLower(strings.TrimSpace(info.EmbeddingProvider)); np != strings.ToLower(strings.TrimSpace(base.Embedding.Provider)) {
+		cfg.Embedding.APIKeyRef = ""
+	}
+	if np := strings.ToLower(strings.TrimSpace(info.SynthesisProvider)); np != strings.ToLower(strings.TrimSpace(base.Synthesis.Provider)) {
+		cfg.Synthesis.APIKeyRef = ""
+	}
 	cfg.Embedding.Provider = strings.ToLower(strings.TrimSpace(info.EmbeddingProvider))
 	cfg.Embedding.Model = strings.TrimSpace(info.EmbeddingModel)
 	cfg.Dedup.SimilarityThreshold = info.DedupSimilarityThreshold
@@ -1916,8 +1934,8 @@ func adminSettingsConfigToConfig(base config.Config, info adminSettingsConfigInf
 
 func adminSettingsProvidersFromConfig(cfg config.Config, s *Server) adminSettingsProviders {
 	return adminSettingsProviders{
-		Embedding: adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
-		Synthesis: adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
+		Embedding: s.adminEmbeddingProviderStatus(cfg, s.MemoryStore != nil),
+		Synthesis: s.adminSynthesisProviderStatus(cfg, s.SynthesisProvider != nil),
 	}
 }
 
@@ -3040,4 +3058,14 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 		"duration_ms":       time.Since(start).Milliseconds(),
 		"dry_run":           req.DryRun,
 	})
+}
+
+// fillKeyStatus records where a provider key lives and whether it resolves.
+// It never records the value, and a resolution error's detail is not surfaced.
+func (s *Server) fillKeyStatus(st *adminProviderStatus, provider, configured string) {
+	ref, present, _ := credentials.ProviderKeyPresent(context.Background(), s.SecretResolver, provider, configured)
+	st.KeyRef = ref
+	st.KeyPresent = present
+	st.EnvVar = ref
+	st.EnvPresent = present
 }

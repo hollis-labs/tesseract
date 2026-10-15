@@ -29,7 +29,7 @@ func TestProductionMCPAdapterSharesConfiguredSubsystemEmbedder(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	const credential = "production-wiring-secret-must-not-be-logged"
-	t.Setenv("OPENAI_API_KEY", credential)
+	putSecret(t, "file://tesseract/openai-api-key", credential)
 	cfg := config.Defaults()
 	cfg.Embedding.Model = "configured-contract-model"
 	var logs bytes.Buffer

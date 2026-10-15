@@ -83,8 +83,8 @@ Current provider support:
 
 | Feature | Providers | Credential |
 |---|---|---|
-| Embeddings and semantic recall | OpenAI | `OPENAI_API_KEY` |
-| Answer synthesis | OpenAI, Anthropic | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
+| Embeddings and semantic recall | OpenAI | `file://tesseract/openai-api-key` (or `embedding.api_key_ref`) |
+| Answer synthesis | OpenAI, Anthropic | `file://tesseract/openai-api-key`, `file://tesseract/anthropic-api-key` (or `synthesis.api_key_ref`) |
 
 Copy a sample to the `config-file` reported by `tesseract path`:
 
@@ -92,7 +92,7 @@ Copy a sample to the `config-file` reported by `tesseract path`:
 mkdir -p /path/from/tesseract-path
 cp examples/config.openai.yaml /path/from/tesseract-path/config.yaml
 chmod 600 /path/from/tesseract-path/config.yaml
-export OPENAI_API_KEY='...'
+printf %s "$OPENAI_KEY" | secrets set file://tesseract/openai-api-key   # see docs/secrets.md
 ```
 
 For Anthropic synthesis plus OpenAI embeddings, use

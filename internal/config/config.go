@@ -162,20 +162,27 @@ type ReadConfig struct {
 // SynthesisConfig configures the LLM-backed answer synthesis path
 // (POST /v1/synthesis/ask). When Provider is empty the synthesis route
 // returns 503 service_unavailable. Provider credential is read by the
-// go-providers adapter from its conventional env var (ANTHROPIC_API_KEY,
-// OPENAI_API_KEY, etc).
+// credentials package from a go-secrets reference (api_key_ref, or the
+// provider's default file:// reference). No environment variable is read.
 type SynthesisConfig struct {
 	Provider     string  `yaml:"provider"`
 	Model        string  `yaml:"model"`
 	SystemPrompt string  `yaml:"system_prompt,omitempty"`
 	MaxTokens    int     `yaml:"max_tokens,omitempty"`
 	Temperature  float64 `yaml:"temperature,omitempty"`
+	// APIKeyRef is a go-secrets reference (file://, keychain://, op://,
+	// helper://) to the provider API key. Never a literal key. Empty means the
+	// provider's default managed-store reference (see internal/credentials).
+	APIKeyRef string `yaml:"api_key_ref,omitempty"`
 }
 
 // EmbeddingConfig configures the embedding provider and model.
 type EmbeddingConfig struct {
 	Provider string `yaml:"provider"`
 	Model    string `yaml:"model"`
+	// APIKeyRef is a go-secrets reference to the provider API key. Never a
+	// literal key. Empty means the provider's default managed-store reference.
+	APIKeyRef string `yaml:"api_key_ref,omitempty"`
 }
 
 // DedupConfig configures semantic dedup behavior.

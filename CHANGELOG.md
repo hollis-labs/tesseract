@@ -8,6 +8,10 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- Credentials are go-secrets references (CW-20261015-0046). `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are no longer read; store keys with `secrets set file://tesseract/openai-api-key` / `anthropic-api-key` or point `embedding.api_key_ref` / `synthesis.api_key_ref` at any reference. A configured reference that cannot be resolved fails startup; an absent default still degrades to BM25-only recall. `tesseract mcp --token-file` now requires a `0600` file owned by the caller and also accepts a reference; `TESSERACT_MCP_TOKEN`, `--token` and `serve --static-token` accept references. Admin provider status reports `key_ref` / `key_present`. Uses a local `go.mod` replace for `go-secrets` until the monorepo import.
+
 ## [0.12.1] — 2026-10-10
 
 Private delivery for the first managed administrator credential (CW-20261010-0239).

@@ -55,8 +55,8 @@ Start from [`../examples/mcp.json`](../examples/mcp.json):
 ```
 
 Prefer a secret-aware host configuration or a protected user-level config over
-committing the raw token to a repository. Provider credentials should come from
-the host process environment or its secret manager. If you put a token in a
+committing the raw token to a repository. Provider credentials are go-secrets
+references (`docs/secrets.md`). If you put a token in a
 local config file, restrict the file permissions and keep it out of source
 control.
 
@@ -66,8 +66,8 @@ registry.
 ## Scope a session to a namespace
 
 `tesseract mcp` reads its token once: `--token-file` takes precedence over
-nonblank `TESSERACT_MCP_TOKEN`, then legacy `--token`. An unreadable or empty
-file fails startup. Use a `0600` token file to keep the credential off argv;
+nonblank `TESSERACT_MCP_TOKEN`, then legacy `--token`; each may be a go-secrets
+reference. An unreadable, empty, or looser-than-`0600` file fails startup. Use a `0600` token file to keep the credential off argv;
 environment input still permits same-user reads through Linux `/proc`.
 Scope belongs to the server process rather than to the agent. To confine one kind of session to a
 project, mint a token for it and launch that session's MCP server with that
