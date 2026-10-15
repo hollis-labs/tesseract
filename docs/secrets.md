@@ -18,6 +18,7 @@ as an invalid reference, and the error never echoes it.
 | Anthropic API key | synthesis (`synthesis.provider: anthropic`) | `file://tesseract/anthropic-api-key` | `synthesis.api_key_ref` |
 | MCP capability token | `tesseract mcp` | none (optional) | `--token-file`, `TESSERACT_MCP_TOKEN`, `--token`, each accepting a reference |
 | Static bearer token (legacy) | `tesseract serve --static-token` | none (optional) | `--static-token` accepts a reference |
+| Deny-list bearer (Tether credential holding `tether.maintain`) | JWT revocation poll (`auth.deny_list`) | none (optional) | `auth.deny_list.bearer_ref` in `config.yaml`; a literal is refused. See [`auth.md`](auth.md) |
 
 Managed-auth tokens (`serve --managed-auth`) live as hashes in Tesseract's own
 store; the plaintext is shown once at creation and is the caller's to keep.
@@ -84,6 +85,7 @@ Unchanged, file first: `--token-file`, then `TESSERACT_MCP_TOKEN`, then
 | `cmd/tesseract` embedder and synthesis construction | env presence check | `credentials.ProviderKey` (reference, fail closed when explicit) |
 | `cmd/tesseract` `mcp` token | file (any mode), env, flag | `tokenfile.Read` (strict) or reference, env/flag literal or reference |
 | `cmd/tesseract` `serve --static-token` | literal | literal or reference |
+| `internal/authn` deny-list poller | n/a (new) | `auth.deny_list.bearer_ref` resolved at startup; literal refused; unresolvable reference stops startup. The JWKS bootstrap key is a public key file, not a secret |
 | `internal/contextapi` admin provider status | `env_var` / `env_present` from the environment | `key_ref` / `key_present` from go-secrets (`env_var`/`env_present` kept as aliases of the same values for the shipped UI) |
 | `tesseract.cerberus.yaml` | `OPENAI_API_KEY: keychain://openai/embed` resolved by `cerberus run-secrets` | env block removed; the process resolves its own reference (macOS: set `embedding.api_key_ref: keychain://openai/embed`) |
 | `cmd/smoke` | `llmopenai.New("")` from env | resolves the default reference |

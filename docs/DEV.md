@@ -49,7 +49,9 @@ runs.
 ./tesseract serve
 ```
 
-The default is unauthenticated loopback at `127.0.0.1:8089`. For an auth test,
+The default is loopback at `127.0.0.1:8089` with go-auth in `permissive` mode
+(set `HOLLIS_AUTH_TESSERACT=off` to silence the report, or `enforce` to test
+rejection; see `docs/auth.md`). For an auth test,
 create the token inside the isolated layout first:
 
 ```bash

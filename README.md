@@ -121,8 +121,10 @@ Start the daemon:
 ./tesseract serve
 ```
 
-The default listener is `http://127.0.0.1:8089`: loopback-only and
-unauthenticated. The API is under `/v1/`, and the web UI is at `/`.
+The default listener is `http://127.0.0.1:8089`: loopback-only, guarded by
+go-auth in `permissive` mode (nothing rejected, callers without a bearer are
+reported; flip to `enforce` in `config.yaml`, see [`docs/auth.md`](docs/auth.md)).
+The API is under `/v1/`, and the web UI is at `/`.
 
 In another terminal, write and read a context record:
 
@@ -162,8 +164,8 @@ The complete first-run flow is in [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
 ## Network and authentication boundary
 
-Tesseract refuses an unauthenticated non-loopback bind unless the operator uses
-the explicit `--allow-unauthenticated-remote` override. For remote access,
+Tesseract refuses a non-loopback bind without a token mode, and the go-auth
+guard defaults to `enforce` there ([`docs/auth.md`](docs/auth.md)). For remote access,
 choose managed authentication or a static token:
 
 ```bash

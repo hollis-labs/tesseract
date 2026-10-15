@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -24,6 +25,7 @@ import (
 	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
 	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
 	"github.com/hollis-labs/substrate/llm-core/modelsdev"
+	"github.com/hollis-labs/tesseract/internal/authn"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextapi"
 	"github.com/hollis-labs/tesseract/internal/contextcli"
@@ -34,9 +36,11 @@ import (
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
+	"github.com/hollis-labs/tesseract/internal/mcpadapter"
 	cplugin "github.com/hollis-labs/tesseract/internal/plugin"
 	"github.com/hollis-labs/tesseract/internal/promotion"
 	"github.com/hollis-labs/tesseract/internal/typeregistry"
+
 	"github.com/hollis-labs/tesseract/internal/webui"
 	"github.com/hollis-labs/tesseract/internal/workspace"
 	_ "modernc.org/sqlite"
@@ -586,6 +590,9 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		}
 		log.Printf("warning: config load failed: %v (using defaults)", cfgErr)
 		tesseractCfg = config.Defaults()
+		// An unreadable config must never relax authentication: its auth
+		// section may be the part that failed. authn defaults to enforce.
+		configLoadFailed = true
 	}
 	if cmd == "workspace-retention" {
 		return runWorkspaceRetention(ctx, layout.MainDB(), tesseractCfg, rest, stdout, stderr)
@@ -616,12 +623,12 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 		}
 		return runServe(ctx, store, stderr, cfg, layout, tesseractCfg)
 	case "mcp":
-		token, err := parseMCPArgs(rest)
+		token, source, err := parseMCPSource(rest)
 		if err != nil {
 			_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 			return 1
 		}
-		return runMCP(ctx, store, stderr, token, layout, tesseractCfg)
+		return runMCP(ctx, store, stderr, token, source, layout, tesseractCfg)
 	case "backfill-embeddings":
 		return runBackfill(ctx, store, tesseractCfg, rest, stdout, stderr)
 	case "novelty-fit-basis":
@@ -784,6 +791,42 @@ func parseMCPArgs(args []string) (string, error) {
 	return v, nil
 }
 
+// configLoadFailed records that config.yaml could not be loaded and defaults
+// were substituted. authn then defaults to enforce (fail closed).
+var configLoadFailed bool
+
+// parseMCPSource resolves the MCP token like parseMCPArgs and also returns a
+// TokenSource consulted on every tool call. When the token came from a
+// --token-file PATH (not a reference), the file is re-read each call so a
+// launcher that refreshes it in place (Tether agent tokens) is honored; a
+// transient read error keeps the last good value. Every other source is fixed
+// for the life of the process.
+func parseMCPSource(args []string) (string, authn.TokenSource, error) {
+	token, err := parseMCPArgs(args)
+	if err != nil {
+		return "", nil, err
+	}
+	fs, _, tokenFile := newMCPFlagSet()
+	_ = fs.Parse(args) // already parsed successfully by parseMCPArgs
+	path := strings.TrimSpace(*tokenFile)
+	if path == "" || credentials.IsRef(path) {
+		return token, func() (string, error) { return token, nil }, nil
+	}
+	var mu sync.Mutex
+	last := token
+	return token, func() (string, error) {
+		v, rerr := credentials.ReadTokenFile(path)
+		mu.Lock()
+		defer mu.Unlock()
+		if rerr == nil {
+			if v = strings.TrimSpace(v); v != "" {
+				last = v
+			}
+		}
+		return last, nil
+	}, nil
+}
+
 // secretResolver is the process-wide go-secrets resolver. Tests replace it.
 var secretResolver credentials.Resolver = credentials.New()
 
@@ -857,8 +900,22 @@ func createEmbedder(cfg config.Config) (embedcontracts.Embedder, error) {
 	return llmopenai.New(key), nil
 }
 
-func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, tesseractCfg config.Config) int {
+func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, source authn.TokenSource, layout paths.Layout, tesseractCfg config.Config) int {
 	_, _ = stderr.WriteString("Tesseract MCP adapter starting (stdio)\n")
+
+	// go-auth guard for the MCP surface. stdio has no listener, so the code
+	// default is permissive (would-deny log); config auth.mode / HOLLIS_AUTH
+	// flip it. Everything an operator asked for (a JWT verifier, a deny-list)
+	// must construct or the process refuses to start.
+	rt, err := authn.Build(ctx, authn.Options{
+		Config: tesseractCfg.Auth, Loopback: true, ConfigFailed: configLoadFailed,
+		Store: store, Scopes: mcpadapter.ToolScopeTable(), Resolver: secretResolver,
+		Stderr: stderr, Surface: "mcp",
+	})
+	if err != nil {
+		_, _ = stderr.WriteString("error: auth: " + err.Error() + "\n")
+		return 1
+	}
 
 	mem, err := setupChildMemorySubsystem(ctx, store, stderr, layout, tesseractCfg)
 	if err != nil {
@@ -868,6 +925,7 @@ func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, tok
 	defer mem.Close()
 
 	adapter := newMCPAdapter(store, token, mem, tesseractCfg, stderr)
+	adapter.Auth = rt.NewMCPSession(source)
 	if err := adapter.Run(ctx); err != nil {
 		_, _ = stderr.WriteString("error: " + err.Error() + "\n")
 		return 1
@@ -956,6 +1014,17 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 	srv.WorkspacePromotionStore = promotion.NewStore(store, mem.Store)
 	srv.ManagedAuth = cfg.ManagedAuth
 	srv.AuthToken = cfg.StaticToken
+	rt, err := authn.Build(ctx, authn.Options{
+		Config: tesseractCfg.Auth, Addr: cfg.Addr, Loopback: isLoopbackAddr(cfg.Addr),
+		Credentialed: cfg.authConfigured(), ConfigFailed: configLoadFailed,
+		Store: store, StaticToken: cfg.StaticToken, Scopes: contextapi.RouteScopeTable(),
+		Resolver: secretResolver, Stderr: stderr, Surface: "http",
+	})
+	if err != nil {
+		_, _ = stderr.WriteString("error: auth: " + err.Error() + "\n")
+		return 1
+	}
+	srv.Auth = rt
 	srv.EnableMetrics = cfg.EnableMetrics
 	srv.EnableRequestLogging = cfg.EnableRequestLogs
 	srv.RequestLogMode = cfg.RequestLogMode
