@@ -96,12 +96,17 @@ deterministic.
 
 ## Listener and authentication modes
 
-The default `tesseract serve` listener is `127.0.0.1:8089` without auth. A
-non-loopback listener requires one of:
+The default `tesseract serve` listener is `127.0.0.1:8089`, guarded by go-auth in
+`permissive` mode: nothing is rejected, and callers without a bearer are counted
+(see [`auth.md`](auth.md) for the modes, the config that flips them, the JWT/JWKS
+verifier and the scope table). The listener is not anonymous by design any more;
+`permissive` is the stage before `enforce`. `--managed-auth` and `--static-token`
+default the guard to `enforce`. A non-loopback listener requires one of:
 
 - `--managed-auth`, backed by active tokens stored in Tesseract
 - `--static-token <token|ref>`, one shared bearer token (prefer a go-secrets reference)
-- `--allow-unauthenticated-remote`, an explicit unsafe override
+- `--allow-unauthenticated-remote`, which only bypasses the startup refusal; the
+  guard still defaults to `enforce` on a non-loopback listener
 
 Managed and static auth are mutually exclusive. In either authenticated mode,
 all HTTP API routes require `Authorization: Bearer <token>` except readiness

@@ -263,3 +263,33 @@ func TestReadPayloadMode_RoundTrip(t *testing.T) {
 		t.Errorf("Read.PayloadMode = %q after round trip, want full", got.Read.PayloadMode)
 	}
 }
+
+func TestLoadAuthSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := `auth:
+  mode: enforce
+  jwt:
+    issuer: tether
+    audience: tesseract
+    jwks_url: https://hub.example/.well-known/jwks.json
+    bootstrap_key_file: /etc/tesseract/issuer.pub.pem
+    namespace_globs: ["project/*"]
+  deny_list:
+    url: https://hub.example/auth/denylist
+    bearer_ref: file://tesseract/denylist-bearer
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.Mode != "enforce" || cfg.Auth.JWT.Issuer != "tether" || cfg.Auth.JWT.JWKSURL == "" ||
+		cfg.Auth.JWT.NamespaceGlobs[0] != "project/*" || cfg.Auth.DenyList.BearerRef != "file://tesseract/denylist-bearer" {
+		t.Fatalf("auth section not loaded: %+v", cfg.Auth)
+	}
+	if def := config.Defaults(); def.Auth.Mode != "" {
+		t.Fatalf("auth must default to the code default (empty), got %q", def.Auth.Mode)
+	}
+}

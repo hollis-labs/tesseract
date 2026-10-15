@@ -39,14 +39,17 @@ before issuing a stateful command. See [Operations](OPERATIONS.md#paths-and-isol
 ./tesseract serve
 ```
 
-The default listener is `127.0.0.1:8089` without authentication:
+The default listener is `127.0.0.1:8089`. Auth is `permissive` there: requests
+without a bearer are served and counted in a would-deny report, so you can see
+which callers would break before flipping to `enforce` (see
+[`docs/auth.md`](auth.md)). A bearer, when sent, is always verified:
 
 - web UI: `http://127.0.0.1:8089/`
 - HTTP API: `http://127.0.0.1:8089/v1/`
 - readiness: `http://127.0.0.1:8089/v1/health/readiness`
 
 This is a single-machine development boundary. A non-loopback bind is refused
-without managed auth, a static token, or the explicit unsafe override. Do not
+without managed auth or a static token, and defaults to `enforce`. Do not
 expose it remotely yet; configure the [remote boundary](#remote-http-access)
 first.
 

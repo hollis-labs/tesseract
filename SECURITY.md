@@ -30,9 +30,11 @@ coordinate disclosure; response times are best effort during the preview.
 ## Deployment boundary
 
 The safe default is a single-user machine with `tesseract serve` bound to
-`127.0.0.1:8089`. That listener is unauthenticated because only local clients
-can reach it. Tesseract refuses an unauthenticated non-loopback address unless
-the operator explicitly passes `--allow-unauthenticated-remote`.
+`127.0.0.1:8089`. That listener runs the go-auth guard in `permissive` mode:
+only local clients can reach it, requests without a bearer are served and
+reported, and `auth.mode: enforce` rejects them (`docs/auth.md`). Tesseract
+refuses a non-loopback address without a token mode, and defaults the guard to
+`enforce` there.
 
 Remote deployments must use `--managed-auth` or `--static-token`. In either
 mode all HTTP routes require a bearer token except:
