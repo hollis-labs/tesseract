@@ -132,7 +132,8 @@ In another terminal, write and read a context record:
 Provider credentials are optional. Core context, memory, knowledge, lexical
 recall, CLI, HTTP, UI, and MCP workflows work without them. To enable
 embeddings or synthesis, copy one of the sample configs to the `config-file`
-reported by `tesseract path` and set the matching environment variables:
+reported by `tesseract path` and store the keys with `secrets set` (see
+[`docs/secrets.md`](docs/secrets.md); environment variables are not read):
 
 - [`examples/config.openai.yaml`](examples/config.openai.yaml)
 - [`examples/config.anthropic-openai.yaml`](examples/config.anthropic-openai.yaml)

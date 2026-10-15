@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	embedcontracts "github.com/hollis-labs/go-embed-contracts"
 	llmcontracts "github.com/hollis-labs/go-llm-contracts"
@@ -32,13 +31,11 @@ var (
 	_ llmcontracts.Provider   = (*Client)(nil)
 )
 
-// New builds a Client. apiKey defaults to OPENAI_API_KEY when empty.
+// New builds a Client. apiKey is resolved by the caller from a go-secrets reference
+// (internal/credentials); this package reads no environment variable.
 // Additional SDK options are appended after the API-key option, allowing
 // callers (notably tests) to override the base URL or HTTP client.
 func New(apiKey string, opts ...option.RequestOption) *Client {
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
 	base := []option.RequestOption{option.WithAPIKey(apiKey)}
 	return &Client{sdk: sdk.NewClient(append(base, opts...)...)}
 }

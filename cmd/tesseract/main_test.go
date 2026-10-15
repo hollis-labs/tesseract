@@ -20,6 +20,19 @@ import (
 // run()/runServe-based test would resolve the real
 // ~/.local/state/tesseract/queue.db and collide with the live daemon and the
 // per-agent MCP servers. CW-20260517-0066.
+// TestMain points the go-secrets managed store at an empty directory so no test
+// can read a developer's real file:// credentials.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "tesseract-secrets-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("XDG_STATE_HOME", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 func hermeticLayout(t *testing.T) paths.Layout {
 	t.Helper()
 	base := t.TempDir()

@@ -100,7 +100,7 @@ The default `tesseract serve` listener is `127.0.0.1:8089` without auth. A
 non-loopback listener requires one of:
 
 - `--managed-auth`, backed by active tokens stored in Tesseract
-- `--static-token <token>`, one shared bearer token
+- `--static-token <token|ref>`, one shared bearer token (prefer a go-secrets reference)
 - `--allow-unauthenticated-remote`, an explicit unsafe override
 
 Managed and static auth are mutually exclusive. In either authenticated mode,
@@ -143,8 +143,8 @@ features can make outbound requests:
 | Pointer verification | The URL in a knowledge pointer | HTTP(S) request to the pointer locator | Only when `verify-pointers` is run with `http` or `https` in `--schemes`; network schemes are opt-in |
 | Telemetry export | Operator-configured OpenTelemetry endpoint | Trace/service data; memory read/write spans include namespace and key metadata, and HTTP propagation includes route context | When an OpenTelemetry exporter is configured in the process environment |
 
-Provider credentials come from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`.
-Removing credentials disables the matching provider path; lexical recall and
+Provider credentials are go-secrets references (`docs/secrets.md`); the
+environment is not read. Removing the default credential disables the matching provider path; lexical recall and
 the core store continue to work.
 
 HTTP request logging is off by default. `--request-logs` emits structured

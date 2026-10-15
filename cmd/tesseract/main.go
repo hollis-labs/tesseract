@@ -29,6 +29,7 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextcli"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/credentials"
 	"github.com/hollis-labs/tesseract/internal/event"
 	"github.com/hollis-labs/tesseract/internal/knowledge"
 	llmanthropic "github.com/hollis-labs/tesseract/internal/llm/anthropic"
@@ -116,7 +117,7 @@ func validateExposure(cfg serveConfig) error {
 			"  Choose one:\n"+
 			"    --addr %s                 bind loopback only (default)\n"+
 			"    --managed-auth                       require store-backed capability tokens\n"+
-			"    --static-token <token>               require a single shared bearer token\n"+
+			"    --static-token <token|ref>           require a single shared bearer token (or a go-secrets reference)\n"+
 			"    --allow-unauthenticated-remote       serve anyway, unauthenticated (not recommended)",
 		cfg.Addr, defaultServeAddr)
 }
@@ -672,7 +673,7 @@ func newServeFlagSet() (*flag.FlagSet, *serveFlags) {
 	return fs, &serveFlags{
 		addr:    fs.String("addr", defaultServeAddr, "listen address"),
 		managed: fs.Bool("managed-auth", false, "enable managed token auth"),
-		static:  fs.String("static-token", "", "static bearer token (legacy mode)"),
+		static:  fs.String("static-token", "", "static bearer token or go-secrets reference (legacy mode; prefer a reference)"),
 		allowUnauthRemote: fs.Bool("allow-unauthenticated-remote", false,
 			"serve a non-loopback address without authentication (not recommended)"),
 		metrics:         fs.Bool("metrics", false, "enable /v1/metrics endpoint"),
@@ -704,6 +705,16 @@ func parseServeArgs(args []string) (serveConfig, error) {
 		RequestLogMode:             mode,
 		ShutdownTimeout:            *f.shutdownTimeout,
 	}
+	if cfg.StaticToken != "" {
+		v, isRef, err := credentials.Token(context.Background(), secretResolver, cfg.StaticToken)
+		if err != nil {
+			return serveConfig{}, fmt.Errorf("resolve --static-token reference: %w", err)
+		}
+		if isRef && v == "" {
+			return serveConfig{}, fmt.Errorf("--static-token reference resolved to an empty value")
+		}
+		cfg.StaticToken = v
+	}
 	if err := validateExposure(cfg); err != nil {
 		return serveConfig{}, err
 	}
@@ -715,69 +726,101 @@ func parseServeArgs(args []string) (serveConfig, error) {
 func newMCPFlagSet() (*flag.FlagSet, *string, *string) {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	token := fs.String("token", "", "capability token (legacy; prefer TESSERACT_MCP_TOKEN or --token-file)")
-	tokenFile := fs.String("token-file", "", "file containing the capability token; overrides TESSERACT_MCP_TOKEN and --token")
+	token := fs.String("token", "", "capability token or go-secrets reference (legacy literal discouraged; prefer --token-file)")
+	tokenFile := fs.String("token-file", "", "token file path or go-secrets reference; overrides TESSERACT_MCP_TOKEN and --token")
 	return fs, token, tokenFile
 }
 
+// parseMCPArgs resolves the MCP capability token. Precedence is unchanged and
+// file-first: --token-file, then TESSERACT_MCP_TOKEN, then --token. Every
+// source accepts either a path/literal (legacy) or a go-secrets reference.
+//
+//   - --token-file <path>: read through go-secrets' tokenfile (0600, owned by
+//     the caller, no symlink in the final component). <path> may instead be a
+//     reference (file://, op://, keychain://, helper://).
+//   - TESSERACT_MCP_TOKEN / --token: a reference is resolved; anything else is
+//     the legacy literal.
+//
+// A named source that cannot be resolved is an error, never a fall-through to
+// a lower-precedence source.
 func parseMCPArgs(args []string) (string, error) {
 	fs, token, tokenFile := newMCPFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return "", err
 	}
-	if *tokenFile != "" {
-		data, err := os.ReadFile(*tokenFile)
+	ctx := context.Background()
+	if f := strings.TrimSpace(*tokenFile); f != "" {
+		if credentials.IsRef(f) {
+			v, _, err := credentials.Token(ctx, secretResolver, f)
+			if err != nil {
+				return "", fmt.Errorf("resolve MCP token reference: %w", err)
+			}
+			if v == "" {
+				return "", fmt.Errorf("MCP token reference resolved to an empty value")
+			}
+			return v, nil
+		}
+		value, err := credentials.ReadTokenFile(f)
 		if err != nil {
 			return "", fmt.Errorf("read MCP token file: %w", err)
 		}
-		value := strings.TrimSpace(string(data))
+		value = strings.TrimSpace(value)
 		if value == "" {
 			return "", fmt.Errorf("MCP token file is empty")
 		}
 		return value, nil
 	}
 	if value := strings.TrimSpace(os.Getenv("TESSERACT_MCP_TOKEN")); value != "" {
-		return value, nil
+		v, _, err := credentials.Token(ctx, secretResolver, value)
+		if err != nil {
+			return "", fmt.Errorf("resolve TESSERACT_MCP_TOKEN reference: %w", err)
+		}
+		return v, nil
 	}
-	return strings.TrimSpace(*token), nil
+	v, _, err := credentials.Token(ctx, secretResolver, *token)
+	if err != nil {
+		return "", fmt.Errorf("resolve --token reference: %w", err)
+	}
+	return v, nil
 }
+
+// secretResolver is the process-wide go-secrets resolver. Tests replace it.
+var secretResolver credentials.Resolver = credentials.New()
 
 // createSynthesisProvider builds the LLM Provider used by /v1/synthesis/ask.
 // Returns nil (and the route degrades to 503) when:
 //   - no synthesis.provider is configured
 //   - the provider name is unsupported
-//   - the provider's API key env var is empty
+//   - the provider's default API key reference is absent (an explicitly
+//     configured api_key_ref that cannot be resolved is an error, not a 503)
 //
 // Supported providers: openai (openai-go SDK), anthropic (anthropic-sdk-go).
 // Other vendors are not wired in this binary; consumers can inject their
 // own llmcontracts.Provider implementation by mutating srv.SynthesisProvider
 // before serve.
-func createSynthesisProvider(cfg config.Config, stderr *os.File) llmcontracts.Provider {
+func createSynthesisProvider(cfg config.Config, stderr *os.File) (llmcontracts.Provider, error) {
 	name := strings.ToLower(strings.TrimSpace(cfg.Synthesis.Provider))
 	if name == "" {
-		return nil
+		return nil, nil
 	}
-	envFor := map[string]string{
-		"openai":    "OPENAI_API_KEY",
-		"anthropic": "ANTHROPIC_API_KEY",
-	}
-	env, supported := envFor[name]
-	if !supported {
+	if name != "openai" && name != "anthropic" {
 		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " is not supported — /v1/synthesis/ask disabled\n")
-		return nil
+		return nil, nil
 	}
-	if os.Getenv(env) == "" {
-		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " but " + env + " not set — /v1/synthesis/ask disabled\n")
-		return nil
+	key, err := credentials.ProviderKey(context.Background(), secretResolver, name, cfg.Synthesis.APIKeyRef)
+	if err != nil {
+		return nil, fmt.Errorf("synthesis.provider=%s: %w", name, err)
+	}
+	if key == "" {
+		ref, _ := credentials.ProviderRef(name, cfg.Synthesis.APIKeyRef)
+		_, _ = stderr.WriteString("warning: synthesis.provider=" + name + " but " + ref + " is not set — /v1/synthesis/ask disabled\n")
+		return nil, nil
 	}
 	switch name {
 	case "openai":
-		return llmopenai.New("")
-	case "anthropic":
-		return llmanthropic.New("")
+		return llmopenai.New(key), nil
 	default:
-		// Unreachable — envFor lookup above already filtered.
-		return nil
+		return llmanthropic.New(key), nil
 	}
 }
 
@@ -794,19 +837,24 @@ func createModelsDevClient(ctx context.Context, stderr *os.File) *modelsdev.Clie
 	return c
 }
 
-// createEmbedder builds an embedcontracts.Embedder from config. Returns nil
-// when the configured provider is unsupported or the API key is missing.
-// Currently only "openai" is supported. Provider name is normalized
-// (lowercased + trimmed) to mirror createSynthesisProvider.
-func createEmbedder(cfg config.Config) embedcontracts.Embedder {
+// createEmbedder builds an embedcontracts.Embedder from config. Returns
+// (nil, nil) when the provider is unsupported or the provider's default key
+// reference is absent (BM25-only recall). A configured api_key_ref that cannot
+// be resolved is an error: Tesseract refuses to start rather than silently
+// degrade. Currently only "openai" is supported.
+func createEmbedder(cfg config.Config) (embedcontracts.Embedder, error) {
 	if strings.ToLower(strings.TrimSpace(cfg.Embedding.Provider)) != "openai" {
-		return nil
+		return nil, nil
 	}
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		log.Printf("warning: embedding.provider=openai but OPENAI_API_KEY not set — embedding disabled, falling back to BM25-only recall")
-		return nil
+	key, err := credentials.ProviderKey(context.Background(), secretResolver, "openai", cfg.Embedding.APIKeyRef)
+	if err != nil {
+		return nil, fmt.Errorf("embedding.provider=openai: %w", err)
 	}
-	return llmopenai.New("")
+	if key == "" {
+		log.Printf("warning: embedding.provider=openai but %s is not set — embedding disabled, falling back to BM25-only recall", credentials.DefaultOpenAIRef)
+		return nil, nil
+	}
+	return llmopenai.New(key), nil
 }
 
 func runMCP(ctx context.Context, store *contextstore.Store, stderr *os.File, token string, layout paths.Layout, tesseractCfg config.Config) int {
@@ -940,7 +988,12 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 
 	// Wire LLM-backed synthesis if config + credentials are present. Failure
 	// to construct the provider is non-fatal — the route just stays 503.
-	if synth := createSynthesisProvider(tesseractCfg, stderr); synth != nil {
+	synth, synthErr := createSynthesisProvider(tesseractCfg, stderr)
+	if synthErr != nil {
+		_, _ = stderr.WriteString("error: " + synthErr.Error() + "\n")
+		return 1
+	}
+	if synth != nil {
 		srv.SynthesisProvider = synth
 		srv.SynthesisConfig = tesseractCfg.Synthesis
 		srv.ModelsDev = createModelsDevClient(ctx, stderr)

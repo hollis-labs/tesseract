@@ -13,6 +13,7 @@ import (
 	tesseract "github.com/hollis-labs/tesseract"
 	"github.com/hollis-labs/tesseract/domains"
 	"github.com/hollis-labs/tesseract/internal/config"
+	"github.com/hollis-labs/tesseract/internal/credentials"
 	llmopenai "github.com/hollis-labs/tesseract/internal/llm/openai"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/sqlitedsn"
@@ -39,13 +40,21 @@ func main() {
 		log.Fatalf("queue driver: %v", err)
 	}
 
+	apiKey, err := credentials.ProviderKey(ctx, nil, "openai", "")
+	if err != nil {
+		log.Fatalf("openai key: %v", err)
+	}
+	if apiKey == "" {
+		log.Fatalf("openai key missing: secrets set %s", credentials.DefaultOpenAIRef)
+	}
+
 	c, err := tesseract.Open(ctx, tesseract.Config{
 		RootDir:    layout.DataDir(),
 		DBPath:     layout.MainDB(),
 		RecordsDir: filepath.Join(layout.StateDir(), "records"),
 	},
 		tesseract.WithQueue(q),
-		tesseract.WithEmbedder(llmopenai.New("")),
+		tesseract.WithEmbedder(llmopenai.New(apiKey)),
 		tesseract.WithEmbeddingModel("text-embedding-3-large"),
 	)
 	if err != nil {

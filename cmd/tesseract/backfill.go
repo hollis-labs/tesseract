@@ -9,6 +9,7 @@ import (
 
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
+	"github.com/hollis-labs/tesseract/internal/credentials"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -21,9 +22,13 @@ func runBackfill(ctx context.Context, store *contextstore.Store, cfg config.Conf
 		return 1
 	}
 
-	embedder := createEmbedder(cfg)
+	embedder, err := createEmbedder(cfg)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
 	if embedder == nil {
-		fmt.Fprintln(stderr, "error: no embedding provider configured (check config.yaml and OPENAI_API_KEY)")
+		fmt.Fprintln(stderr, "error: no embedding provider configured (check config.yaml and the openai key: secrets set "+credentials.DefaultOpenAIRef+")")
 		return 1
 	}
 

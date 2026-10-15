@@ -35,10 +35,11 @@ embedding:
   model: text-embedding-3-large
 ```
 
-Then set the credential before starting `tesseract serve` or `tesseract mcp`:
+Then store the credential before starting `tesseract serve` or `tesseract mcp`
+(see `docs/secrets.md`; the environment is not read):
 
 ```bash
-export OPENAI_API_KEY='...'
+printf %s "$OPENAI_KEY" | secrets set file://tesseract/openai-api-key
 ```
 
 If the provider is unsupported or the key is absent, Tesseract disables the
