@@ -22,11 +22,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	auth "github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/libs/util/apppaths"
 	hollisotel "github.com/hollis-labs/libs/util/otel"
 	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
 	"github.com/hollis-labs/substrate/llm-core/modelsdev"
-	auth "github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"

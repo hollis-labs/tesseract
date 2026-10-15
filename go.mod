@@ -4,6 +4,7 @@ go 1.26.9
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.71.0
+	github.com/hollis-labs/go-mcp v0.14.1
 	github.com/hollis-labs/libs/plugin-mcp v0.1.1
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/ui-go v0.1.0
