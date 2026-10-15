@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	secrets "github.com/hollis-labs/go-secrets"
-	"github.com/hollis-labs/go-secrets/tokenfile"
+	secrets "github.com/hollis-labs/libs/security/secrets"
+	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 )
 
 // Default managed-store references. They live in the go-secrets file store

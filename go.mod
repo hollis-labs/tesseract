@@ -13,6 +13,7 @@ require (
 	github.com/hollis-labs/go-otel v0.6.1
 	github.com/hollis-labs/go-queue v0.2.0
 	github.com/hollis-labs/go-webui v0.1.0
+	github.com/hollis-labs/libs/security/auth v0.1.0
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.4.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -42,7 +43,6 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
-	github.com/hollis-labs/libs/security/auth v0.1.0
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
