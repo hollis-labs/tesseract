@@ -46,16 +46,13 @@ func (a *Adapter) requireNamespace(ctx context.Context, namespace string) any {
 
 // Metadata resolves an ID's namespace before loading/reinforcing its content.
 // Lookups return the same not-found result for missing and denied IDs. Touch
-// retains its existing unknown-ID batching behavior through ignoreMissing.
-func (a *Adapter) requireRevisionNamespace(ctx context.Context, id string, ignoreMissing bool) any {
+// keeps its existing unknown-ID batching behavior in its handler.
+func (a *Adapter) requireRevisionNamespace(ctx context.Context, id string) any {
 	store := a.revisionStore()
 	if store == nil {
 		return revisionStoreUnavailable()
 	}
 	meta, err := store.LookupRevisionMetadata(ctx, id)
-	if errors.Is(err, memory.ErrNotFound) && ignoreMissing {
-		return nil
-	}
 	if errors.Is(err, memory.ErrNotFound) || err == nil && !a.namespaceVisible(ctx, meta.Namespace) {
 		return toolErrorWithDetails(codeNotFound, fmt.Sprintf("%v: revision_id %s", memory.ErrNotFound, id), memory.NotFoundDetails("revision_id", id, time.Now()))
 	}

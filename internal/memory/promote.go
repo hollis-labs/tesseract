@@ -17,25 +17,25 @@ type PromoteInput struct {
 	ActorVersion    string
 }
 
-// Promote moves a session-scoped memory to user/project scope with key-based
-// deduplication. It returns the new promoted revision in the target namespace.
-func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) {
+// ValidatePromoteInput checks namespace shape before resolving a source identity.
+// Surfaces use it before authorization so denied and missing IDs share errors.
+func ValidatePromoteInput(in PromoteInput) error {
 	// Validate source namespace must be session-scoped.
 	srcNS, parseErr := ParseNamespace(in.SourceNamespace)
 	if parseErr != nil {
-		return Revision{}, fmt.Errorf("%w: invalid source namespace: %w", ErrInvalidInput, parseErr)
+		return fmt.Errorf("%w: invalid source namespace: %w", ErrInvalidInput, parseErr)
 	}
 	if srcNS.Scope != ScopeSession {
-		return Revision{}, fmt.Errorf("%w: source namespace must be session-scoped, got scope %d", ErrInvalidInput, srcNS.Scope)
+		return fmt.Errorf("%w: source namespace must be session-scoped, got scope %d", ErrInvalidInput, srcNS.Scope)
 	}
 
 	// Validate target namespace must be user or project scope.
 	tgtNS, parseErr := ParseNamespace(in.TargetNamespace)
 	if parseErr != nil {
-		return Revision{}, fmt.Errorf("%w: invalid target namespace: %w", ErrInvalidInput, parseErr)
+		return fmt.Errorf("%w: invalid target namespace: %w", ErrInvalidInput, parseErr)
 	}
 	if tgtNS.Scope != ScopeUser && tgtNS.Scope != ScopeProject {
-		return Revision{}, fmt.Errorf("%w: target namespace must be user or project scope, got scope %d", ErrInvalidInput, tgtNS.Scope)
+		return fmt.Errorf("%w: target namespace must be user or project scope, got scope %d", ErrInvalidInput, tgtNS.Scope)
 	}
 
 	// Promote preserves the namespace {type} segment across scopes
@@ -44,8 +44,18 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 	// scope. Cross-type promotion would be a semantically different
 	// operation (re-classification), not a scope change.
 	if srcNS.Type != tgtNS.Type {
-		return Revision{}, fmt.Errorf("%w: type segment must match across scopes; source type %q, target type %q",
+		return fmt.Errorf("%w: type segment must match across scopes; source type %q, target type %q",
 			ErrInvalidInput, srcNS.Type, tgtNS.Type)
+	}
+
+	return nil
+}
+
+// Promote moves a session-scoped memory to user/project scope with key-based
+// deduplication. It returns the new promoted revision in the target namespace.
+func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) {
+	if err := ValidatePromoteInput(in); err != nil {
+		return Revision{}, err
 	}
 
 	// Load source memory state and current revision.

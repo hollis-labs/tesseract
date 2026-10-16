@@ -185,7 +185,7 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 		"tesseract_ref_resolve":      {deny(map[string]any{"revision_id": brev.RevisionID}), deny(map[string]any{"item_id": ws.ItemID})},
 		"tesseract_runtime_get":      {clean(map[string]any{})},
 		"tesseract_skills":           {clean(map[string]any{})},
-		"tesseract_touch":            {deny(map[string]any{"revision_ids": []string{revisions["allowedmemory"].RevisionID, brev.RevisionID}}), deny(map[string]any{"item_ids": []string{brev.MemoryID}})},
+		"tesseract_touch":            {{map[string]any{"revision_ids": []string{brev.RevisionID}}, "not_found"}, {map[string]any{"item_ids": []string{brev.MemoryID}}, "not_found"}},
 		"workspace_delete":           {deny(map[string]any{"item_id": ws.ItemID, "version_token": ws.VersionToken})},
 		"workspace_promote":          {deny(map[string]any{"stage": "request", "source_item_id": ws.ItemID, "source_version_token": ws.VersionToken, "target_domain": "memory", "target_namespace": "project/allowed/memory/notes", "target_author_agent_id": "test", "target_session_id": "test", "target_trigger": "promotion", "target_derived_from": "project", "actor": "test"})},
 		"workspace_write":            {deny(map[string]any{"namespace": "project/blocked/workspace/drafts", "key": "new", "summary": "attempt", "author_agent_id": "test", "session_id": "test"}), deny(map[string]any{"item_id": ws.ItemID, "version_token": ws.VersionToken, "summary": "attempt"})},
@@ -210,7 +210,10 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 		for i, p := range cases {
 			_, item := p.args["item_id"]
 			_, rev := p.args["revision_id"]
-			if item || rev || tool == "workspace_promote" || tool == "tesseract_touch" && p.args["revision_ids"] != nil || tool == "context_embed" && p.args["namespace"] == "app/allowed/docs" {
+			if item || rev || tool == "workspace_promote" || tool == "context_promote" && p.args["stage"] != "request" || tool == "context_embed" && p.args["namespace"] == "app/allowed/docs" {
+				cases[i].want = "not_found"
+			}
+			if tool == "memory_promote" && p.args["source_namespace"] == "session/allowed/memory/notes" && p.args["target_namespace"] == "project/allowed/memory/notes" {
 				cases[i].want = "not_found"
 			}
 		}
@@ -225,22 +228,7 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 		t.Run(def.Name, func(t *testing.T) {
 			for _, p := range cases {
 
-				var accessesBefore int
-				if def.Name == "tesseract_touch" {
-					if err := f.store.DB().QueryRow("SELECT COALESCE(SUM(access_count),0) FROM memory_state").Scan(&accessesBefore); err != nil {
-						t.Fatal(err)
-					}
-				}
 				body := namespaceCall(t, h, def.Name, p.args)
-				if def.Name == "tesseract_touch" {
-					var accessesAfter int
-					if err := f.store.DB().QueryRow("SELECT COALESCE(SUM(access_count),0) FROM memory_state").Scan(&accessesAfter); err != nil {
-						t.Fatal(err)
-					}
-					if accessesAfter != accessesBefore {
-						t.Errorf("denied mixed batch partially touched allowed IDs: %d -> %d", accessesBefore, accessesAfter)
-					}
-				}
 				if p.want != "" && !strings.Contains(body, p.want) {
 					t.Errorf("args=%v: expected %s, got %s", p.args, p.want, body)
 				}
@@ -258,6 +246,48 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 				}
 			}
 		})
+	}
+
+	// Compare to real missing-ID calls, normalizing only the echoed request ID.
+	for _, spec := range []struct{ field, denied, allowed string }{
+		{"item_ids", brev.MemoryID, revisions["allowedmemory"].MemoryID},
+		{"revision_ids", brev.RevisionID, revisions["allowedmemory"].RevisionID},
+	} {
+		for _, mixed := range []bool{false, true} {
+			ids := []string{spec.denied, spec.denied, ""}
+			missingIDs := []string{"absent-id", "absent-id", ""}
+			if mixed {
+				ids = append(ids, spec.allowed)
+				missingIDs = append(missingIDs, spec.allowed)
+			}
+			denied := namespaceCall(t, h, "tesseract_touch", map[string]any{spec.field: ids})
+			missing := namespaceCall(t, h, "tesseract_touch", map[string]any{spec.field: missingIDs})
+			if denied != strings.ReplaceAll(missing, "absent-id", spec.denied) {
+				t.Fatalf("%s mixed=%t denied/missing differ: %s / %s", spec.field, mixed, denied, missing)
+			}
+			var result struct {
+				Touched int `json:"touched"`
+			}
+			if err := json.Unmarshal([]byte(denied), &result); err != nil {
+				t.Fatal(err)
+			}
+			wantTouched := 0
+			if mixed {
+				wantTouched = 1
+			}
+			if result.Touched != wantTouched {
+				t.Fatalf("touch allowed batch member: %s", denied)
+			}
+		}
+	}
+	for _, source := range []string{"session/allowed/memory/notes", "", "project/allowed/memory/notes", "session/allowed/memory/decisions"} {
+		promoteArgs := map[string]any{"source_namespace": source, "target_namespace": "project/allowed/memory/notes", "source_memory_id": brev.MemoryID}
+		deniedPromote := namespaceCall(t, h, "memory_promote", promoteArgs)
+		promoteArgs["source_memory_id"] = "absent-id"
+		missingPromote := namespaceCall(t, h, "memory_promote", promoteArgs)
+		if deniedPromote != strings.ReplaceAll(missingPromote, "absent-id", brev.MemoryID) {
+			t.Fatalf("promote source=%q denied/missing differ: %s / %s", source, deniedPromote, missingPromote)
+		}
 	}
 
 	a.VectorIndex = namespaceIndex{results: []embedding.SearchResult{
@@ -430,6 +460,17 @@ func TestMCPNamespaceFilteringPrecedesLimitsAndCounts(t *testing.T) {
 	if second["total"] != float64(2) || second["count"] != float64(1) || second["truncated"] == true {
 		t.Fatalf("registry second page: %v", second)
 	}
+	// Removing only the audit table makes any attempted audit query fail.
+	// A denied exact namespace must return the same empty page without it.
+	args := map[string]any{"namespace": "app/000-blocked/docs"}
+	empty := namespaceCall(t, h, "context_audit_list", args)
+	if _, err := f.store.DB().Exec("DROP TABLE audit_events"); err != nil {
+		t.Fatal(err)
+	}
+	if got := namespaceCall(t, h, "context_audit_list", args); got != empty {
+		t.Fatalf("denied audit namespace queried storage: %s / %s", got, empty)
+	}
+
 }
 
 // An invalid configured legacy token must not become an anonymous read.

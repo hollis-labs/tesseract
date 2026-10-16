@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -187,6 +188,7 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 		}
 		_, claims := a.checkScope(ctx, "memory:read")
 		metas := make([]itemservice.Metadata, 0, len(itemIDs))
+		notFound := map[string]bool{}
 		seen := map[string]bool{}
 		for _, id := range itemIDs {
 			if seen[id] {
@@ -195,41 +197,83 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 			seen[id] = true
 			meta, lookupErr := a.itemService().LookupMetadata(ctx, id)
 			if errors.Is(lookupErr, memory.ErrNotFound) {
-				metas = append(metas, itemservice.Metadata{ItemID: id})
+				notFound[id] = true
 				continue
 			}
 			if lookupErr != nil {
 				return nil, lookupErr
 			}
 			if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
-				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit touching this item"), nil
+				notFound[id] = true
+				continue
 			}
 			metas = append(metas, meta)
 		}
-		out, touchErr := a.itemService().TouchItems(ctx, metas)
+		out := itemservice.TouchResult{NotFound: []string{}, NotReinforced: []string{}, Deleted: []string{}}
+		var touchErr error
+		// An all-missing batch succeeds; empty input retains its validation error.
+		if len(metas) > 0 || len(itemIDs) == 0 {
+			out, touchErr = a.itemService().TouchItems(ctx, metas)
+		}
 		if touchErr != nil {
 			if errors.Is(touchErr, memory.ErrInvalidInput) {
 				return toolError(codeValidationError, touchErr.Error()), nil
 			}
 			return nil, touchErr
 		}
+		out.NotFound = touchNotFound(itemIDs, notFound, out.NotFound)
 		return toolJSON(out), nil
 	}
 
-	// Authorize the entire batch before updating any activation counter.
-	for _, id := range revisionIDs {
-		if denied := a.requireRevisionNamespace(ctx, id, true); denied != nil {
-			return denied, nil
-		}
+	store := a.revisionStore()
+	if store == nil {
+		return revisionStoreUnavailable(), nil
 	}
-	res, err := a.revisionStore().TouchRevisions(ctx, revisionIDs)
+	if len(revisionIDs) > memory.MaxTouchRevisions {
+		return toolError(codeValidationError, fmt.Sprintf("%v: at most %d revision_ids per touch, got %d", memory.ErrInvalidInput, memory.MaxTouchRevisions, len(revisionIDs))), nil
+	}
+	// Resolve before mutation, then treat denied identities exactly as missing.
+	permitted := make([]string, 0, len(revisionIDs))
+	notFound := map[string]bool{}
+	for _, id := range revisionIDs {
+		meta, lookupErr := store.LookupRevisionMetadata(ctx, id)
+		if errors.Is(lookupErr, memory.ErrNotFound) {
+			notFound[id] = true
+			continue
+		}
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		if !a.namespaceVisible(ctx, meta.Namespace) {
+			notFound[id] = true
+			continue
+		}
+		permitted = append(permitted, id)
+	}
+	res, err := store.TouchRevisions(ctx, permitted)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
 			return toolError(codeValidationError, err.Error()), nil
 		}
 		return nil, err
 	}
+	res.NotFound = touchNotFound(revisionIDs, notFound, res.NotFound)
 	return toolJSON(res), nil
+}
+
+// Preserve input order and deduplication for absent and denied identities.
+func touchNotFound(ids []string, hidden map[string]bool, missing []string) []string {
+	for _, id := range missing {
+		hidden[id] = true
+	}
+	out := []string{}
+	for _, id := range ids {
+		if hidden[id] {
+			out = append(out, id)
+			delete(hidden, id)
+		}
+	}
+	return out
 }
 
 func (a *Adapter) handleMemoryPromote(ctx context.Context, req map[string]any) (any, error) {
@@ -251,9 +295,12 @@ func (a *Adapter) handleMemoryPromote(ctx context.Context, req map[string]any) (
 		ActorVersion:    argString(req, "actor_version", ""),
 	}
 
+	if err := memory.ValidatePromoteInput(in); err != nil {
+		return toolError(codeValidationError, err.Error()), nil
+	}
 	if meta, err := a.itemService().LookupMetadata(ctx, in.SourceMemoryID); err == nil {
-		if denied := a.requireNamespace(ctx, meta.Namespace); denied != nil {
-			return denied, nil
+		if !a.namespaceVisible(ctx, meta.Namespace) {
+			return toolError(codeNotFound, fmt.Sprintf("load source memory state: %v: memory_id %s", memory.ErrNotFound, in.SourceMemoryID)), nil
 		}
 	}
 	promoted, err := a.MemoryStore.Promote(ctx, in)

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
-	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
@@ -173,30 +172,6 @@ func (a *Adapter) itemDomainAvailable(domain domains.Domain) bool {
 	default:
 		return false
 	}
-}
-
-// resolveItemRead resolves only the item's state row, then applies token
-// namespace policy before any revision content is loaded or reinforced.
-func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims contextstore.AuthToken) (*memory.Store, memory.State, any, error) { //nolint:unused // pre-existing, unrelated to the go-mcp port; left as-is
-	store := a.revisionStore()
-	if store == nil {
-		return nil, memory.State{}, revisionStoreUnavailable(), nil
-	}
-	state, err := store.GetState(ctx, itemID)
-	if err != nil {
-		if errors.Is(err, memory.ErrNotFound) {
-			return nil, memory.State{}, toolError(codeNotFound, "item_id not found: "+itemID), nil
-		}
-		return nil, memory.State{}, nil, err
-	}
-	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, state.Namespace) {
-		return nil, memory.State{}, toolError(codeNamespaceNotPermitted,
-			"token namespace globs do not permit reading this item"), nil
-	}
-	if !a.itemDomainAvailable(state.Domain) {
-		return nil, memory.State{}, domainUnavailable(string(state.Domain)), nil
-	}
-	return store, state, nil, nil
 }
 
 // itemLookupToolError is workspaceToolError for a lookup of one item ID, with
@@ -693,7 +668,7 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req map[string
 	if store == nil {
 		return revisionStoreUnavailable(), nil
 	}
-	if denied := a.requireRevisionNamespace(ctx, revisionID, false); denied != nil {
+	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
 		return denied, nil
 	}
 	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
@@ -719,7 +694,7 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req map[string]a
 	if store == nil {
 		return revisionStoreUnavailable(), nil
 	}
-	if denied := a.requireRevisionNamespace(ctx, revisionID, false); denied != nil {
+	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
 		return denied, nil
 	}
 	if err := store.Deprecate(ctx, revisionID); err != nil {

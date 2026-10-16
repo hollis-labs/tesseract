@@ -815,8 +815,8 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req map[string]any) 
 		return toolError(codeNotFound, err.Error()), nil
 	}
 	for _, ns := range []string{reqNamespace, pr.SourceNamespace, pr.TargetNamespace} {
-		if denied := a.requireNamespace(ctx, ns); denied != nil {
-			return denied, nil
+		if !a.namespaceVisible(ctx, ns) {
+			return toolError(codeNotFound, "promotion request not found"), nil
 		}
 	}
 	if denied := a.requireNamespace(ctx, "user/promotions"); denied != nil {
@@ -902,8 +902,8 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req map[string]any) (a
 		return toolError(codeNotFound, err.Error()), nil
 	}
 	for _, ns := range []string{reqNamespace, pr.SourceNamespace, pr.TargetNamespace} {
-		if denied := a.requireNamespace(ctx, ns); denied != nil {
-			return denied, nil
+		if !a.namespaceVisible(ctx, ns) {
+			return toolError(codeNotFound, "promotion request not found"), nil
 		}
 	}
 	if denied := a.requireRecordNamespace(ctx, pr.SourceRevisionID); denied != nil {
@@ -1345,15 +1345,18 @@ func (a *Adapter) handleAuditList(ctx context.Context, req map[string]any) (any,
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 	cursor := argInt(req, "cursor", 0)
 
-	events, nextCursor, err := a.Store.QueryAuditEvents(ctx, contextstore.AuditQuery{
-		Limit:     limit,
-		Cursor:    int64(cursor),
-		Namespace: ns,
-		Permit:    a.namespacePermit(ctx),
-		EventType: eventType,
-	})
-	if err != nil {
-		return toolError(codeInternalError, err.Error()), nil
+	permit := a.namespacePermit(ctx)
+	var events []contextstore.AuditEvent
+	var nextCursor *int64
+	// An exact denied selector is empty without consulting hidden activity.
+	if strings.TrimSpace(ns) == "" || permit == nil || permit(strings.TrimSpace(ns)) {
+		var err error
+		events, nextCursor, err = a.Store.QueryAuditEvents(ctx, contextstore.AuditQuery{
+			Limit: limit, Cursor: int64(cursor), Namespace: ns, Permit: permit, EventType: eventType,
+		})
+		if err != nil {
+			return toolError(codeInternalError, err.Error()), nil
+		}
 	}
 
 	items := make([]map[string]any, len(events))
