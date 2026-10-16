@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,17 @@ import (
 func TestAsOperatorCLIIsNotReachableFromServingCode(t *testing.T) {
 	roots := []string{"../contextapi", "../mcpadapter", "../authn", "../../cmd/tesseract"}
 	for _, root := range roots {
-		files, err := filepath.Glob(filepath.Join(root, "*.go"))
+		// Recursive, so a future subpackage (contextapi/foo) is covered too.
+		var files []string
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".go") {
+				files = append(files, path)
+			}
+			return nil
+		})
 		if err != nil || len(files) == 0 {
 			t.Fatalf("no Go files under %s (%v): the boundary test would pass vacuously", root, err)
 		}
