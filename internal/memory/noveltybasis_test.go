@@ -78,7 +78,7 @@ func (subspaceEmbedder) EmbeddingDimensions(_ string) int { return subspaceEmbed
 
 func newSubspaceStore(t *testing.T) *memory.Store {
 	t.Helper()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: t.TempDir()})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}

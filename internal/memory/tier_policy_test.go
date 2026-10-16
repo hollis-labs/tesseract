@@ -17,7 +17,7 @@ import (
 func newTestMemoryStore(t *testing.T) (*memory.Store, *contextstore.Store, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: dir})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}

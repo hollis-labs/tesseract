@@ -23,7 +23,7 @@ import (
 // that must forge a collision SQL would otherwise never produce.
 func newPagingStore(t *testing.T) (*memory.Store, *sql.DB, func()) {
 	t.Helper()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: t.TempDir()})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}

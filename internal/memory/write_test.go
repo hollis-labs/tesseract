@@ -18,7 +18,7 @@ import (
 func newTestStore(t *testing.T) (*memory.Store, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: dir})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestOnlyDeprecationPathMutatesRevisionStatus(t *testing.T) {
 func newTestStoreWithAudit(t *testing.T) *contextstore.Store {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: dir})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}

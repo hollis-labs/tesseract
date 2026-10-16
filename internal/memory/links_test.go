@@ -18,7 +18,7 @@ import (
 func newLinkStore(t *testing.T) (*memory.Store, *sql.DB, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: dir})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}
