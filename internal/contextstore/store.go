@@ -141,6 +141,12 @@ type AuditEvent struct {
 	// ItemID is the stable item id of a memory-domain subject. It is not
 	// stored in audit_events; it only selects the outbox envelope subject.
 	ItemID string `json:"-"`
+	// Bookkeeping marks an event whose type is normally security-class but which
+	// this call site has shown to be bookkeeping only, so it is ordinary
+	// (savepoint + audit_dropped) instead of failing closed. Used solely by
+	// inferred namespace auto-registration, which writes a default
+	// "source":"inferred" row that grants nothing (see registerNamespaceAudited).
+	Bookkeeping bool `json:"-"`
 }
 
 // AuditQuery defines bounded, deterministic audit query filters.

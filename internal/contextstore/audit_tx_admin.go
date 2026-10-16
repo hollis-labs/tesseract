@@ -81,6 +81,13 @@ func (s *Store) registerNamespaceAudited(ctx context.Context, namespace, source 
 			Revision:  1,
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 			Metadata:  meta,
+			// Inferred auto-registration is bookkeeping, not a permission change:
+			// it writes {"source":"inferred"} with an owner DERIVED from the
+			// namespace name (or its registered scope head), assigns no grants,
+			// and the policy engine does not treat inferred rows as declared
+			// policy. So an audit outage must not block first writes: ordinary
+			// (audit_dropped), unlike admin register/update, which fail closed.
+			Bookkeeping: true,
 		}); err != nil {
 			return false, err
 		}

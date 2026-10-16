@@ -173,9 +173,10 @@ func TestMaintenanceAuditFailureDoesNotFailTheDelete(t *testing.T) {
 	}
 }
 
-// Namespace register/update are security-class (architect ruling): if their
-// audit cannot be recorded the registry change is rejected, leaving nothing.
-func TestNamespaceChangeFailsClosedWhenItsAuditCannotBeRecorded(t *testing.T) {
+// Admin namespace register/update are security-class (architect ruling): if
+// their audit cannot be recorded the registry change is rejected, leaving
+// nothing. (Inferred auto-registration is bookkeeping and ordinary; see below.)
+func TestAdminNamespaceChangeFailsClosedWhenItsAuditCannotBeRecorded(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	if _, err := s.db.Exec(`CREATE TRIGGER fail_ns_audit BEFORE INSERT ON audit_events
@@ -194,8 +195,39 @@ func TestNamespaceChangeFailsClosedWhenItsAuditCannotBeRecorded(t *testing.T) {
 	if d := droppedRows(t, s); len(d) != 0 {
 		t.Fatalf("audit_dropped = %+v, want none", d)
 	}
-	if inserted, err := s.ensureNamespaceRegistered(ctx, "app/sec2/session", "inferred"); err == nil || inserted {
-		t.Fatalf("inferred registration must fail closed too: inserted=%v err=%v", inserted, err)
+}
+
+// Inferred auto-registration is bookkeeping (orch rule): it writes a default
+// "source":"inferred" row with an owner derived from the namespace name and
+// grants nothing, so an audit outage must NOT block the first write into a new
+// namespace. It is ordinary: the row commits, audit_dropped records the gap.
+func TestInferredRegistrationIsOrdinaryWhenItsAuditFails(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, err := s.db.Exec(`CREATE TRIGGER fail_ns_audit2 BEFORE INSERT ON audit_events
+		WHEN NEW.event_type LIKE 'namespace.%' BEGIN SELECT RAISE(ABORT, 'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	before := AuditDropped()
+	inserted, err := s.ensureNamespaceRegistered(ctx, "app/sec2/session", "inferred")
+	if err != nil || !inserted {
+		t.Fatalf("inferred registration must commit: inserted=%v err=%v", inserted, err)
+	}
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM namespace_policies WHERE namespace = 'app/sec2/session'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("registry rows = %d, want 1", n)
+	}
+	d := droppedRows(t, s)
+	if len(d) != 1 || d[0].EntityType != "namespace" || d[0].Action != EventNamespaceRegister || d[0].Class != dropClassDB {
+		t.Fatalf("audit_dropped = %+v", d)
+	}
+	if AuditDropped()-before != 1 {
+		t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
+	}
+	// The first WRITE into a new namespace is not blocked either.
+	if _, err := s.AppendRecord(ctx, AppendInput{Namespace: "app/sec3/session", Key: "k", Actor: "t", Payload: json.RawMessage(`{"v":1}`)}); err != nil {
+		t.Fatalf("a first write must not fail because the namespace audit is broken: %v", err)
 	}
 }
 

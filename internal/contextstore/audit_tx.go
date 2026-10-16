@@ -125,7 +125,7 @@ func auditEventWithinTx(ctx context.Context, tx *sql.Tx, ev AuditEvent) error {
 		// tesseract_in_mutation_audit_precedence_2026_10_16), except for
 		// security-class audits, which fail CLOSED: the error is returned and
 		// the caller's transaction rolls back, rejecting the mutation.
-		if isSecurityClassAudit(ev.EventType) {
+		if isSecurityClassAudit(ev.EventType) && !ev.Bookkeeping {
 			slog.Default().ErrorContext(ctx, "security-class audit failed: mutation rejected",
 				"kind", outboxKindAudit, "subject", subject, "event_type", ev.EventType, "class", class, "err", err)
 			return fmt.Errorf("security audit %s not recorded (%s): %w", ev.EventType, class, err)
