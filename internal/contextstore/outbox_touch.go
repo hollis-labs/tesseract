@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"sort"
 )
 
@@ -72,6 +73,33 @@ func (s *Store) RecordTouches(ctx context.Context, tx *sql.Tx, correlationID str
 		}
 		recs = append(recs, rec)
 	}
-	_, err := s.AppendOutbox(ctx, tx, recs...)
+	return appendTouchEventsBestEffort(ctx, s, tx, recs)
+}
+
+// appendTouchEventsBestEffort writes the touch events under a SAVEPOINT. The
+// events are derived; the activation UPDATE they describe is the mutation, and
+// a mapper or validation failure must never reject a valid touch
+// (orch/architect ruling). On failure the savepoint rolls back, the touch still
+// commits, and the gap is logged at ERROR and counted (OutboxSkipped). A touch
+// has no audit row, so nothing is written to outbox_skipped. A failure of the
+// SAVEPOINT statements themselves, or of the surrounding transaction, is still
+// returned.
+func appendTouchEventsBestEffort(ctx context.Context, s *Store, tx *sql.Tx, recs []OutboxRecord) error {
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT outbox_touch`); err != nil {
+		return err
+	}
+	if _, err := s.AppendOutbox(ctx, tx, recs...); err != nil {
+		if _, rbErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT outbox_touch`); rbErr != nil {
+			return errors.Join(err, rbErr)
+		}
+		if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_touch`); relErr != nil {
+			return errors.Join(err, relErr)
+		}
+		outboxSkipped.Add(int64(len(recs)))
+		slog.Default().ErrorContext(ctx, "touch recorded without outbox envelopes",
+			"kind", outboxKindAudit, "action", "touch", "events", len(recs), "class", failureClass(err))
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_touch`)
 	return err
 }
