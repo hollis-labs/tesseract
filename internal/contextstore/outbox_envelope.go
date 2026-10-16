@@ -15,6 +15,11 @@ import (
 // auditSubject maps an audit event to the envelope subject URN and the
 // payload subject{type,id}. The URN is msg://<type>/tesseract/<id>.
 //
+// TODO(CW-20261016-0140 step 2): switch memory|knowledge|workspace|event
+// subjects to the stable item_id BEFORE any drainer or SSE ships (architect,
+// tesseract_outbox_step1_subject_and_coupling_2026_10_16). The namespace/key
+// form is accepted as interim only.
+//
 // The ruling asks for the stable item id for memory|knowledge|workspace|event
 // subjects. The audit choke point does not carry it (it receives namespace,
 // key and the revision id), so those subjects use namespace/key for now and the

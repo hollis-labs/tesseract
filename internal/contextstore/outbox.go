@@ -8,7 +8,9 @@ package contextstore
 // under a SAVEPOINT: if it fails for any reason (mapping, validation or a
 // database error confined to that insert) the savepoint rolls back, the audit
 // row still commits, and the gap is logged at ERROR and counted
-// (OutboxSkipped). Only a failure of the whole transaction loses both rows
+// (OutboxSkipped) and recorded in outbox_skipped (audit_id, error, created_at)
+// in the same transaction, so a later repair pass can backfill the envelope.
+// Only a failure of the whole transaction loses both rows
 // (orch decision, CW-20261016-0140). In step 2 the same insert joins the
 // mutation's transaction, so a mapper failure can never reject a valid
 // mutation.
@@ -84,6 +86,11 @@ func migrateEventsOutbox(ctx context.Context, tx *sql.Tx) error {
 	created_at TEXT NOT NULL
 )`,
 		`CREATE INDEX IF NOT EXISTS idx_events_outbox_namespace ON events_outbox(namespace, seq)`,
+		`CREATE TABLE IF NOT EXISTS outbox_skipped (
+	audit_id INTEGER PRIMARY KEY,
+	error TEXT NOT NULL,
+	created_at TEXT NOT NULL
+)`,
 		`CREATE TABLE IF NOT EXISTS store_identity (
 	key TEXT PRIMARY KEY,
 	value TEXT NOT NULL

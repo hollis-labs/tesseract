@@ -131,6 +131,23 @@ func TestOutboxDatabaseFailureKeepsAuditRow(t *testing.T) {
 	if OutboxSkipped()-before != 1 {
 		t.Fatalf("skipped counter moved by %d", OutboxSkipped()-before)
 	}
+	assertOneSkipped(t, s)
+}
+
+// assertOneSkipped checks the repair record: one outbox_skipped row naming the
+// surviving audit row.
+func assertOneSkipped(t *testing.T, s *Store) {
+	t.Helper()
+	evs, _ := s.ListAuditEvents(context.Background(), 10)
+	var n int
+	var auditID int64
+	var msg string
+	if err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(audit_id), 0), COALESCE(MAX(error), '') FROM outbox_skipped`).Scan(&n, &auditID, &msg); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || len(evs) != 1 || auditID != evs[0].ID || msg == "" {
+		t.Fatalf("outbox_skipped rows = %d (audit_id %d, error %q), audit rows %d", n, auditID, msg, len(evs))
+	}
 }
 
 // A failure of the surrounding transaction loses both rows, never one.
@@ -272,6 +289,7 @@ func TestMappingFailureKeepsAuditRowAndCounts(t *testing.T) {
 	if got := OutboxSkipped() - before; got != 1 {
 		t.Fatalf("skipped counter moved by %d, want 1", got)
 	}
+	assertOneSkipped(t, s)
 	// AppendOutbox (caller-owned tx) still reports the mapping error.
 	tx, _ := s.db.BeginTx(ctx, nil)
 	defer func() { _ = tx.Rollback() }()
