@@ -1,0 +1,20 @@
+# Hub auth.jwt + auth.deny_list block (CW-20261016-0098, Phase 6).
+# Merge into the live config.yaml ($XDG_CONFIG_HOME/tesseract/config.yaml).
+# tether.example is a placeholder: the real issuer host lives in the private
+# infra repo; pass a filled-in copy with scripts/validate-auth-jwt.sh --config.
+# Validate first with scripts/validate-auth-jwt.sh: a bad jwt/deny_list block
+# STOPS startup (nothing falls back to fewer checks).
+auth:
+  jwt:
+    issuer: tether
+    audience: tesseract
+    jwks_url: https://tether.example/.well-known/jwks.json
+    # No bootstrap_key_file: keys are fetched on demand (10s refetch floor,
+    # rotated every 30d); a configured but missing file stops startup.
+    namespace_globs: ["project/*", "session/*", "app/*", "org/*", "system/*"]
+  # Enable only after the owner has stored the maintain device credential:
+  #   secrets set file://tesseract/denylist-bearer
+  # A configured deny_list whose reference cannot be resolved stops startup.
+  # deny_list:
+  #   url: https://tether.example/auth/denylist
+  #   bearer_ref: file://tesseract/denylist-bearer

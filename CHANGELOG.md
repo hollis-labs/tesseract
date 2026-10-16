@@ -8,6 +8,18 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-10-16
+
+Closes the JWT namespace fallback ahead of pointing the hub at the Tether issuer. Source release only; no prebuilt binaries are published.
+
+### Changed (breaking for JWT configs)
+
+- `auth.jwt.namespace_globs` is now required whenever the JWT verifier is configured (CW-20261016-0029, #64). The implicit `"*"` fallback is gone: an `auth.jwt` block without it stops startup with an error naming the key, because a JWT carries no namespace claim and `*` would let any Tether-minted token with `aud: tesseract` read and write `user/*`. The hub ceiling `["project/*", "session/*", "app/*", "org/*", "system/*"]` is documented in `docs/auth.md`. Managed tokens and deployments with no `auth.jwt` block are unaffected.
+
+### Added
+
+- `scripts/validate-auth-jwt.sh` and `examples/hub-auth-jwt.yaml` (CW-20261016-0098): start a throwaway server on a side port against a copy of the database with a candidate `auth.jwt` / `auth.deny_list` block, and check startup, JWKS reachability, an anonymous 401, a managed token 200 and a JWT-shaped bad token 401. The live service and config are never touched.
+
 ## [0.13.0] — 2026-10-16
 
 Adopts the shared auth and secrets libraries and the reorganised libs module paths. Source release only; no prebuilt binaries are published.
