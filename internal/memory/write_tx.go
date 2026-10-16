@@ -162,6 +162,26 @@ func (s *Store) writeRevisionInTx(ctx context.Context, tx *sql.Tx, in WriteInput
 		pointerResolvedAt = in.Facets.Pointer.ResolvedAt
 	}
 
+	// The supersedes target is verified BEFORE the insert: the table has a
+	// foreign key on it, so a missing id would otherwise surface as a raw
+	// constraint error that differs from every other refusal here.
+	if in.Supersedes != "" {
+		var supersededMemoryID, supersededNamespace string
+		err := tx.QueryRowContext(ctx, `SELECT memory_id, namespace FROM memory_revisions WHERE revision_id = ?`, in.Supersedes).Scan(&supersededMemoryID, &supersededNamespace)
+		// A revision outside the namespace being written answers exactly like
+		// a missing one: the caller is authorized for in.Namespace only, so any
+		// other answer would confirm that a revision id exists elsewhere.
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && supersededNamespace != in.Namespace) {
+			return Revision{}, fmt.Errorf("%w: supersedes revision %s not found", ErrInvalidInput, in.Supersedes)
+		}
+		if err != nil {
+			return Revision{}, fmt.Errorf("verify supersedes: %w", err)
+		}
+		if supersededMemoryID != memoryID {
+			return Revision{}, fmt.Errorf("%w: supersedes revision %s belongs to a different memory", ErrInvalidInput, in.Supersedes)
+		}
+	}
+
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO memory_revisions (
     revision_id, memory_id, domain, namespace, memory_key, status, supersedes,
@@ -183,17 +203,6 @@ INSERT INTO memory_revisions (
 	}
 
 	if in.Supersedes != "" {
-		var supersededMemoryID string
-		err := tx.QueryRowContext(ctx, `SELECT memory_id FROM memory_revisions WHERE revision_id = ?`, in.Supersedes).Scan(&supersededMemoryID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return Revision{}, fmt.Errorf("%w: supersedes revision %s not found", ErrInvalidInput, in.Supersedes)
-		}
-		if err != nil {
-			return Revision{}, fmt.Errorf("verify supersedes: %w", err)
-		}
-		if supersededMemoryID != memoryID {
-			return Revision{}, fmt.Errorf("%w: supersedes revision %s belongs to a different memory", ErrInvalidInput, in.Supersedes)
-		}
 		if err := deprecateRevisionTx(ctx, tx, in.Supersedes); err != nil {
 			return Revision{}, fmt.Errorf("deprecate superseded: %w", err)
 		}
