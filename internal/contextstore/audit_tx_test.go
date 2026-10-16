@@ -98,7 +98,9 @@ func TestOrdinaryMutationCommitsWhenItsAuditFailsAndRecordsAuditDropped(t *testi
 		setup       func(t *testing.T, s *Store) AuditSpec
 	}{
 		{"invalid audit row (validate)", dropClassValidate, func(t *testing.T, s *Store) AuditSpec {
-			return AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)}
+			// MetadataFor runs inside the tx, after the up-front check, so it is
+			// the way an invalid audit row can still reach the insert.
+			return AuditSpec{EventType: EventWrite, MetadataFor: func(string, int64) json.RawMessage { return json.RawMessage(`{not json`) }}
 		}},
 		{"database error confined to the audit insert (db)", dropClassDB, func(t *testing.T, s *Store) AuditSpec {
 			if _, err := s.db.Exec(`CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events
@@ -153,7 +155,7 @@ func TestSecurityClassAuditFailureRejectsTheMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			baseAudits, baseOutbox := len(mutationAudits(s)), len(mutationOutbox(s))
-			_, err := appendWithAudit(t, s, &AuditSpec{EventType: typ, Metadata: json.RawMessage(`{not json`)})
+			_, err := appendWithAudit(t, s, &AuditSpec{EventType: typ, MetadataFor: func(string, int64) json.RawMessage { return json.RawMessage(`{not json`) }})
 			if err == nil {
 				t.Fatal("a security-class mutation must be rejected when its audit cannot be recorded")
 			}
@@ -261,7 +263,7 @@ func TestAuditDroppedInsertFailureStillCommitsTheMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := AuditDropped()
-	if _, err := appendWithAudit(t, s, &AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)}); err != nil {
+	if _, err := appendWithAudit(t, s, &AuditSpec{EventType: EventWrite, MetadataFor: func(string, int64) json.RawMessage { return json.RawMessage(`{not json`) }}); err != nil {
 		t.Fatalf("mutation must commit even when audit_dropped cannot be written: %v", err)
 	}
 	if _, err := s.Head(context.Background(), "app/x/session", "k"); err != nil {
@@ -269,5 +271,23 @@ func TestAuditDroppedInsertFailureStillCommitsTheMutation(t *testing.T) {
 	}
 	if AuditDropped()-before != 1 {
 		t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
+	}
+}
+
+// Caller-supplied metadata that is not JSON is refused BEFORE the transaction
+// opens: the caller gets an error (a 400 at the surfaces), nothing is written
+// and nothing is silently dropped.
+func TestBadAuditMetadataIsRefusedUpFront(t *testing.T) {
+	s := newTestStore(t)
+	before := AuditDropped()
+	_, err := appendWithAudit(t, s, &AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)})
+	if err == nil {
+		t.Fatal("non-JSON audit metadata must be refused")
+	}
+	if _, herr := s.Head(context.Background(), "app/x/session", "k"); herr == nil {
+		t.Fatal("refused call left a record behind")
+	}
+	if d := droppedRows(t, s); len(d) != 0 || AuditDropped() != before {
+		t.Fatalf("audit_dropped = %+v, dropped moved %d: a refused call is not a silent drop", d, AuditDropped()-before)
 	}
 }

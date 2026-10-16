@@ -64,6 +64,12 @@ func (a *AuditSpec) validate() error {
 			return fmt.Errorf("audit spec: unknown promote event type %q", a.EventType)
 		}
 	}
+	// Caller-supplied metadata that is not JSON would make the audit row
+	// invalid and, after the mutation committed, a silent drop. Refuse it up
+	// front so the caller gets a 400 instead (orch ruling on #73).
+	if len(a.Metadata) > 0 && !json.Valid(a.Metadata) {
+		return fmt.Errorf("audit spec: metadata must be valid JSON")
+	}
 	return nil
 }
 
