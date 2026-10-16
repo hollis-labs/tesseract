@@ -179,20 +179,22 @@ func TestChildSubsystemDoesNotReserveWhileTheDaemonClaimIsFresh(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	mem, err := setupChildMemorySubsystemWithEmbedder(ctx, store, nil, layout, config.Defaults(), nil)
-	if err != nil {
-		t.Fatalf("setup child subsystem: %v", err)
-	}
-	t.Cleanup(func() { cancel(); _ = mem.Close() })
-
-	probe := openProbeDBAt(t, mem.QueueDBPath)
-	// A daemon owns the queue. The child created no table, so this test has to.
+	// Establish ownership before starting the child: its first poll must see
+	// a fresh claim, not an absent table followed by a job it can reserve.
+	probe := openProbeDBAt(t, filepath.Join(layout.StateDir(), "queue.db"))
 	if err := ensureDaemonClaim(ctx, probe); err != nil {
 		t.Fatalf("ensure claim: %v", err)
 	}
 	if err := writeDaemonClaim(ctx, probe); err != nil {
 		t.Fatalf("write claim: %v", err)
 	}
+
+	mem, err := setupChildMemorySubsystemWithEmbedder(ctx, store, nil, layout, config.Defaults(), nil)
+	if err != nil {
+		t.Fatalf("setup child subsystem: %v", err)
+	}
+	t.Cleanup(func() { cancel(); _ = mem.Close() })
+
 	if _, err := probe.ExecContext(ctx,
 		`INSERT INTO jobs (queue, type, payload, attempts, max_tries, available_at, created_at)
 		 VALUES ('tesseract', 'probe.not.a.real.handler', '{}', 0, 1, ?, ?)`,
