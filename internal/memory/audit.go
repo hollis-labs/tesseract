@@ -9,6 +9,7 @@ package memory
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 )
 
@@ -43,6 +44,56 @@ const (
 // contextstore.Store satisfies this interface structurally via EmitRevision.
 type AuditSink interface {
 	EmitRevision(ctx context.Context, domain, op, actor, namespace, key, recordID string, metadata json.RawMessage) error
+}
+
+// TxAuditSink is the transaction-aware half of an AuditSink. A sink that
+// implements it records the audit event inside the caller's transaction, so the
+// event commits with the revision it describes (CW-20261016-0140). itemID is
+// the stable item id, used for the event subject. contextstore.Store satisfies
+// this structurally via EmitRevisionTx.
+//
+// A sink that does not implement it keeps the post-commit EmitRevision path.
+type TxAuditSink interface {
+	EmitRevisionTx(ctx context.Context, tx *sql.Tx, domain, op, actor, namespace, key, recordID, itemID string, metadata json.RawMessage) error
+}
+
+// txAuditSink returns the transaction-aware sink, or nil.
+func (s *Store) txAuditSink() TxAuditSink {
+	if s.auditSink == nil {
+		return nil
+	}
+	t, _ := s.auditSink.(TxAuditSink)
+	return t
+}
+
+// AuditRevisionInTx records the audit event for a revision written through
+// WriteRevisionInTx / WriteRevisionToItemInTx, inside the caller's transaction.
+// Callers that own the transaction (the promotion store) call it before commit;
+// FinishRevisionWrite then skips the post-commit emit. It reports whether the
+// event was recorded in the transaction (false with a sink that is not
+// transaction-aware, in which case FinishRevisionWrite still emits).
+func (s *Store) AuditRevisionInTx(ctx context.Context, tx *sql.Tx, rev Revision, in WriteInput) bool {
+	sink := s.txAuditSink()
+	if sink == nil {
+		return false
+	}
+	key := in.MemoryKey
+	if key == "" {
+		key = rev.MemoryID
+	}
+	op := auditOpWrite
+	if in.Supersedes != "" {
+		op = auditOpSupersede
+	}
+	_ = sink.EmitRevisionTx(ctx, tx, string(in.Domain), op, in.Author.AgentID, in.Namespace, key, rev.RevisionID, revisionItemID(rev), nil)
+	return true
+}
+
+func revisionItemID(rev Revision) string {
+	if rev.ItemID != "" {
+		return rev.ItemID
+	}
+	return rev.MemoryID
 }
 
 // NamespaceRegistrar lets the memory write path keep namespace_policies in

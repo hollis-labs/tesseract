@@ -417,6 +417,9 @@ func (s *Store) Apply(ctx context.Context, in ApplyInput) (ApplyReceipt, error) 
 				}
 				write.Supersedes = current
 				rev, err = s.mem.WriteRevisionToItemInTx(ctx, tx, write, row.Target.ItemID)
+				if err == nil {
+					s.mem.AuditRevisionInTx(ctx, tx, rev, write)
+				}
 			} else {
 				if row.Target.Key != "" {
 					var occupied int
@@ -428,6 +431,9 @@ func (s *Store) Apply(ctx context.Context, in ApplyInput) (ApplyReceipt, error) 
 					}
 				}
 				rev, err = s.mem.WriteRevisionInTx(ctx, tx, write)
+				if err == nil {
+					s.mem.AuditRevisionInTx(ctx, tx, rev, write)
+				}
 			}
 			if err != nil {
 				return result{}, err
@@ -441,6 +447,7 @@ func (s *Store) Apply(ctx context.Context, in ApplyInput) (ApplyReceipt, error) 
 			if depErr := s.mem.DeprecateInTx(ctx, tx, row.SourceVersionToken); depErr != nil {
 				return result{}, fmt.Errorf("deprecate source revision: %w", depErr)
 			}
+			s.mem.AuditDeprecateInTx(ctx, tx, row.SourceVersionToken, "")
 		}
 
 		now := s.now().UTC()
