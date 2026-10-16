@@ -321,3 +321,26 @@ func TestRestrictedTokenStillReadsItsOwnNamespaces(t *testing.T) {
 		t.Fatalf("empty-selector packet must still return in-glob records: %d %s", res.Code, res.Body.String())
 	}
 }
+
+func TestRestrictedNamespaceListCountHidesOtherNamespaces(t *testing.T) {
+	f := newGuardFixture(t)
+	count := func(headers map[string]string) (int, string) {
+		res := performJSONWithHeaders(t, f.srv, http.MethodGet, "/v1/namespaces/list", nil, headers)
+		var body struct {
+			Count int              `json:"count"`
+			Items []map[string]any `json:"items"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Count != len(body.Items) {
+			t.Fatalf("count %d != items %d: a restricted count must match what is visible", body.Count, len(body.Items))
+		}
+		return body.Count, res.Body.String()
+	}
+	all, _ := count(f.unrestricted)
+	mine, body := count(f.restricted)
+	if mine >= all || mine == 0 || strings.Contains(body, "fixture-out") {
+		t.Fatalf("restricted count=%d unrestricted=%d body=%s", mine, all, body)
+	}
+}

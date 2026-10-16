@@ -1174,7 +1174,37 @@ func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 	}
 	query.Cursor = strings.TrimSpace(q.Get("cursor"))
 
-	page, err := s.Store.ListNamespacePolicyPage(r.Context(), query)
+	permit, ok := namespacePermit(w, r, nil)
+	if !ok {
+		return
+	}
+	var page contextstore.NamespacePage
+	var err error
+	if permit == nil {
+		page, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
+	} else {
+		// A restricted token sees only its own namespaces, and the count and
+		// paging must not reveal how many others exist. Read every page, keep
+		// the permitted rows, and answer in one piece (capped at maxLimit).
+		query.Limit, query.Cursor = maxLimit, ""
+		for err == nil {
+			var chunk contextstore.NamespacePage
+			chunk, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
+			if err != nil {
+				break
+			}
+			for _, entry := range chunk.Items {
+				if permit(entry.Namespace) && len(page.Items) < maxLimit {
+					page.Items = append(page.Items, entry)
+				}
+			}
+			if chunk.NextCursor == "" {
+				break
+			}
+			query.Cursor = chunk.NextCursor
+		}
+		page.Total = len(page.Items)
+	}
 	if err != nil {
 		if errors.Is(err, contextstore.ErrNamespaceQuery) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
@@ -1192,15 +1222,8 @@ func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt string         `json:"updated_at,omitempty"`
 	}
 
-	permit, ok := namespacePermit(w, r, nil)
-	if !ok {
-		return
-	}
 	items := make([]item, 0, len(page.Items))
 	for _, entry := range page.Items {
-		if permit != nil && !permit(entry.Namespace) {
-			continue
-		}
 		items = append(items, item{
 			Namespace: entry.Namespace,
 			OwnerType: entry.OwnerType,
