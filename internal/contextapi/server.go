@@ -13,7 +13,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -219,39 +218,7 @@ func requireNamespaceSelectorAccess(w http.ResponseWriter, r *http.Request, sele
 }
 
 func namespaceSelectorPermitted(globs []string, selector string, domainNames []string) bool {
-	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
-	if !isPrefix {
-		for _, glob := range globs {
-			glob = strings.TrimSpace(glob)
-			if glob == "*" || glob == selector {
-				return true
-			}
-			if matched, err := path.Match(glob, selector); err == nil && matched {
-				return true
-			}
-			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
-				return true
-			}
-		}
-		return false
-	}
-	for _, glob := range globs {
-		glob = strings.TrimSpace(glob)
-		if glob == "*" {
-			return true
-		}
-		if !strings.HasSuffix(glob, "/*") {
-			continue
-		}
-		allowedPrefix := strings.TrimSuffix(glob, "/*")
-		if strings.ContainsAny(allowedPrefix, "*?[") {
-			continue
-		}
-		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
-			return true
-		}
-	}
-	return false
+	return nsglob.SelectorPermitted(globs, selector, domainNames)
 }
 
 func recallAuthorizationSelectorsHTTP(selector string, domainNames []string) []string {

@@ -6,6 +6,8 @@ package nsglob
 import (
 	"path"
 	"strings"
+
+	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
 // Permitted reports whether the globs authorize one concrete stored namespace.
@@ -55,6 +57,48 @@ func PatternWithin(globs []string, pattern string) bool {
 func Unrestricted(globs []string) bool {
 	for _, g := range globs {
 		if strings.TrimSpace(g) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// SelectorPermitted authorizes one recall selector, which may be a prefix
+// ("project/x/memory/*" style, resolved against the domains in play by
+// memory.RecallNamespacePrefix). A concrete selector is checked like Permitted;
+// a prefix selector is allowed only when one "/*" glob contains every
+// namespace it could match, so a broad prefix is never authorized by a narrower
+// glob.
+func SelectorPermitted(globs []string, selector string, domainNames []string) bool {
+	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
+	if !isPrefix {
+		for _, glob := range globs {
+			glob = strings.TrimSpace(glob)
+			if glob == "*" || glob == selector {
+				return true
+			}
+			if matched, err := path.Match(glob, selector); err == nil && matched {
+				return true
+			}
+			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, glob := range globs {
+		glob = strings.TrimSpace(glob)
+		if glob == "*" {
+			return true
+		}
+		if !strings.HasSuffix(glob, "/*") {
+			continue
+		}
+		allowedPrefix := strings.TrimSuffix(glob, "/*")
+		if strings.ContainsAny(allowedPrefix, "*?[") {
+			continue
+		}
+		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
 			return true
 		}
 	}
