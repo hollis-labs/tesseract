@@ -599,6 +599,25 @@ func (s *Store) markUsedOnce(ctx context.Context, itemID string) error {
 	return tx.Commit()
 }
 
+// DB returns the underlying handle, for callers that run a touch across stores
+// in one transaction.
+func (s *Store) DB() *sql.DB { return s.db }
+
+// MarkUsedIn is MarkUsed inside the caller's transaction, and returns the
+// workstream stored on the item ("" when none) so a touch can record its event
+// in the same transaction (CW-20261016-0140). It commits nothing and does not
+// retry; the caller owns both.
+func (s *Store) MarkUsedIn(ctx context.Context, tx *sql.Tx, itemID string) (string, error) {
+	if err := s.markUsed(ctx, tx, itemID); err != nil {
+		return "", err
+	}
+	var ws sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT workstream_id FROM workspace_items WHERE item_id = ?`, itemID).Scan(&ws); err != nil {
+		return "", err
+	}
+	return ws.String, nil
+}
+
 func (s *Store) markUsed(ctx context.Context, tx *sql.Tx, itemID string) error {
 	now := s.now().UTC()
 	state, err := readRetentionState(tx.QueryRowContext(ctx, `SELECT item_id, namespace, activation, last_used_at, last_decayed_at FROM workspace_items WHERE item_id = ?`, itemID))
