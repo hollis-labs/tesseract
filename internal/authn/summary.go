@@ -37,6 +37,10 @@ type Caller struct {
 	Last           string `json:"last_seen"`
 }
 
+func (c Caller) key() string {
+	return strings.Join([]string{c.Surface, c.Method, c.Route, c.Authentication, c.Principal, c.RequiredScope, c.Reason, c.UserAgent}, "|")
+}
+
 // Summary aggregates would-deny events for permissive and off modes. It is the
 // answer to "which callers would break if I flipped to enforce".
 type Summary struct {
@@ -84,7 +88,7 @@ func (s *Summary) record(c Caller, ev auth.Event) {
 		return
 	}
 	c.Authentication, c.Principal, c.RequiredScope, c.Reason = ev.Authentication, ev.PrincipalID, ev.RequiredScope, ev.Reason
-	key := strings.Join([]string{c.Surface, c.Method, c.Route, c.Authentication, c.Principal, c.RequiredScope, c.UserAgent}, "|")
+	key := c.key()
 	now := s.now().UTC().Format(time.RFC3339)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,7 +150,7 @@ func (s *Summary) flush(w io.Writer, final bool) {
 	s.mu.Lock()
 	changed := false
 	for _, r := range rows {
-		k := r.Surface + "|" + r.Method + "|" + r.Route + "|" + r.Authentication + "|" + r.Principal + "|" + r.RequiredScope + "|" + r.UserAgent
+		k := r.key()
 		if s.logged[k] != r.Count {
 			changed = true
 		}
@@ -182,6 +186,9 @@ func (c Caller) String() string {
 	s := fmt.Sprintf("%dx %s %s auth=%s who=%s", c.Count, c.Surface, target, c.Authentication, who)
 	if c.RequiredScope != "" {
 		s += " needs=" + c.RequiredScope
+	}
+	if c.Reason != "" {
+		s += " reason=" + c.Reason
 	}
 	if c.UserAgent != "" {
 		s += " ua=" + c.UserAgent
