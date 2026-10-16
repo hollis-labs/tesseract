@@ -180,11 +180,11 @@ const (
 		"Omit it and pass `namespaces` instead if globs are all you need; passing both is a validation_error."
 
 	viewFullEvaluationArgDescription = "Which evaluation arm answers, NOT merely whether metadata is attached. " +
-		"false (default): the store is queried for heads matching the selector, results are filtered by the capability token's namespace globs when a token is configured, " +
+		"false (default): the store is queried for heads matching the selector, results honor the capability token's namespace globs under the configured auth mode, " +
 		"and the answer is the shared budget envelope of record SUMMARIES — no payloads, ever. " +
 		"true: the selector is evaluated with the store's view semantics (deterministic sort, selector limit, truncation flag) and the answer is `{items, evaluation_meta}` " +
 		"carrying full records, with payloads when `include_payload` is set. " +
-		"Both arms apply the token namespace ceiling before loading records, counting matches, and applying limits."
+		"In enforce mode, both arms apply the token namespace ceiling before loading records, counting matches, and applying limits."
 
 	promoteStageArgDescription = "Which stage of the promotion workflow runs. Each stage requires a DIFFERENT capability scope, and the scope is checked for the stage you named: " +
 		"`request` (scope promote.request) records a request to copy a record from an app namespace to a user namespace; " +
