@@ -2423,6 +2423,8 @@ WHERE 1=1`
 		args = append(args, u)
 	}
 	query += "\nORDER BY id DESC"
+	// TODO(CW-20261016-0205): a restricted query scans until it fills a page;
+	// add a scan cap (and a resume cursor) before the audit table gets large.
 	if q.Permit == nil {
 		// With a permit filter the limit is applied after filtering, in the
 		// loop below, so a restricted caller still gets a full page.

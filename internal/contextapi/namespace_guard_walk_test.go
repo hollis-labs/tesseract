@@ -423,3 +423,52 @@ func TestRestrictedMaintenanceLeavesCaseVariantNamespaceUntouched(t *testing.T) 
 		t.Fatalf("case-variant out-of-glob namespace was compacted: %d revisions left, want 3", got)
 	}
 }
+
+// LIKE also treats "_" as a one-character wildcard, so a pattern built from a
+// namespace containing "_" matches look-alike namespaces outside the globs.
+func TestRestrictedMaintenanceLeavesUnderscoreVariantNamespaceUntouched(t *testing.T) {
+	f := newGuardFixture(t)
+	ctx := context.Background()
+	raw, _, err := f.srv.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{
+		Label: "underscore", TTL: time.Hour, NamespaceGlobs: []string{"project/fixture_in/*"},
+		Scopes: []string{"repair"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + raw}
+	const own, lookalike = "project/fixture_in/data", "project/fixtureXin/data"
+	for _, ns := range []string{own, lookalike} {
+		for i := 0; i < 3; i++ {
+			if _, err := f.srv.Store.AppendRecord(ctx, contextstore.AppendInput{
+				Namespace: ns, Key: "versioned", Actor: "fixture", Payload: json.RawMessage(`{"n":1}`),
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	count := func(ns string) int {
+		var n int
+		if err := f.srv.Store.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM records WHERE namespace = ? AND key_name = 'versioned'`, ns).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	res := performJSONWithHeaders(t, f.srv, http.MethodPost, "/v1/maintenance/compact",
+		map[string]any{"namespace_pattern": "project/fixture_in/%", "max_revisions": 1}, headers)
+	if res.Code != http.StatusOK {
+		t.Fatalf("compact = %d %s", res.Code, res.Body.String())
+	}
+	if count(own) != 1 || count(lookalike) != 3 {
+		t.Fatalf("own=%d (want 1) lookalike=%d (want 3): the underscore wildcard reached an out-of-glob namespace", count(own), count(lookalike))
+	}
+	// Trim: a dry run with a far-future cutoff counts every row it would delete.
+	res = performJSONWithHeaders(t, f.srv, http.MethodPost, "/v1/maintenance/trim",
+		map[string]any{"namespace_pattern": "project/fixture_in/%", "retention": "0s", "dry_run": true}, headers)
+	if res.Code != http.StatusOK {
+		t.Fatalf("trim = %d %s", res.Code, res.Body.String())
+	}
+	if strings.Contains(res.Body.String(), "fixtureXin") {
+		t.Fatalf("trim response names an out-of-glob namespace: %s", res.Body.String())
+	}
+}
