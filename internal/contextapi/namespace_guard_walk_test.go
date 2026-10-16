@@ -34,6 +34,11 @@ type guardCase struct {
 	// denied: the route must answer 403 for the out-of-glob ask. Otherwise the
 	// route answers normally but must not carry any out-of-glob data.
 	denied bool
+	// notFound: a by-id route must answer 404 for an out-of-glob id, the same
+	// as a missing one, so ids cannot be probed.
+	notFound bool
+	// echoesInput: the response repeats the caller's own namespace argument.
+	echoesInput bool
 	// teeth: an unrestricted token gets data from the out-of-glob namespace from this same
 	// request, proving the case would catch a leak.
 	teeth bool
@@ -138,6 +143,9 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 		m["include_payload"] = true
 		return m
 	}
+	byID := func(method, path string, body any) []guardCase {
+		return []guardCase{{method: method, path: path, body: body, notFound: true}}
+	}
 	both := func(a, b []guardCase) []guardCase { return append(a, b...) }
 
 	expect := map[routeKey][]guardCase{
@@ -172,11 +180,11 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 		{http.MethodPost, "/v1/context/status/deprecate"}: post("/v1/context/status/deprecate", map[string]any{"namespace": guardOutNS, "key": "doc"}, true, false),
 		{http.MethodPost, "/v1/context/promote/request"}: post("/v1/context/promote/request", map[string]any{
 			"source_namespace": guardOutNS, "source_key": "doc", "target_namespace": guardInNS, "target_key": "x"}, true, false),
-		{http.MethodPost, "/v1/context/promote/approve"}: post("/v1/context/promote/approve", map[string]any{"request_id": f.promoteRequest}, true, false),
-		{http.MethodPost, "/v1/context/promote/apply"}:   post("/v1/context/promote/apply", map[string]any{"request_id": f.promoteRequest}, true, false),
+		{http.MethodPost, "/v1/context/promote/approve"}: byID(http.MethodPost, "/v1/context/promote/approve", map[string]any{"request_id": f.promoteRequest}),
+		{http.MethodPost, "/v1/context/promote/apply"}:   byID(http.MethodPost, "/v1/context/promote/apply", map[string]any{"request_id": f.promoteRequest}),
 
-		{http.MethodGet, "/v1/memory/revisions/"}: get("/v1/memory/revisions/"+f.outRevisionID, true, true),
-		{http.MethodPost, "/v1/memory/deprecate"}: post("/v1/memory/deprecate", map[string]any{"revision_id": f.outRevisionID}, true, false),
+		{http.MethodGet, "/v1/memory/revisions/"}: byID(http.MethodGet, "/v1/memory/revisions/"+f.outRevisionID, nil),
+		{http.MethodPost, "/v1/memory/deprecate"}: byID(http.MethodPost, "/v1/memory/deprecate", map[string]any{"revision_id": f.outRevisionID}),
 		{http.MethodGet, "/v1/memory/current"}:    get("/v1/memory/current?"+memOut, true, true),
 		{http.MethodGet, "/v1/memory/history"}:    get("/v1/memory/history?"+memOut, true, true),
 		{http.MethodPost, "/v1/memory/recall"}:    post("/v1/memory/recall", map[string]any{"namespaces": []string{guardMemOutNS}, "query": "x"}, true, false),
@@ -190,7 +198,7 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 			"namespace": guardOutNS, "owner_type": "user", "owner_id": "x", "policy": map[string]any{}}, true, false),
 		{http.MethodPost, "/v1/admin/namespaces/update"}: post("/v1/admin/namespaces/update", map[string]any{
 			"namespace": guardOutNS, "owner_type": "user", "owner_id": "x", "policy": map[string]any{}}, true, false),
-		{http.MethodGet, "/v1/admin/namespaces/history"}: get("/v1/admin/namespaces/history?namespace="+guardOutNS, true, false),
+		{http.MethodGet, "/v1/admin/namespaces/history"}: []guardCase{{method: http.MethodGet, path: "/v1/admin/namespaces/history?namespace=" + guardOutNS, echoesInput: true}},
 
 		{http.MethodPost, "/v1/maintenance/trim"}:        post("/v1/maintenance/trim", map[string]any{"namespace_pattern": "project/fixture-out/%", "dry_run": true}, true, false),
 		{http.MethodPost, "/v1/maintenance/compact"}:     post("/v1/maintenance/compact", map[string]any{"namespace_pattern": "project/fixture-out/%", "dry_run": true}, true, false),
@@ -271,7 +279,11 @@ func TestRestrictedTokenSeesNothingOutsideItsNamespaceGlobs(t *testing.T) {
 				if strings.Contains(body, guardOutMark) {
 					t.Fatalf("restricted token received out-of-glob data: %d %s", res.Code, body)
 				}
-				if c.denied {
+				if c.notFound {
+					if res.Code != http.StatusNotFound {
+						t.Fatalf("status = %d, want 404 for an out-of-glob id: %s", res.Code, body)
+					}
+				} else if c.denied {
 					if res.Code != http.StatusForbidden {
 						t.Fatalf("status = %d, want 403 for an out-of-glob request: %s", res.Code, body)
 					}
@@ -279,7 +291,7 @@ func TestRestrictedTokenSeesNothingOutsideItsNamespaceGlobs(t *testing.T) {
 					if res.Code >= 500 {
 						t.Fatalf("status = %d: %s", res.Code, body)
 					}
-					if strings.Contains(body, "fixture-out") {
+					if !c.echoesInput && strings.Contains(body, "fixture-out") {
 						t.Fatalf("response names an out-of-glob namespace: %s", body)
 					}
 				}

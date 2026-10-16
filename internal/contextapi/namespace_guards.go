@@ -47,6 +47,17 @@ func namespacePermit(w http.ResponseWriter, r *http.Request, requested []string)
 	return func(namespace string) bool { return nsglob.Permitted(globs, namespace) }, true
 }
 
+// namespaceVisible reports whether the request's token may see one concrete
+// namespace, without writing a response. By-id routes use it to answer an
+// out-of-glob id exactly like a missing one (404), so ids cannot be probed.
+func namespaceVisible(r *http.Request, namespace string) bool {
+	claims, ok := getTokenClaims(r)
+	if !ok {
+		return !authModeConfigured(r)
+	}
+	return nsglob.Permitted(claims.NamespaceGlobs, namespace) || nsglob.Unrestricted(claims.NamespaceGlobs)
+}
+
 // requireUnrestrictedNamespaces gates operations that act on the whole store
 // and cannot be narrowed to a token's globs (TTL cleanup, head rebuild). A
 // token limited to some namespaces is refused.

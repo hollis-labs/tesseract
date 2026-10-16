@@ -320,7 +320,10 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 	// Authorize on the revision's namespace BEFORE the reinforcing read, so a
 	// denied caller cannot move activation either.
 	peek, peekErr := s.MemoryStore.GetRevisionByID(r.Context(), id)
-	if peekErr == nil && !requireNamespaceAccess(w, r, peek.Namespace) {
+	if peekErr == nil && !namespaceVisible(r, peek.Namespace) {
+		notFound := fmt.Errorf("%w: revision_id %s", memory.ErrNotFound, id)
+		writeError(w, http.StatusNotFound, "not_found", notFound.Error(),
+			memory.NotFoundDetails("revision_id", id, time.Now()))
 		return
 	}
 	// Deliberate read: reinforce the parent memory's activation.
@@ -429,7 +432,9 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "deprecate_failed", lookupErr.Error(), nil)
 		return
 	}
-	if !requireNamespaceAccess(w, r, target.Namespace) {
+	if !namespaceVisible(r, target.Namespace) {
+		notFound := fmt.Errorf("%w: revision_id %s", memory.ErrNotFound, req.RevisionID)
+		writeError(w, http.StatusNotFound, "not_found", notFound.Error(), nil)
 		return
 	}
 	if err := s.MemoryStore.Deprecate(r.Context(), req.RevisionID); err != nil {

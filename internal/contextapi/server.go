@@ -1096,7 +1096,12 @@ func (s *Server) handleAdminNamespaceHistory(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace is required", nil)
 		return
 	}
-	if !requireNamespaceAccess(w, r, namespace) {
+	if !namespaceVisible(r, namespace) {
+		// A listing filters silently: nothing visible, nothing to report.
+		writeJSON(w, http.StatusOK, adminNamespaceHistoryResponse{
+			Namespace: namespace,
+			Items:     []contextstore.AuditEvent{},
+		})
 		return
 	}
 	limit := 25

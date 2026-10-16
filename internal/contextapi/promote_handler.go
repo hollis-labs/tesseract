@@ -158,7 +158,8 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	// Approving authorizes a write into the target; the approver's token must
 	// cover it. (The request itself only needed the source namespace.)
-	if !requireNamespaceAccess(w, r, pr.TargetNamespace) {
+	if !namespaceVisible(r, pr.TargetNamespace) {
+		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("promote request %s not found", req.RequestID), nil)
 		return
 	}
 	if pr.Status != "pending" {
@@ -254,7 +255,8 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 	// Apply copies source content into the target, so the token must cover
 	// both: covering only the target would let it read the source through the
 	// copy.
-	if !requireNamespaceAccess(w, r, pr.TargetNamespace) || !requireNamespaceAccess(w, r, pr.SourceNamespace) {
+	if !namespaceVisible(r, pr.TargetNamespace) || !namespaceVisible(r, pr.SourceNamespace) {
+		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("promote request %s not found", req.RequestID), nil)
 		return
 	}
 	if pr.Status != "approved" {
