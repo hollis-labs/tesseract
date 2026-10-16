@@ -5,8 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
+
+// UnscopedAuditNamespace is the audit namespace recorded for an event whose
+// caller supplied none. Recording an event must never reject a valid mutation,
+// and a valid mutation must never lose its event (CW-20261016-0149), so an
+// empty namespace is filed here rather than failing the insert.
+const UnscopedAuditNamespace = "system/unscoped"
 
 // emit is the internal entry point all Emit* helpers funnel through.
 // It normalizes CreatedAt, calls the unexported record path, and
@@ -16,6 +23,13 @@ import (
 func (s *Store) emit(ctx context.Context, ev AuditEvent) error {
 	if ev.CreatedAt == "" {
 		ev.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if strings.TrimSpace(ev.Namespace) == "" {
+		ev.Namespace = UnscopedAuditNamespace
+		if strings.TrimSpace(ev.Key) == "" {
+			// Namespace-keyed events (maintenance, registry) use Key=namespace.
+			ev.Key = UnscopedAuditNamespace
+		}
 	}
 	if err := s.recordAuditEvent(ctx, ev); err != nil {
 		slog.Default().WarnContext(ctx, "audit emit failed",
