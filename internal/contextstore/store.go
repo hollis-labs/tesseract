@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	schemaVersion = 29
+	schemaVersion = 30
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1588,6 +1588,10 @@ FROM workspace_promotion_requests`); err != nil {
 			if err = migrateCredentialFamilies(ctx, tx); err != nil {
 				return err
 			}
+		case 30:
+			if err = migrateEventsOutbox(ctx, tx); err != nil {
+				return err
+			}
 		}
 
 		version++
@@ -2327,8 +2331,20 @@ type auditExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) error {
-	return recordAuditEventWith(ctx, s.db, event)
+func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err = recordAuditWithOutbox(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func recordAuditEventWith(ctx context.Context, executor auditExecutor, event AuditEvent) error {
 	if strings.TrimSpace(event.EventType) == "" {
@@ -2366,6 +2382,22 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(metadata),
 	)
 	return err
+}
+
+// recordAuditWithOutbox writes the audit row and its outbox envelope through
+// one transaction: the caller commits or rolls back both together.
+func recordAuditWithOutbox(ctx context.Context, tx *sql.Tx, event AuditEvent) error {
+	if strings.TrimSpace(event.CreatedAt) == "" {
+		event.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if err := recordAuditEventWith(ctx, tx, event); err != nil {
+		return err
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
+		return fmt.Errorf("outbox: audit row id: %w", err)
+	}
+	return writeOutboxEvent(ctx, tx, event, id)
 }
 
 // ListAuditEvents returns newest-first audit events with deterministic ordering.

@@ -32,7 +32,13 @@ func (s *Store) emit(ctx context.Context, ev AuditEvent) error {
 		}
 	}
 	if err := s.recordAuditEvent(ctx, ev); err != nil {
-		slog.Default().WarnContext(ctx, "audit emit failed",
+		// Callers still discard this error, so this line is the only signal
+		// that an audit event and its outbox envelope were not recorded. It
+		// names the envelope kind, the subject and the error.
+		typ, id := auditSubject(ev)
+		slog.Default().ErrorContext(ctx, "audit emit failed: event not recorded",
+			"kind", outboxKindAudit,
+			"subject", "msg://"+typ+"/"+outboxApp+"/"+id,
 			"event_type", ev.EventType,
 			"actor", ev.Actor,
 			"namespace", ev.Namespace,
