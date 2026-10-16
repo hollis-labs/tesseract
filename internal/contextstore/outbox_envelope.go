@@ -79,6 +79,11 @@ func normalizeActorKind(k string) string {
 	return "service"
 }
 
+// outboxMapFault is a test seam, nil in production. A valid audit event
+// cannot currently fail envelope mapping, so the best-effort path (audit row
+// kept, envelope skipped) is only reachable by injecting the failure.
+var outboxMapFault func() error
+
 // OutboxRecord describes one audit.recorded fact for the outbox. It is the
 // shape both the audit choke point and later per-surface writers (touch, step
 // 2) hand to AppendOutbox, so envelope construction lives in one place.
@@ -115,6 +120,11 @@ func recordFromAudit(ev AuditEvent) OutboxRecord {
 // buildEnvelope renders one record as an audit.recorded envelope. Sequence is
 // set by the caller once the outbox row exists.
 func buildEnvelope(ctx context.Context, r OutboxRecord, evtID string, generation uint64) (runtimeevents.Event, string, error) {
+	if outboxMapFault != nil {
+		if err := outboxMapFault(); err != nil {
+			return runtimeevents.Event{}, "", err
+		}
+	}
 	if r.Action == "" || r.SubjectType == "" || r.SubjectID == "" {
 		return runtimeevents.Event{}, "", errors.New("outbox: action and subject are required")
 	}

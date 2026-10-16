@@ -3,6 +3,7 @@ package contextstore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -225,5 +226,36 @@ func TestAppendOutboxSharesTxAndCorrelation(t *testing.T) {
 	}
 	if _, err := s.AppendOutbox(ctx, nil, OutboxRecord{}); err == nil {
 		t.Fatal("nil tx must be refused")
+	}
+}
+
+// A mapping failure must not lose the audit row: the row commits, the outbox
+// is skipped, the counter moves. (Database errors still roll back both; see
+// TestEmitIsAtomicWithAuditRow.)
+func TestMappingFailureKeepsAuditRowAndCounts(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	outboxMapFault = func() error { return errors.New("injected mapping failure") }
+	t.Cleanup(func() { outboxMapFault = nil })
+	before := OutboxSkipped()
+
+	if err := s.EmitWrite(ctx, "cli", "app/x/session", "k", 1, "r", nil); err != nil {
+		t.Fatalf("a mapping failure must not fail the emit: %v", err)
+	}
+	evs, _ := s.ListAuditEvents(ctx, 10)
+	if len(evs) != 1 {
+		t.Fatalf("audit rows = %d, want 1 (the audit row must survive)", len(evs))
+	}
+	if out, _ := s.ReadOutbox(ctx, 0, 10); len(out) != 0 {
+		t.Fatalf("outbox rows = %d, want 0", len(out))
+	}
+	if got := OutboxSkipped() - before; got != 1 {
+		t.Fatalf("skipped counter moved by %d, want 1", got)
+	}
+	// AppendOutbox (caller-owned tx) still reports the mapping error.
+	tx, _ := s.db.BeginTx(ctx, nil)
+	defer func() { _ = tx.Rollback() }()
+	if _, err := s.AppendOutbox(ctx, tx, OutboxRecord{Action: "touch", SubjectType: "memory", SubjectID: "i"}); err == nil {
+		t.Fatal("AppendOutbox must return the mapping error to its caller")
 	}
 }

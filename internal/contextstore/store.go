@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -2397,7 +2398,21 @@ func recordAuditWithOutbox(ctx context.Context, tx *sql.Tx, event AuditEvent) er
 	if err := tx.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
 		return fmt.Errorf("outbox: audit row id: %w", err)
 	}
-	return writeOutboxEvent(ctx, tx, event, id)
+	if err := writeOutboxEvent(ctx, tx, event, id); err != nil {
+		var me mappingError
+		if errors.As(err, &me) {
+			// The audit row is the system of record: keep it, skip the
+			// envelope, say so loudly and count it.
+			outboxSkipped.Add(1)
+			typ, sid := auditSubject(event)
+			slog.Default().ErrorContext(ctx, "audit recorded without outbox envelope: mapping failed",
+				"kind", outboxKindAudit, "subject", "msg://"+typ+"/"+outboxApp+"/"+sid,
+				"event_type", event.EventType, "err", me)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // ListAuditEvents returns newest-first audit events with deterministic ordering.

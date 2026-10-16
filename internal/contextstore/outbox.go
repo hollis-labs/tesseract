@@ -3,9 +3,12 @@ package contextstore
 // Events outbox (CW-20261016-0140, O1 step 1).
 //
 // Every audit event is also written, as a complete event-stream envelope v1.1,
-// to events_outbox in the SAME transaction as its audit_events row, so the two
-// cannot disagree: either both exist or neither does, and a failure is
-// returned instead of dropped.
+// to events_outbox in the SAME transaction as its audit_events row. A database
+// error rolls both back and is returned. An envelope MAPPING or validation
+// error does not: the audit row is the system of record and commits, the
+// outbox insert is skipped, and the failure is logged at ERROR and counted
+// (OutboxSkipped). That best-effort stance holds until the mapper has run in
+// production (orch call, CW-20261016-0140).
 //
 // What this is not yet: atomic with the MUTATION. Store.emit still runs after
 // the caller's own commit (the Emit* callers discard its error), so a crash
@@ -27,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/libs/harness/core/adapters/runtimeevents"
@@ -163,7 +167,15 @@ func writeOutboxRecord(ctx context.Context, x outboxExecutor, r OutboxRecord) (s
 	evtID := runtimeevents.NewEventID()
 	env, subject, err := buildEnvelope(ctx, r, evtID, gen)
 	if err != nil {
-		return "", err
+		return "", mappingError{err}
+	}
+	// Validate before touching the table (sequence is assigned by the insert,
+	// so check with a placeholder): a record the envelope cannot represent is
+	// a mapping error, distinct from a database error.
+	probe := env
+	probe.Sequence = 1
+	if err := probe.Validate(); err != nil {
+		return "", mappingError{err}
 	}
 	created := r.OccurredAt
 	if created == "" {
@@ -183,9 +195,6 @@ VALUES (?, ?, ?, ?, ?, ?, '', ?)`,
 		return "", fmt.Errorf("outbox: sequence: %w", err)
 	}
 	env.Sequence = uint64(seq)
-	if err := env.Validate(); err != nil {
-		return "", fmt.Errorf("outbox: %w", err)
-	}
 	raw, err := json.Marshal(env)
 	if err != nil {
 		return "", fmt.Errorf("outbox: marshal: %w", err)
@@ -195,6 +204,23 @@ VALUES (?, ?, ?, ?, ?, ?, '', ?)`,
 	}
 	return evtID, nil
 }
+
+// mappingError marks a failure to express a record as a valid envelope, as
+// opposed to a database failure. The audit choke point treats the two
+// differently: a mapping error must not lose the audit row.
+type mappingError struct{ err error }
+
+func (e mappingError) Error() string { return "outbox: " + e.err.Error() }
+func (e mappingError) Unwrap() error { return e.err }
+
+// outboxSkipped counts audit events committed WITHOUT an outbox envelope
+// because the envelope could not be built. Until the mapper has run in
+// production the outbox is best-effort for mapping errors; database errors
+// still roll back both rows.
+var outboxSkipped atomic.Int64
+
+// OutboxSkipped returns how many audit events skipped the outbox since start.
+func OutboxSkipped() int64 { return outboxSkipped.Load() }
 
 func nullableInt64(v int64) any {
 	if v == 0 {
