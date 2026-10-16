@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // AuditSpec describes the audit event a mutation records about itself.
@@ -106,14 +107,82 @@ func auditEventWithinTx(ctx context.Context, tx *sql.Tx, ev AuditEvent) error {
 		if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT audit_in_mutation`); relErr != nil {
 			return relErr
 		}
-		auditDropped.Add(1)
 		typ, id := auditSubject(ev)
+		subject := "msg://" + typ + "/" + outboxApp + "/" + id
+		class := dropClassValidate
+		if validateAuditEvent(ev) == nil {
+			class = dropClassDB
+		}
+		// Precedence is mutation > audit > outbox (architect ruling
+		// tesseract_in_mutation_audit_precedence_2026_10_16), except for
+		// security-class audits, which fail CLOSED: the error is returned and
+		// the caller's transaction rolls back, rejecting the mutation.
+		if isSecurityClassAudit(ev.EventType) {
+			slog.Default().ErrorContext(ctx, "security-class audit failed: mutation rejected",
+				"kind", outboxKindAudit, "subject", subject, "event_type", ev.EventType, "class", class, "err", err)
+			return fmt.Errorf("security audit %s not recorded (%s): %w", ev.EventType, class, err)
+		}
+		// Ordinary mutation: it commits, and a durable audit_dropped row in the
+		// same tx says which event is missing so a repair pass can find it.
+		if dErr := recordAuditDropped(ctx, tx, ev, class); dErr != nil {
+			return dErr
+		}
+		auditDropped.Add(1)
 		slog.Default().ErrorContext(ctx, "mutation committed without its audit event",
-			"kind", outboxKindAudit,
-			"subject", "msg://"+typ+"/"+outboxApp+"/"+id,
-			"event_type", ev.EventType, "err", err)
+			"kind", outboxKindAudit, "subject", subject, "event_type", ev.EventType, "class", class, "err", err)
 		return nil
 	}
 	_, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT audit_in_mutation`)
+	return err
+}
+
+// The bounded set of audit_dropped.class values. The table never holds error
+// text, only one of these.
+const (
+	dropClassValidate = "validate" // the audit row was invalid
+	dropClassDB       = "db"       // a database error confined to the audit insert
+)
+
+// securityClassAudits is the one explicit list of audit events that fail
+// CLOSED: if they cannot be recorded, the mutation is rejected. Credential
+// issue/rotate/revoke, token and grant changes, and namespace permission
+// (register/update policy) changes. Everything else is ordinary: the mutation
+// wins and the gap is recorded in audit_dropped.
+var securityClassAudits = []string{
+	"credential.",          // prefix: credential.issue, .rotate, .revoke, ...
+	EventNamespaceRegister, // namespace permission/policy registration
+	EventNamespaceUpdate,   // namespace permission/policy update
+	"token.",               // token mint/revoke, should such events exist
+	"grant.",               // grants and revokes, should such events exist
+}
+
+func isSecurityClassAudit(eventType string) bool {
+	for _, p := range securityClassAudits {
+		if eventType == p || (strings.HasSuffix(p, ".") && strings.HasPrefix(eventType, p)) {
+			return true
+		}
+	}
+	return false
+}
+
+func migrateAuditDropped(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS audit_dropped (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	item_id TEXT NOT NULL DEFAULT '',
+	record_id TEXT NOT NULL DEFAULT '',
+	action TEXT NOT NULL,
+	class TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	repaired_at TEXT
+)`)
+	return err
+}
+
+// recordAuditDropped writes the repair record for an ordinary mutation that
+// committed without its audit event: ids and a bounded class, no error text.
+func recordAuditDropped(ctx context.Context, tx *sql.Tx, ev AuditEvent, class string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_dropped (item_id, record_id, action, class, created_at) VALUES (?, ?, ?, ?, ?)`,
+		ev.ItemID, ev.RecordID, ev.EventType, class, time.Now().UTC().Format(time.RFC3339))
 	return err
 }
