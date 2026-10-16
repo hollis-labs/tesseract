@@ -553,6 +553,7 @@ func TestAdminSetupEndpoint(t *testing.T) {
 }
 
 func TestAdminSettingsEndpoint(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	srv, root := newTestServerWithRoot(t)
 	srv.EnableMetrics = true
 	srv.EnableRequestLogging = true
@@ -600,7 +601,7 @@ func TestAdminSettingsEndpoint(t *testing.T) {
 			Embedding struct {
 				Kind       string `json:"kind"`
 				Provider   string `json:"provider"`
-				EnvVar     string `json:"env_var"`
+				KeyRef     string `json:"key_ref"`
 				Supported  bool   `json:"supported"`
 				EnvPresent bool   `json:"env_present"`
 				Available  bool   `json:"available"`
@@ -608,7 +609,7 @@ func TestAdminSettingsEndpoint(t *testing.T) {
 			Synthesis struct {
 				Kind       string `json:"kind"`
 				Provider   string `json:"provider"`
-				EnvVar     string `json:"env_var"`
+				KeyRef     string `json:"key_ref"`
 				Supported  bool   `json:"supported"`
 				EnvPresent bool   `json:"env_present"`
 				Available  bool   `json:"available"`
@@ -637,10 +638,10 @@ func TestAdminSettingsEndpoint(t *testing.T) {
 	if payload.Config.SynthesisSystemPrompt != config.DefaultSynthesisSystemPrompt {
 		t.Fatalf("expected normalized synthesis prompt, got %q", payload.Config.SynthesisSystemPrompt)
 	}
-	if payload.Providers.Embedding.Kind != "embedding" || payload.Providers.Embedding.Provider != "openai" || payload.Providers.Embedding.EnvVar != "OPENAI_API_KEY" || !payload.Providers.Embedding.Supported {
+	if payload.Providers.Embedding.Kind != "embedding" || payload.Providers.Embedding.Provider != "openai" || payload.Providers.Embedding.KeyRef != "file://tesseract/openai-api-key" || !payload.Providers.Embedding.Supported {
 		t.Fatalf("embedding provider payload: %+v", payload.Providers.Embedding)
 	}
-	if payload.Providers.Synthesis.Kind != "synthesis" || payload.Providers.Synthesis.Provider != "anthropic" || payload.Providers.Synthesis.EnvVar != "ANTHROPIC_API_KEY" || !payload.Providers.Synthesis.Supported {
+	if payload.Providers.Synthesis.Kind != "synthesis" || payload.Providers.Synthesis.Provider != "anthropic" || payload.Providers.Synthesis.KeyRef != "file://tesseract/anthropic-api-key" || !payload.Providers.Synthesis.Supported {
 		t.Fatalf("synthesis provider payload: %+v", payload.Providers.Synthesis)
 	}
 	if payload.Providers.Synthesis.EnvPresent || payload.Providers.Synthesis.Available || payload.Providers.Synthesis.Reason == "" {
@@ -649,6 +650,7 @@ func TestAdminSettingsEndpoint(t *testing.T) {
 }
 
 func TestAdminSettingsPreviewEndpoint(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	srv, root := newTestServerWithRoot(t)
 	srv.ConfigFile = filepath.Join(root, "config.yaml")
 	srv.RuntimeConfig = config.Config{
@@ -703,6 +705,7 @@ func TestAdminSettingsPreviewEndpoint(t *testing.T) {
 }
 
 func TestAdminSettingsApplyEndpointWritesConfig(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	srv, root := newTestServerWithRoot(t)
 	srv.ConfigFile = filepath.Join(root, "config.yaml")
 	srv.RuntimeConfig = config.Defaults()

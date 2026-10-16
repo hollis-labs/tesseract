@@ -1385,6 +1385,9 @@ func (a *Adapter) handleAuditList(_ context.Context, req map[string]any) (any, e
 // loadClaims returns the token claims if a token is configured and valid.
 // Returns false (no error) when no token is set — callers use this for optional filtering.
 func (a *Adapter) loadClaims(ctx context.Context) (contextstore.AuthToken, bool) {
+	if a.Auth != nil {
+		return a.Auth.ClaimsFromContext(ctx)
+	}
 	if a.Token == "" {
 		return contextstore.AuthToken{}, false
 	}

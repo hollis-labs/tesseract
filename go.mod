@@ -5,6 +5,7 @@ go 1.26.9
 require (
 	github.com/anthropics/anthropic-sdk-go v1.71.0
 	github.com/hollis-labs/libs/plugin-mcp v0.1.1
+	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/ui-go v0.1.0
 	github.com/hollis-labs/libs/util v0.2.0
 	github.com/hollis-labs/substrate/llm-core v0.1.0
@@ -19,6 +20,12 @@ require (
 )
 
 require (
+	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/zalando/go-keyring v0.2.8 // indirect
+)
+
+require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.6.1 // indirect
@@ -30,6 +37,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
+	github.com/hollis-labs/libs/security/auth v0.1.0
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect

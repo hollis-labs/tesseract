@@ -37,6 +37,7 @@ type Adapter struct {
 	runtime                 *runtimeObserver
 	Store                   *contextstore.Store
 	Token                   string                  // capability token for mutating ops; may be empty
+	Auth                    Authorizer              // optional go-auth guard; nil keeps the Token-only behavior
 	TypeRegistry            *typeregistry.Registry  // optional; nil uses the process registry (types.yaml)
 	EmbeddingProvider       embedcontracts.Embedder // optional; nil disables context_embed/context_search
 	EmbeddingModel          string                  // model name passed to EmbeddingProvider (default: "")
@@ -515,7 +516,7 @@ func (a *Adapter) addTool(r *toolRegistrar, t gomcpserver.Tool) {
 		// surface reaches this line.
 		panic(fmt.Sprintf("mcpadapter: cannot derive declared arguments: %v", err))
 	}
-	t.Handler = gatewayMetadataMiddleware(logger, strict(t.Handler))
+	t.Handler = a.withAuth(t.Name, gatewayMetadataMiddleware(logger, strict(t.Handler)))
 	r.server.RegisterTool(t)
 }
 
@@ -545,6 +546,22 @@ func gatewayMetadataMiddleware(logger *slog.Logger, next gomcpserver.ToolHandler
 // checkScope validates the configured token and checks for the required scope.
 // Returns a non-nil error JSON result if auth fails; nil means the caller may proceed.
 func (a *Adapter) checkScope(ctx context.Context, scope string) (any, contextstore.AuthToken) {
+	if a.Auth != nil {
+		// go-auth owns identity: the claims are those of the verified caller
+		// for THIS call (store claims, static, or JWT translated). A caller
+		// with no verified principal is refused here exactly as a missing
+		// token always was; permissive mode never turns a mutation anonymous.
+		claims, ok := a.Auth.ClaimsFromContext(ctx)
+		if !ok {
+			return toolError(codeAuthRequired, "no capability token configured for mutating operations"), contextstore.AuthToken{}
+		}
+		for _, s := range claims.Scopes {
+			if s == scope {
+				return nil, claims
+			}
+		}
+		return toolError(codeInsufficientScope, "token does not have scope: "+scope), claims
+	}
 	if a.Token == "" {
 		return toolError(codeAuthRequired, "no capability token configured for mutating operations"), contextstore.AuthToken{}
 	}

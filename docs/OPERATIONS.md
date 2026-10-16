@@ -96,12 +96,17 @@ deterministic.
 
 ## Listener and authentication modes
 
-The default `tesseract serve` listener is `127.0.0.1:8089` without auth. A
-non-loopback listener requires one of:
+The default `tesseract serve` listener is `127.0.0.1:8089`, guarded by go-auth in
+`permissive` mode: nothing is rejected, and callers without a bearer are counted
+(see [`auth.md`](auth.md) for the modes, the config that flips them, the JWT/JWKS
+verifier and the scope table). The listener is not anonymous by design any more;
+`permissive` is the stage before `enforce`. `--managed-auth` and `--static-token`
+default the guard to `enforce`. A non-loopback listener requires one of:
 
 - `--managed-auth`, backed by active tokens stored in Tesseract
-- `--static-token <token>`, one shared bearer token
-- `--allow-unauthenticated-remote`, an explicit unsafe override
+- `--static-token <token|ref>`, one shared bearer token (prefer a go-secrets reference)
+- `--allow-unauthenticated-remote`, which only bypasses the startup refusal; the
+  guard still defaults to `enforce` on a non-loopback listener
 
 Managed and static auth are mutually exclusive. In either authenticated mode,
 all HTTP API routes require `Authorization: Bearer <token>` except readiness
@@ -147,8 +152,8 @@ features can make outbound requests:
 | Pointer verification | The URL in a knowledge pointer | HTTP(S) request to the pointer locator | Only when `verify-pointers` is run with `http` or `https` in `--schemes`; network schemes are opt-in |
 | Telemetry export | Operator-configured OpenTelemetry endpoint | Trace/service data; memory read/write spans include namespace and key metadata, and HTTP propagation includes route context | When an OpenTelemetry exporter is configured in the process environment |
 
-Provider credentials come from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`.
-Removing credentials disables the matching provider path; lexical recall and
+Provider credentials are go-secrets references (`docs/secrets.md`); the
+environment is not read. Removing the default credential disables the matching provider path; lexical recall and
 the core store continue to work.
 
 HTTP request logging is off by default. `--request-logs` emits structured

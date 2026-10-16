@@ -22,6 +22,52 @@ type Config struct {
 	Synthesis SynthesisConfig `yaml:"synthesis"`
 	Read      ReadConfig      `yaml:"read"`
 	Workspace WorkspaceConfig `yaml:"workspace"`
+	Auth      AuthConfig      `yaml:"auth"`
+}
+
+// AuthConfig configures the go-auth guard on the HTTP API and the MCP surface
+// (docs/auth.md). Every field is optional; the zero value means "code
+// defaults": enforce on any non-loopback listener or when --managed-auth /
+// --static-token is set, permissive on a bare loopback listener.
+//
+// Nothing here is a secret. The deny-list bearer is a go-secrets reference
+// (bearer_ref), never a literal.
+type AuthConfig struct {
+	// Mode is off | permissive | enforce (observe is an alias of permissive).
+	// Empty means the code default. HOLLIS_AUTH_TESSERACT, then HOLLIS_AUTH,
+	// override this value when set.
+	Mode string `yaml:"mode,omitempty"`
+	// JWT configures the Tether-issued JWT/JWKS verifier. It is off unless
+	// Issuer and JWKSURL (or BootstrapKeyFile) are set.
+	JWT AuthJWTConfig `yaml:"jwt,omitempty"`
+	// DenyList polls the issuer's revocation list for JWT principals.
+	DenyList AuthDenyListConfig `yaml:"deny_list,omitempty"`
+}
+
+// AuthJWTConfig is the JWT/JWKS verifier configuration.
+type AuthJWTConfig struct {
+	// Issuer is the required "iss" claim (Tether's configured issuer name).
+	Issuer string `yaml:"issuer,omitempty"`
+	// Audience is the required "aud" claim. Empty means "tesseract".
+	Audience string `yaml:"audience,omitempty"`
+	// JWKSURL is the issuer's /.well-known/jwks.json.
+	JWKSURL string `yaml:"jwks_url,omitempty"`
+	// BootstrapKeyFile is a public JWKS or PEM Ed25519 key file used until the
+	// first successful JWKS fetch. A public key, not a secret.
+	BootstrapKeyFile string `yaml:"bootstrap_key_file,omitempty"`
+	// NamespaceGlobs is the namespace constraint applied to every JWT
+	// principal (JWTs carry none). Empty means ["*"]; narrow it to confine
+	// issuer-minted tokens, e.g. ["project/*", "app/*"].
+	NamespaceGlobs []string `yaml:"namespace_globs,omitempty"`
+}
+
+// AuthDenyListConfig is the revocation poller configuration.
+type AuthDenyListConfig struct {
+	// URL is the issuer's /auth/denylist endpoint. Empty disables polling.
+	URL string `yaml:"url,omitempty"`
+	// BearerRef is a go-secrets reference to the bearer the endpoint needs
+	// (tether.maintain). A literal is refused.
+	BearerRef string `yaml:"bearer_ref,omitempty"`
 }
 
 type WorkspaceConfig struct {
@@ -162,20 +208,27 @@ type ReadConfig struct {
 // SynthesisConfig configures the LLM-backed answer synthesis path
 // (POST /v1/synthesis/ask). When Provider is empty the synthesis route
 // returns 503 service_unavailable. Provider credential is read by the
-// go-providers adapter from its conventional env var (ANTHROPIC_API_KEY,
-// OPENAI_API_KEY, etc).
+// credentials package from a go-secrets reference (api_key_ref, or the
+// provider's default file:// reference). No environment variable is read.
 type SynthesisConfig struct {
 	Provider     string  `yaml:"provider"`
 	Model        string  `yaml:"model"`
 	SystemPrompt string  `yaml:"system_prompt,omitempty"`
 	MaxTokens    int     `yaml:"max_tokens,omitempty"`
 	Temperature  float64 `yaml:"temperature,omitempty"`
+	// APIKeyRef is a go-secrets reference (file://, keychain://, op://,
+	// helper://) to the provider API key. Never a literal key. Empty means the
+	// provider's default managed-store reference (see internal/credentials).
+	APIKeyRef string `yaml:"api_key_ref,omitempty"`
 }
 
 // EmbeddingConfig configures the embedding provider and model.
 type EmbeddingConfig struct {
 	Provider string `yaml:"provider"`
 	Model    string `yaml:"model"`
+	// APIKeyRef is a go-secrets reference to the provider API key. Never a
+	// literal key. Empty means the provider's default managed-store reference.
+	APIKeyRef string `yaml:"api_key_ref,omitempty"`
 }
 
 // DedupConfig configures semantic dedup behavior.

@@ -39,14 +39,17 @@ before issuing a stateful command. See [Operations](OPERATIONS.md#paths-and-isol
 ./tesseract serve
 ```
 
-The default listener is `127.0.0.1:8089` without authentication:
+The default listener is `127.0.0.1:8089`. Auth is `permissive` there: requests
+without a bearer are served and counted in a would-deny report, so you can see
+which callers would break before flipping to `enforce` (see
+[`docs/auth.md`](auth.md)). A bearer, when sent, is always verified:
 
 - web UI: `http://127.0.0.1:8089/`
 - HTTP API: `http://127.0.0.1:8089/v1/`
 - readiness: `http://127.0.0.1:8089/v1/health/readiness`
 
 This is a single-machine development boundary. A non-loopback bind is refused
-without managed auth, a static token, or the explicit unsafe override. Do not
+without managed auth or a static token, and defaults to `enforce`. Do not
 expose it remotely yet; configure the [remote boundary](#remote-http-access)
 first.
 
@@ -83,8 +86,8 @@ Current provider support:
 
 | Feature | Providers | Credential |
 |---|---|---|
-| Embeddings and semantic recall | OpenAI | `OPENAI_API_KEY` |
-| Answer synthesis | OpenAI, Anthropic | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
+| Embeddings and semantic recall | OpenAI | `file://tesseract/openai-api-key` (or `embedding.api_key_ref`) |
+| Answer synthesis | OpenAI, Anthropic | `file://tesseract/openai-api-key`, `file://tesseract/anthropic-api-key` (or `synthesis.api_key_ref`) |
 
 Copy a sample to the `config-file` reported by `tesseract path`:
 
@@ -92,7 +95,7 @@ Copy a sample to the `config-file` reported by `tesseract path`:
 mkdir -p /path/from/tesseract-path
 cp examples/config.openai.yaml /path/from/tesseract-path/config.yaml
 chmod 600 /path/from/tesseract-path/config.yaml
-export OPENAI_API_KEY='...'
+printf %s "$OPENAI_KEY" | secrets set file://tesseract/openai-api-key   # see docs/secrets.md
 ```
 
 For Anthropic synthesis plus OpenAI embeddings, use

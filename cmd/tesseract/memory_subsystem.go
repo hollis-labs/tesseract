@@ -87,13 +87,21 @@ func (m *memorySubsystem) Close() error {
 // is a program nobody would write, because neither call site takes a value the
 // other could be given.
 func setupDaemonMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
-	return setupDaemonMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+	embedder, err := createEmbedder(tesseractCfg)
+	if err != nil {
+		return nil, err
+	}
+	return setupDaemonMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, embedder)
 }
 
 // setupChildMemorySubsystem wires a `tesseract mcp` adapter: it reads the
 // daemon's claim and runs its embed worker only while no live daemon holds one.
 func setupChildMemorySubsystem(ctx context.Context, store *contextstore.Store, stderr *os.File, layout paths.Layout, tesseractCfg config.Config) (*memorySubsystem, error) {
-	return setupChildMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, createEmbedder(tesseractCfg))
+	embedder, err := createEmbedder(tesseractCfg)
+	if err != nil {
+		return nil, err
+	}
+	return setupChildMemorySubsystemWithEmbedder(ctx, store, stderr, layout, tesseractCfg, embedder)
 }
 
 // setupDaemonMemorySubsystemWithEmbedder is the daemon seam used by tests.
