@@ -44,11 +44,16 @@ func writeInWorkstream(t *testing.T, ms *memory.Store, key, workstream string) s
 }
 
 type touchEvent struct {
+	Subject string
 	Scope   map[string]any
 	Corr    map[string]any
 	ID      string
 	Payload struct {
-		Action    string   `json:"action"`
+		Action  string `json:"action"`
+		Subject struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+		} `json:"subject"`
 		ItemIDs   []string `json:"item_ids"`
 		ItemCount int      `json:"item_count"`
 		Truncated bool     `json:"truncated"`
@@ -65,6 +70,7 @@ func touchEvents(t *testing.T, cs *contextstore.Store) []touchEvent {
 	for _, e := range entries {
 		var env struct {
 			ID      string          `json:"id"`
+			Subject string          `json:"subject"`
 			Scope   map[string]any  `json:"scope"`
 			Corr    map[string]any  `json:"corr"`
 			Payload json.RawMessage `json:"payload"`
@@ -79,7 +85,7 @@ func touchEvents(t *testing.T, cs *contextstore.Store) []touchEvent {
 		if ev.Payload.Action != "touch" {
 			continue
 		}
-		ev.ID, ev.Scope, ev.Corr = env.ID, env.Scope, env.Corr
+		ev.ID, ev.Subject, ev.Scope, ev.Corr = env.ID, env.Subject, env.Scope, env.Corr
 		out = append(out, ev)
 	}
 	return out
@@ -127,6 +133,13 @@ func TestTouchEmitsOneEventPerWorkstreamPlusUnscopedLast(t *testing.T) {
 	for _, e := range evs {
 		if corr == nil || corr == "" || e.Corr["correlation_id"] != corr {
 			t.Fatalf("events do not share one correlation id: %v", evs)
+		}
+		wantSubject := "msg://touch/tesseract/" + corr.(string)
+		if e.Subject != wantSubject || e.Payload.Subject.Type != "touch" || e.Payload.Subject.ID != corr {
+			t.Fatalf("subject = %q payload %+v, want %q and {touch %v}", e.Subject, e.Payload.Subject, wantSubject, corr)
+		}
+		if e.Payload.ItemCount != len(e.Payload.ItemIDs) {
+			t.Fatalf("item_count %d != item_ids %d", e.Payload.ItemCount, len(e.Payload.ItemIDs))
 		}
 		if ids[e.ID] {
 			t.Fatalf("duplicate event id %s", e.ID)
@@ -189,7 +202,7 @@ func TestTouchEventCapsItemIDsAndMarksTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.RecordTouches(context.Background(), tx, "cor_test", ids, ws); err != nil {
+	if err := cs.RecordTouches(context.Background(), tx, "01TESTCORRELATIONID00000000", ids, ws); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -207,7 +220,7 @@ func TestTouchEventsRollBackWithTheTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.RecordTouches(context.Background(), tx, "cor_rb", []string{"i"}, []string{"ws"}); err != nil {
+	if err := cs.RecordTouches(context.Background(), tx, "01ROLLBACKCORRELATION00000", []string{"i"}, []string{"ws"}); err != nil {
 		t.Fatal(err)
 	}
 	_ = tx.Rollback()

@@ -53,9 +53,8 @@ func (s *Store) RecordTouches(ctx context.Context, tx *sql.Tx, correlationID str
 	for _, ws := range keys {
 		ids := append([]string(nil), byWS[ws]...)
 		sort.Strings(ids)
-		extra := map[string]any{}
+		extra := map[string]any{"item_count": len(ids)}
 		if len(ids) > touchEventItemCap {
-			extra["item_count"] = len(ids)
 			extra["truncated"] = true
 			ids = ids[:touchEventItemCap]
 		}
@@ -65,11 +64,11 @@ func (s *Store) RecordTouches(ctx context.Context, tx *sql.Tx, correlationID str
 			CorrelationID: correlationID,
 			WorkstreamID:  ws,
 			Extra:         extra,
-		}
-		if ws != "" {
-			rec.SubjectType, rec.SubjectID = "workstream", ws
-		} else {
-			rec.SubjectType, rec.SubjectID = "context", "unscoped"
+			// Every event of one call names the call itself (architect ruling
+			// rev 2): workstreams are Tether's and already ride in scope, and
+			// "unscoped" would be a sentinel rather than an entity.
+			SubjectType: "touch",
+			SubjectID:   correlationID,
 		}
 		recs = append(recs, rec)
 	}
