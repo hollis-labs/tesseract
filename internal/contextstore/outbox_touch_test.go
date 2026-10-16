@@ -1,7 +1,10 @@
 package contextstore
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -13,6 +16,10 @@ func TestRecordTouchesMapperFailureNeverRejectsTheTouch(t *testing.T) {
 	outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "" }
 	defer func() { outboxRecordHook = nil }()
 	before := OutboxSkipped()
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
 
 	tx, err := s.DB().BeginTx(ctx, nil)
 	if err != nil {
@@ -41,5 +48,13 @@ func TestRecordTouchesMapperFailureNeverRejectsTheTouch(t *testing.T) {
 	}
 	if got := OutboxSkipped() - before; got != 2 {
 		t.Fatalf("OutboxSkipped grew by %d, want 2", got)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "class=mapper") || !strings.Contains(out, "correlation_id=cor_fail") || !strings.Contains(out, "level=ERROR") {
+		t.Fatalf("expected an ERROR log with the bounded class and the correlation id, got: %s", out)
+	}
+	var skipped int
+	if err := s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_skipped`).Scan(&skipped); err != nil || skipped != 0 {
+		t.Fatalf("touch failure persisted %d outbox_skipped rows (%v); touches have no source row to repair from", skipped, err)
 	}
 }
