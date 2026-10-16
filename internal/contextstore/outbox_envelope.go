@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -29,9 +30,9 @@ func auditSubject(ev AuditEvent) (typ, id string) {
 	action := ev.EventType
 	switch {
 	case strings.HasPrefix(action, "namespace."):
-		return "namespace", ev.Namespace
+		return "namespace", escapeSegments(ev.Namespace)
 	case strings.HasPrefix(action, "credential."):
-		return "credential", ev.Key
+		return "credential", url.PathEscape(ev.Key)
 	}
 	for _, d := range []string{"memory", "knowledge", "workspace", "event"} {
 		if strings.HasPrefix(action, d+".") {
@@ -45,9 +46,21 @@ func auditSubject(ev AuditEvent) (typ, id string) {
 // request with no selector namespace; CW-20261016-0149 makes that valid).
 func subjectID(ns, key string) string {
 	if ns == "" {
-		return key
+		return url.PathEscape(key)
 	}
-	return ns + "/" + key
+	return escapeSegments(ns) + "/" + url.PathEscape(key)
+}
+
+// escapeSegments PathEscapes each "/"-separated segment, keeping the
+// separators, so a namespace with spaces or reserved characters cannot forge or
+// split a subject URN. This is the interim form until item_id replaces
+// namespace/key (TODO above).
+func escapeSegments(ns string) string {
+	parts := strings.Split(ns, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
 }
 
 // auditActor derives the envelope actor. The authenticated principal in ctx is
@@ -55,33 +68,56 @@ func subjectID(ns, key string) string {
 // fills actor (it is kept as payload claimed_actor by the caller).
 func auditActor(ctx context.Context, claimed string) (*runtimeevents.Actor, string) {
 	if p, ok := auth.FromContext(ctx); ok && p.Verified && strings.TrimSpace(p.ID) != "" {
-		kind := normalizeActorKind(p.Kind)
+		// The kind comes from the URN authority (msg://<authority>/...). An
+		// authority outside agent|user|service|tool (a device, say) cannot be
+		// expressed in the mesh vocabulary, and a guessed kind makes Validate
+		// reject the envelope, so the actor is omitted rather than invented.
 		urn := p.ID
 		if !strings.HasPrefix(urn, "msg://") {
-			urn = "msg://" + kind + "/tesseract/" + urn
+			if !validActorKind(p.Kind) {
+				return nil, claimedActorFor(claimed, p.ID)
+			}
+			urn = "msg://" + p.Kind + "/tesseract/" + urn
+		}
+		kind := urnAuthority(urn)
+		if !validActorKind(kind) {
+			return nil, claimedActorFor(claimed, p.ID)
 		}
 		return &runtimeevents.Actor{URN: urn, Kind: kind, Verified: "token"}, claimedActorFor(claimed, p.ID)
 	}
-	switch claimed {
-	case "cli":
+	switch {
+	case claimed == "cli":
 		return &runtimeevents.Actor{URN: "msg://user/local/operator", Kind: "user", Role: "operator", Verified: "claimed"}, ""
+	case claimed == "system" || strings.HasPrefix(claimed, "credential:"):
+		// Internal paths only: nothing a caller sent.
+		return &runtimeevents.Actor{URN: "msg://service/tesseract/system", Kind: "service", Role: "system", Verified: "none"}, ""
 	}
-	return &runtimeevents.Actor{URN: "msg://service/tesseract/system", Kind: "service", Role: "system", Verified: "none"}, claimedActorFor(claimed, "")
+	// An unauthenticated call has no attributable actor; what it claimed stays
+	// in the payload as claimed_actor.
+	return nil, claimedActorFor(claimed, "")
+}
+
+func urnAuthority(urn string) string {
+	rest := strings.TrimPrefix(urn, "msg://")
+	if i := strings.Index(rest, "/"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
 }
 
 func claimedActorFor(claimed, verifiedID string) string {
-	if claimed == "" || claimed == verifiedID || claimed == "system" || claimed == "cli" {
+	if claimed == "" || claimed == verifiedID || claimed == "system" || claimed == "cli" || strings.HasPrefix(claimed, "credential:") {
 		return ""
 	}
 	return claimed
 }
 
-func normalizeActorKind(k string) string {
+func validActorKind(k string) bool {
 	switch k {
 	case "agent", "user", "service", "tool":
-		return k
+		return true
 	}
-	return "service"
+	return false
 }
 
 // outboxMapFault is a test seam, nil in production. A valid audit event

@@ -78,15 +78,71 @@ func TestOutboxActorFromVerifiedPrincipalNotRequestActor(t *testing.T) {
 	}
 }
 
-func TestOutboxUnverifiedActorIsSystemNone(t *testing.T) {
+// An unauthenticated call has no attributable actor: nothing is stamped
+// service/system on a caller's behalf; the claim survives as claimed_actor.
+func TestOutboxUnauthenticatedCallHasNoActor(t *testing.T) {
 	s := newTestStore(t)
 	if err := s.EmitWrite(context.Background(), "anonymous", "app/x/session", "k", 1, "r", nil); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 	got, _ := s.ReadOutbox(context.Background(), 0, 10)
 	ev := readEnvelope(t, got[0])
-	if ev.Actor.Kind != "service" || ev.Actor.Role != "system" || ev.Actor.Verified != "none" {
+	if ev.Actor != nil {
+		t.Fatalf("actor = %+v, want nil", ev.Actor)
+	}
+	if err := ev.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	_ = json.Unmarshal(ev.Payload, &p)
+	if p["claimed_actor"] != "anonymous" {
+		t.Fatalf("payload = %v", p)
+	}
+}
+
+// Internal paths keep the service/system actor.
+func TestOutboxInternalPathIsServiceSystem(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitWrite(context.Background(), "system", "app/x/session", "k", 1, "r", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ReadOutbox(context.Background(), 0, 10)
+	ev := readEnvelope(t, got[0])
+	if ev.Actor == nil || ev.Actor.Kind != "service" || ev.Actor.Role != "system" || ev.Actor.Verified != "none" {
 		t.Fatalf("actor = %+v", ev.Actor)
+	}
+}
+
+// A device principal's URN authority is not in the mesh vocabulary. The event
+// must still be written (actor omitted), not land in outbox_skipped.
+func TestOutboxDevicePrincipalWritesValidEnvelopeWithoutActor(t *testing.T) {
+	s := newTestStore(t)
+	ctx := auth.WithPrincipal(context.Background(), auth.Principal{Verified: true, ID: "msg://device/local/dev_123", Kind: "device"})
+	before := OutboxSkipped()
+	if err := s.EmitWrite(ctx, "x", "app/x/session", "k", 1, "r", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ReadOutbox(context.Background(), 0, 10)
+	if len(got) != 1 || OutboxSkipped() != before {
+		t.Fatalf("outbox rows = %d, skipped moved %d", len(got), OutboxSkipped()-before)
+	}
+	ev := readEnvelope(t, got[0])
+	if err := ev.Validate(); err != nil {
+		t.Fatalf("envelope invalid: %v", err)
+	}
+	if ev.Actor != nil {
+		t.Fatalf("actor = %+v, want omitted for a device principal", ev.Actor)
+	}
+}
+
+func TestOutboxSubjectSegmentsArePathEscaped(t *testing.T) {
+	typ, id := auditSubject(AuditEvent{EventType: "write", Namespace: "project/my x", Key: "a/b#c"})
+	if got := "msg://" + typ + "/tesseract/" + id; got != "msg://context/tesseract/project/my%20x/a%2Fb%23c" {
+		t.Fatalf("subject = %s", got)
+	}
+	typ, id = auditSubject(AuditEvent{EventType: EventNamespaceRegister, Namespace: "project/a b", Key: "project/a b"})
+	if got := "msg://" + typ + "/tesseract/" + id; got != "msg://namespace/tesseract/project/a%20b" {
+		t.Fatalf("subject = %s", got)
 	}
 }
 
