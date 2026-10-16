@@ -130,6 +130,9 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 		return []guardCase{{method: http.MethodPost, path: path, body: body, denied: denied, teeth: teeth}}
 	}
 	out := "namespace=" + guardOutNS + "&key=doc"
+	// A key that does not exist must be refused the same way: the namespace
+	// guard runs BEFORE the store lookup, so 404 here would mean unguarded.
+	missing := "namespace=" + guardOutNS + "&key=no-such-key"
 	memOut := "namespace=" + guardMemOutNS + "&key=fx.secret"
 	selOnly := func(ns ...string) map[string]any {
 		s := map[string]any{"revision_scope": "all"}
@@ -149,8 +152,12 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 	both := func(a, b []guardCase) []guardCase { return append(a, b...) }
 
 	expect := map[routeKey][]guardCase{
-		{http.MethodGet, "/v1/context/head"}:    get("/v1/context/head?"+out, true, true),
-		{http.MethodGet, "/v1/context/history"}: get("/v1/context/history?"+out, true, true),
+		{http.MethodGet, "/v1/context/head"}: both(
+			get("/v1/context/head?"+out, true, true),
+			get("/v1/context/head?"+missing, true, false)),
+		{http.MethodGet, "/v1/context/history"}: both(
+			get("/v1/context/history?"+out, true, true),
+			get("/v1/context/history?"+missing, true, false)),
 		{http.MethodGet, "/v1/context/audit"}: both(
 			get("/v1/context/audit?namespace="+guardOutNS, true, false),
 			get("/v1/context/audit", false, true)),
