@@ -2,11 +2,10 @@ package memory
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/oklog/ulid/v2"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -404,11 +403,10 @@ type TouchSink interface {
 // SetTouchSink wires the TouchSink. Call once at construction.
 func (s *Store) SetTouchSink(sink TouchSink) { s.touchSink = sink }
 
-// NewTouchCorrelationID mints the id shared by every event of one touch call.
+// NewTouchCorrelationID mints the opaque per-call ULID shared by every event
+// of one touch call. It is also the events' subject id.
 func NewTouchCorrelationID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return "cor_" + hex.EncodeToString(b[:])
+	return ulid.Make().String()
 }
 
 // RecordTouches hands the touched items to the sink inside tx. A no-op without
