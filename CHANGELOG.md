@@ -8,6 +8,24 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.13.2] — 2026-10-16
+
+Security fix: token namespace authorization on HTTP routes. Source release only; no prebuilt binaries are published. Upgrade any deployment that issues tokens restricted by `namespace_globs`.
+
+### Security
+
+- Token `namespace_globs` are now enforced on every `/v1` route that reads or changes namespaced data (CW-20261016-0205). Previously several routes checked only the token's scope, so a token restricted by `namespace_globs` could read records, and on some routes change them, outside its globs. Unrestricted tokens (`*`) are unaffected.
+  - Routes that name a namespace answer `403 namespace_not_permitted` for one outside the token's globs. The check runs before any lookup.
+  - Routes addressed by id (revision, deprecate, promotion approve/apply) answer `404 not_found`, identical to a missing id, when the object lies outside the token's globs.
+  - Selector and listing routes (packet, pack, typed-view, views/evaluate, estimate, audit, consistency scan, namespace listings) filter their results to the token's globs before limits apply; a selector naming a pattern outside them is refused.
+  - `maintenance/trim` and `maintenance/compact` require the pattern to lie inside the token's globs and also check every matched row, since SQL `LIKE` matching is wider than glob matching. `maintenance/ttl-cleanup` and `consistency/repair` act on the whole store and need an unrestricted token.
+  - `context/plan` and `broker/plan` fail closed when token claims are absent under a configured token mode.
+- Namespace glob matching lives in one shared package. Malformed globs grant nothing, and a glob with an interior wildcard is never widened to a prefix match.
+
+### Changed (breaking for restricted tokens)
+
+- A restricted token that relied on the missing checks now receives 403, 404 or filtered results. Maintenance and repair calls that span namespaces need an unrestricted token.
+
 ## [0.13.1] — 2026-10-16
 
 Closes the JWT namespace fallback ahead of pointing the hub at the Tether issuer. Source release only; no prebuilt binaries are published.
@@ -1483,7 +1501,9 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/hollis-labs/tesseract/compare/v0.13.1...v0.13.2
+[0.13.1]: https://github.com/hollis-labs/tesseract/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/hollis-labs/tesseract/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/hollis-labs/tesseract/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hollis-labs/tesseract/compare/v0.11.0...v0.12.0
