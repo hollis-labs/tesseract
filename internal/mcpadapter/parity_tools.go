@@ -35,6 +35,7 @@ func (a *Adapter) handleContextEstimate(ctx context.Context, req map[string]any)
 	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
 		return toolError(codeValidationError, "selector must be a JSON object: "+err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
+	sel.Permit = a.namespacePermit(ctx)
 	result, err := a.Store.Estimate(ctx, sel)
 	if err != nil {
 		return toolError(codeSelectorError, err.Error()), nil
@@ -43,9 +44,8 @@ func (a *Adapter) handleContextEstimate(ctx context.Context, req map[string]any)
 }
 
 // handleViewsEvaluate is the full_evaluation arm of context_view, and the exact
-// peer of HTTP POST /v1/views/evaluate — including in what it does NOT do:
-// neither surface filters results by the capability token's namespace globs.
-// The default arm of context_view does. See viewFullEvaluationArgDescription.
+// peer of HTTP POST /v1/views/evaluate. Both evaluation arms apply the token's
+// namespace ceiling before loading payloads, counting, or applying limits.
 //
 // sel is resolved by handleContextView, which accepts both the JSON-selector
 // and comma-separated-glob forms.
@@ -55,6 +55,7 @@ func (a *Adapter) handleViewsEvaluate(ctx context.Context, sel contextstore.Sele
 	if err != nil {
 		return toolError(codeValidationError, err.Error()), nil //nolint:nilerr // MCP tool pattern
 	}
+	sel.Permit = a.namespacePermit(ctx)
 	result, err := a.Store.Evaluate(ctx, sel, includePayload, limit)
 	if err != nil {
 		return toolError(codeSelectorError, err.Error()), nil //nolint:nilerr // MCP tool pattern

@@ -46,6 +46,10 @@ const (
 // is "every namespace, ordered by namespace ascending, unpaged" — which is what
 // ListNamespacePolicies asks for.
 type NamespaceQuery struct {
+	// Permit restricts registry entries before pagination and totals. It is supplied
+	// by the surface, never by caller input.
+	Permit func(namespace string) bool
+
 	// Match is the pattern compared against the namespace under MatchMode.
 	// Empty matches everything, whatever the mode.
 	Match     string
@@ -244,6 +248,9 @@ func namespaceRowKeys(entry NamespacePolicyEntry, cols []string) []string {
 // no caller loads the whole table to discard most of it, and no transport
 // re-implements the filter.
 func (s *Store) ListNamespacePolicyPage(ctx context.Context, q NamespaceQuery) (NamespacePage, error) {
+	if q.Permit != nil {
+		return s.listPermittedNamespacePolicyPage(ctx, q)
+	}
 	cols, err := namespaceSortColumns(q.Sort)
 	if err != nil {
 		return NamespacePage{}, err
@@ -492,4 +499,44 @@ func (a NamespaceFilterArgs) Query() (NamespaceQuery, error) {
 		Sort:      sort,
 		Desc:      desc,
 	}, nil
+}
+
+// Keep authorization in the count as well as the page. The policy registry is
+// metadata-only; filtering its ordered rows also preserves the existing opaque
+// keyset cursors without exposing denied namespace names inside a cursor.
+func (s *Store) listPermittedNamespacePolicyPage(ctx context.Context, q NamespaceQuery) (NamespacePage, error) {
+	all := q
+	all.Permit, all.Limit, all.Cursor = nil, 0, ""
+	page, err := s.ListNamespacePolicyPage(ctx, all)
+	if err != nil {
+		return NamespacePage{}, err
+	}
+	permitted := make(map[string]bool, len(page.Items))
+	for _, entry := range page.Items {
+		if q.Permit(entry.Namespace) {
+			permitted[entry.Namespace] = true
+		}
+	}
+	if q.Cursor != "" {
+		all.Cursor = q.Cursor
+		page, err = s.ListNamespacePolicyPage(ctx, all)
+		if err != nil {
+			return NamespacePage{}, err
+		}
+	}
+	out := NamespacePage{Total: len(permitted), Items: []NamespacePolicyEntry{}}
+	for _, entry := range page.Items {
+		if permitted[entry.Namespace] {
+			out.Items = append(out.Items, entry)
+		}
+	}
+	if q.Limit > 0 && len(out.Items) > q.Limit {
+		out.Items = out.Items[:q.Limit]
+		cols, err := namespaceSortColumns(q.Sort)
+		if err != nil {
+			return NamespacePage{}, err
+		}
+		out.NextCursor = encodeNamespaceCursor(q.Sort, q.Desc, namespaceRowKeys(out.Items[len(out.Items)-1], cols))
+	}
+	return out, nil
 }

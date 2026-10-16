@@ -3,12 +3,12 @@ package mcpadapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
-	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/itemservice"
 	"github.com/hollis-labs/tesseract/internal/memory"
 	"github.com/hollis-labs/tesseract/internal/workspace"
@@ -172,30 +172,6 @@ func (a *Adapter) itemDomainAvailable(domain domains.Domain) bool {
 	default:
 		return false
 	}
-}
-
-// resolveItemRead resolves only the item's state row, then applies token
-// namespace policy before any revision content is loaded or reinforced.
-func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims contextstore.AuthToken) (*memory.Store, memory.State, any, error) { //nolint:unused // pre-existing, unrelated to the go-mcp port; left as-is
-	store := a.revisionStore()
-	if store == nil {
-		return nil, memory.State{}, revisionStoreUnavailable(), nil
-	}
-	state, err := store.GetState(ctx, itemID)
-	if err != nil {
-		if errors.Is(err, memory.ErrNotFound) {
-			return nil, memory.State{}, toolError(codeNotFound, "item_id not found: "+itemID), nil
-		}
-		return nil, memory.State{}, nil, err
-	}
-	if !globsPermit(claims.NamespaceGlobs, state.Namespace) {
-		return nil, memory.State{}, toolError(codeNamespaceNotPermitted,
-			"token namespace globs do not permit reading: "+state.Namespace), nil
-	}
-	if !a.itemDomainAvailable(state.Domain) {
-		return nil, memory.State{}, domainUnavailable(string(state.Domain)), nil
-	}
-	return store, state, nil, nil
 }
 
 // itemLookupToolError is workspaceToolError for a lookup of one item ID, with
@@ -414,6 +390,9 @@ func (a *Adapter) handleReferenceResolve(ctx context.Context, req map[string]any
 	if res != nil {
 		return res, nil
 	}
+	if denied := a.requireNamespace(ctx, selector.Namespace); denied != nil {
+		return denied, nil
+	}
 	result, err := a.itemService().ResolveReference(ctx, selector)
 	if err != nil {
 		switch {
@@ -429,8 +408,8 @@ func (a *Adapter) handleReferenceResolve(ctx context.Context, req map[string]any
 		return domainUnavailable(selector.Domain), nil
 	}
 	if result.Status == itemservice.ResolutionResolved || result.Status == itemservice.ResolutionDeleted {
-		if !globsPermit(claims.NamespaceGlobs, result.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit resolving this reference"), nil
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, result.Namespace) {
+			return toolJSON(itemservice.ReferenceResolution{Status: itemservice.ResolutionNotFound}), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(result.Domain)) {
 			return domainUnavailable("resolved reference domain"), nil
@@ -475,8 +454,8 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req map[string]any) (a
 		if err != nil {
 			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
-		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
+			return itemLookupToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, selector.ItemID), "item_id", selector.ItemID), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
 			return domainUnavailable(meta.Domain), nil
@@ -492,6 +471,9 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req map[string]any) (a
 	}
 	domain := selector.Domain
 	namespace := selector.Namespace
+	if denied := a.requireNamespace(ctx, namespace); denied != nil {
+		return denied, nil
+	}
 	key := selector.Key
 
 	var (
@@ -534,9 +516,6 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req map[string]any) (a
 	case workspace.Domain:
 		if a.WorkspaceStore == nil {
 			return domainUnavailable(domain), nil
-		}
-		if !globsPermit(claims.NamespaceGlobs, namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+namespace), nil
 		}
 		item, readErr := a.itemService().ReadWorkspaceByKey(ctx, namespace, key)
 		if readErr != nil {
@@ -587,8 +566,8 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req map[string]any
 		if err != nil {
 			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
-		if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
+			return itemLookupToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, selector.ItemID), "item_id", selector.ItemID), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
 			return domainUnavailable(meta.Domain), nil
@@ -618,6 +597,9 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req map[string]any
 	}
 	domain := selector.Domain
 	namespace := selector.Namespace
+	if denied := a.requireNamespace(ctx, namespace); denied != nil {
+		return denied, nil
+	}
 	key := selector.Key
 
 	var (
@@ -647,9 +629,6 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req map[string]any
 	case workspace.Domain:
 		if a.WorkspaceStore == nil {
 			return domainUnavailable(domain), nil
-		}
-		if !globsPermit(claims.NamespaceGlobs, namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+namespace), nil
 		}
 		return toolError(codeHistoryUnavailable, "workspace items do not retain revision history"), nil
 	default:
@@ -689,6 +668,9 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req map[string
 	if store == nil {
 		return revisionStoreUnavailable(), nil
 	}
+	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
+		return denied, nil
+	}
 	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
 	rev, err := store.GetRevisionByIDReinforced(ctx, revisionID)
 	if err != nil {
@@ -711,6 +693,9 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req map[string]a
 	store := a.revisionStore()
 	if store == nil {
 		return revisionStoreUnavailable(), nil
+	}
+	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
+		return denied, nil
 	}
 	if err := store.Deprecate(ctx, revisionID); err != nil {
 		if errors.Is(err, memory.ErrNotFound) {

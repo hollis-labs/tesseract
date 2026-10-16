@@ -116,7 +116,7 @@ func (a *Adapter) handleTesseractRecall(ctx context.Context, req map[string]any)
 		doms = append(doms, domains.Domain(d))
 	}
 	for _, namespace := range namespaces {
-		if !globsPermitRecallScope(claims.NamespaceGlobs, namespace, domainStrs) {
+		if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, namespace, domainStrs)) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit recalling: "+namespace), nil
 		}
 	}

@@ -1440,7 +1440,7 @@ func TestItemIDSelectorChecksResolvedNamespaceBeforeReinforcement(t *testing.T) 
 	restricted.EventStore = a.EventStore
 
 	raw := xdMCP(t, restricted.handleTesseractGet, map[string]any{"item_id": target.ItemID})
-	if !strings.Contains(raw, `"code":"namespace_not_permitted"`) {
+	if !strings.Contains(raw, `"code":"not_found"`) {
 		t.Fatalf("denied item read returned %s", raw)
 	}
 	after, err := ms.GetState(ctx, target.ItemID)

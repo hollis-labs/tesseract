@@ -2385,6 +2385,9 @@ func (s *Store) ListAuditEvents(ctx context.Context, limit int) ([]AuditEvent, e
 	return events, err
 }
 
+// maxAuditScanRows bounds the rows examined per restricted audit page.
+const maxAuditScanRows = 1000
+
 // QueryAuditEvents returns deterministic newest-first audit events with optional filters and cursor paging.
 func (s *Store) QueryAuditEvents(ctx context.Context, q AuditQuery) ([]AuditEvent, *int64, error) {
 	if q.Limit <= 0 {
@@ -2423,14 +2426,14 @@ WHERE 1=1`
 		args = append(args, u)
 	}
 	query += "\nORDER BY id DESC"
-	// TODO(CW-20261016-0205): a restricted query scans until it fills a page;
-	// add a scan cap (and a resume cursor) before the audit table gets large.
-	if q.Permit == nil {
-		// With a permit filter the limit is applied after filtering, in the
-		// loop below, so a restricted caller still gets a full page.
-		query += "\nLIMIT ?"
-		args = append(args, q.Limit+1)
+	// Bound work even when the authorized events are sparse. An extra row
+	// tells us whether to return a continuation after an empty/partial page.
+	scanLimit := q.Limit + 1
+	if q.Permit != nil {
+		scanLimit = maxAuditScanRows + 1
 	}
+	query += "\nLIMIT ?"
+	args = append(args, scanLimit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -2439,8 +2442,15 @@ WHERE 1=1`
 	defer rows.Close()
 
 	out := make([]AuditEvent, 0, q.Limit+1)
+	scanned := 0
+	var lastScanned int64
+	moreScanned := false
 	for rows.Next() {
 		if q.Permit != nil && len(out) > q.Limit {
+			break
+		}
+		if q.Permit != nil && scanned == maxAuditScanRows {
+			moreScanned = true
 			break
 		}
 		var event AuditEvent
@@ -2448,6 +2458,8 @@ WHERE 1=1`
 		if err := rows.Scan(&event.ID, &event.EventType, &event.Actor, &event.Namespace, &event.Key, &event.Revision, &event.RecordID, &event.CreatedAt, &metadata); err != nil {
 			return nil, nil, err
 		}
+		scanned++
+		lastScanned = event.ID
 		if q.Permit != nil && !q.Permit(event.Namespace) {
 			continue
 		}
@@ -2464,6 +2476,8 @@ WHERE 1=1`
 		out = out[:q.Limit]
 		last := out[len(out)-1].ID
 		nextCursor = &last
+	} else if moreScanned {
+		nextCursor = &lastScanned
 	}
 	return out, nextCursor, nil
 }

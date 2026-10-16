@@ -94,6 +94,7 @@ func (a *Adapter) handleRAGQuery(ctx context.Context, req map[string]any) (any, 
 			return toolError(codeSearchError, fmt.Sprintf("failed to load embeddings: %v", err)), nil
 		}
 
+		embeddings, records = a.filterEmbeddings(ctx, embeddings, records)
 		if len(embeddings) > 0 {
 			queryResult, err := a.EmbeddingProvider.Embed(ctx, query, a.EmbeddingModel)
 			if err != nil {
@@ -134,6 +135,9 @@ func (a *Adapter) handleRAGQuery(ctx context.Context, req map[string]any) (any, 
 			break
 		}
 
+		if denied := a.requireRecordNamespace(ctx, sr.RecordID); denied != nil {
+			continue
+		}
 		rec, err := a.Store.GetByRecordID(ctx, sr.RecordID)
 		if err != nil {
 			continue // skip records we can't fetch
