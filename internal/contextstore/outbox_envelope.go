@@ -2,8 +2,6 @@ package contextstore
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -44,21 +42,6 @@ func auditSubject(ev AuditEvent) (typ, id string) {
 		}
 	}
 	return "context", contextSubjectID(ev.Namespace, ev.Key)
-}
-
-// contextSubjectID is the stable, opaque subject id of a context record:
-// "ctx_" + the first 32 hex characters of sha256(namespace || 0x00 || key)
-// (architect ruling tesseract_context_record_subject_2026_10_16). Context
-// records have no item identity (record_id is per revision, heads is keyed by
-// namespace/key), and a key-form subject must never leave the machine. The id
-// is stable across revisions of one record and needs no migration.
-//
-// It is a hash, NOT a secret: anyone who can guess the namespace and key can
-// recompute it. It hides the key from a reader of the stream; it does not
-// authenticate anything.
-func contextSubjectID(namespace, key string) string {
-	sum := sha256.Sum256([]byte(namespace + "\x00" + key))
-	return "ctx_" + hex.EncodeToString(sum[:])[:32]
 }
 
 // subjectID joins namespace and key, tolerating an empty namespace (a packet
