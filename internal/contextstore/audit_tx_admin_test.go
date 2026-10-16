@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/hollis-labs/libs/security/auth"
 )
 
 func auditsOfType(s *Store, typ string) []AuditEvent {
@@ -194,5 +196,40 @@ func TestNamespaceChangeFailsClosedWhenItsAuditCannotBeRecorded(t *testing.T) {
 	}
 	if inserted, err := s.ensureNamespaceRegistered(ctx, "app/sec2/session", "inferred"); err == nil || inserted {
 		t.Fatalf("inferred registration must fail closed too: inserted=%v err=%v", inserted, err)
+	}
+}
+
+// The admin register/update path runs on the request's context. An
+// unauthenticated caller must not be attributed as service/system (#69's
+// internal marker is for genuinely internal paths only); a verified principal
+// is the actor.
+func TestAdminNamespaceUpsertDoesNotGetTheInternalActor(t *testing.T) {
+	s := newTestStore(t)
+	entry := NamespacePolicyEntry{Namespace: "app/adm/session", OwnerType: "app", OwnerID: "adm"}
+	if err := s.UpsertNamespacePolicyAudited(context.Background(), entry, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := s.ReadOutbox(context.Background(), 0, 10)
+	if len(out) != 1 {
+		t.Fatalf("outbox = %d", len(out))
+	}
+	ev := readEnvelope(t, out[0])
+	if ev.Actor != nil {
+		t.Fatalf("unauthenticated admin call actor = %+v, want nil", ev.Actor)
+	}
+	var p map[string]any
+	_ = json.Unmarshal(ev.Payload, &p)
+	if p["claimed_actor"] != "system" {
+		t.Fatalf("payload = %v, want claimed_actor=system", p)
+	}
+
+	ctx := auth.WithPrincipal(context.Background(), auth.Principal{Verified: true, ID: "msg://agent/agent-mux/agt_admin", Kind: "agent"})
+	if err := s.UpsertNamespacePolicyAudited(ctx, entry, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = s.ReadOutbox(context.Background(), 0, 10)
+	ev = readEnvelope(t, out[len(out)-1])
+	if ev.Actor == nil || ev.Actor.Verified != "token" || ev.Actor.URN != "msg://agent/agent-mux/agt_admin" {
+		t.Fatalf("verified admin actor = %+v", ev.Actor)
 	}
 }

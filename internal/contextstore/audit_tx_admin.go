@@ -34,7 +34,11 @@ func (s *Store) UpsertNamespacePolicyAudited(ctx context.Context, entry Namespac
 	if exists {
 		eventType = EventNamespaceUpdate
 	}
-	if err = auditEventWithinTx(asInternalPath(ctx), tx, AuditEvent{
+	// The CALLER'S ctx, not asInternalPath: this is the admin HTTP path, so a
+	// verified principal is the actor and an unauthenticated caller gets no
+	// actor (its "system" claim stays in claimed_actor). Only genuinely internal
+	// paths (seeding, inferred registration) may mark themselves internal.
+	if err = auditEventWithinTx(ctx, tx, AuditEvent{
 		EventType: eventType,
 		Actor:     "system",
 		Namespace: entry.Namespace,
