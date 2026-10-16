@@ -575,7 +575,7 @@ func run(ctx context.Context, args []string, stdout, stderr *os.File) int {
 	case "verify-pointers":
 		return runVerifyPointers(ctx, layout.MainDB(), rest, stdout, stderr)
 	case "promote-record":
-		return runPromoteRecord(ctx, "", rest, stdout, stderr)
+		return runPromoteRecord(contextstore.AsOperatorCLI(ctx), "", rest, stdout, stderr)
 	case "migrate-corpus":
 		return runMigrateCorpus(ctx, "", rest, stdout, stderr)
 	case "classify-backlog":
