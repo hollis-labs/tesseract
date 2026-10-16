@@ -5,6 +5,7 @@ package itemservice
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -161,13 +162,20 @@ type TouchResult struct {
 	Deleted       []string `json:"deleted"`
 }
 
+func (s *Service) touchDB() *sql.DB {
+	if s.Revisions != nil {
+		return s.Revisions.DB()
+	}
+	return s.Workspace.DB()
+}
+
 func (s *Service) TouchItems(ctx context.Context, metas []Metadata) (TouchResult, error) {
 	result := TouchResult{NotFound: []string{}, NotReinforced: []string{}, Deleted: []string{}}
 	if len(metas) == 0 || len(metas) > memory.MaxTouchRevisions {
 		return result, fmt.Errorf("%w: item_ids must contain between 1 and %d values", memory.ErrInvalidInput, memory.MaxTouchRevisions)
 	}
+	var workspaceIDs, revisionIDs []string
 	seen := map[string]bool{}
-	var revisionIDs []string
 	for _, meta := range metas {
 		if seen[meta.ItemID] {
 			continue
@@ -180,27 +188,57 @@ func (s *Service) TouchItems(ctx context.Context, metas []Metadata) (TouchResult
 			if s.Workspace == nil {
 				return result, fmt.Errorf("workspace store unavailable")
 			}
-			if err := s.Workspace.MarkUsed(ctx, meta.ItemID); err != nil {
-				return result, err
-			}
-			result.Touched++
+			workspaceIDs = append(workspaceIDs, meta.ItemID)
 		case meta.Domain == string(domains.Event):
 			result.NotReinforced = append(result.NotReinforced, meta.ItemID)
 		default:
+			if s.Revisions == nil {
+				return result, fmt.Errorf("revision store unavailable")
+			}
 			revisionIDs = append(revisionIDs, meta.ItemID)
 		}
 	}
-	if len(revisionIDs) > 0 {
-		if s.Revisions == nil {
-			return result, fmt.Errorf("revision store unavailable")
-		}
-		moved, err := s.Revisions.TouchItems(ctx, revisionIDs)
+	if len(workspaceIDs) == 0 && len(revisionIDs) == 0 {
+		return result, nil
+	}
+
+	// One transaction for every activation UPDATE of the call and for the touch
+	// events, so the events commit or roll back with the reinforcement
+	// (CW-20261016-0140). Workspace-only calls have no revision store to open it
+	// on, so they use the workspace store's own handle.
+	db := s.touchDB()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, fmt.Errorf("begin touch tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var touched []memory.TouchedItem
+	for _, id := range workspaceIDs {
+		ws, err := s.Workspace.MarkUsedIn(ctx, tx, id)
 		if err != nil {
 			return result, err
 		}
+		touched = append(touched, memory.TouchedItem{ItemID: id, WorkstreamID: ws})
+		result.Touched++
+	}
+	if len(revisionIDs) > 0 {
+		moved, movedItems, err := s.Revisions.TouchItemsIn(ctx, tx, revisionIDs)
+		if err != nil {
+			return result, err
+		}
+		touched = append(touched, movedItems...)
 		result.Touched += moved.Touched
 		result.NotFound = append(result.NotFound, moved.NotFound...)
 		result.NotReinforced = append(result.NotReinforced, moved.NotReinforced...)
+	}
+	if s.Revisions != nil {
+		if err := s.Revisions.RecordTouches(ctx, tx, memory.NewTouchCorrelationID(), touched); err != nil {
+			return result, fmt.Errorf("record touch events: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return result, err
 	}
 	return result, nil
 }

@@ -205,6 +205,7 @@ func setupMemorySubsystemWithEmbedder(ctx context.Context, store *contextstore.S
 		queueAdapter,
 	)
 	memStore.SetAuditSink(store)
+	memStore.SetTouchSink(store)
 	memStore.SetNamespaceRegistrar(store)
 
 	// Reconcile any namespaces that have data but no policy row. Idempotent —

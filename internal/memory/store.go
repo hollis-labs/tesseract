@@ -19,6 +19,7 @@ type Store struct {
 	dedupThreshold     float64
 	queue              JobQueue
 	auditSink          AuditSink          // nil = audit emits are no-ops
+	touchSink          TouchSink          // nil = touch events are no-ops
 	namespaceRegistrar NamespaceRegistrar // nil = namespace auto-register is a no-op
 	logger             *slog.Logger       // nil = slog.Default()
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/oklog/ulid/v2"
 	"time"
 
 	"github.com/hollis-labs/tesseract/domains"
@@ -97,7 +98,23 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) ([]s
 		return nil, fmt.Errorf("begin reinforce tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	moved, err := s.reinforceMemoryIDsIn(ctx, tx, memoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return moved, nil
+}
 
+// reinforceMemoryIDsIn is reinforceMemoryIDs inside the caller's transaction:
+// it commits nothing, so a touch can write its outbox events in the same
+// transaction as the activation UPDATE (CW-20261016-0140).
+func (s *Store) reinforceMemoryIDsIn(ctx context.Context, tx *sql.Tx, memoryIDs []string) ([]string, error) {
+	if len(memoryIDs) == 0 {
+		return nil, nil
+	}
 	now := time.Now().UTC().Format(memoryTimeFormat)
 	// last_decayed_at is stamped alongside because reinforcement WRITES
 	// activation, and the stamp is what every writer of activation owes so no
@@ -165,9 +182,6 @@ func (s *Store) reinforceMemoryIDs(ctx context.Context, memoryIDs []string) ([]s
 		}
 		moved = append(moved, id)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return moved, nil
 }
 
@@ -206,9 +220,18 @@ type TouchResult struct {
 // TouchItems is the item-ID counterpart to TouchRevisions. It preserves the
 // same result buckets while resolving identities directly from memory_state.
 func (s *Store) TouchItems(ctx context.Context, itemIDs []string) (TouchResult, error) {
+	return s.touchInOwnTx(ctx, func(tx *sql.Tx) (TouchResult, []TouchedItem, error) {
+		return s.TouchItemsIn(ctx, tx, itemIDs)
+	})
+}
+
+// TouchItemsIn is TouchItems inside the caller's transaction. It returns the
+// items whose activation moved, with the workstream stored on each, so the
+// caller can record touch events in the same transaction.
+func (s *Store) TouchItemsIn(ctx context.Context, tx *sql.Tx, itemIDs []string) (TouchResult, []TouchedItem, error) {
 	res := TouchResult{NotFound: []string{}, NotReinforced: []string{}}
 	if len(itemIDs) > MaxTouchRevisions {
-		return res, fmt.Errorf("%w: at most %d item_ids per touch, got %d", ErrInvalidInput, MaxTouchRevisions, len(itemIDs))
+		return res, nil, fmt.Errorf("%w: at most %d item_ids per touch, got %d", ErrInvalidInput, MaxTouchRevisions, len(itemIDs))
 	}
 	seen := map[string]bool{}
 	var activating []string
@@ -223,7 +246,7 @@ func (s *Store) TouchItems(ctx context.Context, itemIDs []string) (TouchResult, 
 			continue
 		}
 		if err != nil {
-			return res, err
+			return res, nil, err
 		}
 		if state.Domain == domains.Event {
 			res.NotReinforced = append(res.NotReinforced, itemID)
@@ -231,12 +254,16 @@ func (s *Store) TouchItems(ctx context.Context, itemIDs []string) (TouchResult, 
 		}
 		activating = append(activating, itemID)
 	}
-	moved, err := s.reinforceMemoryIDs(ctx, activating)
+	moved, err := s.reinforceMemoryIDsIn(ctx, tx, activating)
 	if err != nil {
-		return res, err
+		return res, nil, err
 	}
 	res.Touched = len(moved)
-	return res, nil
+	touched, err := s.touchedItems(ctx, tx, moved)
+	if err != nil {
+		return res, nil, err
+	}
+	return res, touched, nil
 }
 
 // TouchRevisions reinforces the memories behind the given revision IDs: the
@@ -275,12 +302,20 @@ func (s *Store) TouchItems(ctx context.Context, itemIDs []string) (TouchResult, 
 // from a policy lookup here — see reinforceMemoryIDs for why the statement has
 // to be the one that answers.
 func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (TouchResult, error) {
+	return s.touchInOwnTx(ctx, func(tx *sql.Tx) (TouchResult, []TouchedItem, error) {
+		return s.TouchRevisionsIn(ctx, tx, revisionIDs)
+	})
+}
+
+// TouchRevisionsIn is TouchRevisions inside the caller's transaction; see
+// TouchItemsIn.
+func (s *Store) TouchRevisionsIn(ctx context.Context, tx *sql.Tx, revisionIDs []string) (TouchResult, []TouchedItem, error) {
 	res := TouchResult{NotFound: []string{}, NotReinforced: []string{}}
 	if len(revisionIDs) == 0 {
-		return res, nil
+		return res, nil, nil
 	}
 	if len(revisionIDs) > MaxTouchRevisions {
-		return res, fmt.Errorf("%w: at most %d revision_ids per touch, got %d",
+		return res, nil, fmt.Errorf("%w: at most %d revision_ids per touch, got %d",
 			ErrInvalidInput, MaxTouchRevisions, len(revisionIDs))
 	}
 
@@ -314,7 +349,7 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 				res.NotFound = append(res.NotFound, revID)
 				continue
 			}
-			return res, fmt.Errorf("resolve revision %s: %w", revID, err)
+			return res, nil, fmt.Errorf("resolve revision %s: %w", revID, err)
 		}
 		revisionsByMemory[memoryID] = append(revisionsByMemory[memoryID], revID)
 		if _, dup := seenMemory[memoryID]; dup {
@@ -324,9 +359,9 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 		memoryIDs = append(memoryIDs, memoryID)
 	}
 
-	moved, err := s.reinforceMemoryIDs(ctx, memoryIDs)
+	moved, err := s.reinforceMemoryIDsIn(ctx, tx, memoryIDs)
 	if err != nil {
-		return res, err
+		return res, nil, err
 	}
 	movedSet := make(map[string]struct{}, len(moved))
 	for _, id := range moved {
@@ -341,5 +376,88 @@ func (s *Store) TouchRevisions(ctx context.Context, revisionIDs []string) (Touch
 		res.NotReinforced = append(res.NotReinforced, revisionsByMemory[id]...)
 	}
 	res.Touched = len(moved)
+	touched, err := s.touchedItems(ctx, tx, moved)
+	if err != nil {
+		return res, nil, err
+	}
+	return res, touched, nil
+}
+
+// TouchedItem is one item whose activation a touch moved. WorkstreamID is read
+// from the stored current revision, never from the caller; empty means the item
+// has none.
+type TouchedItem struct {
+	ItemID       string
+	WorkstreamID string
+}
+
+// TouchSink records touch events inside the touch's own transaction, so the
+// events and the activation UPDATE commit or roll back together. The slices
+// are parallel (itemIDs[i] was touched in workstreamIDs[i]; "" = none).
+// contextstore.Store satisfies this structurally; the primitive signature keeps
+// memory free of a contextstore import, as with AuditSink. nil disables it.
+type TouchSink interface {
+	RecordTouches(ctx context.Context, tx *sql.Tx, correlationID string, itemIDs, workstreamIDs []string) error
+}
+
+// SetTouchSink wires the TouchSink. Call once at construction.
+func (s *Store) SetTouchSink(sink TouchSink) { s.touchSink = sink }
+
+// NewTouchCorrelationID mints the opaque per-call ULID shared by every event
+// of one touch call. It is also the events' subject id.
+func NewTouchCorrelationID() string {
+	return ulid.Make().String()
+}
+
+// RecordTouches hands the touched items to the sink inside tx. A no-op without
+// a sink or without items. An error means the caller must roll back.
+func (s *Store) RecordTouches(ctx context.Context, tx *sql.Tx, correlationID string, touched []TouchedItem) error {
+	if s.touchSink == nil || len(touched) == 0 {
+		return nil
+	}
+	ids := make([]string, len(touched))
+	ws := make([]string, len(touched))
+	for i, t := range touched {
+		ids[i], ws[i] = t.ItemID, t.WorkstreamID
+	}
+	return s.touchSink.RecordTouches(ctx, tx, correlationID, ids, ws)
+}
+
+// touchInOwnTx runs a TouchXIn in a fresh transaction and records its events
+// there before committing.
+func (s *Store) touchInOwnTx(ctx context.Context, fn func(*sql.Tx) (TouchResult, []TouchedItem, error)) (TouchResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TouchResult{NotFound: []string{}, NotReinforced: []string{}}, fmt.Errorf("begin touch tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, touched, err := fn(tx)
+	if err != nil {
+		return res, err
+	}
+	if err := s.RecordTouches(ctx, tx, NewTouchCorrelationID(), touched); err != nil {
+		return res, fmt.Errorf("record touch events: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return res, err
+	}
 	return res, nil
+}
+
+// touchedItems resolves the workstream stored on each moved memory's current
+// revision, preserving the order of memoryIDs.
+func (s *Store) touchedItems(ctx context.Context, tx *sql.Tx, memoryIDs []string) ([]TouchedItem, error) {
+	out := make([]TouchedItem, 0, len(memoryIDs))
+	for _, id := range memoryIDs {
+		var ws sql.NullString
+		err := tx.QueryRowContext(ctx, `
+SELECT r.workstream_id FROM memory_state st
+JOIN memory_revisions r ON r.revision_id = st.current_revision
+WHERE st.memory_id = ?`, id).Scan(&ws)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("resolve workstream for %s: %w", id, err)
+		}
+		out = append(out, TouchedItem{ItemID: id, WorkstreamID: ws.String})
+	}
+	return out, nil
 }
