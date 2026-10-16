@@ -8,6 +8,20 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.13.3] — 2026-10-16
+
+Security fix: token namespace authorization in MCP tools and in revision supersedes checks. Source release only; no prebuilt binaries are published. Cut from the `release/v0.13` branch, so it carries no schema change over 0.13.2.
+
+### Security
+
+- MCP tools now apply the token's `namespace_globs` the same way the HTTP routes do since 0.13.2 (CW-20261016-0205). Reads check or filter by namespace, writes outside the token's globs are refused, and token claims are carried through every tool call. An id that resolves to an object outside the token's globs answers exactly like a missing id. Under `auth=permissive` (the stdio default) a namespace denial is recorded as a would-deny and the call proceeds, as for every other permissive decision; under `enforce` it is refused.
+- A memory write whose `supersedes` names a revision outside the written namespace now fails exactly like one naming a missing revision, and the target is verified before the insert.
+- Restricted audit listings stop after a bounded number of examined rows and return a continuation, on both HTTP and MCP.
+
+### Changed (breaking for restricted tokens under enforce)
+
+- MCP callers with restricted tokens under `enforce` now receive denials or filtered results where they previously saw data outside their globs.
+
 ### Changed
 
 - MCP tools enforce token namespace globs consistently in enforce mode; permissive and off modes log namespace would-deny decisions. `context_promote` request now requires a grant covering `app/mcp-agent/promotions` as well as the source and target namespaces (CW-20261016-0205).
@@ -1506,7 +1520,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.13.3...HEAD
+[0.13.3]: https://github.com/hollis-labs/tesseract/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/hollis-labs/tesseract/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/hollis-labs/tesseract/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/hollis-labs/tesseract/compare/v0.12.1...v0.13.0
