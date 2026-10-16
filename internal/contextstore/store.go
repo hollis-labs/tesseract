@@ -2812,6 +2812,15 @@ WHERE id IN (
 // namespacePattern uses SQL LIKE syntax (% for wildcard).
 // Returns the number of records trimmed and a list of deleted file paths.
 func (s *Store) TrimRecords(ctx context.Context, namespacePattern, cutoffISO string, dryRun bool) (int64, error) {
+	return s.TrimRecordsPermit(ctx, namespacePattern, cutoffISO, dryRun, nil)
+}
+
+// TrimRecordsPermit is TrimRecords restricted to rows whose namespace permit
+// accepts. The SQL LIKE is case-insensitive for ASCII and has no per-row
+// authority, so a pattern that lies inside a token's globs can still match a
+// case-variant namespace outside them; permit is checked on every row and a
+// rejected row is neither counted nor deleted. nil permits everything.
+func (s *Store) TrimRecordsPermit(ctx context.Context, namespacePattern, cutoffISO string, dryRun bool, permit func(namespace string) bool) (int64, error) {
 	if strings.TrimSpace(namespacePattern) == "" {
 		return 0, errors.New("namespace_pattern required")
 	}
@@ -2820,7 +2829,7 @@ func (s *Store) TrimRecords(ctx context.Context, namespacePattern, cutoffISO str
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT record_id, file_path FROM records
+SELECT record_id, file_path, namespace FROM records
 WHERE namespace LIKE ? AND created_at < ?
 ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 	if err != nil {
@@ -2835,8 +2844,12 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 	var targets []toDelete
 	for rows.Next() {
 		var td toDelete
-		if err := rows.Scan(&td.id, &td.path); err != nil {
+		var namespace string
+		if err := rows.Scan(&td.id, &td.path, &namespace); err != nil {
 			return 0, err
+		}
+		if permit != nil && !permit(namespace) {
+			continue
 		}
 		targets = append(targets, td)
 	}
@@ -2881,6 +2894,12 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 // (namespace, key) for namespaces matching namespacePattern (SQL LIKE syntax).
 // maxRevisions must be >= 1.
 func (s *Store) CompactNamespace(ctx context.Context, namespacePattern string, maxRevisions int, dryRun bool) (int64, error) {
+	return s.CompactNamespacePermit(ctx, namespacePattern, maxRevisions, dryRun, nil)
+}
+
+// CompactNamespacePermit is CompactNamespace restricted to rows whose namespace
+// permit accepts; see TrimRecordsPermit for why the per-row check is needed.
+func (s *Store) CompactNamespacePermit(ctx context.Context, namespacePattern string, maxRevisions int, dryRun bool, permit func(namespace string) bool) (int64, error) {
 	if strings.TrimSpace(namespacePattern) == "" {
 		return 0, errors.New("namespace_pattern required")
 	}
@@ -2889,8 +2908,8 @@ func (s *Store) CompactNamespace(ctx context.Context, namespacePattern string, m
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT record_id, file_path FROM (
-	SELECT record_id, file_path,
+SELECT record_id, file_path, namespace FROM (
+	SELECT record_id, file_path, namespace,
 		ROW_NUMBER() OVER (PARTITION BY namespace, key_name ORDER BY revision DESC) AS rn
 	FROM records
 	WHERE namespace LIKE ?
@@ -2908,8 +2927,12 @@ WHERE rn > ?`, namespacePattern, maxRevisions)
 	var targets []toDelete
 	for rows.Next() {
 		var td toDelete
-		if err := rows.Scan(&td.id, &td.path); err != nil {
+		var namespace string
+		if err := rows.Scan(&td.id, &td.path, &namespace); err != nil {
 			return 0, err
+		}
+		if permit != nil && !permit(namespace) {
+			continue
 		}
 		targets = append(targets, td)
 	}

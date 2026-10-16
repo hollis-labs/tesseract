@@ -386,3 +386,40 @@ func notFoundShape(raw []byte, id string) string {
 	sort.Strings(keys)
 	return b.Code + "|" + strings.ReplaceAll(b.Message, id, "<id>") + "|" + strings.Join(keys, ",")
 }
+
+// SQL LIKE is case-insensitive for ASCII, so a maintenance pattern that sits
+// inside a token's globs also matches a case-variant namespace outside them.
+// The store must apply the token's per-row predicate, or a restricted token
+// compacts or trims data it does not own.
+func TestRestrictedMaintenanceLeavesCaseVariantNamespaceUntouched(t *testing.T) {
+	f := newGuardFixture(t)
+	ctx := context.Background()
+	const variantNS = "project/FIXTURE-in/data"
+	for _, ns := range []string{guardInNS, variantNS} {
+		for i := 0; i < 3; i++ {
+			if _, err := f.srv.Store.AppendRecord(ctx, contextstore.AppendInput{
+				Namespace: ns, Key: "versioned", Actor: "fixture", Payload: json.RawMessage(`{"n":1}`),
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	count := func(ns string) int {
+		var n int
+		if err := f.srv.Store.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM records WHERE namespace = ? AND key_name = 'versioned'`, ns).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	res := performJSONWithHeaders(t, f.srv, http.MethodPost, "/v1/maintenance/compact",
+		map[string]any{"namespace_pattern": "project/fixture-in/%", "max_revisions": 1}, f.restricted)
+	if res.Code != http.StatusOK {
+		t.Fatalf("compact in-glob pattern = %d %s", res.Code, res.Body.String())
+	}
+	if got := count(guardInNS); got != 1 {
+		t.Fatalf("in-glob namespace has %d revisions after compact, want 1", got)
+	}
+	if got := count(variantNS); got != 3 {
+		t.Fatalf("case-variant out-of-glob namespace was compacted: %d revisions left, want 3", got)
+	}
+}

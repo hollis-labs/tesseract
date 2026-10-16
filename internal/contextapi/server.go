@@ -3193,7 +3193,8 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.NamespacePattern) == "" {
 		req.NamespacePattern = "user/cache/%"
 	}
-	if !requireNamespacePatternAccess(w, r, req.NamespacePattern) {
+	maintenancePermit, ok := requireNamespacePatternAccess(w, r, req.NamespacePattern)
+	if !ok {
 		return
 	}
 	retention := req.Retention
@@ -3207,7 +3208,7 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	}
 	cutoff := time.Now().UTC().Add(-dur).Format(time.RFC3339)
 	start := time.Now()
-	trimmed, err := s.Store.TrimRecords(r.Context(), req.NamespacePattern, cutoff, req.DryRun)
+	trimmed, err := s.Store.TrimRecordsPermit(r.Context(), req.NamespacePattern, cutoff, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
@@ -3241,14 +3242,15 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace_pattern is required", nil)
 		return
 	}
-	if !requireNamespacePatternAccess(w, r, req.NamespacePattern) {
+	maintenancePermit, ok := requireNamespacePatternAccess(w, r, req.NamespacePattern)
+	if !ok {
 		return
 	}
 	if req.MaxRevisions < 1 {
 		req.MaxRevisions = 1
 	}
 	start := time.Now()
-	compacted, err := s.Store.CompactNamespace(r.Context(), req.NamespacePattern, req.MaxRevisions, req.DryRun)
+	compacted, err := s.Store.CompactNamespacePermit(r.Context(), req.NamespacePattern, req.MaxRevisions, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return

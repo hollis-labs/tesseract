@@ -76,8 +76,10 @@ func requireUnrestrictedNamespaces(w http.ResponseWriter, r *http.Request) bool 
 
 // requireNamespacePatternAccess authorizes a maintenance-style SQL LIKE
 // pattern ("%" wildcard): every namespace it could match must lie inside the
-// token's globs.
-func requireNamespacePatternAccess(w http.ResponseWriter, r *http.Request, likePattern string) bool {
-	_, ok := namespacePermit(w, r, []string{strings.ReplaceAll(likePattern, "%", "*")})
-	return ok
+// token's globs. It also returns the per-row predicate the store must apply:
+// LIKE is case-insensitive for ASCII, so the pattern check alone would let a
+// case-variant namespace outside the globs be trimmed or compacted. nil means
+// unrestricted.
+func requireNamespacePatternAccess(w http.ResponseWriter, r *http.Request, likePattern string) (func(string) bool, bool) {
+	return namespacePermit(w, r, []string{strings.ReplaceAll(likePattern, "%", "*")})
 }
