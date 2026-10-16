@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	mcpsanitize "github.com/hollis-labs/libs/plugin-mcp/go-mcp/sanitize"
+	mcpsanitize "github.com/hollis-labs/libs/mcp/plugin-mcp/go-mcp/sanitize"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

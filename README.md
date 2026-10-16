@@ -77,10 +77,10 @@ capability-token model is what makes either safe.
 
 ## Go library dependencies
 
-From v0.11.0, Tesseract uses the published `substrate/llm-core` and `libs`
-modules. Embedded consumers supplying an embedder to `WithEmbedder` must import
-`github.com/hollis-labs/substrate/llm-core/embedcontracts`; consumers supplying a
-queue to `WithQueue` must import `github.com/hollis-labs/libs/util/queue`.
+From v0.11.0, Tesseract uses the published `libs` modules (`core/util`, `llm/core`,
+`mcp/plugin-mcp`, `ui/ui-go`). Embedded consumers supplying an embedder to `WithEmbedder` must import
+`github.com/hollis-labs/libs/llm/core/embedcontracts`; consumers supplying a
+queue to `WithQueue` must import `github.com/hollis-labs/libs/core/util/queue`.
 The old standalone paths define different Go types. Update these dependencies
 together when upgrading an embedded consumer.
 

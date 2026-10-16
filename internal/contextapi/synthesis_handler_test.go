@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
-	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
+	llmcontracts "github.com/hollis-labs/libs/llm/core/llmcontracts"
+	llmtypes "github.com/hollis-labs/libs/llm/core/llmtypes"
 )
 
 // unusedSynthesisProvider stands in for a configured LLM provider so

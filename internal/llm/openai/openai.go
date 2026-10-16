@@ -13,9 +13,9 @@ import (
 	"errors"
 	"fmt"
 
-	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
-	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
-	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
+	embedcontracts "github.com/hollis-labs/libs/llm/core/embedcontracts"
+	llmcontracts "github.com/hollis-labs/libs/llm/core/llmcontracts"
+	llmtypes "github.com/hollis-labs/libs/llm/core/llmtypes"
 	sdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )

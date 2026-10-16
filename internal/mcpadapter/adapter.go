@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	mcpsanitize "github.com/hollis-labs/libs/plugin-mcp/go-mcp/sanitize"
-	gomcpserver "github.com/hollis-labs/libs/plugin-mcp/go-mcp/server"
-	embedcontracts "github.com/hollis-labs/substrate/llm-core/embedcontracts"
+	embedcontracts "github.com/hollis-labs/libs/llm/core/embedcontracts"
+	mcpsanitize "github.com/hollis-labs/libs/mcp/plugin-mcp/go-mcp/sanitize"
+	gomcpserver "github.com/hollis-labs/libs/mcp/plugin-mcp/go-mcp/server"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/embedding"

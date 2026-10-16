@@ -8,6 +8,9 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Changed
+- Move to the reorganised `github.com/hollis-labs/libs` module paths (CW-20261016-0070); the old flat tags were deleted, so `main` did not build from a clean module cache. `libs/util` -> `libs/core/util` v0.4.0, `libs/plugin-mcp` -> `libs/mcp/plugin-mcp` v0.3.0, `libs/ui-go` -> `libs/ui/ui-go` v0.1.0, `substrate/llm-core` -> `libs/llm/core` v0.2.0. Clean break: no replace lines, no shims, package layout unchanged. Embedded consumers must update their imports.
+
 ### Changed (breaking)
 
 - **Tesseract adopts go-auth: the anonymous-loopback posture is gone (CW-20261015-0046; supersedes DEC-103 D1).** The HTTP API and the MCP tools sit behind the shared `go-auth` guard with modes `off | permissive | enforce`; see `docs/auth.md`. **What changes the moment this build is deployed:**

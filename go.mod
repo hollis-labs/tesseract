@@ -4,11 +4,11 @@ go 1.26.9
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.71.0
-	github.com/hollis-labs/libs/plugin-mcp v0.1.1
+	github.com/hollis-labs/libs/core/util v0.4.0
+	github.com/hollis-labs/libs/llm/core v0.2.0
+	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
 	github.com/hollis-labs/libs/security/secrets v0.1.0
-	github.com/hollis-labs/libs/ui-go v0.1.0
-	github.com/hollis-labs/libs/util v0.2.0
-	github.com/hollis-labs/substrate/llm-core v0.1.0
+	github.com/hollis-labs/libs/ui/ui-go v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/openai/openai-go/v3 v3.56.0

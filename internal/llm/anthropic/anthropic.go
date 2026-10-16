@@ -13,8 +13,8 @@ import (
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	llmcontracts "github.com/hollis-labs/substrate/llm-core/llmcontracts"
-	llmtypes "github.com/hollis-labs/substrate/llm-core/llmtypes"
+	llmcontracts "github.com/hollis-labs/libs/llm/core/llmcontracts"
+	llmtypes "github.com/hollis-labs/libs/llm/core/llmtypes"
 )
 
 // DefaultMaxTokens is used when ChatRequest.MaxTokens is unset. Anthropic

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	fplugin "github.com/hollis-labs/libs/plugin-mcp/plugin-sdk"
+	fplugin "github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk"
 )
 
 // Logger implements fplugin.Logger using Go's standard log package.

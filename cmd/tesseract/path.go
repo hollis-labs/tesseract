@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"text/tabwriter"
 
-	"github.com/hollis-labs/libs/util/apppaths"
+	"github.com/hollis-labs/libs/core/util/apppaths"
 	"github.com/hollis-labs/tesseract/internal/config"
 )
 
