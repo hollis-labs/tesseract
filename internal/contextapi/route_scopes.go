@@ -82,6 +82,7 @@ var routeScopes = map[routeKey]string{
 	// auth
 	{http.MethodPost, "/v1/auth/tokens/create"}: authscope.Admin,
 	{http.MethodGet, "/v1/auth/tokens/list"}:    authscope.Admin,
+	{http.MethodPost, "/v1/auth/tokens/rotate"}: authscope.Admin,
 	{http.MethodPost, "/v1/auth/tokens/revoke"}: authscope.Admin,
 	{http.MethodGet, "/v1/auth/whoami"}:         authscope.Read,
 	{http.MethodGet, "/v1/auth/summary"}:        authscope.Admin,

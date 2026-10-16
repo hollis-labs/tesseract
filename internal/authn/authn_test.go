@@ -327,8 +327,12 @@ func TestCoarseScopeGateUnderEnforce(t *testing.T) {
 	}
 	wantStatus(t, s.do("GET", "/v1/namespaces/list", other, nil), 403, "other app's scope is not tesseract's")
 	wantStatus(t, s.do("GET", "/v1/auth/tokens/list", read, nil), 403, "token lifecycle needs admin")
-	if got := s.do("GET", "/v1/auth/tokens/list", admin, nil); got.Code != 200 {
-		t.Fatalf("admin jwt should list tokens: %d %s", got.Code, got.Body.String())
+	// An admin JWT passes the guard; the handler then still demands a managed
+	// administrator credential (credential rotation), which a JWT is not.
+	adminList := s.do("GET", "/v1/auth/tokens/list", admin, nil)
+	wantStatus(t, adminList, 403, "admin jwt reaches the handler, which requires a managed administrator credential")
+	if errCode(t, adminList) != "admin_auth_required" {
+		t.Fatalf("admin jwt should be refused by the handler, not the guard: %s", adminList.Body.String())
 	}
 	// default managed token (no admin) can no longer mint or list tokens
 	def := f.token("default", nil, nil)
@@ -339,7 +343,11 @@ func TestJWTWildcardAndFineLayerExpansion(t *testing.T) {
 	f := newFixture(t)
 	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: f.jwtConfig()}, nil)
 	all := f.jwt("tesseract.*", map[string]any{"jti": "j-all"})
-	wantStatus(t, s.do("GET", "/v1/auth/tokens/list", all, nil), 200, "tesseract.* is admin")
+	allList := s.do("GET", "/v1/auth/tokens/list", all, nil)
+	wantStatus(t, allList, 403, "tesseract.* is admin at the guard; the handler requires a managed administrator credential")
+	if errCode(t, allList) != "admin_auth_required" {
+		t.Fatalf("tesseract.* should pass the guard and be refused by the handler: %s", allList.Body.String())
+	}
 	// a read-only JWT must not pass the fine layer for a legacy write scope either
 	rd := f.jwt("tesseract.read", nil)
 	wantStatus(t, s.do("POST", "/v1/context/write", rd, map[string]any{}), 403, "read jwt cannot context/write")
