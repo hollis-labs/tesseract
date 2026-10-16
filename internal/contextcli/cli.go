@@ -723,11 +723,13 @@ func (c *CLI) runPut(ctx context.Context, args []string) int {
 	if err := c.Policy.ValidatePayload(*namespace, payload); err != nil {
 		return c.fail(err.Error())
 	}
-	rec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{Namespace: *namespace, Key: *key, Actor: *actor, Payload: payload})
+	rec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
+		Namespace: *namespace, Key: *key, Actor: *actor, Payload: payload,
+		Audit: &contextstore.AuditSpec{EventType: contextstore.EventWrite, Actor: *actor, Metadata: json.RawMessage(`{"source":"cli"}`)},
+	})
 	if err != nil {
 		return c.fail(err.Error())
 	}
-	_ = c.Store.EmitWrite(ctx, *actor, *namespace, *key, rec.Revision, rec.RecordID, json.RawMessage(`{"source":"cli"}`))
 	return c.writeJSON(rec)
 }
 
@@ -857,11 +859,19 @@ func (c *CLI) runPromoteRequest(ctx context.Context, args []string) int {
 	}
 	payload, _ := json.Marshal(pr)
 	namespace := "app/" + *clientID + "/promotions"
-	reqRec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = c.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: namespace,
 		Key:       requestID,
 		Actor:     *actor,
 		Payload:   payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteRequest,
+			Actor:     *actor,
+			Metadata: json.RawMessage(fmt.Sprintf(
+				`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
+				requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
+			)),
+		},
 	})
 	if err != nil {
 		return c.fail(err.Error())
@@ -875,12 +885,6 @@ func (c *CLI) runPromoteRequest(ctx context.Context, args []string) int {
 	// event points at the stored request record; source and target identifiers
 	// remain available in metadata without making the source record the audit
 	// subject for only one surface.
-	_ = c.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, *actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
-			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
-		)))
-
 	_, _ = fmt.Fprintf(c.Stdout, "Promotion request created.\n")
 	_, _ = fmt.Fprintf(c.Stdout, "  Request ID:  %s\n", requestID)
 	_, _ = fmt.Fprintf(c.Stdout, "  Status:      pending\n")
@@ -984,11 +988,16 @@ func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 	pr.ApprovalID = approvalID
 	pr.ApprovedBy = *actor
 	updPayload, _ := json.Marshal(pr)
-	updRec, err := c.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = c.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
 		Actor:     *actor,
 		Payload:   updPayload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteApprove,
+			Actor:     *actor,
+			Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)),
+		},
 	})
 	if err != nil {
 		return c.fail(err.Error())
@@ -996,9 +1005,6 @@ func (c *CLI) runPromoteApprove(ctx context.Context, args []string) int {
 
 	// See the note in runPromoteRequest: this stage was also silent before
 	// CW-20260419-0058.
-	_ = c.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, *actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)))
-
 	_, _ = fmt.Fprintf(c.Stdout, "Approved promotion request %s.\n", requestID)
 	_, _ = fmt.Fprintf(c.Stdout, "  Approval ID: %s\n", approvalID)
 	_, _ = fmt.Fprintf(c.Stdout, "  Next step:   context promote apply %s\n", requestID)
@@ -1040,6 +1046,16 @@ func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 		Key:       pr.TargetKey,
 		Actor:     *actor,
 		Payload:   srcRec.Payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromote,
+			Actor:     *actor,
+			MetadataFor: func(recordID string, _ int64) json.RawMessage {
+				return json.RawMessage(fmt.Sprintf(
+					`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
+					requestID, pa.ApprovalID, recordID,
+				))
+			},
+		},
 	})
 	if err != nil {
 		return c.fail(err.Error())
@@ -1053,12 +1069,6 @@ func (c *CLI) runPromoteApply(ctx context.Context, args []string) int {
 		Actor:     *actor,
 		Payload:   appliedPayload,
 	})
-
-	_ = c.Store.EmitPromote(ctx, contextstore.EventPromote, *actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
-			requestID, pa.ApprovalID, newRec.RecordID,
-		)))
 
 	_, _ = fmt.Fprintf(c.Stdout, "Promotion applied.\n")
 	_, _ = fmt.Fprintf(c.Stdout, "  Record ID:   %s\n", newRec.RecordID)

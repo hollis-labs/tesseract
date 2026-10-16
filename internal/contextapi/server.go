@@ -1259,13 +1259,16 @@ func (s *Server) handleWrite(w http.ResponseWriter, r *http.Request) {
 		Actor:     req.Actor,
 		Payload:   req.Payload,
 		Metadata:  req.Metadata,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventWrite,
+			Actor:     req.Actor,
+			Metadata:  json.RawMessage(`{"source":"http","reason":` + quoteJSON(req.Reason) + `}`),
+		},
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "write_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.EmitWrite(ctx, req.Actor, req.Namespace, req.Key, rec.Revision, rec.RecordID,
-		json.RawMessage(`{"source":"http","reason":`+quoteJSON(req.Reason)+`}`))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":     rec.RecordID,
 		"revision":      rec.Revision,
