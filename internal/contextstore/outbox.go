@@ -88,7 +88,7 @@ func migrateEventsOutbox(ctx context.Context, tx *sql.Tx) error {
 		`CREATE INDEX IF NOT EXISTS idx_events_outbox_namespace ON events_outbox(namespace, seq)`,
 		`CREATE TABLE IF NOT EXISTS outbox_skipped (
 	audit_id INTEGER PRIMARY KEY,
-	error TEXT NOT NULL,
+	error TEXT NOT NULL, -- bounded class: validate|mapper|generation|keyless|db; never error text
 	created_at TEXT NOT NULL
 )`,
 		`CREATE TABLE IF NOT EXISTS store_identity (
@@ -167,17 +167,20 @@ func writeOutboxEvent(ctx context.Context, x outboxExecutor, ev AuditEvent, audi
 func writeOutboxRecord(ctx context.Context, x outboxExecutor, r OutboxRecord) (string, error) {
 	var genText string
 	if err := x.QueryRowContext(ctx, `SELECT value FROM store_identity WHERE key = ?`, storeIdentityGen).Scan(&genText); err != nil {
-		return "", fmt.Errorf("outbox: read generation: %w", err)
+		return "", outboxError{classGeneration, fmt.Errorf("read generation: %w", err)}
 	}
 	gen, err := strconv.ParseUint(genText, 10, 64)
 	if err != nil || gen == 0 {
-		return "", fmt.Errorf("outbox: invalid generation %q", genText)
+		return "", outboxError{classGeneration, fmt.Errorf("invalid generation %q", genText)}
 	}
 
 	evtID := runtimeevents.NewEventID()
 	env, subject, err := buildEnvelope(ctx, r, evtID, gen)
 	if err != nil {
-		return "", mappingError{err}
+		if errors.Is(err, errKeylessSubject) {
+			return "", outboxError{classKeyless, err}
+		}
+		return "", outboxError{classMapper, err}
 	}
 	// Validate before touching the table (sequence is assigned by the insert,
 	// so check with a placeholder): a record the envelope cannot represent is
@@ -185,7 +188,7 @@ func writeOutboxRecord(ctx context.Context, x outboxExecutor, r OutboxRecord) (s
 	probe := env
 	probe.Sequence = 1
 	if err := probe.Validate(); err != nil {
-		return "", mappingError{err}
+		return "", outboxError{classValidate, err}
 	}
 	created := r.OccurredAt
 	if created == "" {
@@ -215,13 +218,35 @@ VALUES (?, ?, ?, ?, ?, ?, '', ?)`,
 	return evtID, nil
 }
 
-// mappingError marks a failure to express a record as a valid envelope, as
-// opposed to a database failure. AppendOutbox returns both kinds to its caller
-// unchanged; the type lets a caller tell them apart.
-type mappingError struct{ err error }
+// The bounded set of outbox failure classes. outbox_skipped.error stores one
+// of these and nothing else: never raw error text, so no payload, subject or
+// record value can land in the repair table (architect ruling).
+const (
+	classValidate   = "validate"   // envelope fails runtimeevents v1.1 Validate
+	classMapper     = "mapper"     // record cannot be mapped (missing action/subject, ...)
+	classGeneration = "generation" // store_identity generation unreadable
+	classKeyless    = "keyless"    // item subject with an empty key segment
+	classDB         = "db"         // any other database error confined to the insert
+)
 
-func (e mappingError) Error() string { return "outbox: " + e.err.Error() }
-func (e mappingError) Unwrap() error { return e.err }
+// outboxError is a classified outbox write failure. AppendOutbox returns it
+// (or a plain error, which the audit path classes as db) to its caller.
+type outboxError struct {
+	class string
+	err   error
+}
+
+func (e outboxError) Error() string { return "outbox: " + e.class + ": " + e.err.Error() }
+func (e outboxError) Unwrap() error { return e.err }
+
+// failureClass returns the bounded class for err, classDB when unclassified.
+func failureClass(err error) string {
+	var oe outboxError
+	if errors.As(err, &oe) {
+		return oe.class
+	}
+	return classDB
+}
 
 // outboxSkipped counts audit events committed WITHOUT an outbox envelope
 // because the outbox insert failed and was rolled back to its savepoint.

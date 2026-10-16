@@ -2413,7 +2413,7 @@ func recordAuditWithOutbox(ctx context.Context, tx *sql.Tx, event AuditEvent) er
 			return errors.Join(err, relErr)
 		}
 		if _, skErr := tx.ExecContext(ctx, `INSERT INTO outbox_skipped (audit_id, error, created_at) VALUES (?, ?, ?)`,
-			id, err.Error(), time.Now().UTC().Format(time.RFC3339)); skErr != nil {
+			id, failureClass(err), time.Now().UTC().Format(time.RFC3339)); skErr != nil {
 			return errors.Join(err, skErr)
 		}
 		outboxSkipped.Add(1)

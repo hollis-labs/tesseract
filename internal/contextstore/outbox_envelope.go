@@ -155,6 +155,9 @@ func validActorKind(k string) bool {
 	return false
 }
 
+// errKeylessSubject is returned for a subject id with an empty segment.
+var errKeylessSubject = errors.New("subject id has an empty segment")
+
 // outboxMapFault is a test seam, nil in production. A valid audit event
 // cannot currently fail envelope mapping, so the best-effort path (audit row
 // kept, envelope skipped) is only reachable by injecting the failure.
@@ -220,7 +223,7 @@ func buildEnvelope(ctx context.Context, r OutboxRecord, evtID string, generation
 	// bare-namespace subject ("ns/"), which looks like a namespace event; it is
 	// a mapping error instead (skipped and recorded for repair by the caller).
 	if strings.HasSuffix(r.SubjectID, "/") || strings.HasPrefix(r.SubjectID, "/") || strings.Contains(r.SubjectID, "//") {
-		return runtimeevents.Event{}, "", errors.New("outbox: subject id has an empty segment: " + r.SubjectID)
+		return runtimeevents.Event{}, "", errKeylessSubject
 	}
 	subject := "msg://" + r.SubjectType + "/tesseract/" + r.SubjectID
 	actor, claimed := auditActor(ctx, r.Actor)

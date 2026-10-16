@@ -222,12 +222,12 @@ func TestOutboxDatabaseFailureKeepsAuditRow(t *testing.T) {
 	if OutboxSkipped()-before != 1 {
 		t.Fatalf("skipped counter moved by %d", OutboxSkipped()-before)
 	}
-	assertOneSkipped(t, s)
+	assertOneSkipped(t, s, classGeneration)
 }
 
 // assertOneSkipped checks the repair record: one outbox_skipped row naming the
 // surviving audit row.
-func assertOneSkipped(t *testing.T, s *Store) {
+func assertOneSkipped(t *testing.T, s *Store, wantClass string) {
 	t.Helper()
 	evs, _ := s.ListAuditEvents(context.Background(), 10)
 	var n int
@@ -236,8 +236,13 @@ func assertOneSkipped(t *testing.T, s *Store) {
 	if err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(audit_id), 0), COALESCE(MAX(error), '') FROM outbox_skipped`).Scan(&n, &auditID, &msg); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 || len(evs) != 1 || auditID != evs[0].ID || msg == "" {
+	if n != 1 || len(evs) != 1 || auditID != evs[0].ID {
 		t.Fatalf("outbox_skipped rows = %d (audit_id %d, error %q), audit rows %d", n, auditID, msg, len(evs))
+	}
+	// The column holds a bounded class, never error text, so no value from the
+	// event can land in it.
+	if msg != wantClass {
+		t.Fatalf("outbox_skipped.error = %q, want class %q", msg, wantClass)
 	}
 }
 
@@ -380,7 +385,7 @@ func TestMappingFailureKeepsAuditRowAndCounts(t *testing.T) {
 	if got := OutboxSkipped() - before; got != 1 {
 		t.Fatalf("skipped counter moved by %d, want 1", got)
 	}
-	assertOneSkipped(t, s)
+	assertOneSkipped(t, s, classMapper)
 	// AppendOutbox (caller-owned tx) still reports the mapping error.
 	tx, _ := s.db.BeginTx(ctx, nil)
 	defer func() { _ = tx.Rollback() }()
@@ -394,22 +399,29 @@ func TestMappingFailureKeepsAuditRowAndCounts(t *testing.T) {
 func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
 	cases := []struct {
 		name  string
+		class string
 		setup func(t *testing.T, s *Store) (cleanup func())
 	}{
-		{"missing subject (mapper: action and subject are required)", func(t *testing.T, s *Store) func() {
+		{"missing subject (mapper: action and subject are required)", classMapper, func(t *testing.T, s *Store) func() {
 			outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "" }
 			return func() { outboxRecordHook = nil }
 		}},
-		{"keyless item (bare-namespace subject)", func(t *testing.T, s *Store) func() {
+		{"keyless item (bare-namespace subject)", classKeyless, func(t *testing.T, s *Store) func() {
 			outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "app/x/session/" }
 			return func() { outboxRecordHook = nil }
 		}},
-		{"envelope fails runtimeevents v1.1 Validate", func(t *testing.T, s *Store) func() {
+		{"envelope fails runtimeevents v1.1 Validate", classValidate, func(t *testing.T, s *Store) func() {
 			outboxEnvelopeHook = func(e *runtimeevents.Event) { e.Actor = &runtimeevents.Actor{Kind: "user"} }
 			return func() { outboxEnvelopeHook = nil }
 		}},
-		{"invalid generation (unreadable store_identity)", func(t *testing.T, s *Store) func() {
+		{"invalid generation (unreadable store_identity)", classGeneration, func(t *testing.T, s *Store) func() {
 			if _, err := s.db.Exec(`UPDATE store_identity SET value = 'not-a-number'`); err != nil {
+				t.Fatal(err)
+			}
+			return func() {}
+		}},
+		{"database error confined to the insert", classDB, func(t *testing.T, s *Store) func() {
+			if _, err := s.db.Exec(`DROP TABLE events_outbox`); err != nil {
 				t.Fatal(err)
 			}
 			return func() {}
@@ -430,7 +442,7 @@ func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
 			if OutboxSkipped()-before != 1 {
 				t.Fatalf("counter moved by %d", OutboxSkipped()-before)
 			}
-			assertOneSkipped(t, s)
+			assertOneSkipped(t, s, c.class)
 		})
 	}
 }
@@ -441,8 +453,8 @@ func TestKeylessSubjectIsAMappingErrorNotABareNamespace(t *testing.T) {
 	tx, _ := s.db.BeginTx(ctx, nil)
 	defer func() { _ = tx.Rollback() }()
 	_, err := s.AppendOutbox(ctx, tx, OutboxRecord{Action: "touch", SubjectType: "memory", SubjectID: "project/x/"})
-	var me mappingError
-	if !errors.As(err, &me) {
-		t.Fatalf("keyless subject must be a mapping error, got %v", err)
+	var oe outboxError
+	if !errors.As(err, &oe) || oe.class != classKeyless {
+		t.Fatalf("keyless subject must be a keyless-class outbox error, got %v", err)
 	}
 }
