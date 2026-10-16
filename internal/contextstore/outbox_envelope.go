@@ -16,16 +16,12 @@ import (
 // auditSubject maps an audit event to the envelope subject URN and the
 // payload subject{type,id}. The URN is msg://<type>/tesseract/<id>.
 //
-// TODO(CW-20261016-0140 step 2): switch memory|knowledge|workspace|event
-// subjects to the stable item_id BEFORE any drainer or SSE ships (architect,
-// tesseract_outbox_step1_subject_and_coupling_2026_10_16). The namespace/key
-// form is accepted as interim only.
-//
-// The ruling asks for the stable item id for memory|knowledge|workspace|event
-// subjects. The audit choke point does not carry it (it receives namespace,
-// key and the revision id), so those subjects use namespace/key for now and the
-// revision id travels in payload ref. Threading the item id comes with the
-// per-surface mutation-transaction work in step 2.
+// Memory, knowledge, workspace and event subjects use the stable item id
+// (msg://<type>/tesseract/<item_id>) whenever the caller supplies it through
+// AuditEvent.ItemID, which the memory domains do (CW-20261016-0140 step 2b); the
+// revision id travels in payload ref. Context records have no item id and keep
+// msg://context/tesseract/<namespace>/<key>. The namespace/key fallback for the
+// domains only serves an audit sink that cannot supply an item id.
 func auditSubject(ev AuditEvent) (typ, id string) {
 	action := ev.EventType
 	switch {
@@ -36,6 +32,11 @@ func auditSubject(ev AuditEvent) (typ, id string) {
 	}
 	for _, d := range []string{"memory", "knowledge", "workspace", "event"} {
 		if strings.HasPrefix(action, d+".") {
+			// The stable item id when the caller has it; namespace/key only
+			// for the events that cannot supply one.
+			if ev.ItemID != "" {
+				return d, url.PathEscape(ev.ItemID)
+			}
 			return d, subjectID(ev.Namespace, ev.Key)
 		}
 	}
