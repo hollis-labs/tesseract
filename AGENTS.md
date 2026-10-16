@@ -50,6 +50,22 @@ check compares the deployed artifact against the build by hash, asserts the
 running process started after that artifact was written, and names any embed
 queue holder that predates its own binary.
 
+It runs on macOS (launchd) and Linux (`systemd --user`, the hub). The defaults
+are the local macOS service; on the hub pass the unit's own paths, because a
+login shell does not carry the unit's `XDG_STATE_HOME`, and the hub has no Go,
+so give the build's hash instead of a build file. Read-only, safe to run any time:
+
+```bash
+ssh <hub> 'BUILD_SHA=<sha256 of the build you deployed> \
+  QUEUE_DB=/var/lib/fabric/xdg/state/tesseract/queue.db \
+  bash -s' < scripts/deploy-check.sh
+```
+
+Overrides: `SERVICE_LABEL` (launchd label or systemd unit; hub default
+`com.hollis-labs.cerberus.hub-tesseract.service`), `ARTIFACT` (hub default
+`/var/lib/fabric/bin/tesseract`), `BUILD` or `BUILD_SHA`, `QUEUE_DB`,
+`SYSTEMCTL_ARGS` (default `--user`).
+
 ## Boundaries
 
 Run `make test`, not a bare `go test ./...`. The Makefile's `HERMETIC_ENV`
