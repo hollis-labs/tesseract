@@ -69,11 +69,11 @@ func TestAppendRecordWithoutAuditSpecWritesNoAudit(t *testing.T) {
 	}
 }
 
-type droppedRow struct{ ItemID, RecordID, Action, Class, Repaired string }
+type droppedRow struct{ EntityType, ItemID, RecordID, Action, Class, Repaired string }
 
 func droppedRows(t *testing.T, s *Store) []droppedRow {
 	t.Helper()
-	rows, err := s.db.Query(`SELECT item_id, record_id, action, class, COALESCE(repaired_at, '') FROM audit_dropped ORDER BY id`)
+	rows, err := s.db.Query(`SELECT entity_type, item_id, record_id, action, class, COALESCE(repaired_at, '') FROM audit_dropped ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func droppedRows(t *testing.T, s *Store) []droppedRow {
 	var out []droppedRow
 	for rows.Next() {
 		var d droppedRow
-		if err := rows.Scan(&d.ItemID, &d.RecordID, &d.Action, &d.Class, &d.Repaired); err != nil {
+		if err := rows.Scan(&d.EntityType, &d.ItemID, &d.RecordID, &d.Action, &d.Class, &d.Repaired); err != nil {
 			t.Fatal(err)
 		}
 		out = append(out, d)
@@ -129,6 +129,11 @@ func TestOrdinaryMutationCommitsWhenItsAuditFailsAndRecordsAuditDropped(t *testi
 			d := droppedRows(t, s)
 			if len(d) != 1 || d[0].Action != EventWrite || d[0].Class != c.class || d[0].RecordID != rec.RecordID || d[0].Repaired != "" {
 				t.Fatalf("audit_dropped = %+v, want one %s row for %s", d, c.class, rec.RecordID)
+			}
+			// Entity type and a stable id, never key text.
+			if d[0].EntityType != "context" || d[0].ItemID != contextSubjectID("app/x/session", "k") ||
+				!strings.HasPrefix(d[0].ItemID, "ctx_") || strings.Contains(d[0].ItemID, "session") {
+				t.Fatalf("audit_dropped entity = %s %q", d[0].EntityType, d[0].ItemID)
 			}
 			if AuditDropped()-before != 1 {
 				t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
@@ -245,5 +250,24 @@ func TestUpdateRecordStatusAuditedRecordsStatusPromote(t *testing.T) {
 	evs := mutationAudits(s)
 	if len(evs) != 1 || evs[0].EventType != EventStatusPromote || evs[0].Revision != rec.Revision {
 		t.Fatalf("audit = %+v for %+v", evs, rec)
+	}
+}
+
+// If the repair record cannot be written either, the ordinary mutation still
+// commits and the gap is logged and counted (architect).
+func TestAuditDroppedInsertFailureStillCommitsTheMutation(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.db.Exec(`DROP TABLE audit_dropped`); err != nil {
+		t.Fatal(err)
+	}
+	before := AuditDropped()
+	if _, err := appendWithAudit(t, s, &AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)}); err != nil {
+		t.Fatalf("mutation must commit even when audit_dropped cannot be written: %v", err)
+	}
+	if _, err := s.Head(context.Background(), "app/x/session", "k"); err != nil {
+		t.Fatalf("record missing: %v", err)
+	}
+	if AuditDropped()-before != 1 {
+		t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
 	}
 }

@@ -14,7 +14,9 @@ package contextstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -125,7 +127,11 @@ func auditEventWithinTx(ctx context.Context, tx *sql.Tx, ev AuditEvent) error {
 		// Ordinary mutation: it commits, and a durable audit_dropped row in the
 		// same tx says which event is missing so a repair pass can find it.
 		if dErr := recordAuditDropped(ctx, tx, ev, class); dErr != nil {
-			return dErr
+			// The repair record could not be written either: the mutation still
+			// commits (architect), and this ERROR plus the counter are the only
+			// trace.
+			slog.Default().ErrorContext(ctx, "audit_dropped repair record not written",
+				"kind", outboxKindAudit, "subject", subject, "event_type", ev.EventType, "class", class)
 		}
 		auditDropped.Add(1)
 		slog.Default().ErrorContext(ctx, "mutation committed without its audit event",
@@ -169,7 +175,8 @@ func migrateAuditDropped(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS audit_dropped (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	item_id TEXT NOT NULL DEFAULT '',
+	entity_type TEXT NOT NULL,
+	item_id TEXT NOT NULL,
 	record_id TEXT NOT NULL DEFAULT '',
 	action TEXT NOT NULL,
 	class TEXT NOT NULL,
@@ -180,9 +187,48 @@ CREATE TABLE IF NOT EXISTS audit_dropped (
 }
 
 // recordAuditDropped writes the repair record for an ordinary mutation that
-// committed without its audit event: ids and a bounded class, no error text.
+// committed without its audit event: the entity type and its stable id (never
+// key text), the action, the revision/record id, and a bounded class. No error
+// text.
 func recordAuditDropped(ctx context.Context, tx *sql.Tx, ev AuditEvent, class string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO audit_dropped (item_id, record_id, action, class, created_at) VALUES (?, ?, ?, ?, ?)`,
-		ev.ItemID, ev.RecordID, ev.EventType, class, time.Now().UTC().Format(time.RFC3339))
+	entityType, itemID := droppedEntity(ev)
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_dropped (entity_type, item_id, record_id, action, class, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		entityType, itemID, ev.RecordID, ev.EventType, class, time.Now().UTC().Format(time.RFC3339))
 	return err
+}
+
+// droppedEntity names what the dropped event was about by a stable id that
+// never contains key text: the item id for memory-domain items, the derived
+// opaque ctx_ id for context records, the namespace name for namespace events,
+// the principal id for credential events.
+func droppedEntity(ev AuditEvent) (entityType, itemID string) {
+	action := ev.EventType
+	switch {
+	case strings.HasPrefix(action, "namespace."):
+		return "namespace", ev.Namespace
+	case strings.HasPrefix(action, "credential."):
+		return "credential", ev.Key
+	}
+	for _, d := range []string{"memory", "knowledge", "workspace", "event"} {
+		if strings.HasPrefix(action, d+".") {
+			if ev.ItemID != "" {
+				return d, ev.ItemID
+			}
+			return d, contextSubjectID(ev.Namespace, ev.Key)
+		}
+	}
+	return "context", contextSubjectID(ev.Namespace, ev.Key)
+}
+
+// contextSubjectID is the stable, opaque id of a context record: "ctx_" + the
+// first 32 hex characters of sha256(namespace || 0x00 || key) (architect ruling
+// tesseract_context_record_subject_2026_10_16). Context records have no item
+// identity (record_id is per revision, heads is keyed by namespace/key), and
+// key text must never leave the machine. Stable across revisions, no migration.
+//
+// It is a hash, NOT a secret: anyone who can guess the namespace and key can
+// recompute it. It hides the key from a reader; it does not authenticate.
+func contextSubjectID(namespace, key string) string {
+	sum := sha256.Sum256([]byte(namespace + "\x00" + key))
+	return "ctx_" + hex.EncodeToString(sum[:])[:32]
 }
