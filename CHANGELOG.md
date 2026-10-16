@@ -8,6 +8,10 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-10-16
+
+Adopts the shared auth and secrets libraries and the reorganised libs module paths. Source release only; no prebuilt binaries are published.
+
 ### Changed
 - Move to the reorganised `github.com/hollis-labs/libs` module paths (CW-20261016-0070); the old flat tags were deleted, so `main` did not build from a clean module cache. `libs/util` -> `libs/core/util` v0.4.0, `libs/plugin-mcp` -> `libs/mcp/plugin-mcp` v0.3.0, `libs/ui-go` -> `libs/ui/ui-go` v0.1.0, `substrate/llm-core` -> `libs/llm/core` v0.2.0. Clean break: no replace lines, no shims, package layout unchanged. Embedded consumers must update their imports.
 
@@ -20,9 +24,9 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
   - *`tesseract mcp` (stdio, including the hub's ssh `tesseract-mcp-stdio` callers):* `permissive`. No call that worked before is refused. The token is now consulted on every tool call, so `--token-file` keeps working and a file refreshed in place is honored without a restart. New stderr output: an `Auth:` startup line and would-deny blocks (stdout is untouched).
   - *Unreadable `config.yaml`:* defaults to `enforce`.
   - *Flip to `enforce` or `off` with no rebuild:* `auth.mode` in `config.yaml`, or `HOLLIS_AUTH_TESSERACT` / `HOLLIS_AUTH` (env wins).
-  - New: Tether JWT/JWKS verifier (`auth.jwt`, `auth.deny_list`, bearer from a go-secrets reference), canonical scopes `tesseract.{read,write,promote,maintain,admin}` with deny-by-default route and tool tables, `GET /v1/auth/whoami`, `GET /v1/auth/summary`, `X-Tesseract-Auth` response header, `auth` section in `config.yaml`. Uses local `go.mod` replaces for `go-auth` and `go-secrets` until the monorepo import.
+  - New: Tether JWT/JWKS verifier (`auth.jwt`, `auth.deny_list`, bearer from a go-secrets reference), canonical scopes `tesseract.{read,write,promote,maintain,admin}` with deny-by-default route and tool tables, `GET /v1/auth/whoami`, `GET /v1/auth/summary`, `X-Tesseract-Auth` response header, `auth` section in `config.yaml`. Uses `github.com/hollis-labs/libs/security/auth` and `libs/security/secrets` v0.1.0.
 
-- Credentials are go-secrets references (CW-20261015-0046). `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are no longer read; store keys with `secrets set file://tesseract/openai-api-key` / `anthropic-api-key` or point `embedding.api_key_ref` / `synthesis.api_key_ref` at any reference. A configured reference that cannot be resolved fails startup; an absent default still degrades to BM25-only recall. `tesseract mcp --token-file` now requires a `0600` file owned by the caller and also accepts a reference; `TESSERACT_MCP_TOKEN`, `--token` and `serve --static-token` accept references. Admin provider status reports `key_ref` / `key_present`. Uses a local `go.mod` replace for `go-secrets` until the monorepo import.
+- Credentials are go-secrets references (CW-20261015-0046). `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are no longer read; store keys with `secrets set file://tesseract/openai-api-key` / `anthropic-api-key` or point `embedding.api_key_ref` / `synthesis.api_key_ref` at any reference. A configured reference that cannot be resolved fails startup; an absent default still degrades to BM25-only recall. `tesseract mcp --token-file` now requires a `0600` file owned by the caller and also accepts a reference; `TESSERACT_MCP_TOKEN`, `--token` and `serve --static-token` accept references. Admin provider status reports `key_ref` / `key_present`. Uses `github.com/hollis-labs/libs/security/secrets` v0.1.0.
 
 ## [0.12.1] — 2026-10-10
 
@@ -1467,7 +1471,8 @@ Foundational embedding + memory release. Bundles PR #1 (go-queue integration) an
 
 Initial standalone-repo baseline tag at commit `3b92f5c`. Captures the post-rename state of the codebase extracted from `fragments-engine/tesseract/` to its own repo at `github.com/hollis-labs/tesseract`. No formal release notes — this tag exists primarily to anchor `git describe` output.
 
-[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/hollis-labs/tesseract/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/hollis-labs/tesseract/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/hollis-labs/tesseract/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hollis-labs/tesseract/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/hollis-labs/tesseract/compare/v0.10.0...v0.11.0
