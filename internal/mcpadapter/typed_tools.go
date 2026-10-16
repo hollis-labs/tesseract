@@ -262,14 +262,15 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req map[string]any) (a
 		RecordType: "session/snapshot",
 		Status:     "draft",
 		Pointers:   []string{"session:" + sessionID},
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventSessionSnapshot,
+			Actor:     actor,
+			Metadata:  json.RawMessage(fmt.Sprintf(`{"session_id":%q,"project_id":%q}`, sessionID, projectID)),
+		},
 	})
 	if err != nil {
 		return toolError(codeWriteFailed, err.Error()), nil
 	}
-
-	// Audit log
-	_ = a.Store.EmitSessionSnapshot(ctx, actor, ns, key, rec.Revision, rec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"session_id":%q,"project_id":%q}`, sessionID, projectID)))
 
 	result := map[string]any{
 		"record_id": rec.RecordID,
@@ -398,13 +399,15 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req map[string]any) (any
 		Status:     status,
 		TTL:        ttl,
 		Pointers:   pointers,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventTypedWrite,
+			Actor:     actor,
+			Metadata:  json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q}`, recordType, status)),
+		},
 	})
 	if err != nil {
 		return toolError(codeWriteFailed, err.Error()), nil
 	}
-
-	_ = a.Store.EmitTypedWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q}`, recordType, status)))
 
 	return toolJSON(map[string]any{
 		"record_id":   rec.RecordID,
@@ -457,13 +460,14 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req map[string]any, t
 		return toolError(codeValidationError, transErr.Error()), nil
 	}
 
-	rec, err := a.Store.UpdateRecordStatus(ctx, ns, key, actor, newStatus)
+	rec, err := a.Store.UpdateRecordStatusAudited(ctx, ns, key, actor, newStatus, &contextstore.AuditSpec{
+		EventType: contextstore.EventStatusPromote,
+		Actor:     actor,
+		Metadata:  json.RawMessage(fmt.Sprintf(`{"from":%q,"to":%q,"source":"mcp"}`, oldStatus, newStatus)),
+	})
 	if err != nil {
 		return toolError(codePromoteFailed, err.Error()), nil
 	}
-
-	_ = a.Store.EmitStatusPromote(ctx, actor, ns, key, rec.Revision, rec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"from":%q,"to":%q,"source":"mcp"}`, oldStatus, newStatus)))
 
 	return toolJSON(map[string]any{
 		"record_id":   rec.RecordID,

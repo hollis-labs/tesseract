@@ -269,6 +269,11 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req map[string]any) (any
 			Status:     status,
 			TTL:        ttl,
 			Pointers:   pointers,
+			Audit: &contextstore.AuditSpec{
+				EventType: contextstore.EventBulkIngest,
+				Actor:     actor,
+				Metadata:  json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q,"batch_index":%d}`, item.RecordType, status, i)),
+			},
 		})
 		if err != nil {
 			res.Status = "error"
@@ -284,10 +289,6 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req map[string]any) (any
 		res.RecordID = rec.RecordID
 		res.Status = "written"
 		written++
-
-		// Audit.
-		_ = a.Store.EmitBulkIngest(ctx, actor, item.Namespace, item.Key, rec.Revision, rec.RecordID,
-			json.RawMessage(fmt.Sprintf(`{"source":"mcp","record_type":%q,"status":%q,"batch_index":%d}`, item.RecordType, status, i)))
 
 		// Embed if requested.
 		if embed && a.EmbeddingProvider != nil {
@@ -413,6 +414,11 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req map[string]any) (
 			RecordType: recordType,
 			Status:     "draft",
 			Pointers:   []string{"source:" + keyPrefix},
+			Audit: &contextstore.AuditSpec{
+				EventType: contextstore.EventChunkedIngest,
+				Actor:     actor,
+				Metadata:  json.RawMessage(fmt.Sprintf(`{"chunk_index":%d,"total_chunks":%d,"source":%q}`, chunk.Index, chunk.TotalCount, keyPrefix)),
+			},
 		})
 		if err != nil {
 			return toolError(codeWriteFailed, fmt.Sprintf("chunk %d: %v", chunk.Index, err)), nil
@@ -444,9 +450,6 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req map[string]any) (
 				res.Error = "embedding failed: " + embedErr.Error()
 			}
 		}
-
-		_ = a.Store.EmitChunkedIngest(ctx, actor, ns, key, rec.Revision, rec.RecordID,
-			json.RawMessage(fmt.Sprintf(`{"chunk_index":%d,"total_chunks":%d,"source":%q}`, chunk.Index, chunk.TotalCount, keyPrefix)))
 
 		results = append(results, res)
 	}
