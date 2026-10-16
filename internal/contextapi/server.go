@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hollis-labs/tesseract/internal/nsglob"
 	"io"
 	"io/fs"
 	"net/http"
@@ -185,25 +186,9 @@ func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace st
 	return false
 }
 
-// namespacePermitted authorizes one concrete stored namespace. Unlike recall
-// selector authorization, a namespace ending in /* is still literal data here.
+// namespacePermitted authorizes one concrete stored namespace; see nsglob.
 func namespacePermitted(globs []string, namespace string) bool {
-	for _, glob := range globs {
-		if glob == "*" || glob == namespace {
-			return true
-		}
-		if matched, _ := path.Match(glob, namespace); matched {
-			return true
-		}
-		// Hierarchical match: "app/test/*" should match "app/test/session/task-001".
-		if strings.HasSuffix(glob, "/*") {
-			prefix := strings.TrimSuffix(glob, "*") // "app/test/"
-			if strings.HasPrefix(namespace, prefix) {
-				return true
-			}
-		}
-	}
-	return false
+	return nsglob.Permitted(globs, namespace)
 }
 
 // requireNamespaceSelectorAccess applies namespace authorization to the whole
