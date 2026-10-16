@@ -238,6 +238,13 @@ INSERT INTO memory_revisions (
 // FinishRevisionWrite performs the established best-effort effects for a
 // revision after the transaction that created it has committed.
 func (s *Store) FinishRevisionWrite(ctx context.Context, rev Revision, in WriteInput) {
+	// A transaction-aware sink was (or must have been) called through
+	// AuditRevisionInTx before commit; only without one does the audit event
+	// still go out here.
+	s.finishRevisionWrite(ctx, rev, in, s.txAuditSink() != nil)
+}
+
+func (s *Store) finishRevisionWrite(ctx context.Context, rev Revision, in WriteInput, auditedInTx bool) {
 	postCommitCtx := context.WithoutCancel(ctx)
 	if err := s.queue.Enqueue(postCommitCtx, Job{
 		Kind: EmbedJobKind, Payload: []byte(fmt.Sprintf(`{"revision_id":%q}`, rev.RevisionID)),
@@ -247,7 +254,7 @@ func (s *Store) FinishRevisionWrite(ctx context.Context, rev Revision, in WriteI
 			"job_kind", EmbedJobKind, "revision_id", rev.RevisionID, "memory_id", rev.MemoryID,
 			"namespace", in.Namespace, "domain", string(in.Domain), "queue", fmt.Sprintf("%T", s.queue), "err", err)
 	}
-	if s.auditSink != nil {
+	if s.auditSink != nil && !auditedInTx {
 		key := in.MemoryKey
 		if key == "" {
 			key = rev.MemoryID

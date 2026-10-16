@@ -139,12 +139,15 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 		return Revision{}, err
 	}
 
+	// The audit event commits with the revision (CW-20261016-0140).
+	auditedInTx := s.AuditRevisionInTx(ctx, tx, rev, in)
+
 	if err := tx.Commit(); err != nil {
 		return Revision{}, fmt.Errorf("commit: %w", err)
 	}
 
 	rev.DedupMatch = dedupMatch
-	s.FinishRevisionWrite(ctx, rev, in)
+	s.finishRevisionWrite(ctx, rev, in, auditedInTx)
 	return rev, nil
 }
 

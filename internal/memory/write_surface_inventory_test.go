@@ -24,7 +24,7 @@ var revisionWriteSurfaces = []struct {
 	{"ordinary persistence", "internal/memory/write.go", "WriteRevision", "WriteRevisionInTx"},
 	{"transactional persistence", "internal/memory/write_tx.go", "WriteRevisionInTx", "writeRevisionInTx"},
 	{"physical persistence", "internal/memory/write_tx.go", "writeRevisionInTx", "ExecContext"},
-	{"derived store API", "internal/memory/promote.go", "Promote", "WriteRevision"},
+	{"derived store API", "internal/memory/promote.go", "Promote", "WriteRevisionInTx"},
 	{"knowledge store API", "internal/knowledge/store.go", "Write", "WriteRevision"},
 	{"root public facade", "tesseract.go", "WriteMemory", "WriteRevision"},
 	{"HTTP memory", "internal/contextapi/memory_handler.go", "handleMemoryWrite", "WriteRevision"},

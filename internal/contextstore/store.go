@@ -143,6 +143,9 @@ type AuditEvent struct {
 	RecordID  string          `json:"record_id"`
 	CreatedAt string          `json:"created_at"`
 	Metadata  json.RawMessage `json:"metadata,omitempty"`
+	// ItemID is the stable item id of a memory-domain subject. It is not
+	// stored in audit_events; it only selects the outbox envelope subject.
+	ItemID string `json:"-"`
 }
 
 // AuditQuery defines bounded, deterministic audit query filters.
@@ -1679,6 +1682,10 @@ type AppendInput struct {
 	Pointers []string
 	// Provenance is structured provenance metadata.
 	Provenance json.RawMessage
+	// Audit, when set, records the mutation's audit event and outbox envelope
+	// in the same transaction as the record (see audit_tx.go). Nil keeps the
+	// caller's own post-commit Emit* call.
+	Audit *AuditSpec
 }
 
 // AppendRecord appends a new immutable revision and advances heads atomically in SQLite.
@@ -1693,6 +1700,9 @@ func (s *Store) AppendRecord(ctx context.Context, in AppendInput) (_ Record, err
 	}
 	if strings.TrimSpace(in.Actor) == "" {
 		return Record{}, errors.New("actor required")
+	}
+	if err = in.Audit.validate(); err != nil {
+		return Record{}, err
 	}
 	if len(in.Payload) == 0 {
 		return Record{}, errors.New("payload required")
@@ -1850,6 +1860,11 @@ ON CONFLICT(namespace, key_name) DO UPDATE SET
 	status=excluded.status
 `, ns, key, rev, recordID, now, recordType, status)
 	if err != nil {
+		_ = os.Remove(absPath)
+		return Record{}, err
+	}
+
+	if err = auditWithinMutation(ctx, tx, in.Audit, ns, key, rev, recordID, in.Actor, now); err != nil {
 		_ = os.Remove(absPath)
 		return Record{}, err
 	}
@@ -3691,6 +3706,12 @@ ORDER BY created_at ASC`, now)
 // UpdateRecordStatus updates the status of the head record for a namespace/key.
 // This appends a new revision with the updated status.
 func (s *Store) UpdateRecordStatus(ctx context.Context, namespace, key, actor, newStatus string) (Record, error) {
+	return s.UpdateRecordStatusAudited(ctx, namespace, key, actor, newStatus, nil)
+}
+
+// UpdateRecordStatusAudited is UpdateRecordStatus with the status change's audit
+// event recorded in the same transaction (see AuditSpec).
+func (s *Store) UpdateRecordStatusAudited(ctx context.Context, namespace, key, actor, newStatus string, audit *AuditSpec) (Record, error) {
 	head, err := s.Head(ctx, namespace, key)
 	if err != nil {
 		return Record{}, err
@@ -3706,6 +3727,7 @@ func (s *Store) UpdateRecordStatus(ctx context.Context, namespace, key, actor, n
 		ContentVersion: head.ContentVersion + 1,
 		Pointers:       head.Pointers,
 		Provenance:     head.Provenance,
+		Audit:          audit,
 	})
 }
 
