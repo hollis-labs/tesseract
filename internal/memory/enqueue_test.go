@@ -44,7 +44,7 @@ var errQueueDown = errors.New("queue unavailable")
 
 func newStoreWithQueue(t *testing.T, q memory.JobQueue) *memory.Store {
 	t.Helper()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: t.TempDir()})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}

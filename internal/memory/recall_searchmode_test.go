@@ -347,7 +347,7 @@ func (varyingEmbedder) EmbeddingDimensions(_ string) int { return 3 }
 func newVaryingEmbedderStore(t *testing.T) (*memory.Store, func()) {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: dir})
+	cs, err := memory.OpenTestContextStore(context.Background(), contextstore.Config{RootDir: dir})
 	if err != nil {
 		t.Fatalf("contextstore.Open: %v", err)
 	}
