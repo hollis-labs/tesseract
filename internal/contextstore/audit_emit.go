@@ -2,6 +2,7 @@ package contextstore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -251,6 +252,33 @@ func (s *Store) EmitRevision(ctx context.Context, domain, op, actor, namespace, 
 		Revision:  1,
 		RecordID:  recordID,
 		Metadata:  metadata,
+	})
+}
+
+// EmitRevisionTx is EmitRevision inside the caller's transaction, so the audit
+// row and outbox envelope commit with the revision they describe. itemID is the
+// stable item id used for the envelope subject (msg://<domain>/tesseract/<item_id>);
+// the revision id stays in the payload ref. Recording never rejects the caller's
+// write: a failure is absorbed under a savepoint, logged and counted (AuditDropped).
+func (s *Store) EmitRevisionTx(ctx context.Context, tx *sql.Tx, domain, op, actor, namespace, key, recordID, itemID string, metadata json.RawMessage) error {
+	switch op {
+	case AuditOpWrite, AuditOpSupersede, AuditOpDeprecate, AuditOpPromote:
+	default:
+		return fmt.Errorf("EmitRevisionTx: unknown op %q", op)
+	}
+	if domain == "" {
+		return fmt.Errorf("EmitRevisionTx: domain is required")
+	}
+	return auditEventWithinTx(ctx, tx, AuditEvent{
+		EventType: domain + "." + op,
+		Actor:     actor,
+		Namespace: namespace,
+		Key:       key,
+		Revision:  1,
+		RecordID:  recordID,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Metadata:  metadata,
+		ItemID:    itemID,
 	})
 }
 

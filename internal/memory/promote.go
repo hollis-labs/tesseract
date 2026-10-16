@@ -102,24 +102,57 @@ func (s *Store) Promote(ctx context.Context, in PromoteInput) (Revision, error) 
 		}
 	}
 
-	// Write the promoted revision into the target namespace.
-	promoted, err := s.WriteRevision(ctx, writeIn)
+	// Write the promoted revision, deprecate the source and record the audit
+	// events in ONE transaction: a promote is either entirely visible or not at
+	// all, and its three audit events (target write, source deprecate, umbrella
+	// promote) commit with it (CW-20261016-0140). Before this the write and the
+	// deprecation were separate transactions and a failure between them left a
+	// promoted copy with a live source.
+	if err := s.EnsureNamespaceRegistered(ctx, writeIn.Namespace); err != nil {
+		return Revision{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Revision{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	promoted, err := s.WriteRevisionInTx(ctx, tx, writeIn)
 	if err != nil {
 		return Revision{}, fmt.Errorf("write promoted revision: %w", err)
 	}
+	writeAudited := s.AuditRevisionInTx(ctx, tx, promoted, writeIn)
 
-	// Deprecate the source revision.
-	if depErr := s.Deprecate(ctx, srcRev.RevisionID); depErr != nil {
+	if depErr := s.DeprecateInTx(ctx, tx, srcRev.RevisionID); depErr != nil {
 		return Revision{}, fmt.Errorf("deprecate source revision: %w", depErr)
 	}
+	depAudited := s.AuditDeprecateInTx(ctx, tx, srcRev.RevisionID, srcRev.MemoryID)
 
-	// Umbrella promote event. Nested WriteRevision (for target) and Deprecate
-	// (for source) emit their own events — callers see three events per promote.
-	if s.auditSink != nil {
-		key := promoted.MemoryKey
-		if key == "" {
-			key = promoted.MemoryID
+	// Umbrella promote event. The nested write and deprecate emit their own
+	// events, so callers see three events per promote.
+	key := promoted.MemoryKey
+	if key == "" {
+		key = promoted.MemoryID
+	}
+	umbrellaAudited := false
+	if sink := s.txAuditSink(); sink != nil {
+		_ = sink.EmitRevisionTx(ctx, tx, string(promoted.Domain), auditOpPromote, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, revisionItemID(promoted), nil)
+		umbrellaAudited = true
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Revision{}, fmt.Errorf("commit: %w", err)
+	}
+
+	s.finishRevisionWrite(ctx, promoted, writeIn, writeAudited)
+	if s.auditSink != nil && !depAudited {
+		srcKey := srcRev.MemoryKey
+		if srcKey == "" {
+			srcKey = srcRev.MemoryID
 		}
+		_ = s.auditSink.EmitRevision(ctx, string(srcRev.Domain), auditOpDeprecate, "system", state.Namespace, srcKey, srcRev.RevisionID, nil)
+	}
+	if s.auditSink != nil && !umbrellaAudited {
 		_ = s.auditSink.EmitRevision(ctx, string(promoted.Domain), auditOpPromote, in.ActorAgentID, promoted.Namespace, key, promoted.RevisionID, nil)
 	}
 
@@ -181,6 +214,32 @@ LIMIT 1`,
 	return nil
 }
 
+// AuditDeprecateInTx records the memory.deprecate audit event for revisionID
+// inside the caller's transaction, after DeprecateInTx. It reports whether the
+// event was recorded in the transaction (false when the sink is not
+// transaction-aware or the item cannot be read; the caller then keeps the
+// post-commit emit). memoryID may be empty, in which case it is looked up.
+func (s *Store) AuditDeprecateInTx(ctx context.Context, tx *sql.Tx, revisionID, memoryID string) bool {
+	sink := s.txAuditSink()
+	if sink == nil {
+		return false
+	}
+	if memoryID == "" {
+		_ = tx.QueryRowContext(ctx, `SELECT memory_id FROM memory_revisions WHERE revision_id = ?`, revisionID).Scan(&memoryID)
+	}
+	var domain, namespace string
+	var key sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT domain, namespace, memory_key FROM memory_state WHERE memory_id = ?`, memoryID).Scan(&domain, &namespace, &key); err != nil {
+		return false
+	}
+	k := key.String
+	if k == "" {
+		k = memoryID
+	}
+	_ = sink.EmitRevisionTx(ctx, tx, domain, auditOpDeprecate, "system", namespace, k, revisionID, memoryID, nil)
+	return true
+}
+
 // Deprecate marks a revision as deprecated.
 // If the deprecated revision was the current revision, memory_state.current_revision
 // is updated to the next non-deprecated revision, or NULL if none remains.
@@ -199,11 +258,13 @@ func (s *Store) Deprecate(ctx context.Context, revisionID string) error {
 		return err
 	}
 
+	auditedInTx := s.AuditDeprecateInTx(ctx, tx, revisionID, memoryID)
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	if s.auditSink != nil {
+	if s.auditSink != nil && !auditedInTx {
 		// Namespace/key not directly available on this signature — reload
 		// memory_state for observability. If that read fails, skip the emit
 		// rather than fail Deprecate (emit is best-effort observability).
