@@ -29,6 +29,9 @@ type CLI struct {
 
 // Run executes `tesseract context ...` commands.
 func (c *CLI) Run(ctx context.Context, args []string) int {
+	// Audit envelopes from this process are the local operator's; the marker,
+	// not an actor string, is what says so.
+	ctx = contextstore.AsOperatorCLI(ctx)
 	if c.Stdout == nil {
 		c.Stdout = os.Stdout
 	}

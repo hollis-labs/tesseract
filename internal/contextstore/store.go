@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ import (
 )
 
 const (
-	schemaVersion = 29
+	schemaVersion = 30
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1596,6 +1597,10 @@ FROM workspace_promotion_requests`); err != nil {
 			if err = migrateCredentialFamilies(ctx, tx); err != nil {
 				return err
 			}
+		case 30:
+			if err = migrateEventsOutbox(ctx, tx); err != nil {
+				return err
+			}
 		}
 
 		version++
@@ -2338,8 +2343,20 @@ type auditExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) error {
-	return recordAuditEventWith(ctx, s.db, event)
+func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err = recordAuditWithOutbox(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func recordAuditEventWith(ctx context.Context, executor auditExecutor, event AuditEvent) error {
 	if strings.TrimSpace(event.EventType) == "" {
@@ -2376,6 +2393,48 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.CreatedAt,
 		string(metadata),
 	)
+	return err
+}
+
+// recordAuditWithOutbox writes the audit row and its outbox envelope through
+// one transaction: the caller commits or rolls back both together.
+func recordAuditWithOutbox(ctx context.Context, tx *sql.Tx, event AuditEvent) error {
+	if strings.TrimSpace(event.CreatedAt) == "" {
+		event.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if err := recordAuditEventWith(ctx, tx, event); err != nil {
+		return err
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
+		return fmt.Errorf("outbox: audit row id: %w", err)
+	}
+	// The outbox is derived from audit_events, which stays the record of
+	// truth. Any failure of the outbox insert rolls back to this savepoint and
+	// the audit row still commits; the gap is logged at ERROR and counted.
+	// A failure of the surrounding transaction itself still loses both rows.
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT outbox_insert`); err != nil {
+		return err
+	}
+	if err := writeOutboxEvent(ctx, tx, event, id); err != nil {
+		if _, rbErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT outbox_insert`); rbErr != nil {
+			return errors.Join(err, rbErr)
+		}
+		if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_insert`); relErr != nil {
+			return errors.Join(err, relErr)
+		}
+		if _, skErr := tx.ExecContext(ctx, `INSERT INTO outbox_skipped (audit_id, error, created_at) VALUES (?, ?, ?)`,
+			id, failureClass(err), time.Now().UTC().Format(time.RFC3339)); skErr != nil {
+			return errors.Join(err, skErr)
+		}
+		outboxSkipped.Add(1)
+		typ, sid := auditSubject(event)
+		slog.Default().ErrorContext(ctx, "audit recorded without outbox envelope",
+			"kind", outboxKindAudit, "subject", "msg://"+typ+"/"+outboxApp+"/"+sid,
+			"event_type", event.EventType, "err", err)
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_insert`)
 	return err
 }
 
@@ -3076,7 +3135,7 @@ func (s *Store) FinishNamespaceRegistration(ctx context.Context, namespace, sour
 		"owner_id":   ownerID,
 	})
 	if err == nil {
-		_ = s.EmitNamespaceRegister(context.WithoutCancel(ctx), "system", ns, meta)
+		_ = s.EmitNamespaceRegister(asInternalPath(context.WithoutCancel(ctx)), "system", ns, meta)
 	}
 }
 
