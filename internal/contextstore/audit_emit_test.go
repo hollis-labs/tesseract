@@ -266,3 +266,28 @@ func TestEmitRevisionRejectsBadInput(t *testing.T) {
 		t.Error("empty domain accepted; want error")
 	}
 }
+
+// CW-20261016-0149: an event with no namespace is filed under the unscoped
+// default instead of being rejected, so exactly one row is kept.
+func TestEmitEmptyNamespaceKeepsOneAuditRow(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if err := s.EmitPacket(ctx, "tester", "", "req-1", nil); err != nil {
+		t.Fatalf("EmitPacket empty namespace: %v", err)
+	}
+	if err := s.EmitMaintenance(ctx, EventMaintenanceTrim, "tester", "", nil); err != nil {
+		t.Fatalf("EmitMaintenance empty namespace: %v", err)
+	}
+	events, err := s.ListAuditEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("rows = %d, want 2", len(events))
+	}
+	for _, ev := range events {
+		if ev.Namespace != UnscopedAuditNamespace {
+			t.Errorf("%s namespace = %q, want %q", ev.EventType, ev.Namespace, UnscopedAuditNamespace)
+		}
+	}
+}

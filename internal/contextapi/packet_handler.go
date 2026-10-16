@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -267,7 +268,23 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		Sources:          sources,
 	}
 
-	_ = s.Store.EmitPacket(ctx, packetActor(r), strings.Join(req.Selector.Namespaces, ","), reqID,
+	// Derive the audit namespace from the selector, else from the records
+	// actually returned; emit() files anything still empty under the
+	// unscoped default so the audit row is never lost.
+	auditNS := strings.Join(req.Selector.Namespaces, ",")
+	if auditNS == "" {
+		seen := map[string]bool{}
+		var nss []string
+		for _, it := range items {
+			if !seen[it.Namespace] {
+				seen[it.Namespace] = true
+				nss = append(nss, it.Namespace)
+			}
+		}
+		sort.Strings(nss)
+		auditNS = strings.Join(nss, ",")
+	}
+	_ = s.Store.EmitPacket(ctx, packetActor(r), auditNS, reqID,
 		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"items_returned":%d}`, reqID, manifest.ItemsReturned)))
 
 	if items == nil {
