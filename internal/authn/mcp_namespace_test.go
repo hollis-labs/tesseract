@@ -431,3 +431,29 @@ func TestMCPNamespaceFilteringPrecedesLimitsAndCounts(t *testing.T) {
 		t.Fatalf("registry second page: %v", second)
 	}
 }
+
+// An invalid configured legacy token must not become an anonymous read.
+func TestMCPNamespaceLegacyInvalidToken(t *testing.T) {
+	f, h, a := namespaceMCP(t, "enforce")
+	a.Auth = nil
+	a.Token = "invalid-test-token"
+	const marker = "legacy-private-marker"
+	if _, err := f.store.AppendRecord(context.Background(), contextstore.AppendInput{Namespace: "app/allowed/docs", Key: "entry", Actor: "test", Payload: json.RawMessage(`{"title":"` + marker + `"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{"invalid-test-token", ""} {
+		a.Token = token
+		for _, probe := range []struct {
+			tool string
+			args map[string]any
+		}{
+			{"tesseract_get", map[string]any{"domain": "context", "namespace": "app/allowed/docs", "key": "entry"}},
+			{"context_view", map[string]any{"namespaces": "*", "full_evaluation": true, "include_payload": true}},
+		} {
+			body := namespaceCall(t, h, probe.tool, probe.args)
+			if strings.Contains(body, "app/allowed/docs") != (token == "") || token != "" && strings.Contains(body, marker) {
+				t.Fatalf("%s legacy anonymous=%t: %s", probe.tool, token == "", body)
+			}
+		}
+	}
+}

@@ -32,7 +32,7 @@ func (a *Adapter) namespaceVisible(ctx context.Context, namespace string) bool {
 	if !ok {
 		// The legacy surface permits anonymous reads. An authenticated surface
 		// must never interpret lost claims as an unrestricted namespace grant.
-		return a.Auth == nil || a.namespaceDecision(ctx, false)
+		return a.Auth == nil && a.Token == "" || a.namespaceDecision(ctx, false)
 	}
 	return a.namespaceAllowed(ctx, claims.NamespaceGlobs, namespace)
 }
@@ -95,7 +95,7 @@ func (a *Adapter) filterEmbeddings(ctx context.Context, embeddings []contextstor
 func (a *Adapter) namespacePermit(ctx context.Context) func(string) bool {
 	claims, ok := a.loadClaims(ctx)
 	if !ok {
-		if a.Auth == nil {
+		if a.Auth == nil && a.Token == "" {
 			return nil
 		}
 		return func(string) bool { return a.namespaceDecision(ctx, false) }

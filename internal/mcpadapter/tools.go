@@ -1417,11 +1417,7 @@ func (a *Adapter) loadClaims(ctx context.Context) (contextstore.AuthToken, bool)
 // the grandfathered bare memory/event forms denote every descendant, so one
 // configured token glob must contain that whole prefix before recall begins.
 func globsPermitRecallSelector(globs []string, selector string, domainNames []string) bool {
-	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
-	if isPrefix {
-		return nsglob.PatternWithin(globs, prefix+"/*")
-	}
-	return nsglob.Permitted(globs, selector)
+	return nsglob.SelectorPermitted(globs, selector, domainNames)
 }
 
 func globsPermitRecallScope(globs []string, selector string, domainNames []string) bool {
