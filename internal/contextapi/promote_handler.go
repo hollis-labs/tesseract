@@ -98,22 +98,24 @@ func (s *Server) handlePromoteRequest(w http.ResponseWriter, r *http.Request) {
 	payload, _ := json.Marshal(pr)
 
 	namespace := "app/" + clientID + "/promotions"
-	reqRec, err := s.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = s.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: namespace,
 		Key:       requestID,
 		Actor:     actor,
 		Payload:   payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteRequest,
+			Actor:     actor,
+			Metadata: json.RawMessage(fmt.Sprintf(
+				`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
+				requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
+			)),
+		},
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "write_failed", err.Error(), nil)
 		return
 	}
-
-	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
-			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
-		)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"request_id": requestID,
@@ -197,19 +199,21 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 	pr.ApprovalID = approvalID
 	pr.ApprovedBy = actor
 	updatedPayload, _ := json.Marshal(pr)
-	updRec, err := s.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = s.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       req.RequestID,
 		Actor:     actor,
 		Payload:   updatedPayload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteApprove,
+			Actor:     actor,
+			Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, req.RequestID, approvalID)),
+		},
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "write_failed", err.Error(), nil)
 		return
 	}
-
-	_ = s.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, req.RequestID, updRec.Revision, updRec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, req.RequestID, approvalID)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"approval_id": approvalID,
@@ -298,6 +302,16 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 		Key:       pr.TargetKey,
 		Actor:     actor,
 		Payload:   srcRec.Payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromote,
+			Actor:     actor,
+			MetadataFor: func(recordID string, _ int64) json.RawMessage {
+				return json.RawMessage(fmt.Sprintf(
+					`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
+					req.RequestID, pa.ApprovalID, recordID,
+				))
+			},
+		},
 	})
 	if err != nil {
 		// A reserved target is a deterministic consequence of what the client
@@ -321,12 +335,6 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 		Actor:     actor,
 		Payload:   appliedPayload,
 	})
-
-	_ = s.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
-			req.RequestID, pa.ApprovalID, newRec.RecordID,
-		)))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"record_id":   newRec.RecordID,
