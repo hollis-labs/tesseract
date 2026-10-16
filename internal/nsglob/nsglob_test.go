@@ -29,23 +29,29 @@ func TestPermittedAndPatternWithin(t *testing.T) {
 }
 
 func TestMalformedAndInteriorWildcardGlobsFailClosed(t *testing.T) {
-	// A glob path.Match cannot parse grants nothing, prefix fallback included.
-	if Permitted([]string{"[/*"}, "[/x") || PatternWithin([]string{"[/*"}, "[/x") {
-		t.Error("malformed glob granted access")
+	cases := []struct {
+		name        string
+		globs       []string
+		namespace   string // checked with Permitted
+		pattern     string // checked with PatternWithin
+		wantPermit  bool
+		wantPattern bool
+	}{
+		{"malformed glob grants nothing", []string{"[/*"}, "[/x", "[/x", false, false},
+		{"malformed glob does not disable valid ones", []string{"[/*", "ok/*"}, "ok/x", "ok/x", true, true},
+		{"interior wildcard not widened to deeper descendants", []string{"project/*/memory/*"}, "project/a/memory/private/x", "project/*/memory/private/*", false, false},
+		{"interior wildcard still matches one segment", []string{"project/*/memory/*"}, "project/a/memory/x", "project/a/memory/x", true, true},
+		{"literal prefix glob covers descendants", []string{"project/a/*"}, "project/a/x/y", "project/a/x/*", true, true},
+		{"empty globs deny", nil, "project/a/x", "project/a/x", false, false},
 	}
-	if Permitted([]string{"[/*", "ok/*"}, "ok/x") != true {
-		t.Error("a malformed glob must not disable the valid ones")
-	}
-	// An interior-wildcard grant matches one segment per star and is never
-	// widened to descendants by string prefix.
-	g := []string{"project/*/memory/*"}
-	if Permitted(g, "project/a/memory/private/x") {
-		t.Error("interior-wildcard glob granted a deeper descendant")
-	}
-	if PatternWithin(g, "project/*/memory/private/*") {
-		t.Error("PatternWithin disagrees with Permitted for an interior-wildcard glob")
-	}
-	if !Permitted(g, "project/a/memory/x") {
-		t.Error("single-segment match under the interior wildcard should still work")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Permitted(tc.globs, tc.namespace); got != tc.wantPermit {
+				t.Errorf("Permitted(%v, %q) = %v, want %v", tc.globs, tc.namespace, got, tc.wantPermit)
+			}
+			if got := PatternWithin(tc.globs, tc.pattern); got != tc.wantPattern {
+				t.Errorf("PatternWithin(%v, %q) = %v, want %v", tc.globs, tc.pattern, got, tc.wantPattern)
+			}
+		})
 	}
 }
