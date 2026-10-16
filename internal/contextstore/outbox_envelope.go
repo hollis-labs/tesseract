@@ -21,9 +21,10 @@ import (
 // Memory, knowledge, workspace and event subjects use the stable item id
 // (msg://<type>/tesseract/<item_id>) whenever the caller supplies it through
 // AuditEvent.ItemID, which the memory domains do (CW-20261016-0140 step 2b); the
-// revision id travels in payload ref. Context records have no item id and keep
-// msg://context/tesseract/<namespace>/<key>. The namespace/key fallback for the
-// domains only serves an audit sink that cannot supply an item id.
+// revision id travels in payload ref. Context records have no item id; they use
+// the derived opaque id msg://context/tesseract/ctx_<hex> (contextSubjectID).
+// The namespace/key fallback for the domains only serves an audit sink that
+// cannot supply an item id.
 func auditSubject(ev AuditEvent) (typ, id string) {
 	action := ev.EventType
 	switch {
