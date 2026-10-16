@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -190,7 +191,7 @@ func (a *Adapter) resolveItemRead(ctx context.Context, itemID string, claims con
 	}
 	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, state.Namespace) {
 		return nil, memory.State{}, toolError(codeNamespaceNotPermitted,
-			"token namespace globs do not permit reading: "+state.Namespace), nil
+			"token namespace globs do not permit reading this item"), nil
 	}
 	if !a.itemDomainAvailable(state.Domain) {
 		return nil, memory.State{}, domainUnavailable(string(state.Domain)), nil
@@ -414,6 +415,9 @@ func (a *Adapter) handleReferenceResolve(ctx context.Context, req map[string]any
 	if res != nil {
 		return res, nil
 	}
+	if denied := a.requireNamespace(ctx, selector.Namespace); denied != nil {
+		return denied, nil
+	}
 	result, err := a.itemService().ResolveReference(ctx, selector)
 	if err != nil {
 		switch {
@@ -430,7 +434,7 @@ func (a *Adapter) handleReferenceResolve(ctx context.Context, req map[string]any
 	}
 	if result.Status == itemservice.ResolutionResolved || result.Status == itemservice.ResolutionDeleted {
 		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, result.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit resolving this reference"), nil
+			return toolJSON(itemservice.ReferenceResolution{Status: itemservice.ResolutionNotFound}), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(result.Domain)) {
 			return domainUnavailable("resolved reference domain"), nil
@@ -476,7 +480,7 @@ func (a *Adapter) handleTesseractGet(ctx context.Context, req map[string]any) (a
 			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
 		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+			return itemLookupToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, selector.ItemID), "item_id", selector.ItemID), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
 			return domainUnavailable(meta.Domain), nil
@@ -588,7 +592,7 @@ func (a *Adapter) handleTesseractHistory(ctx context.Context, req map[string]any
 			return itemLookupToolError(err, "item_id", selector.ItemID), nil
 		}
 		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
-			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit reading: "+meta.Namespace), nil
+			return itemLookupToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, selector.ItemID), "item_id", selector.ItemID), nil
 		}
 		if !a.itemDomainAvailable(domains.Domain(meta.Domain)) {
 			return domainUnavailable(meta.Domain), nil
@@ -689,7 +693,7 @@ func (a *Adapter) handleTesseractGetRevision(ctx context.Context, req map[string
 	if store == nil {
 		return revisionStoreUnavailable(), nil
 	}
-	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
+	if denied := a.requireRevisionNamespace(ctx, revisionID, false); denied != nil {
 		return denied, nil
 	}
 	// Deliberate read: GetRevisionByIDReinforced bumps activation/access_count.
@@ -715,7 +719,7 @@ func (a *Adapter) handleTesseractDeprecate(ctx context.Context, req map[string]a
 	if store == nil {
 		return revisionStoreUnavailable(), nil
 	}
-	if denied := a.requireRevisionNamespace(ctx, revisionID); denied != nil {
+	if denied := a.requireRevisionNamespace(ctx, revisionID, false); denied != nil {
 		return denied, nil
 	}
 	if err := store.Deprecate(ctx, revisionID); err != nil {

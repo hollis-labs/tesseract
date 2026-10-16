@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
@@ -43,32 +45,36 @@ func (a *Adapter) requireNamespace(ctx context.Context, namespace string) any {
 }
 
 // Metadata resolves an ID's namespace before loading/reinforcing its content.
-// A missing ID is left to the operation's existing not-found semantics.
-func (a *Adapter) requireRevisionNamespace(ctx context.Context, id string) any {
+// Lookups return the same not-found result for missing and denied IDs. Touch
+// retains its existing unknown-ID batching behavior through ignoreMissing.
+func (a *Adapter) requireRevisionNamespace(ctx context.Context, id string, ignoreMissing bool) any {
 	store := a.revisionStore()
 	if store == nil {
 		return revisionStoreUnavailable()
 	}
 	meta, err := store.LookupRevisionMetadata(ctx, id)
-	if errors.Is(err, memory.ErrNotFound) {
+	if errors.Is(err, memory.ErrNotFound) && ignoreMissing {
 		return nil
+	}
+	if errors.Is(err, memory.ErrNotFound) || err == nil && !a.namespaceVisible(ctx, meta.Namespace) {
+		return toolErrorWithDetails(codeNotFound, fmt.Sprintf("%v: revision_id %s", memory.ErrNotFound, id), memory.NotFoundDetails("revision_id", id, time.Now()))
 	}
 	if err != nil {
 		return toolError(codeInternalError, "cannot authorize revision namespace")
 	}
-	return a.requireNamespace(ctx, meta.Namespace)
+	return nil
 }
 
 func (a *Adapter) requireRecordNamespace(ctx context.Context, id string) any {
 	var namespace string
 	err := a.Store.DB().QueryRowContext(ctx, "SELECT namespace FROM records WHERE record_id = ?", id).Scan(&namespace)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !a.namespaceVisible(ctx, namespace) {
 		return toolError(codeNotFound, "record not found")
 	}
 	if err != nil {
 		return toolError(codeInternalError, "cannot authorize record namespace")
 	}
-	return a.requireNamespace(ctx, namespace)
+	return nil
 }
 
 func (a *Adapter) filterEmbeddings(ctx context.Context, embeddings []contextstore.EmbeddingRow, records []contextstore.Record) ([]contextstore.EmbeddingRow, []contextstore.Record) {

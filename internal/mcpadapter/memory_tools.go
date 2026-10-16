@@ -202,7 +202,7 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 				return nil, lookupErr
 			}
 			if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
-				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit touching: "+meta.Namespace), nil
+				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit touching this item"), nil
 			}
 			metas = append(metas, meta)
 		}
@@ -218,7 +218,7 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 
 	// Authorize the entire batch before updating any activation counter.
 	for _, id := range revisionIDs {
-		if denied := a.requireRevisionNamespace(ctx, id); denied != nil {
+		if denied := a.requireRevisionNamespace(ctx, id, true); denied != nil {
 			return denied, nil
 		}
 	}

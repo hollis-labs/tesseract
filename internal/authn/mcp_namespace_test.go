@@ -205,6 +205,16 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 
 	probes["workspace_promote"] = append(probes["workspace_promote"], deny(map[string]any{"stage": "approve", "request_id": requestID, "actor": "test"}), deny(map[string]any{"stage": "apply", "request_id": requestID, "actor": "test"}))
 	probes["memory_promote"] = append(probes["memory_promote"], deny(map[string]any{"source_namespace": "session/allowed/memory/notes", "source_memory_id": brev.MemoryID, "target_namespace": "project/allowed/memory/notes"}), deny(map[string]any{"source_namespace": "session/allowed/memory/notes", "source_memory_id": brev.MemoryID, "target_namespace": "project/blocked/memory/notes"}))
+
+	for tool, cases := range probes {
+		for i, p := range cases {
+			_, item := p.args["item_id"]
+			_, rev := p.args["revision_id"]
+			if item || rev || tool == "workspace_promote" || tool == "tesseract_touch" && p.args["revision_ids"] != nil || tool == "context_embed" && p.args["namespace"] == "app/allowed/docs" {
+				cases[i].want = "not_found"
+			}
+		}
+	}
 	before := namespaceState(t, f)
 	for _, def := range h.srv.ToolDefinitions() {
 		cases, ok := probes[def.Name]
@@ -239,6 +249,9 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 				}
 				if p.want == "" && (strings.Contains(body, `"namespace":"app/blocked/`) || strings.Contains(body, `"namespace":"project/blocked/`)) {
 					t.Errorf("out-of-glob metadata returned: %s", body)
+				}
+				if p.args["namespace"] == nil && p.args["namespaces"] == nil && (strings.Contains(body, `project/blocked/memory/notes`) || strings.Contains(body, `project/blocked/workspace/drafts`)) {
+					t.Errorf("ID refusal disclosed a namespace: %s", body)
 				}
 				if strings.Contains(body, secret) {
 					t.Errorf("out-of-glob content returned: %s", body)

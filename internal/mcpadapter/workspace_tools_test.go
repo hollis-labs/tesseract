@@ -177,7 +177,7 @@ func TestWorkspacePromoteMCPAuthorizesExistingTargetBeforeDomainCheck(t *testing
 		"target_item_id": forbiddenTarget.ItemID, "expected_target_revision_id": "irrelevant",
 		"target_author_agent_id": "codex", "target_session_id": "review",
 	})
-	wantErrorCode(t, result, "namespace_not_permitted")
+	wantErrorCode(t, result, "not_found")
 	if message, _ := result["message"].(string); strings.Contains(message, "workspace") || strings.Contains(message, forbiddenTarget.Namespace) {
 		t.Fatalf("authorization denial disclosed target facts: %v", result)
 	}

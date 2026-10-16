@@ -198,7 +198,7 @@ func TestWorkspaceRecallMCPDescendantGrantExcludesParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	descendant := workspaceReviewAdapter(t, cs, store, "workspace-descendants", []string{parentNamespace + "/*"})
-	wantErrorCode(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": parent.ItemID}), "namespace_not_permitted")
+	wantErrorCode(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": parent.ItemID}), "not_found")
 	wantNoError(t, mustCallRegistered(t, descendant, "tesseract_get", map[string]any{"item_id": child.ItemID}))
 	body := wantNoError(t, mustCallRegistered(t, descendant, "tesseract_recall", map[string]any{
 		"namespaces": `["` + parentNamespace + `/*"]`, "domains": `["workspace"]`, "payload_mode": "full",
@@ -238,7 +238,7 @@ func TestMemoryRecallMCPLegacyPrefixRequiresDescendantGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	exact := workspaceReviewAdapter(t, cs, workspace.NewStore(cs.DB()), "memory-root", []string{root})
-	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_get", map[string]any{"item_id": child.ItemID}), "namespace_not_permitted")
+	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_get", map[string]any{"item_id": child.ItemID}), "not_found")
 	wantErrorCode(t, mustCallRegistered(t, exact, "tesseract_recall", map[string]any{
 		"namespaces": `["` + root + `"]`, "domains": `["memory"]`, "payload_mode": "full",
 	}), "namespace_not_permitted")
