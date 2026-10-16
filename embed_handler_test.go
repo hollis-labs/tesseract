@@ -6,7 +6,7 @@ import (
 
 	tesseract "github.com/hollis-labs/tesseract"
 
-	queue "github.com/hollis-labs/libs/util/queue"
+	queue "github.com/hollis-labs/libs/core/util/queue"
 )
 
 func TestNewEmbedHandler_InvalidJSON(t *testing.T) {
