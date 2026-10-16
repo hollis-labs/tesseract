@@ -82,6 +82,9 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 }
 
 func (a *Adapter) handleEventWrite(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
 	}
@@ -138,6 +141,13 @@ func (a *Adapter) handleEventList(ctx context.Context, req map[string]any) (any,
 	}
 	if len(namespaces) == 0 {
 		return toolError(codeValidationError, "namespaces is required and must name at least one event namespace"), nil
+	}
+	if claims, ok := a.loadClaims(ctx); ok {
+		for _, ns := range namespaces {
+			if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, ns, []string{"event"})) {
+				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit this event selector"), nil
+			}
+		}
 	}
 	workstreamID, workstreamErr := workstreamReadArg(req)
 	if workstreamErr != nil {

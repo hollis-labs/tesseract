@@ -297,7 +297,7 @@ func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contex
 		if namespace == "" {
 			return toolError(codeValidationError, "source and target namespaces are required")
 		}
-		if !globsPermit(claims.NamespaceGlobs, namespace) {
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, namespace) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit one of the promotion namespaces")
 		}
 		entry, err := a.Store.GetNamespacePolicy(ctx, namespace)
@@ -350,7 +350,7 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req map[string]any) 
 			return toolError(codeValidationError, "clear_fields is valid only for edit"), nil
 		}
 		ns := argString(req, "namespace", "")
-		if !globsPermit(claims.NamespaceGlobs, ns) {
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+ns), nil
 		}
 		tags, _, err := parseStringArrayArg(req, "tags")
@@ -387,7 +387,7 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req map[string]any) 
 	if meta.Domain != workspace.Domain {
 		return toolError(codeValidationError, "item_id does not identify a workspace item"), nil
 	}
-	if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
 		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+meta.Namespace), nil
 	}
 	edit, parseErr := workspaceEditInput(req)
@@ -461,7 +461,7 @@ func (a *Adapter) handleWorkspaceDelete(ctx context.Context, req map[string]any)
 	if meta.Domain != workspace.Domain {
 		return toolError(codeValidationError, "item_id does not identify a workspace item"), nil
 	}
-	if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
 		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit deleting: "+meta.Namespace), nil
 	}
 	receipt, err := a.WorkspaceStore.DeleteWithReceipt(ctx, workspace.DeleteInput{ItemID: itemID, VersionToken: token})
