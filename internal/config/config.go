@@ -56,8 +56,9 @@ type AuthJWTConfig struct {
 	// first successful JWKS fetch. A public key, not a secret.
 	BootstrapKeyFile string `yaml:"bootstrap_key_file,omitempty"`
 	// NamespaceGlobs is the namespace constraint applied to every JWT
-	// principal (JWTs carry none). Empty means ["*"]; narrow it to confine
-	// issuer-minted tokens, e.g. ["project/*", "app/*"].
+	// principal (JWTs carry none). REQUIRED when the JWT verifier is
+	// configured: empty refuses startup, there is no "*" default. The hub
+	// ceiling is ["project/*", "session/*", "app/*", "org/*", "system/*"].
 	NamespaceGlobs []string `yaml:"namespace_globs,omitempty"`
 }
 

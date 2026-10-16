@@ -93,7 +93,7 @@ func (f *fixture) bootstrapFile() string {
 }
 
 func (f *fixture) jwtConfig() config.AuthJWTConfig {
-	return config.AuthJWTConfig{Issuer: testIssuer, BootstrapKeyFile: f.bootstrapFile()}
+	return config.AuthJWTConfig{Issuer: testIssuer, BootstrapKeyFile: f.bootstrapFile(), NamespaceGlobs: []string{"*"}}
 }
 
 type served struct {
@@ -414,7 +414,7 @@ func TestJWKSFetchedFromIssuerURLAndDenyListWithBearerRef(t *testing.T) {
 	res.Set("file://tesseract/denylist-bearer", "bearer-value-for-denylist")
 	s := f.serve(config.AuthConfig{
 		Mode:     "enforce",
-		JWT:      config.AuthJWTConfig{Issuer: testIssuer, JWKSURL: issuer.URL + "/.well-known/jwks.json"},
+		JWT:      config.AuthJWTConfig{Issuer: testIssuer, JWKSURL: issuer.URL + "/.well-known/jwks.json", NamespaceGlobs: []string{"*"}},
 		DenyList: config.AuthDenyListConfig{URL: issuer.URL + "/auth/denylist", BearerRef: "file://tesseract/denylist-bearer"},
 	}, func(o *Options) { o.Resolver = res })
 
@@ -427,7 +427,7 @@ func TestJWKSFetchedFromIssuerURLAndDenyListWithBearerRef(t *testing.T) {
 	// so assert on what the poller already proved (bearer) and revoke via a second runtime below.
 	f2 := f.serve(config.AuthConfig{
 		Mode:     "enforce",
-		JWT:      config.AuthJWTConfig{Issuer: testIssuer, JWKSURL: issuer.URL + "/.well-known/jwks.json"},
+		JWT:      config.AuthJWTConfig{Issuer: testIssuer, JWKSURL: issuer.URL + "/.well-known/jwks.json", NamespaceGlobs: []string{"*"}},
 		DenyList: config.AuthDenyListConfig{URL: issuer.URL + "/auth/denylist", BearerRef: "file://tesseract/denylist-bearer"},
 	}, func(o *Options) { o.Resolver = res })
 	waitFor(t, func() bool {
@@ -436,6 +436,35 @@ func TestJWKSFetchedFromIssuerURLAndDenyListWithBearerRef(t *testing.T) {
 }
 
 // --- fail closed on configuration ---
+
+func TestJWTNamespaceGlobsRequired(t *testing.T) {
+	f := newFixture(t)
+	for name, globs := range map[string][]string{"unset": nil, "empty": {}, "blank": {"", "  "}} {
+		jc := f.jwtConfig()
+		jc.NamespaceGlobs = globs
+		_, err := Build(context.Background(), Options{Config: config.AuthConfig{JWT: jc}, Loopback: true, Addr: "127.0.0.1:1", Store: f.store, Scopes: contextapi.RouteScopeTable()})
+		if err == nil || !strings.Contains(err.Error(), "auth.jwt.namespace_globs") {
+			t.Errorf("%s globs: want startup refusal naming auth.jwt.namespace_globs, got %v", name, err)
+		}
+	}
+}
+
+// The hub ceiling must keep an issuer-minted JWT out of user/* while leaving
+// the ceiling's own namespaces reachable.
+func TestJWTHubCeilingExcludesUserNamespaces(t *testing.T) {
+	f := newFixture(t)
+	jc := f.jwtConfig()
+	jc.NamespaceGlobs = []string{"project/*", "session/*", "app/*", "org/*", "system/*"}
+	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: jc}, nil)
+	tok := f.jwt("tesseract.read", nil)
+	rec := s.do("GET", "/v1/memory/current?namespace=user/chris/memory/x&key=k", tok, nil)
+	if rec.Code != 403 || errCode(t, rec) != "namespace_not_permitted" {
+		t.Fatalf("user/* must be unreachable for a JWT under the hub ceiling: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := s.do("GET", "/v1/memory/current?namespace=project/x/memory/y&key=k", tok, nil); rec.Code == 403 || rec.Code == 401 {
+		t.Fatalf("project/* rejected under the hub ceiling: %d %s", rec.Code, rec.Body.String())
+	}
+}
 
 func TestBuildFailsClosedOnBadVerifierConfig(t *testing.T) {
 	f := newFixture(t)

@@ -101,7 +101,7 @@ auth:
     audience: tesseract               # default; one app per token
     jwks_url: http://HUB:PORT/.well-known/jwks.json
     bootstrap_key_file: /path/issuer.pub.pem   # optional; public key, used until the first JWKS fetch
-    namespace_globs: ["*"]            # narrow to confine every issuer-minted token
+    namespace_globs: ["project/*", "session/*", "app/*", "org/*", "system/*"]   # REQUIRED; the hub ceiling
   deny_list:
     url: http://HUB:PORT/auth/denylist
     bearer_ref: file://tesseract/denylist-bearer   # go-secrets reference; a literal is refused
@@ -115,7 +115,15 @@ stops startup. Nothing falls back to fewer checks. The deny-list is polled
 every 30 seconds and a failed poll keeps the last list.
 
 A JWT carries no namespace claim, so `auth.jwt.namespace_globs` is the
-namespace constraint for every issuer-minted token (default `*`).
+namespace constraint for every issuer-minted token. It is **required** whenever
+`auth.jwt` is configured: unset or empty stops startup with an error naming the
+key. There is no `*` default, because that would let any Tether-minted token
+with `aud: tesseract` read and write `user/*`.
+
+On the hub the ceiling is `["project/*", "session/*", "app/*", "org/*", "system/*"]`:
+no `user/*`. User namespaces stay reachable only through managed tokens that carry
+explicit user globs. Writing `["*"]` is still possible, but it is a deliberate,
+visible choice, not a default. Managed and static tokens are unchanged.
 
 ## Scopes
 
