@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	schemaVersion = 30
+	schemaVersion = 31
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1604,6 +1604,10 @@ FROM workspace_promotion_requests`); err != nil {
 			if err = migrateEventsOutbox(ctx, tx); err != nil {
 				return err
 			}
+		case 31:
+			if err = migrateAuditDropped(ctx, tx); err != nil {
+				return err
+			}
 		}
 
 		version++
@@ -2373,7 +2377,11 @@ func (s *Store) recordAuditEvent(ctx context.Context, event AuditEvent) (err err
 	}
 	return tx.Commit()
 }
-func recordAuditEventWith(ctx context.Context, executor auditExecutor, event AuditEvent) error {
+
+// validateAuditEvent reports whether event is a recordable audit row. It is
+// separate so callers can tell a rejected-by-validation failure from a database
+// failure (audit_dropped.class).
+func validateAuditEvent(event AuditEvent) error {
 	if strings.TrimSpace(event.EventType) == "" {
 		return errors.New("event_type required")
 	}
@@ -2389,13 +2397,20 @@ func recordAuditEventWith(ctx context.Context, executor auditExecutor, event Aud
 	if event.Revision <= 0 {
 		return errors.New("revision must be > 0")
 	}
+	if len(event.Metadata) > 0 && !json.Valid(event.Metadata) {
+		return errors.New("metadata must be valid JSON")
+	}
+	return nil
+}
+
+func recordAuditEventWith(ctx context.Context, executor auditExecutor, event AuditEvent) error {
+	if err := validateAuditEvent(event); err != nil {
+		return err
+	}
 	if strings.TrimSpace(event.CreatedAt) == "" {
 		event.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	metadata := event.Metadata
-	if len(metadata) > 0 && !json.Valid(metadata) {
-		return errors.New("metadata must be valid JSON")
-	}
 	_, err := executor.ExecContext(ctx, `
 INSERT INTO audit_events (event_type, actor, namespace, key_name, revision, record_id, created_at, metadata_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

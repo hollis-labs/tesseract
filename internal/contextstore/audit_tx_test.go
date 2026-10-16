@@ -69,29 +69,115 @@ func TestAppendRecordWithoutAuditSpecWritesNoAudit(t *testing.T) {
 	}
 }
 
-// Recording an event never rejects a valid mutation: a failing audit write
-// (here an empty actor in the spec AND an empty mutation actor is impossible, so
-// the audit row is made invalid by a bad metadata blob) keeps the record.
-func TestAuditFailureNeverRejectsTheMutation(t *testing.T) {
-	s := newTestStore(t)
-	before := AuditDropped()
-	rec, err := appendWithAudit(t, s, &AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)})
+type droppedRow struct{ ItemID, RecordID, Action, Class, Repaired string }
+
+func droppedRows(t *testing.T, s *Store) []droppedRow {
+	t.Helper()
+	rows, err := s.db.Query(`SELECT item_id, record_id, action, class, COALESCE(repaired_at, '') FROM audit_dropped ORDER BY id`)
 	if err != nil {
-		t.Fatalf("mutation must commit despite an audit failure: %v", err)
+		t.Fatal(err)
 	}
-	if _, err := s.Head(context.Background(), "app/x/session", "k"); err != nil {
-		t.Fatalf("record missing: %v", err)
+	defer func() { _ = rows.Close() }()
+	var out []droppedRow
+	for rows.Next() {
+		var d droppedRow
+		if err := rows.Scan(&d.ItemID, &d.RecordID, &d.Action, &d.Class, &d.Repaired); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, d)
 	}
-	if evs := mutationAudits(s); len(evs) != 0 {
-		t.Fatalf("audit rows = %d, want 0", len(evs))
+	return out
+}
+
+// Ordinary mutation (architect ruling, precedence mutation > audit > outbox): a
+// failing audit insert never rejects the mutation. It commits, one audit_dropped
+// row (bounded class, ids only) records the gap, and there is no audit row.
+func TestOrdinaryMutationCommitsWhenItsAuditFailsAndRecordsAuditDropped(t *testing.T) {
+	cases := []struct {
+		name, class string
+		setup       func(t *testing.T, s *Store) AuditSpec
+	}{
+		{"invalid audit row (validate)", dropClassValidate, func(t *testing.T, s *Store) AuditSpec {
+			return AuditSpec{EventType: EventWrite, Metadata: json.RawMessage(`{not json`)}
+		}},
+		{"database error confined to the audit insert (db)", dropClassDB, func(t *testing.T, s *Store) AuditSpec {
+			if _, err := s.db.Exec(`CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events
+				WHEN NEW.event_type = 'write' BEGIN SELECT RAISE(ABORT, 'injected audit failure'); END`); err != nil {
+				t.Fatal(err)
+			}
+			return AuditSpec{EventType: EventWrite}
+		}},
 	}
-	if out := mutationOutbox(s); len(out) != 0 {
-		t.Fatalf("outbox rows = %d, want 0 (rolled back with the audit)", len(out))
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newTestStore(t)
+			spec := c.setup(t, s)
+			before := AuditDropped()
+			rec, err := appendWithAudit(t, s, &spec)
+			if err != nil {
+				t.Fatalf("an ordinary mutation must commit despite an audit failure: %v", err)
+			}
+			if _, err := s.Head(context.Background(), "app/x/session", "k"); err != nil {
+				t.Fatalf("record missing: %v", err)
+			}
+			if evs := mutationAudits(s); len(evs) != 0 {
+				t.Fatalf("audit rows = %d, want 0", len(evs))
+			}
+			if out := mutationOutbox(s); len(out) != 0 {
+				t.Fatalf("outbox rows = %d, want 0 (rolled back with the audit)", len(out))
+			}
+			d := droppedRows(t, s)
+			if len(d) != 1 || d[0].Action != EventWrite || d[0].Class != c.class || d[0].RecordID != rec.RecordID || d[0].Repaired != "" {
+				t.Fatalf("audit_dropped = %+v, want one %s row for %s", d, c.class, rec.RecordID)
+			}
+			if AuditDropped()-before != 1 {
+				t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
+			}
+		})
 	}
-	if AuditDropped()-before != 1 {
-		t.Fatalf("AuditDropped moved by %d", AuditDropped()-before)
+}
+
+// Security-class audits fail CLOSED: the mutation is rejected and nothing is
+// left behind (no record, no audit, no outbox, no audit_dropped).
+func TestSecurityClassAuditFailureRejectsTheMutation(t *testing.T) {
+	for _, typ := range []string{"credential.rotate", EventNamespaceUpdate, EventNamespaceRegister} {
+		t.Run(typ, func(t *testing.T) {
+			s := newTestStore(t)
+			// Register the namespace first so only the mutation under test remains.
+			if _, err := s.ensureNamespaceRegistered(context.Background(), "app/x/session", "inferred"); err != nil {
+				t.Fatal(err)
+			}
+			baseAudits, baseOutbox := len(mutationAudits(s)), len(mutationOutbox(s))
+			_, err := appendWithAudit(t, s, &AuditSpec{EventType: typ, Metadata: json.RawMessage(`{not json`)})
+			if err == nil {
+				t.Fatal("a security-class mutation must be rejected when its audit cannot be recorded")
+			}
+			if _, herr := s.Head(context.Background(), "app/x/session", "k"); herr == nil {
+				t.Fatal("rejected mutation left its record behind")
+			}
+			if n := len(mutationAudits(s)); n != baseAudits {
+				t.Fatalf("audit rows = %d, want %d", n, baseAudits)
+			}
+			if n := len(mutationOutbox(s)); n != baseOutbox {
+				t.Fatalf("outbox rows = %d, want %d", n, baseOutbox)
+			}
+			if d := droppedRows(t, s); len(d) != 0 {
+				t.Fatalf("audit_dropped = %+v, want none (a rejected mutation has no gap)", d)
+			}
+		})
 	}
-	_ = rec
+}
+
+func TestSecurityClassListIsExplicit(t *testing.T) {
+	for typ, want := range map[string]bool{
+		"credential.rotate": true, "credential.revoke": true, EventNamespaceRegister: true, EventNamespaceUpdate: true,
+		"token.mint": true, "grant.revoke": true,
+		EventWrite: false, EventTypedWrite: false, "memory.write": false, EventMaintenanceTrim: false, EventPromote: false,
+	} {
+		if got := isSecurityClassAudit(typ); got != want {
+			t.Errorf("isSecurityClassAudit(%q) = %v, want %v", typ, got, want)
+		}
+	}
 }
 
 // A mapping failure keeps the record AND the audit row (outbox savepoint).
