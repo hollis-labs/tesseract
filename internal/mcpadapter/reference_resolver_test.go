@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -110,16 +111,20 @@ func TestReferenceResolveMCPAuthorizesLiveAndDeletedNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	denied := mustCallRegistered(t, a, "tesseract_ref_resolve", map[string]any{"item_id": item.ItemID})
-	wantErrorCode(t, denied, "namespace_not_permitted")
-	if strings.Contains(denied["message"].(string), item.Namespace) {
+	if denied["status"] != "not_found" {
+		t.Fatalf("denied reference: %v", denied)
+	}
+	if strings.Contains(fmt.Sprint(denied), item.Namespace) {
 		t.Fatalf("authorization error leaked namespace: %v", denied)
 	}
 	if _, err := a.WorkspaceStore.Delete(context.Background(), workspace.DeleteInput{ItemID: item.ItemID, VersionToken: item.VersionToken}); err != nil {
 		t.Fatal(err)
 	}
 	deleted := mustCallRegistered(t, a, "tesseract_ref_resolve", map[string]any{"item_id": item.ItemID})
-	wantErrorCode(t, deleted, "namespace_not_permitted")
-	if strings.Contains(deleted["message"].(string), "deleted") {
+	if deleted["status"] != "not_found" {
+		t.Fatalf("denied tombstone: %v", deleted)
+	}
+	if strings.Contains(fmt.Sprint(deleted), "deleted") {
 		t.Fatalf("authorization error leaked tombstone: %v", deleted)
 	}
 }

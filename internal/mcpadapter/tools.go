@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/go-mcp/budget"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
+	"github.com/hollis-labs/tesseract/internal/nsglob"
 )
 
 func (a *Adapter) registerTools(s *toolRegistrar) {
@@ -180,13 +180,11 @@ const (
 		"Omit it and pass `namespaces` instead if globs are all you need; passing both is a validation_error."
 
 	viewFullEvaluationArgDescription = "Which evaluation arm answers, NOT merely whether metadata is attached. " +
-		"false (default): the store is queried for heads matching the selector, results are filtered by the capability token's namespace globs when a token is configured, " +
+		"false (default): the store is queried for heads matching the selector, results honor the capability token's namespace globs under the configured auth mode, " +
 		"and the answer is the shared budget envelope of record SUMMARIES — no payloads, ever. " +
 		"true: the selector is evaluated with the store's view semantics (deterministic sort, selector limit, truncation flag) and the answer is `{items, evaluation_meta}` " +
 		"carrying full records, with payloads when `include_payload` is set. " +
-		"The two arms differ in one way that is not about shape: the `true` arm does NOT filter by the token's namespace globs, because it is the exact peer of " +
-		"POST /v1/views/evaluate, which does not either. Neither arm can reach a record the other cannot — the same pair of behaviors was reachable before this merge " +
-		"as two separate tools — but do not read `full_evaluation` as a display knob."
+		"In enforce mode, both arms apply the token namespace ceiling before loading records, counting matches, and applying limits."
 
 	promoteStageArgDescription = "Which stage of the promotion workflow runs. Each stage requires a DIFFERENT capability scope, and the scope is checked for the stage you named: " +
 		"`request` (scope promote.request) records a request to copy a record from an app namespace to a user namespace; " +
@@ -433,8 +431,10 @@ func capPayload(item map[string]any, payload []byte, maxBytes int) int {
 // TestCrossDomainGet_ContextArmShapeIsHandStated and
 // TestCrossDomainHistory_ContextArmKeepsItsOwnEnvelope.
 
-func (a *Adapter) handleContextHead(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleContextHead(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	ns := argString(req, "namespace", "")
 	key := argString(req, "key", "")
 	if ns == "" || key == "" {
@@ -450,8 +450,10 @@ func (a *Adapter) handleContextHead(_ context.Context, req map[string]any) (any,
 	return toolJSON(recordJSON(rec)), nil
 }
 
-func (a *Adapter) handleContextHistory(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleContextHistory(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	ns := argString(req, "namespace", "")
 	key := argString(req, "key", "")
 	if ns == "" || key == "" {
@@ -474,17 +476,11 @@ func (a *Adapter) handleContextHistory(_ context.Context, req map[string]any) (a
 // selector, filtered by the token's namespace globs, rendered as summaries in
 // the shared budget envelope. sel carries only Namespaces and RevisionScope —
 // handleContextView rejects a selector asking for anything else on this arm.
-func (a *Adapter) handleViewSummaries(_ context.Context, sel contextstore.Selector, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleViewSummaries(ctx context.Context, sel contextstore.Selector, req map[string]any) (any, error) {
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
-	records, err := a.Store.Select(ctx, sel)
+	records, err := a.selectRecords(ctx, sel)
 	if err != nil {
 		return toolError(codeSelectorError, err.Error()), nil
-	}
-
-	// Filter by token namespace globs if a token is present.
-	if claims, ok := a.loadClaims(ctx); ok {
-		records = filterByGlobs(records, claims.NamespaceGlobs)
 	}
 
 	// Build summary items (omit full payload from list view).
@@ -504,9 +500,7 @@ func (a *Adapter) handleViewSummaries(_ context.Context, sel contextstore.Select
 // handlePacket is the shape=packet arm of context_pack: namespace globs plus
 // pinned records, bounded by an item and token budget, with a manifest saying
 // what was included and why it stopped.
-func (a *Adapter) handlePacket(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
-
+func (a *Adapter) handlePacket(ctx context.Context, req map[string]any) (any, error) {
 	namespaces := splitCommaList(argString(req, "namespaces", ""))
 
 	includePins := argBool(req, "include_pins", true)
@@ -515,12 +509,6 @@ func (a *Adapter) handlePacket(_ context.Context, req map[string]any) (any, erro
 	payloadMaxBytes, errResult := resolvePayloadMaxBytes(req)
 	if errResult != nil {
 		return errResult, nil
-	}
-
-	// Load token globs for optional namespace filtering.
-	var tokenGlobs []string
-	if claims, ok := a.loadClaims(ctx); ok {
-		tokenGlobs = claims.NamespaceGlobs
 	}
 
 	reqID, err := newMCPRequestID()
@@ -569,14 +557,11 @@ func (a *Adapter) handlePacket(_ context.Context, req map[string]any) (any, erro
 
 	// Prepend pins (filtered by token globs when present).
 	if includePins {
-		pins, err := a.Store.Select(ctx, contextstore.Selector{
+		pins, err := a.selectRecords(ctx, contextstore.Selector{
 			Namespaces:    []string{"user/pins/*"},
 			RevisionScope: "head",
 		})
 		if err == nil {
-			if len(tokenGlobs) > 0 {
-				pins = filterByGlobs(pins, tokenGlobs)
-			}
 			for _, rec := range pins {
 				if addRecord(rec) {
 					pinsIncluded++
@@ -586,17 +571,12 @@ func (a *Adapter) handlePacket(_ context.Context, req map[string]any) (any, erro
 	}
 
 	// Main selector.
-	candidates, err := a.Store.Select(ctx, contextstore.Selector{
+	candidates, err := a.selectRecords(ctx, contextstore.Selector{
 		Namespaces:    namespaces,
 		RevisionScope: "head",
 	})
 	if err != nil {
 		return toolError(codeSelectorError, err.Error()), nil
-	}
-
-	// Filter by token globs when present.
-	if len(tokenGlobs) > 0 {
-		candidates = filterByGlobs(candidates, tokenGlobs)
 	}
 
 	itemsTotal = len(candidates)
@@ -639,7 +619,7 @@ func (a *Adapter) handleWrite(ctx context.Context, req map[string]any) (any, err
 	payloadStr := argString(req, "payload", "")
 
 	// Enforce token namespace globs on write target.
-	if !globsPermit(claims.NamespaceGlobs, ns) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing to: "+ns), nil
 	}
 	if ns == "" || key == "" || payloadStr == "" {
@@ -676,6 +656,12 @@ func (a *Adapter) handleWrite(ctx context.Context, req map[string]any) (any, err
 }
 
 func (a *Adapter) handlePromoteRequest(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "source_namespace", "")); denied != nil {
+		return denied, nil
+	}
+	if denied := a.requireNamespace(ctx, argString(req, "target_namespace", "")); denied != nil {
+		return denied, nil
+	}
 	errResult, _ := a.checkScope(ctx, "promote.request")
 	if errResult != nil {
 		return errResult, nil
@@ -692,6 +678,9 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req map[string]any) 
 		return toolError(codeValidationError, "source_namespace, source_key, target_namespace, and target_key are required"), nil
 	}
 
+	if denied := a.requireNamespace(ctx, "app/mcp-agent/promotions"); denied != nil {
+		return denied, nil
+	}
 	srcHead, err := a.Store.Head(ctx, srcNS, srcKey)
 	if err != nil {
 		return toolError(codeValidationError, fmt.Sprintf("source record not found: %v", err)), nil
@@ -748,14 +737,28 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req map[string]any) 
 	}), nil
 }
 
+// getPromoteRequest limits request lookup before reading request payloads.
+func (a *Adapter) getPromoteRequest(ctx context.Context, id string) (contextstore.PromoteRequest, string, error) {
+	records, err := a.selectRecords(ctx, contextstore.Selector{Namespaces: []string{"app/*/promotions"}, Keys: []string{id}, RevisionScope: "head"})
+	if err != nil {
+		return contextstore.PromoteRequest{}, "", err
+	}
+	for _, rec := range records {
+		var request contextstore.PromoteRequest
+		if json.Unmarshal(rec.Payload, &request) == nil && request.Type == "promote.request" {
+			return request, rec.Namespace, nil
+		}
+	}
+	return contextstore.PromoteRequest{}, "", errors.New("promotion request not found")
+}
+
 // --- Promote lifecycle tools ---
 
-func (a *Adapter) handlePromotionList(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handlePromotionList(ctx context.Context, req map[string]any) (any, error) {
 	status := argString(req, "status", "pending")
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 
-	recs, err := a.Store.Select(ctx, contextstore.Selector{
+	recs, err := a.selectRecords(ctx, contextstore.Selector{
 		Namespaces:    []string{"app/*/promotions"},
 		RevisionScope: "head",
 	})
@@ -767,6 +770,9 @@ func (a *Adapter) handlePromotionList(_ context.Context, req map[string]any) (an
 	for _, rec := range recs {
 		var pr contextstore.PromoteRequest
 		if err := json.Unmarshal(rec.Payload, &pr); err != nil || pr.Type != "promote.request" {
+			continue
+		}
+		if !a.namespaceVisible(ctx, rec.Namespace) || !a.namespaceVisible(ctx, pr.SourceNamespace) || !a.namespaceVisible(ctx, pr.TargetNamespace) {
 			continue
 		}
 		if status != "all" && pr.Status != status {
@@ -804,9 +810,17 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req map[string]any) 
 	notes := argString(req, "notes", "")
 	actor := argString(req, "actor", contextstore.DefaultPromoteActor)
 
-	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
+	pr, reqNamespace, err := a.getPromoteRequest(ctx, requestID)
 	if err != nil {
 		return toolError(codeNotFound, err.Error()), nil
+	}
+	for _, ns := range []string{reqNamespace, pr.SourceNamespace, pr.TargetNamespace} {
+		if !a.namespaceVisible(ctx, ns) {
+			return toolError(codeNotFound, "promotion request not found"), nil
+		}
+	}
+	if denied := a.requireNamespace(ctx, "user/promotions"); denied != nil {
+		return denied, nil
 	}
 	if pr.Status != "pending" {
 		return toolError(codeInvalidState, fmt.Sprintf("request status is %q, must be pending to approve", pr.Status)), nil
@@ -883,9 +897,17 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req map[string]any) (a
 	}
 	actor := argString(req, "actor", contextstore.DefaultPromoteActor)
 
-	pr, reqNamespace, err := a.Store.GetPromoteRequest(ctx, requestID)
+	pr, reqNamespace, err := a.getPromoteRequest(ctx, requestID)
 	if err != nil {
 		return toolError(codeNotFound, err.Error()), nil
+	}
+	for _, ns := range []string{reqNamespace, pr.SourceNamespace, pr.TargetNamespace} {
+		if !a.namespaceVisible(ctx, ns) {
+			return toolError(codeNotFound, "promotion request not found"), nil
+		}
+	}
+	if denied := a.requireRecordNamespace(ctx, pr.SourceRevisionID); denied != nil {
+		return denied, nil
 	}
 	if pr.Status != "approved" {
 		return toolError(codeInvalidState, fmt.Sprintf("request status is %q, must be approved to apply", pr.Status)), nil
@@ -1002,8 +1024,7 @@ func (a *Adapter) handlePlanOnly(_ context.Context, req map[string]any) (any, er
 
 // handlePlanAndFetch is the execute=true arm of context_plan: build the plan,
 // then run it and return the records it selects.
-func (a *Adapter) handlePlanAndFetch(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handlePlanAndFetch(ctx context.Context, req map[string]any) (any, error) {
 	intent := argString(req, "intent", "custom")
 	summary := argString(req, "summary", "")
 	maxItems := argInt(req, "max_items", 50)
@@ -1014,12 +1035,6 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req map[string]any) (any
 	}
 
 	namespaces, includePins, maxItems, rationale := buildContextPlan(intent, summary, maxItems, maxTokens)
-
-	// Load optional token globs for filtering.
-	var tokenGlobs []string
-	if claims, ok := a.loadClaims(ctx); ok {
-		tokenGlobs = claims.NamespaceGlobs
-	}
 
 	reqID, err := newMCPRequestID()
 	if err != nil {
@@ -1065,14 +1080,11 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req map[string]any) (any
 
 	// Pins first (when context plan includes them).
 	if includePins {
-		pins, err := a.Store.Select(ctx, contextstore.Selector{
+		pins, err := a.selectRecords(ctx, contextstore.Selector{
 			Namespaces:    []string{"user/pins/*"},
 			RevisionScope: "head",
 		})
 		if err == nil {
-			if len(tokenGlobs) > 0 {
-				pins = filterByGlobs(pins, tokenGlobs)
-			}
 			for _, rec := range pins {
 				if addRecord(rec) {
 					pinsIncluded++
@@ -1088,15 +1100,12 @@ func (a *Adapter) handlePlanAndFetch(_ context.Context, req map[string]any) (any
 			truncated = true
 			break
 		}
-		recs, err := a.Store.Select(ctx, contextstore.Selector{
+		recs, err := a.selectRecords(ctx, contextstore.Selector{
 			Namespaces:    []string{ns},
 			RevisionScope: "head",
 		})
 		if err != nil {
 			continue
-		}
-		if len(tokenGlobs) > 0 {
-			recs = filterByGlobs(recs, tokenGlobs)
 		}
 		for _, rec := range recs {
 			if seen[rec.RecordID] {
@@ -1203,6 +1212,9 @@ func plannerExtractKeywords(text string, n int) []string {
 // --- Namespace management tools ---
 
 func (a *Adapter) handleNamespaceRegister(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	errResult, _ := a.checkScope(ctx, "namespace.admin")
 	if errResult != nil {
 		return errResult, nil
@@ -1234,12 +1246,14 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req map[string]an
 
 // namespaceShowResult is the kind=namespaces + name arm of
 // context_registry_list: one namespace's ownership policy.
-func (a *Adapter) namespaceShowResult(_ context.Context, ns string) any {
-	ctx := context.Background()
+func (a *Adapter) namespaceShowResult(ctx context.Context, ns string) any {
 	if ns == "" {
 		return toolError(codeValidationError, "namespace is required")
 	}
 
+	if denied := a.requireNamespace(ctx, ns); denied != nil {
+		return denied
+	}
 	entry, err := a.Store.GetNamespacePolicy(ctx, ns)
 	if err != nil {
 		return toolError(codeNotFound, fmt.Sprintf("namespace policy not found: %v", err))
@@ -1261,11 +1275,10 @@ type namespaceListEnvelope struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
-func (a *Adapter) handleNamespacesList(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleNamespacesList(ctx context.Context, req map[string]any) (any, error) {
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 
-	// Filtering, sorting and paging all happen in SQL, in the store. This
+	// Filtering, sorting and paging happen in the store. This
 	// handler used to open-code the prefix loop a second time and the two
 	// copies had already drifted once — the MCP side read `prefix` as a glob
 	// while HTTP read it literally (CW-20260428-0005). Glob is now a mode both
@@ -1282,6 +1295,7 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req map[string]any) (a
 	if err != nil {
 		return toolError(codeValidationError, err.Error()), nil
 	}
+	query.Permit = a.namespacePermit(ctx)
 	query.Limit = limit
 	query.Cursor = strings.TrimSpace(argString(req, "cursor", ""))
 
@@ -1325,21 +1339,24 @@ func (a *Adapter) handleNamespacesList(_ context.Context, req map[string]any) (a
 
 // --- Audit tool ---
 
-func (a *Adapter) handleAuditList(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleAuditList(ctx context.Context, req map[string]any) (any, error) {
 	ns := argString(req, "namespace", "")
 	eventType := argString(req, "event_type", "")
 	limit := budget.ExtractLimit(argsMap(req), budget.DefaultLimit)
 	cursor := argInt(req, "cursor", 0)
 
-	events, nextCursor, err := a.Store.QueryAuditEvents(ctx, contextstore.AuditQuery{
-		Limit:     limit,
-		Cursor:    int64(cursor),
-		Namespace: ns,
-		EventType: eventType,
-	})
-	if err != nil {
-		return toolError(codeInternalError, err.Error()), nil
+	permit := a.namespacePermit(ctx)
+	var events []contextstore.AuditEvent
+	var nextCursor *int64
+	// An exact denied selector is empty without consulting hidden activity.
+	if strings.TrimSpace(ns) == "" || permit == nil || permit(strings.TrimSpace(ns)) {
+		var err error
+		events, nextCursor, err = a.Store.QueryAuditEvents(ctx, contextstore.AuditQuery{
+			Limit: limit, Cursor: int64(cursor), Namespace: ns, Permit: permit, EventType: eventType,
+		})
+		if err != nil {
+			return toolError(codeInternalError, err.Error()), nil
+		}
 	}
 
 	items := make([]map[string]any, len(events))
@@ -1398,71 +1415,12 @@ func (a *Adapter) loadClaims(ctx context.Context) (contextstore.AuthToken, bool)
 	return claims, true
 }
 
-// globsPermit reports whether namespace is permitted by any of the globs.
-// Matches the same logic as the HTTP API's requireNamespaceAccess:
-//   - empty globs slice or glob=="*" → full access
-//   - path.Match(glob, namespace) → exact glob
-//   - glob ending in /* → hierarchical prefix match
-func globsPermit(globs []string, namespace string) bool {
-	if len(globs) == 0 {
-		return true
-	}
-	for _, g := range globs {
-		g = strings.TrimSpace(g)
-		if g == "" || g == "*" || g == namespace {
-			return true
-		}
-		// Invalid configured globs fail closed: they must never grant access.
-		if matched, err := path.Match(g, namespace); err == nil && matched {
-			return true
-		}
-		if strings.HasSuffix(g, "/*") {
-			prefix := strings.TrimSuffix(g, "*") // "app/test/"
-			if strings.HasPrefix(namespace, prefix) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // globsPermitRecallSelector verifies the complete scope of a recall selector.
 // Exact selectors use the ordinary namespace check. Explicit /* selectors and
 // the grandfathered bare memory/event forms denote every descendant, so one
 // configured token glob must contain that whole prefix before recall begins.
 func globsPermitRecallSelector(globs []string, selector string, domainNames []string) bool {
-	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
-	if len(globs) == 0 {
-		return true
-	}
-	for _, glob := range globs {
-		glob = strings.TrimSpace(glob)
-		if glob == "*" || (!isPrefix && glob == selector) {
-			return true
-		}
-		if !isPrefix {
-			if matched, err := path.Match(glob, selector); err == nil && matched {
-				return true
-			}
-			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
-				return true
-			}
-			continue
-		}
-		if !strings.HasSuffix(glob, "/*") {
-			continue
-		}
-		allowedPrefix := strings.TrimSuffix(glob, "/*")
-		// Interior wildcard containment is not generally provable. Exact
-		// prefix equality is handled below; otherwise fail closed.
-		if strings.ContainsAny(allowedPrefix, "*?[") {
-			continue
-		}
-		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
-			return true
-		}
-	}
-	return false
+	return nsglob.SelectorPermitted(globs, selector, domainNames)
 }
 
 func globsPermitRecallScope(globs []string, selector string, domainNames []string) bool {
@@ -1506,18 +1464,4 @@ func isScopeHead(prefix string) bool {
 	}
 	return len(parts) == 4 && parts[0] == "user" && parts[1] != "" &&
 		(parts[2] == "project" || parts[2] == "session") && parts[3] != ""
-}
-
-// filterByGlobs returns only the records whose namespace is permitted by globs.
-func filterByGlobs(records []contextstore.Record, globs []string) []contextstore.Record {
-	if len(globs) == 0 {
-		return records
-	}
-	out := records[:0:0]
-	for _, rec := range records {
-		if globsPermit(globs, rec.Namespace) {
-			out = append(out, rec)
-		}
-	}
-	return out
 }

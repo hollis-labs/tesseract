@@ -77,6 +77,9 @@ func (a *Adapter) registerKnowledgeTools(s *toolRegistrar) {
 }
 
 func (a *Adapter) handleKnowledgeWrite(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
 	}

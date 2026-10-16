@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -438,7 +439,7 @@ func TestNamespaceFilterArgsVocabulary(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})

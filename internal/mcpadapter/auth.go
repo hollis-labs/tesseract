@@ -29,7 +29,7 @@ type Authorizer interface {
 // deny-by-default: a tool absent from this map is not registered with the
 // guard and is refused in enforce mode. TestEveryRegisteredToolHasAScope fails
 // the build before a new tool can be forgotten. The fine decision (checkScope
-// on legacy scope names, namespace globs) is unchanged inside the handlers.
+// on legacy scope names, namespace globs) lives inside the handlers.
 //
 // Reads are tesseract.read, which every managed token holds. Tools that
 // mutate anything, including activation counters (tesseract_touch) and stored

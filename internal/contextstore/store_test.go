@@ -1830,3 +1830,49 @@ func TestTrimAndCompactPermitSkipRejectedNamespaces(t *testing.T) {
 		t.Fatalf("unrestricted trim counted %d, want 6", n)
 	}
 }
+
+func TestQueryAuditEventsPermitScanCapResumes(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, Config{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	// Old permitted row sits beyond a full window of more recent denied rows.
+	if err := s.recordAuditEvent(ctx, AuditEvent{EventType: EventWrite, Actor: "test", Namespace: "app/allowed/docs", Key: "oldest", Revision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.db.ExecContext(ctx, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < ?)
+        INSERT INTO audit_events(event_type, actor, namespace, key_name, revision, created_at, record_id, metadata_json)
+        SELECT 'write','test','app/blocked/docs','hidden',1,'2026-01-01T00:00:00Z','','' FROM n`, maxAuditScanRows+5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	examined := 0
+	q := AuditQuery{Limit: 2, Permit: func(ns string) bool { examined++; return ns == "app/allowed/docs" }}
+	page, cursor, err := s.QueryAuditEvents(ctx, q)
+	if err != nil || len(page) != 0 || cursor == nil || examined != maxAuditScanRows {
+		t.Fatalf("first bounded empty page: count=%d cursor=%v examined=%d err=%v", len(page), cursor, examined, err)
+	}
+	q.Cursor = *cursor
+	page, cursor, err = s.QueryAuditEvents(ctx, q)
+	if err != nil || len(page) != 1 || page[0].Key != "oldest" || cursor != nil {
+		t.Fatalf("resume must reach allowed row: page=%v cursor=%v err=%v", page, cursor, err)
+	}
+	// A partial page also resumes without repeating its permitted row.
+	_, err = s.db.ExecContext(ctx, `UPDATE audit_events SET namespace='app/allowed/docs' WHERE id=(SELECT max(id) FROM audit_events)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Cursor = 0
+	page, cursor, err = s.QueryAuditEvents(ctx, q)
+	if err != nil || len(page) != 1 || cursor == nil {
+		t.Fatalf("partial page: %v %v %v", page, cursor, err)
+	}
+	firstID := page[0].ID
+	q.Cursor = *cursor
+	page, cursor, err = s.QueryAuditEvents(ctx, q)
+	if err != nil || len(page) != 1 || page[0].ID == firstID || page[0].Key != "oldest" || cursor != nil {
+		t.Fatalf("partial resume: %v %v %v", page, cursor, err)
+	}
+}
