@@ -1145,33 +1145,10 @@ func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var page contextstore.NamespacePage
-	var err error
-	if permit == nil {
-		page, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
-	} else {
-		// A restricted token sees only its own namespaces, and the count and
-		// paging must not reveal how many others exist. Read every page, keep
-		// the permitted rows, and answer in one piece (capped at maxLimit).
-		query.Limit, query.Cursor = maxLimit, ""
-		for err == nil {
-			var chunk contextstore.NamespacePage
-			chunk, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
-			if err != nil {
-				break
-			}
-			for _, entry := range chunk.Items {
-				if permit(entry.Namespace) && len(page.Items) < maxLimit {
-					page.Items = append(page.Items, entry)
-				}
-			}
-			if chunk.NextCursor == "" {
-				break
-			}
-			query.Cursor = chunk.NextCursor
-		}
-		page.Total = len(page.Items)
-	}
+	// A restricted token sees only its own namespaces; the store filters before
+	// paging and totals, so count and cursor never reveal how many others exist.
+	query.Permit = permit
+	page, err := s.Store.ListNamespacePolicyPage(r.Context(), query)
 	if err != nil {
 		if errors.Is(err, contextstore.ErrNamespaceQuery) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
