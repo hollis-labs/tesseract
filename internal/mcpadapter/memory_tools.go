@@ -81,6 +81,9 @@ func (a *Adapter) registerMemoryTools(s *toolRegistrar) {
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 func (a *Adapter) handleMemoryWrite(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
 	}
@@ -198,7 +201,7 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 			if lookupErr != nil {
 				return nil, lookupErr
 			}
-			if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
+			if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
 				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit touching: "+meta.Namespace), nil
 			}
 			metas = append(metas, meta)
@@ -213,6 +216,12 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 		return toolJSON(out), nil
 	}
 
+	// Authorize the entire batch before updating any activation counter.
+	for _, id := range revisionIDs {
+		if denied := a.requireRevisionNamespace(ctx, id); denied != nil {
+			return denied, nil
+		}
+	}
 	res, err := a.revisionStore().TouchRevisions(ctx, revisionIDs)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
@@ -224,6 +233,12 @@ func (a *Adapter) handleTesseractTouch(ctx context.Context, req map[string]any) 
 }
 
 func (a *Adapter) handleMemoryPromote(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "source_namespace", "")); denied != nil {
+		return denied, nil
+	}
+	if denied := a.requireNamespace(ctx, argString(req, "target_namespace", "")); denied != nil {
+		return denied, nil
+	}
 	if res, _ := a.checkScope(ctx, "memory:write"); res != nil {
 		return res, nil
 	}
@@ -236,6 +251,11 @@ func (a *Adapter) handleMemoryPromote(ctx context.Context, req map[string]any) (
 		ActorVersion:    argString(req, "actor_version", ""),
 	}
 
+	if meta, err := a.itemService().LookupMetadata(ctx, in.SourceMemoryID); err == nil {
+		if denied := a.requireNamespace(ctx, meta.Namespace); denied != nil {
+			return denied, nil
+		}
+	}
 	promoted, err := a.MemoryStore.Promote(ctx, in)
 	if err != nil {
 		if errors.Is(err, memory.ErrInvalidInput) {
