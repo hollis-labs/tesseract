@@ -98,6 +98,14 @@ func Build(ctx context.Context, o Options) (*Runtime, error) {
 
 	var jv auth.Verifier
 	if jwtConfigured(o.Config.JWT) {
+		// A JWT carries no namespace claim, so these globs are the only thing
+		// confining an issuer-minted token. There is deliberately no default:
+		// a "*" fallback would hand every aud=tesseract JWT the user/* scopes.
+		globs := cleanGlobs(o.Config.JWT.NamespaceGlobs)
+		if len(globs) == 0 {
+			return nil, errors.New("auth.jwt.namespace_globs is required when auth.jwt is configured (a JWT carries no namespace claim); " +
+				"set it explicitly, e.g. [project/*, session/*, app/*, org/*, system/*] to keep issuer-minted tokens out of user/* (see docs/auth.md)")
+		}
 		dl := auth.NewDenyList()
 		v, err := auth.NewJWTVerifier(auth.JWTConfig{
 			Issuer:           strings.TrimSpace(o.Config.JWT.Issuer),
@@ -111,10 +119,7 @@ func Build(ctx context.Context, o Options) (*Runtime, error) {
 		}
 		jv = v
 		rt.jwtOn = true
-		rt.jwtGlob = append([]string(nil), o.Config.JWT.NamespaceGlobs...)
-		if len(rt.jwtGlob) == 0 {
-			rt.jwtGlob = []string{"*"}
-		}
+		rt.jwtGlob = globs
 		go v.Run(ctx)
 		if u := strings.TrimSpace(o.Config.DenyList.URL); u != "" {
 			poller := &auth.DenyListPoller{URL: u, List: dl, Logger: slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))}
@@ -198,7 +203,8 @@ func (rt *Runtime) Verify(ctx context.Context, token string) (auth.Principal, er
 //   - managed token: exactly the stored claims, read from the store this request;
 //   - static token: contextapi.StaticTokenClaims (default scopes, "*" globs);
 //   - JWT: canonical scopes expanded by authscope.ToLegacy, namespace globs
-//     from config auth.jwt.namespace_globs (default "*"); a JWT carries none.
+//     from config auth.jwt.namespace_globs (required when JWT is configured, no
+//     default); a JWT carries none.
 func (rt *Runtime) ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool) {
 	if !p.Verified {
 		return contextstore.AuthToken{}, false
@@ -215,9 +221,6 @@ func (rt *Runtime) ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool) {
 		ClientID:       p.ID,
 		Scopes:         authscope.ToLegacy(p.Scopes),
 		NamespaceGlobs: append([]string(nil), rt.jwtGlob...),
-	}
-	if len(c.NamespaceGlobs) == 0 {
-		c.NamespaceGlobs = []string{"*"}
 	}
 	if !p.ExpiresAt.IsZero() {
 		c.ExpiresAt = p.ExpiresAt.UTC().Format(time.RFC3339)
@@ -279,4 +282,16 @@ func (rt *Runtime) SummaryBody() any {
 		"dropped": dropped,
 		"note":    "callers that enforce would reject; empty and meaningless in enforce mode",
 	}
+}
+
+// cleanGlobs trims entries and drops blanks, so a list of empty strings counts
+// as unset.
+func cleanGlobs(in []string) []string {
+	var out []string
+	for _, g := range in {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
 }
