@@ -569,7 +569,7 @@ func TestContextPromoteList_Empty(t *testing.T) {
 
 func TestContextPromoteList_ReturnsPendingRequests(t *testing.T) {
 	s := newTestStore(t)
-	tok := writeToken(t, s, []string{"write", "promote.request"}, []string{"app/agent/*"})
+	tok := writeToken(t, s, []string{"write", "promote.request"}, []string{"app/agent/*", "app/mcp-agent/promotions", "user/memory/agent"})
 	writeRecord(t, s, "app/agent/session", "summary", `{"text":"ready"}`)
 
 	a := New(s, tok)

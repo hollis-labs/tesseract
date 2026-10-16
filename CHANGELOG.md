@@ -8,6 +8,11 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Changed
+
+- MCP tools enforce token namespace globs consistently in enforce mode; permissive and off modes log namespace would-deny decisions. `context_promote` request now requires a grant covering `app/mcp-agent/promotions` as well as the source and target namespaces (CW-20261016-0205).
+- Restricted MCP and HTTP audit pages examine at most 1,000 matching rows per call. Clients must follow `next_cursor` even when a page is empty or short to reach later permitted events.
+
 ## [0.13.2] — 2026-10-16
 
 Security fix: token namespace authorization on HTTP routes. Source release only; no prebuilt binaries are published. Upgrade any deployment that issues tokens restricted by `namespace_globs`.

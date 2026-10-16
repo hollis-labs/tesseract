@@ -148,7 +148,7 @@ func (a *Adapter) handleBulkIngest(ctx context.Context, req map[string]any) (any
 		}
 
 		// Check namespace permission.
-		if !globsPermit(claims.NamespaceGlobs, item.Namespace) {
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, item.Namespace) {
 			res.Status = "error"
 			res.Error = fmt.Sprintf("token does not permit writes to namespace %q", item.Namespace)
 			results = append(results, res)
@@ -348,7 +348,7 @@ func (a *Adapter) handleChunkedIngest(ctx context.Context, req map[string]any) (
 	if ns == "" || keyPrefix == "" || text == "" {
 		return toolError(codeValidationError, "namespace, key_prefix, and text are required"), nil
 	}
-	if !globsPermit(claims.NamespaceGlobs, ns) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 		return toolError(codeNamespaceNotPermitted, "token does not permit writes to namespace: "+ns), nil
 	}
 

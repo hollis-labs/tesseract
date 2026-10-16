@@ -2,7 +2,9 @@ package authn
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 
 	auth "github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -28,8 +30,15 @@ func (rt *Runtime) NewMCPSession(source TokenSource) *MCPSession {
 	return &MCPSession{rt: rt, source: source}
 }
 
+type mcpToolKey struct{}
+type mcpNamespaceAudit struct {
+	tool string
+	once sync.Once
+}
+
 // Authorize implements mcpadapter.Authorizer.
 func (m *MCPSession) Authorize(ctx context.Context, tool string) (context.Context, error) {
+	ctx = context.WithValue(ctx, mcpToolKey{}, &mcpNamespaceAudit{tool: tool})
 	if p, ok := m.principal(ctx); ok {
 		ctx = auth.WithPrincipal(ctx, p)
 	}
@@ -64,4 +73,31 @@ func (m *MCPSession) principal(ctx context.Context) (auth.Principal, bool) {
 		return auth.Principal{}, false
 	}
 	return p, true
+}
+
+// NamespaceDecision applies the same mode as the coarse tool guard, without
+// logging namespace names, record identities, payloads, or bearer material.
+func (m *MCPSession) NamespaceDecision(ctx context.Context, allowed bool) bool {
+	if allowed {
+		return true
+	}
+	if m.rt.Mode == auth.ModeEnforce {
+		return false
+	}
+	audit, _ := ctx.Value(mcpToolKey{}).(*mcpNamespaceAudit)
+	if audit == nil {
+		audit = &mcpNamespaceAudit{}
+	}
+	audit.once.Do(func() {
+		p, verified := auth.FromContext(ctx)
+		state := auth.StateMissing
+		if verified && p.Verified {
+			state = auth.StateVerified
+		}
+		m.rt.Summary.Audit()(auth.Event{Tool: audit.tool, Authentication: state, PrincipalID: p.ID, Reason: "namespace_not_permitted", WouldDeny: true})
+		if m.rt.stderr != nil {
+			_, _ = fmt.Fprintf(m.rt.stderr, "auth: would-deny namespace_not_permitted tool=%s\n", audit.tool)
+		}
+	})
+	return true
 }

@@ -50,12 +50,21 @@ func (a *Adapter) handleEmbed(ctx context.Context, req map[string]any) (any, err
 		return toolError(codeValidationError, "record_id, namespace, and key are required"), nil
 	}
 
+	if denied := a.requireNamespace(ctx, ns); denied != nil {
+		return denied, nil
+	}
+	if denied := a.requireRecordNamespace(ctx, recordID); denied != nil {
+		return denied, nil
+	}
 	// Fetch the record to get its payload text.
 	rec, err := a.Store.GetByRecordID(ctx, recordID)
 	if err != nil {
 		return toolError(codeNotFound, fmt.Sprintf("record %s not found: %v", recordID, err)), nil
 	}
 
+	if rec.Namespace != ns || rec.Key != key {
+		return toolError(codeValidationError, "record_id must match namespace and key"), nil
+	}
 	// Extract text from the payload for embedding.
 	text := extractTextForEmbedding(rec)
 	if text == "" {
@@ -134,6 +143,7 @@ func (a *Adapter) handleSearch(ctx context.Context, req map[string]any) (any, er
 		return toolError(codeInternalError, fmt.Sprintf("failed to load embeddings: %v", err)), nil
 	}
 
+	embeddings, records = a.filterEmbeddings(ctx, embeddings, records)
 	if len(embeddings) == 0 {
 		return toolJSON(map[string]any{"results": []any{}, "count": 0}), nil
 	}

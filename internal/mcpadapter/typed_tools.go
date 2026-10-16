@@ -204,7 +204,7 @@ func (a *Adapter) handleSessionWrite(ctx context.Context, req map[string]any) (a
 	key := sessionID
 
 	// Check namespace permission
-	if !globsPermit(claims.NamespaceGlobs, ns) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 		return toolError(codeNamespaceNotPermitted, fmt.Sprintf("token does not permit writes to namespace %q", ns)), nil
 	}
 
@@ -335,7 +335,7 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req map[string]any) (any
 	pointersStr := argString(req, "pointers", "")
 	actor := argString(req, "actor", "mcp-agent")
 
-	if !globsPermit(claims.NamespaceGlobs, ns) {
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing to: "+ns), nil
 	}
 	if ns == "" || key == "" || payloadStr == "" {
@@ -421,6 +421,9 @@ func (a *Adapter) handleTypedWrite(ctx context.Context, req map[string]any) (any
 // resolved by the dispatcher rather than read here, because the merged tool
 // spells it `status`; empty still means "next in the chain".
 func (a *Adapter) handleStatusPromote(ctx context.Context, req map[string]any, toStatus string) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	errResult, _ := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
@@ -475,6 +478,9 @@ func (a *Adapter) handleStatusPromote(ctx context.Context, req map[string]any, t
 }
 
 func (a *Adapter) handleStatusDeprecate(ctx context.Context, req map[string]any) (any, error) {
+	if denied := a.requireNamespace(ctx, argString(req, "namespace", "")); denied != nil {
+		return denied, nil
+	}
 	errResult, _ := a.checkScope(ctx, "write")
 	if errResult != nil {
 		return errResult, nil
@@ -515,8 +521,7 @@ func (a *Adapter) handleStatusDeprecate(ctx context.Context, req map[string]any)
 	}), nil
 }
 
-func (a *Adapter) handleTypedView(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleTypedView(ctx context.Context, req map[string]any) (any, error) {
 	viewID := argString(req, "view_id", "")
 	if viewID == "" {
 		return toolError(codeValidationError, "view_id is required"), nil
@@ -552,7 +557,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req map[string]any) (any, e
 	}
 
 	statuses := []string{"draft", "reviewed", "canonical"}
-	items, err := a.Store.Select(ctx, contextstore.Selector{
+	items, err := a.selectRecords(ctx, contextstore.Selector{
 		Namespaces:    namespaces,
 		RevisionScope: "head",
 		Types:         viewDef.Types,
@@ -561,11 +566,6 @@ func (a *Adapter) handleTypedView(_ context.Context, req map[string]any) (any, e
 	})
 	if err != nil {
 		return toolError(codeSelectorError, err.Error()), nil
-	}
-
-	// Apply token glob filtering.
-	if claims, ok := a.loadClaims(ctx); ok {
-		items = filterByGlobs(items, claims.NamespaceGlobs)
 	}
 
 	// Rank items.
@@ -622,8 +622,7 @@ func (a *Adapter) handleTypedView(_ context.Context, req map[string]any) (any, e
 	}), nil
 }
 
-func (a *Adapter) handleContextPack(_ context.Context, req map[string]any) (any, error) {
-	ctx := context.Background()
+func (a *Adapter) handleContextPack(ctx context.Context, req map[string]any) (any, error) {
 	viewID := argString(req, "view_id", "")
 	if viewID == "" {
 		return toolError(codeValidationError, "view_id is required"), nil
@@ -652,7 +651,7 @@ func (a *Adapter) handleContextPack(_ context.Context, req map[string]any) (any,
 	}
 
 	statuses := []string{"draft", "reviewed", "canonical"}
-	items, err := a.Store.Select(ctx, contextstore.Selector{
+	items, err := a.selectRecords(ctx, contextstore.Selector{
 		Namespaces:    namespaces,
 		RevisionScope: "head",
 		Types:         viewDef.Types,

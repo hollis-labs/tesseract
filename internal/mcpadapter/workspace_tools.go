@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -115,6 +116,9 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req map[string]any
 		if err != nil {
 			return workspacePromotionToolError(err), nil
 		}
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, source.Namespace) {
+			return workspacePromotionToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, sourceID)), nil
+		}
 		if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", source.Namespace); denied != nil {
 			return denied, nil
 		}
@@ -131,6 +135,9 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req map[string]any
 			targetMeta, targetErr := a.itemService().LookupMetadata(ctx, target.ItemID)
 			if targetErr != nil {
 				return workspacePromotionToolError(targetErr), nil
+			}
+			if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, targetMeta.Namespace) {
+				return workspacePromotionToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, target.ItemID)), nil
 			}
 			targetNamespace = targetMeta.Namespace
 			if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote.request", targetNamespace); denied != nil {
@@ -164,6 +171,9 @@ func (a *Adapter) handleWorkspacePromote(ctx context.Context, req map[string]any
 	meta, err := a.WorkspacePromotionStore.LookupMetadata(ctx, requestID)
 	if err != nil {
 		return workspacePromotionToolError(err), nil
+	}
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.SourceNamespace) || !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.TargetNamespace) {
+		return workspacePromotionToolError(fmt.Errorf("%w: request_id %s", promotion.ErrNotFound, requestID)), nil
 	}
 	if denied := a.authorizeWorkspacePromotion(ctx, claims, "promote."+stage, meta.SourceNamespace, meta.TargetNamespace); denied != nil {
 		return denied, nil
@@ -297,7 +307,7 @@ func (a *Adapter) authorizeWorkspacePromotion(ctx context.Context, claims contex
 		if namespace == "" {
 			return toolError(codeValidationError, "source and target namespaces are required")
 		}
-		if !globsPermit(claims.NamespaceGlobs, namespace) {
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, namespace) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit one of the promotion namespaces")
 		}
 		entry, err := a.Store.GetNamespacePolicy(ctx, namespace)
@@ -350,7 +360,7 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req map[string]any) 
 			return toolError(codeValidationError, "clear_fields is valid only for edit"), nil
 		}
 		ns := argString(req, "namespace", "")
-		if !globsPermit(claims.NamespaceGlobs, ns) {
+		if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, ns) {
 			return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+ns), nil
 		}
 		tags, _, err := parseStringArrayArg(req, "tags")
@@ -384,11 +394,11 @@ func (a *Adapter) handleWorkspaceWrite(ctx context.Context, req map[string]any) 
 	if err != nil {
 		return workspaceToolError(err), nil
 	}
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
+		return workspaceToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, meta.ItemID)), nil
+	}
 	if meta.Domain != workspace.Domain {
 		return toolError(codeValidationError, "item_id does not identify a workspace item"), nil
-	}
-	if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
-		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit writing: "+meta.Namespace), nil
 	}
 	edit, parseErr := workspaceEditInput(req)
 	if parseErr != nil {
@@ -458,11 +468,11 @@ func (a *Adapter) handleWorkspaceDelete(ctx context.Context, req map[string]any)
 	if err != nil {
 		return workspaceDeleteToolError(err), nil
 	}
+	if !a.namespaceAllowed(ctx, claims.NamespaceGlobs, meta.Namespace) {
+		return workspaceDeleteToolError(fmt.Errorf("%w: item_id %s", memory.ErrNotFound, itemID)), nil
+	}
 	if meta.Domain != workspace.Domain {
 		return toolError(codeValidationError, "item_id does not identify a workspace item"), nil
-	}
-	if !globsPermit(claims.NamespaceGlobs, meta.Namespace) {
-		return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit deleting: "+meta.Namespace), nil
 	}
 	receipt, err := a.WorkspaceStore.DeleteWithReceipt(ctx, workspace.DeleteInput{ItemID: itemID, VersionToken: token})
 	if err != nil {
