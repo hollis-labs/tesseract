@@ -17,17 +17,44 @@ import (
 func Permitted(globs []string, namespace string) bool {
 	for _, glob := range globs {
 		glob = strings.TrimSpace(glob)
+		if !validGlob(glob) {
+			continue
+		}
 		if glob == "*" || glob == namespace {
 			return true
 		}
 		if matched, _ := path.Match(glob, namespace); matched {
 			return true
 		}
-		if strings.HasSuffix(glob, "/*") && strings.HasPrefix(namespace, strings.TrimSuffix(glob, "*")) {
+		if descendantPrefix(glob) != "" && strings.HasPrefix(namespace, descendantPrefix(glob)) {
 			return true
 		}
 	}
 	return false
+}
+
+// validGlob fails closed on a malformed glob: one path.Match cannot parse
+// grants nothing, even where a prefix fallback would otherwise match ("[/*"
+// must not grant "[/x").
+func validGlob(glob string) bool {
+	_, err := path.Match(glob, "")
+	return err == nil
+}
+
+// descendantPrefix returns the literal prefix a "/*" glob covers ("app/test/"
+// for "app/test/*"), or "" when the glob is not of that form or its prefix has
+// a wildcard of its own. An interior-wildcard grant ("project/*/memory/*") is
+// matched by path.Match only, one segment at a time, and never widened to
+// descendants by string prefix.
+func descendantPrefix(glob string) string {
+	if !strings.HasSuffix(glob, "/*") {
+		return ""
+	}
+	prefix := strings.TrimSuffix(glob, "*")
+	if strings.ContainsAny(prefix, "*?[") {
+		return ""
+	}
+	return prefix
 }
 
 // PatternWithin reports whether every namespace a selector pattern could match
@@ -38,10 +65,13 @@ func PatternWithin(globs []string, pattern string) bool {
 	wild := strings.ContainsAny(pattern, "*?[")
 	for _, g := range globs {
 		g = strings.TrimSpace(g)
+		if !validGlob(g) {
+			continue
+		}
 		if g == "*" || g == pattern {
 			return true
 		}
-		if strings.HasSuffix(g, "/*") && strings.HasPrefix(pattern, strings.TrimSuffix(g, "*")) {
+		if descendantPrefix(g) != "" && strings.HasPrefix(pattern, descendantPrefix(g)) {
 			return true
 		}
 		if !wild {
@@ -72,19 +102,7 @@ func Unrestricted(globs []string) bool {
 func SelectorPermitted(globs []string, selector string, domainNames []string) bool {
 	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
 	if !isPrefix {
-		for _, glob := range globs {
-			glob = strings.TrimSpace(glob)
-			if glob == "*" || glob == selector {
-				return true
-			}
-			if matched, err := path.Match(glob, selector); err == nil && matched {
-				return true
-			}
-			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
-				return true
-			}
-		}
-		return false
+		return Permitted(globs, selector)
 	}
 	for _, glob := range globs {
 		glob = strings.TrimSpace(glob)

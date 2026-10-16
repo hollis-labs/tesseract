@@ -27,3 +27,25 @@ func TestPermittedAndPatternWithin(t *testing.T) {
 		t.Error("Unrestricted")
 	}
 }
+
+func TestMalformedAndInteriorWildcardGlobsFailClosed(t *testing.T) {
+	// A glob path.Match cannot parse grants nothing, prefix fallback included.
+	if Permitted([]string{"[/*"}, "[/x") || PatternWithin([]string{"[/*"}, "[/x") {
+		t.Error("malformed glob granted access")
+	}
+	if Permitted([]string{"[/*", "ok/*"}, "ok/x") != true {
+		t.Error("a malformed glob must not disable the valid ones")
+	}
+	// An interior-wildcard grant matches one segment per star and is never
+	// widened to descendants by string prefix.
+	g := []string{"project/*/memory/*"}
+	if Permitted(g, "project/a/memory/private/x") {
+		t.Error("interior-wildcard glob granted a deeper descendant")
+	}
+	if PatternWithin(g, "project/*/memory/private/*") {
+		t.Error("PatternWithin disagrees with Permitted for an interior-wildcard glob")
+	}
+	if !Permitted(g, "project/a/memory/x") {
+		t.Error("single-segment match under the interior wildcard should still work")
+	}
+}
