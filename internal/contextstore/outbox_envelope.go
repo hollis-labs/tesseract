@@ -86,8 +86,10 @@ func auditActor(ctx context.Context, claimed string) (*runtimeevents.Actor, stri
 		return &runtimeevents.Actor{URN: urn, Kind: kind, Verified: "token"}, claimedActorFor(claimed, p.ID)
 	}
 	switch {
-	case claimed == "cli":
-		return &runtimeevents.Actor{URN: "msg://user/local/operator", Kind: "user", Role: "operator", Verified: "claimed"}, ""
+	case isOperatorCLI(ctx):
+		// Selected by the marker the CLI entry point sets, never by the actor
+		// string: an HTTP caller sending "cli" is just a claim.
+		return &runtimeevents.Actor{URN: "msg://user/local/operator", Kind: "user", Role: "operator", Verified: "claimed"}, claimedActorFor(claimed, "cli")
 	case isInternalPath(ctx):
 		// Only contextstore's own code marks a context internal; the actor
 		// string a caller sent never selects this branch.
@@ -123,6 +125,21 @@ type internalPathKey struct{}
 // service/system actor. It is unexported on purpose: a request cannot set it.
 func asInternalPath(ctx context.Context) context.Context {
 	return context.WithValue(ctx, internalPathKey{}, true)
+}
+
+type operatorCLIKey struct{}
+
+// AsOperatorCLI marks ctx as a command run by the local operator at the
+// tesseract CLI. Only the CLI entry point calls it (internal/contextcli Run);
+// no request handler does, so a caller cannot obtain the operator actor by
+// sending an actor string.
+func AsOperatorCLI(ctx context.Context) context.Context {
+	return context.WithValue(ctx, operatorCLIKey{}, true)
+}
+
+func isOperatorCLI(ctx context.Context) bool {
+	v, _ := ctx.Value(operatorCLIKey{}).(bool)
+	return v
 }
 
 func isInternalPath(ctx context.Context) bool {

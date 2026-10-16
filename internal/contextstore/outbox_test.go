@@ -23,7 +23,7 @@ func readEnvelope(t *testing.T, e OutboxEntry) runtimeevents.Event {
 func TestEmitWritesAuditRecordedEnvelope(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	if err := s.EmitWrite(ctx, "cli", "app/x/session", "k", 3, "rec-1", nil); err != nil {
+	if err := s.EmitWrite(AsOperatorCLI(ctx), "cli", "app/x/session", "k", 3, "rec-1", nil); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 	got, err := s.ReadOutbox(ctx, 0, 10)
@@ -104,7 +104,7 @@ func TestOutboxUnauthenticatedCallHasNoActor(t *testing.T) {
 // string a caller can send: a spoofed "system" or "credential:x" gets no actor
 // and the claim survives as claimed_actor.
 func TestOutboxClaimedSystemIsNotAnInternalPath(t *testing.T) {
-	for _, claimed := range []string{"system", "credential:x"} {
+	for _, claimed := range []string{"system", "credential:x", "cli"} {
 		s := newTestStore(t)
 		if err := s.EmitWrite(context.Background(), claimed, "app/x/session", "k", 1, "r", nil); err != nil {
 			t.Fatal(err)
@@ -119,6 +119,20 @@ func TestOutboxClaimedSystemIsNotAnInternalPath(t *testing.T) {
 		if p["claimed_actor"] != claimed {
 			t.Fatalf("claimed %q: payload = %v", claimed, p)
 		}
+	}
+}
+
+// The CLI entry point marks its context; only then does the operator actor
+// appear, and the claim is not erased.
+func TestOutboxOperatorCLIMarker(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.EmitWrite(AsOperatorCLI(context.Background()), "cli", "app/x/session", "k", 1, "r", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ReadOutbox(context.Background(), 0, 10)
+	ev := readEnvelope(t, got[0])
+	if ev.Actor == nil || ev.Actor.URN != "msg://user/local/operator" || ev.Actor.Kind != "user" || ev.Actor.Role != "operator" || ev.Actor.Verified != "claimed" {
+		t.Fatalf("actor = %+v", ev.Actor)
 	}
 }
 
@@ -391,7 +405,7 @@ func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
 			return func() { outboxRecordHook = nil }
 		}},
 		{"envelope fails runtimeevents v1.1 Validate", func(t *testing.T, s *Store) func() {
-			outboxEnvelopeHook = func(e *runtimeevents.Event) { e.Actor.URN = "" }
+			outboxEnvelopeHook = func(e *runtimeevents.Event) { e.Actor = &runtimeevents.Actor{Kind: "user"} }
 			return func() { outboxEnvelopeHook = nil }
 		}},
 		{"invalid generation (unreadable store_identity)", func(t *testing.T, s *Store) func() {
