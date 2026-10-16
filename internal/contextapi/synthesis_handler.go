@@ -104,6 +104,12 @@ func (s *Server) handleSynthesisAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, ns := range req.Namespaces {
+		if !requireNamespaceSelectorAccess(w, r, ns) {
+			return
+		}
+	}
+
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 10

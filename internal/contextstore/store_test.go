@@ -1803,3 +1803,30 @@ func TestMigration26AddsWorkstreamAndWriteContextWithoutBackfill(t *testing.T) {
 		t.Fatalf("preexisting content changed: summary=%q err=%v", summary, err)
 	}
 }
+
+func TestTrimAndCompactPermitSkipRejectedNamespaces(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	for _, ns := range []string{"app/mine/x", "app/MINE/x"} {
+		for i := 0; i < 3; i++ {
+			if _, err := s.AppendRecord(ctx, AppendInput{Namespace: ns, Key: "k", Actor: "t", Payload: json.RawMessage(`{}`)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	permit := func(ns string) bool { return ns == "app/mine/x" }
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	// LIKE matches both spellings; permit keeps only the exact one.
+	n, err := s.TrimRecordsPermit(ctx, "app/mine/%", future, true, permit)
+	if err != nil || n != 3 {
+		t.Fatalf("trim dry-run counted %d (%v), want 3", n, err)
+	}
+	n, err = s.CompactNamespacePermit(ctx, "app/mine/%", 1, true, permit)
+	if err != nil || n != 2 {
+		t.Fatalf("compact dry-run counted %d (%v), want 2", n, err)
+	}
+	n, _ = s.TrimRecords(ctx, "app/mine/%", future, true)
+	if n != 6 {
+		t.Fatalf("unrestricted trim counted %d, want 6", n)
+	}
+}

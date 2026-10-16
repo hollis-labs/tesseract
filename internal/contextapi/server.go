@@ -8,11 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hollis-labs/tesseract/internal/nsglob"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -185,25 +185,9 @@ func requireNamespaceAccess(w http.ResponseWriter, r *http.Request, namespace st
 	return false
 }
 
-// namespacePermitted authorizes one concrete stored namespace. Unlike recall
-// selector authorization, a namespace ending in /* is still literal data here.
+// namespacePermitted authorizes one concrete stored namespace; see nsglob.
 func namespacePermitted(globs []string, namespace string) bool {
-	for _, glob := range globs {
-		if glob == "*" || glob == namespace {
-			return true
-		}
-		if matched, _ := path.Match(glob, namespace); matched {
-			return true
-		}
-		// Hierarchical match: "app/test/*" should match "app/test/session/task-001".
-		if strings.HasSuffix(glob, "/*") {
-			prefix := strings.TrimSuffix(glob, "*") // "app/test/"
-			if strings.HasPrefix(namespace, prefix) {
-				return true
-			}
-		}
-	}
-	return false
+	return nsglob.Permitted(globs, namespace)
 }
 
 // requireNamespaceSelectorAccess applies namespace authorization to the whole
@@ -234,39 +218,7 @@ func requireNamespaceSelectorAccess(w http.ResponseWriter, r *http.Request, sele
 }
 
 func namespaceSelectorPermitted(globs []string, selector string, domainNames []string) bool {
-	prefix, isPrefix := memory.RecallNamespacePrefix(selector, domainNames)
-	if !isPrefix {
-		for _, glob := range globs {
-			glob = strings.TrimSpace(glob)
-			if glob == "*" || glob == selector {
-				return true
-			}
-			if matched, err := path.Match(glob, selector); err == nil && matched {
-				return true
-			}
-			if strings.HasSuffix(glob, "/*") && strings.HasPrefix(selector, strings.TrimSuffix(glob, "*")) {
-				return true
-			}
-		}
-		return false
-	}
-	for _, glob := range globs {
-		glob = strings.TrimSpace(glob)
-		if glob == "*" {
-			return true
-		}
-		if !strings.HasSuffix(glob, "/*") {
-			continue
-		}
-		allowedPrefix := strings.TrimSuffix(glob, "/*")
-		if strings.ContainsAny(allowedPrefix, "*?[") {
-			continue
-		}
-		if prefix == allowedPrefix || strings.HasPrefix(prefix, allowedPrefix+"/") {
-			return true
-		}
-	}
-	return false
+	return nsglob.SelectorPermitted(globs, selector, domainNames)
 }
 
 func recallAuthorizationSelectorsHTTP(selector string, domainNames []string) []string {
@@ -1024,6 +976,9 @@ func (s *Server) handleNamespaceRegister(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
+	if !requireNamespaceAccess(w, r, req.Namespace) {
+		return
+	}
 	entry := contextstore.NamespacePolicyEntry{
 		Namespace: req.Namespace,
 		OwnerType: req.OwnerType,
@@ -1055,6 +1010,9 @@ func (s *Server) handleAdminNamespacePreview(w http.ResponseWriter, r *http.Requ
 		writeError(w, status, code, message, nil)
 		return
 	}
+	if !requireNamespaceAccess(w, r, resp.Entry.Namespace) {
+		return
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1065,6 +1023,9 @@ func (s *Server) handleAdminNamespaceUpdate(w http.ResponseWriter, r *http.Reque
 	resp, status, code, message := s.buildAdminNamespacePreview(r.Context(), r)
 	if code != "" {
 		writeError(w, status, code, message, nil)
+		return
+	}
+	if !requireNamespaceAccess(w, r, resp.Entry.Namespace) {
 		return
 	}
 	entry := resp.Entry
@@ -1100,6 +1061,14 @@ func (s *Server) handleAdminNamespaceHistory(w http.ResponseWriter, r *http.Requ
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	if namespace == "" {
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace is required", nil)
+		return
+	}
+	if !namespaceVisible(r, namespace) {
+		// A listing filters silently: nothing visible, nothing to report.
+		writeJSON(w, http.StatusOK, adminNamespaceHistoryResponse{
+			Namespace: namespace,
+			Items:     []contextstore.AuditEvent{},
+		})
 		return
 	}
 	limit := 25
@@ -1172,7 +1141,37 @@ func (s *Server) handleNamespacesList(w http.ResponseWriter, r *http.Request) {
 	}
 	query.Cursor = strings.TrimSpace(q.Get("cursor"))
 
-	page, err := s.Store.ListNamespacePolicyPage(r.Context(), query)
+	permit, ok := namespacePermit(w, r, nil)
+	if !ok {
+		return
+	}
+	var page contextstore.NamespacePage
+	var err error
+	if permit == nil {
+		page, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
+	} else {
+		// A restricted token sees only its own namespaces, and the count and
+		// paging must not reveal how many others exist. Read every page, keep
+		// the permitted rows, and answer in one piece (capped at maxLimit).
+		query.Limit, query.Cursor = maxLimit, ""
+		for err == nil {
+			var chunk contextstore.NamespacePage
+			chunk, err = s.Store.ListNamespacePolicyPage(r.Context(), query)
+			if err != nil {
+				break
+			}
+			for _, entry := range chunk.Items {
+				if permit(entry.Namespace) && len(page.Items) < maxLimit {
+					page.Items = append(page.Items, entry)
+				}
+			}
+			if chunk.NextCursor == "" {
+				break
+			}
+			query.Cursor = chunk.NextCursor
+		}
+		page.Total = len(page.Items)
+	}
 	if err != nil {
 		if errors.Is(err, contextstore.ErrNamespaceQuery) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
@@ -1216,6 +1215,9 @@ func (s *Server) handleNamespaceGet(w http.ResponseWriter, r *http.Request) {
 	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
 	if namespace == "" {
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace is required", nil)
+		return
+	}
+	if !requireNamespaceAccess(w, r, namespace) {
 		return
 	}
 	entry, err := s.Store.GetNamespacePolicy(r.Context(), namespace)
@@ -1306,6 +1308,10 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !requireNamespaceAccess(w, r, namespace) {
+		return
+	}
+
 	ctx, span := hollisotel.MemoryReadSpan(r.Context(), namespace, key)
 	defer span.End()
 
@@ -1339,6 +1345,10 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		limit = n
+	}
+
+	if !requireNamespaceAccess(w, r, namespace) {
+		return
 	}
 
 	ctx, span := hollisotel.MemoryReadSpan(r.Context(), namespace, key)
@@ -1398,7 +1408,16 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var auditNS []string
+	if namespace != "" {
+		auditNS = []string{namespace}
+	}
+	permit, ok := namespacePermit(w, r, auditNS)
+	if !ok {
+		return
+	}
 	events, nextCursor, err := s.Store.QueryAuditEvents(r.Context(), contextstore.AuditQuery{
+		Permit:    permit,
 		Limit:     limit,
 		Cursor:    cursor,
 		Namespace: namespace,
@@ -2898,6 +2917,11 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
+	permit, ok := namespacePermit(w, r, req.Selector.Namespaces)
+	if !ok {
+		return
+	}
+	req.Selector.Permit = permit
 	result, err := s.Store.Evaluate(r.Context(), req.Selector, req.IncludePayload, req.Limit)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
@@ -2915,10 +2939,25 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConsistencyScan(w http.ResponseWriter, r *http.Request) {
+	permit, ok := namespacePermit(w, r, nil)
+	if !ok {
+		return
+	}
 	issues, err := s.Store.ScanConsistency(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "scan_failed", err.Error(), nil)
 		return
+	}
+	if permit != nil {
+		// A restricted token sees only issues in its own namespaces; an issue
+		// with no namespace is global and withheld.
+		kept := issues[:0]
+		for _, is := range issues {
+			if is.Namespace != "" && permit(is.Namespace) {
+				kept = append(kept, is)
+			}
+		}
+		issues = kept
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"issues": issues,
@@ -2928,6 +2967,9 @@ func (s *Server) handleConsistencyScan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConsistencyRepair(w http.ResponseWriter, r *http.Request) {
 	if !requireScope(w, r, "repair") {
+		return
+	}
+	if !requireUnrestrictedNamespaces(w, r) {
 		return
 	}
 	rebuilt, err := s.Store.RebuildHeads(r.Context())
@@ -3151,6 +3193,10 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.NamespacePattern) == "" {
 		req.NamespacePattern = "user/cache/%"
 	}
+	maintenancePermit, ok := requireNamespacePatternAccess(w, r, req.NamespacePattern)
+	if !ok {
+		return
+	}
 	retention := req.Retention
 	if strings.TrimSpace(retention) == "" {
 		retention = "72h"
@@ -3162,7 +3208,7 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	}
 	cutoff := time.Now().UTC().Add(-dur).Format(time.RFC3339)
 	start := time.Now()
-	trimmed, err := s.Store.TrimRecords(r.Context(), req.NamespacePattern, cutoff, req.DryRun)
+	trimmed, err := s.Store.TrimRecordsPermit(r.Context(), req.NamespacePattern, cutoff, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
@@ -3196,11 +3242,15 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "validation_error", "namespace_pattern is required", nil)
 		return
 	}
+	maintenancePermit, ok := requireNamespacePatternAccess(w, r, req.NamespacePattern)
+	if !ok {
+		return
+	}
 	if req.MaxRevisions < 1 {
 		req.MaxRevisions = 1
 	}
 	start := time.Now()
-	compacted, err := s.Store.CompactNamespace(r.Context(), req.NamespacePattern, req.MaxRevisions, req.DryRun)
+	compacted, err := s.Store.CompactNamespacePermit(r.Context(), req.NamespacePattern, req.MaxRevisions, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return

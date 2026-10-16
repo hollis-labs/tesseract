@@ -137,6 +137,9 @@ func (s *Server) handleStatusPromote(w http.ResponseWriter, r *http.Request) {
 		actor = "user"
 	}
 
+	if !requireNamespaceAccess(w, r, req.Namespace) {
+		return
+	}
 	head, err := s.Store.Head(r.Context(), req.Namespace, req.Key)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
@@ -213,6 +216,9 @@ func (s *Server) handleStatusDeprecate(w http.ResponseWriter, r *http.Request) {
 		actor = "user"
 	}
 
+	if !requireNamespaceAccess(w, r, req.Namespace) {
+		return
+	}
 	head, err := s.Store.Head(r.Context(), req.Namespace, req.Key)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
@@ -285,6 +291,10 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 		maxItems = contextstore.DefaultSelectLimit
 	}
 
+	permit, ok := namespacePermit(w, r, req.Namespaces)
+	if !ok {
+		return
+	}
 	namespaces := req.Namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{"*"}
@@ -298,6 +308,7 @@ func (s *Server) handleTypedView(w http.ResponseWriter, r *http.Request) {
 		Types:         viewDef.Types,
 		Statuses:      statuses,
 		Limit:         maxItems,
+		Permit:        permit,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "selector_error", err.Error(), nil)
@@ -581,6 +592,9 @@ func (s *Server) handleBulkIngest(w http.ResponseWriter, r *http.Request) {
 
 // handleTTLCleanup triggers cleanup of expired TTL records.
 func (s *Server) handleTTLCleanup(w http.ResponseWriter, r *http.Request) {
+	if !requireUnrestrictedNamespaces(w, r) {
+		return
+	}
 	cleaned, err := s.Store.CleanupExpiredTTL(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "cleanup_failed", err.Error(), nil)
@@ -633,6 +647,10 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 		maxTokens = 8000
 	}
 
+	permit, ok := namespacePermit(w, r, req.Namespaces)
+	if !ok {
+		return
+	}
 	namespaces := req.Namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{"*"}
@@ -645,6 +663,7 @@ func (s *Server) handleContextPack(w http.ResponseWriter, r *http.Request) {
 		Types:         viewDef.Types,
 		Statuses:      statuses,
 		Limit:         maxItems * 2, // fetch more for ranking/trimming
+		Permit:        permit,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "selector_error", err.Error(), nil)

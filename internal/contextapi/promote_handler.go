@@ -156,6 +156,12 @@ func (s *Server) handlePromoteApprove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
 		return
 	}
+	// Approving authorizes a write into the target; the approver's token must
+	// cover it. (The request itself only needed the source namespace.)
+	if !namespaceVisible(r, pr.TargetNamespace) {
+		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("promote request %s not found", req.RequestID), nil)
+		return
+	}
 	if pr.Status != "pending" {
 		writeError(w, http.StatusConflict, "already_approved",
 			fmt.Sprintf("request has status %q, cannot approve", pr.Status), nil)
@@ -244,6 +250,13 @@ func (s *Server) handlePromoteApply(w http.ResponseWriter, r *http.Request) {
 	pr, reqNamespace, err := s.Store.GetPromoteRequest(ctx, req.RequestID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+		return
+	}
+	// Apply copies source content into the target, so the token must cover
+	// both: covering only the target would let it read the source through the
+	// copy.
+	if !namespaceVisible(r, pr.TargetNamespace) || !namespaceVisible(r, pr.SourceNamespace) {
+		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("promote request %s not found", req.RequestID), nil)
 		return
 	}
 	if pr.Status != "approved" {

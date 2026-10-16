@@ -137,6 +137,12 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	permit, ok := namespacePermit(w, r, req.Selector.Namespaces)
+	if !ok {
+		return
+	}
+	req.Selector.Permit = permit
+
 	ctx := r.Context()
 	reqID := newRequestID()
 	sources := map[string]int{}
@@ -223,6 +229,7 @@ func (s *Server) handlePacket(w http.ResponseWriter, r *http.Request) {
 		pinSel := contextstore.Selector{
 			Namespaces:    []string{"user/pins/*"},
 			RevisionScope: "head",
+			Permit:        permit,
 		}
 		if pins, err := s.Store.Select(ctx, pinSel); err == nil {
 			for _, rec := range pins {
@@ -311,6 +318,11 @@ func (s *Server) handleEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 		return
 	}
+	permit, ok := namespacePermit(w, r, req.Selector.Namespaces)
+	if !ok {
+		return
+	}
+	req.Selector.Permit = permit
 	result, err := s.Store.Estimate(r.Context(), req.Selector)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "selector_error", err.Error(), nil)

@@ -317,6 +317,15 @@ func (s *Server) handleMemoryGetRevision(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "validation_error", "revision id required", nil)
 		return
 	}
+	// Authorize on the revision's namespace BEFORE the reinforcing read, so a
+	// denied caller cannot move activation either.
+	peek, peekErr := s.MemoryStore.GetRevisionByID(r.Context(), id)
+	if peekErr == nil && !namespaceVisible(r, peek.Namespace) {
+		notFound := fmt.Errorf("%w: revision_id %s", memory.ErrNotFound, id)
+		writeError(w, http.StatusNotFound, "not_found", notFound.Error(),
+			memory.NotFoundDetails("revision_id", id, time.Now()))
+		return
+	}
 	// Deliberate read: reinforce the parent memory's activation.
 	rev, err := s.MemoryStore.GetRevisionByIDReinforced(r.Context(), id)
 	if err != nil {
@@ -412,6 +421,20 @@ func (s *Server) handleMemoryDeprecate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.RevisionID == "" {
 		writeError(w, http.StatusBadRequest, "validation_error", "revision_id is required", nil)
+		return
+	}
+	target, lookupErr := s.MemoryStore.GetRevisionByID(r.Context(), req.RevisionID)
+	if lookupErr != nil {
+		if errors.Is(lookupErr, memory.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", lookupErr.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "deprecate_failed", lookupErr.Error(), nil)
+		return
+	}
+	if !namespaceVisible(r, target.Namespace) {
+		notFound := fmt.Errorf("%w: revision_id %s", memory.ErrNotFound, req.RevisionID)
+		writeError(w, http.StatusNotFound, "not_found", notFound.Error(), nil)
 		return
 	}
 	if err := s.MemoryStore.Deprecate(r.Context(), req.RevisionID); err != nil {

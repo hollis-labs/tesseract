@@ -88,6 +88,9 @@ JOIN record_tags rt ON rt.record_id = r.record_id AND rt.tag IN (` + placeholder
 		if !matchNamespace(sel.Namespaces, namespace) {
 			continue
 		}
+		if sel.Permit != nil && !sel.Permit(namespace) {
+			continue
+		}
 		info, err := os.Stat(filepath.Join(s.recordsDir, relPath))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {

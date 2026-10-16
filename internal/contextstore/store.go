@@ -106,6 +106,11 @@ type Selector struct {
 	TagsAny       []string `json:"tags_any,omitempty"` // records with at least one of these tags
 	Types         []string `json:"types,omitempty"`    // filter by record_type
 	Statuses      []string `json:"statuses,omitempty"` // filter by status
+
+	// Permit, when set, drops any record whose namespace it rejects, before the
+	// limit applies. It is set by the HTTP layer from the caller's token
+	// namespace globs and is never read from a request body.
+	Permit func(namespace string) bool `json:"-"`
 }
 
 // ConsistencyIssue reports a deterministic storage/index inconsistency finding.
@@ -144,6 +149,9 @@ type AuditQuery struct {
 	Limit     int
 	Cursor    int64
 	Namespace string
+	// Permit, when set, drops audit rows whose namespace it rejects before the
+	// limit applies. Set by the HTTP layer from the token's namespace globs.
+	Permit    func(namespace string) bool
 	EventType string
 	// Actor is a case-sensitive substring filter on the actor column. Empty
 	// means no filter. Backed by SQL LIKE; small audit_events table makes
@@ -2042,6 +2050,9 @@ JOIN record_tags rt ON rt.record_id = r.record_id AND rt.tag IN (` + placeholder
 		if !matchNamespace(sel.Namespaces, rec.Namespace) {
 			continue
 		}
+		if sel.Permit != nil && !sel.Permit(rec.Namespace) {
+			continue
+		}
 		if pointersJSON != "" && pointersJSON != "[]" {
 			_ = json.Unmarshal([]byte(pointersJSON), &rec.Pointers)
 		}
@@ -2411,8 +2422,15 @@ WHERE 1=1`
 		query += "\n  AND created_at <= ?"
 		args = append(args, u)
 	}
-	query += "\nORDER BY id DESC\nLIMIT ?"
-	args = append(args, q.Limit+1)
+	query += "\nORDER BY id DESC"
+	// TODO(CW-20261016-0205): a restricted query scans until it fills a page;
+	// add a scan cap (and a resume cursor) before the audit table gets large.
+	if q.Permit == nil {
+		// With a permit filter the limit is applied after filtering, in the
+		// loop below, so a restricted caller still gets a full page.
+		query += "\nLIMIT ?"
+		args = append(args, q.Limit+1)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -2422,10 +2440,16 @@ WHERE 1=1`
 
 	out := make([]AuditEvent, 0, q.Limit+1)
 	for rows.Next() {
+		if q.Permit != nil && len(out) > q.Limit {
+			break
+		}
 		var event AuditEvent
 		var metadata string
 		if err := rows.Scan(&event.ID, &event.EventType, &event.Actor, &event.Namespace, &event.Key, &event.Revision, &event.RecordID, &event.CreatedAt, &metadata); err != nil {
 			return nil, nil, err
+		}
+		if q.Permit != nil && !q.Permit(event.Namespace) {
+			continue
 		}
 		if strings.TrimSpace(metadata) != "" {
 			event.Metadata = json.RawMessage(metadata)
@@ -2790,6 +2814,15 @@ WHERE id IN (
 // namespacePattern uses SQL LIKE syntax (% for wildcard).
 // Returns the number of records trimmed and a list of deleted file paths.
 func (s *Store) TrimRecords(ctx context.Context, namespacePattern, cutoffISO string, dryRun bool) (int64, error) {
+	return s.TrimRecordsPermit(ctx, namespacePattern, cutoffISO, dryRun, nil)
+}
+
+// TrimRecordsPermit is TrimRecords restricted to rows whose namespace permit
+// accepts. The SQL LIKE is case-insensitive for ASCII and has no per-row
+// authority, so a pattern that lies inside a token's globs can still match a
+// case-variant namespace outside them; permit is checked on every row and a
+// rejected row is neither counted nor deleted. nil permits everything.
+func (s *Store) TrimRecordsPermit(ctx context.Context, namespacePattern, cutoffISO string, dryRun bool, permit func(namespace string) bool) (int64, error) {
 	if strings.TrimSpace(namespacePattern) == "" {
 		return 0, errors.New("namespace_pattern required")
 	}
@@ -2798,7 +2831,7 @@ func (s *Store) TrimRecords(ctx context.Context, namespacePattern, cutoffISO str
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT record_id, file_path FROM records
+SELECT record_id, file_path, namespace FROM records
 WHERE namespace LIKE ? AND created_at < ?
 ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 	if err != nil {
@@ -2813,8 +2846,12 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 	var targets []toDelete
 	for rows.Next() {
 		var td toDelete
-		if err := rows.Scan(&td.id, &td.path); err != nil {
+		var namespace string
+		if err := rows.Scan(&td.id, &td.path, &namespace); err != nil {
 			return 0, err
+		}
+		if permit != nil && !permit(namespace) {
+			continue
 		}
 		targets = append(targets, td)
 	}
@@ -2859,6 +2896,12 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 // (namespace, key) for namespaces matching namespacePattern (SQL LIKE syntax).
 // maxRevisions must be >= 1.
 func (s *Store) CompactNamespace(ctx context.Context, namespacePattern string, maxRevisions int, dryRun bool) (int64, error) {
+	return s.CompactNamespacePermit(ctx, namespacePattern, maxRevisions, dryRun, nil)
+}
+
+// CompactNamespacePermit is CompactNamespace restricted to rows whose namespace
+// permit accepts; see TrimRecordsPermit for why the per-row check is needed.
+func (s *Store) CompactNamespacePermit(ctx context.Context, namespacePattern string, maxRevisions int, dryRun bool, permit func(namespace string) bool) (int64, error) {
 	if strings.TrimSpace(namespacePattern) == "" {
 		return 0, errors.New("namespace_pattern required")
 	}
@@ -2867,8 +2910,8 @@ func (s *Store) CompactNamespace(ctx context.Context, namespacePattern string, m
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT record_id, file_path FROM (
-	SELECT record_id, file_path,
+SELECT record_id, file_path, namespace FROM (
+	SELECT record_id, file_path, namespace,
 		ROW_NUMBER() OVER (PARTITION BY namespace, key_name ORDER BY revision DESC) AS rn
 	FROM records
 	WHERE namespace LIKE ?
@@ -2886,8 +2929,12 @@ WHERE rn > ?`, namespacePattern, maxRevisions)
 	var targets []toDelete
 	for rows.Next() {
 		var td toDelete
-		if err := rows.Scan(&td.id, &td.path); err != nil {
+		var namespace string
+		if err := rows.Scan(&td.id, &td.path, &namespace); err != nil {
 			return 0, err
+		}
+		if permit != nil && !permit(namespace) {
+			continue
 		}
 		targets = append(targets, td)
 	}
