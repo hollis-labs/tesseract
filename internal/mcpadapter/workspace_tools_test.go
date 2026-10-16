@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -280,15 +281,33 @@ func TestWorkspaceMCPMutationAndTypedReadContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantErrorCode(t, mustCallRegistered(t, a, "tesseract_touch", map[string]any{
-		"item_ids": `[` + `"` + itemID + `","` + forbidden.ItemID + `"` + `]`,
-	}), "namespace_not_permitted")
+	mixed := wantNoError(t, mustCallRegistered(t, a, "tesseract_touch", map[string]any{
+		"item_ids": []string{itemID, forbidden.ItemID},
+	}))
+	if mixed["touched"] != float64(1) || !reflect.DeepEqual(mixed["not_found"], []any{forbidden.ItemID}) {
+		t.Fatalf("mixed touch must mask denied id and touch permitted id: %v", mixed)
+	}
 	afterDenied, err := a.WorkspaceStore.GetCurrent(context.Background(), itemID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterDenied.AccessCount != beforeDenied.AccessCount {
-		t.Fatalf("authorized item moved before the whole touch batch was authorized: before=%d after=%d", beforeDenied.AccessCount, afterDenied.AccessCount)
+	if afterDenied.AccessCount != beforeDenied.AccessCount+1 {
+		t.Fatalf("mixed batch did not touch permitted item once: before=%d after=%d", beforeDenied.AccessCount, afterDenied.AccessCount)
+	}
+	deniedAfter, err := a.WorkspaceStore.GetCurrent(context.Background(), forbidden.ItemID)
+	if err != nil || deniedAfter.AccessCount != forbidden.AccessCount {
+		t.Fatalf("denied item changed: before=%v after=%v err=%v", forbidden, deniedAfter, err)
+	}
+	missing := wantNoError(t, mustCallRegistered(t, a, "tesseract_touch", map[string]any{
+		"item_ids": []string{itemID, "missing-item"},
+	}))
+	// Normalize only the request identity echoed in not_found.
+	if !reflect.DeepEqual(missing["not_found"], []any{"missing-item"}) {
+		t.Fatalf("missing touch identity: %v", missing)
+	}
+	missing["not_found"] = []any{forbidden.ItemID}
+	if !reflect.DeepEqual(mixed, missing) {
+		t.Fatalf("denied and missing touch responses differ: %v / %v", mixed, missing)
 	}
 	deleted := wantNoError(t, mustCallRegistered(t, a, "workspace_delete", map[string]any{"item_id": itemID, "version_token": version}))
 	if deleted["status"] != "deleted" {
