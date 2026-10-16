@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +36,10 @@ type guardCase struct {
 	// route answers normally but must not carry any out-of-glob data.
 	denied bool
 	// notFound: a by-id route must answer 404 for an out-of-glob id, the same
-	// as a missing one, so ids cannot be probed.
+	// as a missing one, so ids cannot be probed. realID is replaced with a
+	// nonexistent id to obtain the not-found body the denial must equal.
 	notFound bool
+	realID   string
 	// echoesInput: the response repeats the caller's own namespace argument.
 	echoesInput bool
 	// teeth: an unrestricted token gets data from the out-of-glob namespace from this same
@@ -146,8 +149,8 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 		m["include_payload"] = true
 		return m
 	}
-	byID := func(method, path string, body any) []guardCase {
-		return []guardCase{{method: method, path: path, body: body, notFound: true}}
+	byID := func(method, path string, body any, realID string) []guardCase {
+		return []guardCase{{method: method, path: path, body: body, notFound: true, realID: realID}}
 	}
 	both := func(a, b []guardCase) []guardCase { return append(a, b...) }
 
@@ -187,11 +190,11 @@ func (f *guardFixture) cases() (map[routeKey][]guardCase, map[routeKey]string) {
 		{http.MethodPost, "/v1/context/status/deprecate"}: post("/v1/context/status/deprecate", map[string]any{"namespace": guardOutNS, "key": "doc"}, true, false),
 		{http.MethodPost, "/v1/context/promote/request"}: post("/v1/context/promote/request", map[string]any{
 			"source_namespace": guardOutNS, "source_key": "doc", "target_namespace": guardInNS, "target_key": "x"}, true, false),
-		{http.MethodPost, "/v1/context/promote/approve"}: byID(http.MethodPost, "/v1/context/promote/approve", map[string]any{"request_id": f.promoteRequest}),
-		{http.MethodPost, "/v1/context/promote/apply"}:   byID(http.MethodPost, "/v1/context/promote/apply", map[string]any{"request_id": f.promoteRequest}),
+		{http.MethodPost, "/v1/context/promote/approve"}: byID(http.MethodPost, "/v1/context/promote/approve", map[string]any{"request_id": f.promoteRequest}, f.promoteRequest),
+		{http.MethodPost, "/v1/context/promote/apply"}:   byID(http.MethodPost, "/v1/context/promote/apply", map[string]any{"request_id": f.promoteRequest}, f.promoteRequest),
 
-		{http.MethodGet, "/v1/memory/revisions/"}: byID(http.MethodGet, "/v1/memory/revisions/"+f.outRevisionID, nil),
-		{http.MethodPost, "/v1/memory/deprecate"}: byID(http.MethodPost, "/v1/memory/deprecate", map[string]any{"revision_id": f.outRevisionID}),
+		{http.MethodGet, "/v1/memory/revisions/"}: byID(http.MethodGet, "/v1/memory/revisions/"+f.outRevisionID, nil, f.outRevisionID),
+		{http.MethodPost, "/v1/memory/deprecate"}: byID(http.MethodPost, "/v1/memory/deprecate", map[string]any{"revision_id": f.outRevisionID}, f.outRevisionID),
 		{http.MethodGet, "/v1/memory/current"}:    get("/v1/memory/current?"+memOut, true, true),
 		{http.MethodGet, "/v1/memory/history"}:    get("/v1/memory/history?"+memOut, true, true),
 		{http.MethodPost, "/v1/memory/recall"}:    post("/v1/memory/recall", map[string]any{"namespaces": []string{guardMemOutNS}, "query": "x"}, true, false),
@@ -290,6 +293,20 @@ func TestRestrictedTokenSeesNothingOutsideItsNamespaceGlobs(t *testing.T) {
 					if res.Code != http.StatusNotFound {
 						t.Fatalf("status = %d, want 404 for an out-of-glob id: %s", res.Code, body)
 					}
+					if strings.Contains(body, "fixture-out") || strings.Contains(body, "token_globs") {
+						t.Fatalf("by-id denial reveals the stored namespace or the token globs: %s", body)
+					}
+					const fakeID = "01ZZZZZZZZZZZZZZZZZZZZZZZZ"
+					missPath := strings.ReplaceAll(c.path, c.realID, fakeID)
+					var missBody any
+					if c.body != nil {
+						raw, _ := json.Marshal(c.body)
+						_ = json.Unmarshal([]byte(strings.ReplaceAll(string(raw), c.realID, fakeID)), &missBody)
+					}
+					miss := performJSONWithHeaders(t, f.srv, c.method, missPath, missBody, f.restricted)
+					if got, want := notFoundShape(res.Body.Bytes(), c.realID), notFoundShape(miss.Body.Bytes(), fakeID); res.Code != miss.Code || got != want {
+						t.Fatalf("denial is distinguishable from a missing id:\n denied  (%d): %s\n missing (%d): %s", res.Code, got, miss.Code, want)
+					}
 				} else if c.denied {
 					if res.Code != http.StatusForbidden {
 						t.Fatalf("status = %d, want 403 for an out-of-glob request: %s", res.Code, body)
@@ -350,4 +367,22 @@ func TestRestrictedNamespaceListCountHidesOtherNamespaces(t *testing.T) {
 	if mine >= all || mine == 0 || strings.Contains(body, "fixture-out") {
 		t.Fatalf("restricted count=%d unrestricted=%d body=%s", mine, all, body)
 	}
+}
+
+// notFoundShape reduces an error body to what must be identical between a
+// denied id and a missing one: code, message with the id masked, and the set
+// of detail keys (values like timestamps differ per call).
+func notFoundShape(raw []byte, id string) string {
+	var b struct {
+		Code    string         `json:"code"`
+		Message string         `json:"message"`
+		Details map[string]any `json:"details"`
+	}
+	_ = json.Unmarshal(raw, &b)
+	keys := make([]string, 0, len(b.Details))
+	for k := range b.Details {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return b.Code + "|" + strings.ReplaceAll(b.Message, id, "<id>") + "|" + strings.Join(keys, ",")
 }
