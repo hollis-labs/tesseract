@@ -1,4 +1,4 @@
-.PHONY: drift-report test contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all deploy-check
+.PHONY: drift-report test vuln contracts contract-api contract-errors contract-metrics smoke smoke-invalid-token validate e2e-local e2e-managed contract-lint contract-commands contract-cli-list contract-cli-run frontend build install build-all install-all deploy-check
 
 BASE_URL ?= http://127.0.0.1:8089
 TOKEN ?=
@@ -84,6 +84,10 @@ install-all: frontend install
 
 test:
 	$(HERMETIC_ENV) $(TEST)
+
+vuln:
+	@command -v govulncheck >/dev/null || { echo "govulncheck not installed: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0"; exit 1; }
+	govulncheck ./...
 
 contract-api:
 	$(HERMETIC_ENV) go test ./tests/integration -run APIContract -count=1
