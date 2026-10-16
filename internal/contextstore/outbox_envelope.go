@@ -145,6 +145,12 @@ func buildEnvelope(ctx context.Context, r OutboxRecord, evtID string, generation
 	if r.Action == "" || r.SubjectType == "" || r.SubjectID == "" {
 		return runtimeevents.Event{}, "", errors.New("outbox: action and subject are required")
 	}
+	// A subject must name one thing. A keyless item would otherwise become a
+	// bare-namespace subject ("ns/"), which looks like a namespace event; it is
+	// a mapping error instead (skipped and recorded for repair by the caller).
+	if strings.HasSuffix(r.SubjectID, "/") || strings.HasPrefix(r.SubjectID, "/") || strings.Contains(r.SubjectID, "//") {
+		return runtimeevents.Event{}, "", errors.New("outbox: subject id has an empty segment: " + r.SubjectID)
+	}
 	subject := "msg://" + r.SubjectType + "/tesseract/" + r.SubjectID
 	actor, claimed := auditActor(ctx, r.Actor)
 	outcome := r.Outcome

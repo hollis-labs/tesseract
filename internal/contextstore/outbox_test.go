@@ -309,6 +309,10 @@ func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
 			outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "" }
 			return func() { outboxRecordHook = nil }
 		}},
+		{"keyless item (bare-namespace subject)", func(t *testing.T, s *Store) func() {
+			outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "app/x/session/" }
+			return func() { outboxRecordHook = nil }
+		}},
 		{"envelope fails runtimeevents v1.1 Validate", func(t *testing.T, s *Store) func() {
 			outboxEnvelopeHook = func(e *runtimeevents.Event) { e.Actor.URN = "" }
 			return func() { outboxEnvelopeHook = nil }
@@ -337,5 +341,17 @@ func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
 			}
 			assertOneSkipped(t, s)
 		})
+	}
+}
+
+func TestKeylessSubjectIsAMappingErrorNotABareNamespace(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	tx, _ := s.db.BeginTx(ctx, nil)
+	defer func() { _ = tx.Rollback() }()
+	_, err := s.AppendOutbox(ctx, tx, OutboxRecord{Action: "touch", SubjectType: "memory", SubjectID: "project/x/"})
+	var me mappingError
+	if !errors.As(err, &me) {
+		t.Fatalf("keyless subject must be a mapping error, got %v", err)
 	}
 }
