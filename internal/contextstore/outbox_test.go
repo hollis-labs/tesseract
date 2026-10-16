@@ -297,3 +297,45 @@ func TestMappingFailureKeepsAuditRowAndCounts(t *testing.T) {
 		t.Fatal("AppendOutbox must return the mapping error to its caller")
 	}
 }
+
+// Each non-DB failure path pr-1 found must take the savepoint path: audit row
+// kept, no outbox row, one outbox_skipped row, counter +1.
+func TestEveryOutboxWriteFailureTakesTheSavepointPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, s *Store) (cleanup func())
+	}{
+		{"missing subject (mapper: action and subject are required)", func(t *testing.T, s *Store) func() {
+			outboxRecordHook = func(r *OutboxRecord) { r.SubjectID = "" }
+			return func() { outboxRecordHook = nil }
+		}},
+		{"envelope fails runtimeevents v1.1 Validate", func(t *testing.T, s *Store) func() {
+			outboxEnvelopeHook = func(e *runtimeevents.Event) { e.Actor.URN = "" }
+			return func() { outboxEnvelopeHook = nil }
+		}},
+		{"invalid generation (unreadable store_identity)", func(t *testing.T, s *Store) func() {
+			if _, err := s.db.Exec(`UPDATE store_identity SET value = 'not-a-number'`); err != nil {
+				t.Fatal(err)
+			}
+			return func() {}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newTestStore(t)
+			cleanup := c.setup(t, s)
+			defer cleanup()
+			before := OutboxSkipped()
+			if err := s.EmitWrite(context.Background(), "cli", "app/x/session", "k", 1, "r", nil); err != nil {
+				t.Fatalf("emit must succeed: %v", err)
+			}
+			if out, _ := s.ReadOutbox(context.Background(), 0, 10); len(out) != 0 {
+				t.Fatalf("outbox rows = %d, want 0", len(out))
+			}
+			if OutboxSkipped()-before != 1 {
+				t.Fatalf("counter moved by %d", OutboxSkipped()-before)
+			}
+			assertOneSkipped(t, s)
+		})
+	}
+}

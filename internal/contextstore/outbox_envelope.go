@@ -89,6 +89,15 @@ func normalizeActorKind(k string) string {
 // kept, envelope skipped) is only reachable by injecting the failure.
 var outboxMapFault func() error
 
+// outboxRecordHook and outboxEnvelopeHook are test seams, nil in production.
+// They let a test corrupt the record before mapping (missing subject) or the
+// envelope after it (a v1.1 contract violation) to reach the failure paths a
+// valid audit event cannot.
+var (
+	outboxRecordHook   func(*OutboxRecord)
+	outboxEnvelopeHook func(*runtimeevents.Event)
+)
+
 // OutboxRecord describes one audit.recorded fact for the outbox. It is the
 // shape both the audit choke point and later per-surface writers (touch, step
 // 2) hand to AppendOutbox, so envelope construction lives in one place.
@@ -129,6 +138,9 @@ func buildEnvelope(ctx context.Context, r OutboxRecord, evtID string, generation
 		if err := outboxMapFault(); err != nil {
 			return runtimeevents.Event{}, "", err
 		}
+	}
+	if outboxRecordHook != nil {
+		outboxRecordHook(&r)
 	}
 	if r.Action == "" || r.SubjectType == "" || r.SubjectID == "" {
 		return runtimeevents.Event{}, "", errors.New("outbox: action and subject are required")
@@ -181,6 +193,9 @@ func buildEnvelope(ctx context.Context, r OutboxRecord, evtID string, generation
 	}
 	if r.CorrelationID != "" {
 		env.Corr = &runtimeevents.Corr{CorrelationID: r.CorrelationID}
+	}
+	if outboxEnvelopeHook != nil {
+		outboxEnvelopeHook(&env)
 	}
 	return env, subject, nil
 }
