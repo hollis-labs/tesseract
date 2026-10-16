@@ -106,6 +106,11 @@ type Selector struct {
 	TagsAny       []string `json:"tags_any,omitempty"` // records with at least one of these tags
 	Types         []string `json:"types,omitempty"`    // filter by record_type
 	Statuses      []string `json:"statuses,omitempty"` // filter by status
+
+	// Permit, when set, drops any record whose namespace it rejects, before the
+	// limit applies. It is set by the HTTP layer from the caller's token
+	// namespace globs and is never read from a request body.
+	Permit func(namespace string) bool `json:"-"`
 }
 
 // ConsistencyIssue reports a deterministic storage/index inconsistency finding.
@@ -144,6 +149,9 @@ type AuditQuery struct {
 	Limit     int
 	Cursor    int64
 	Namespace string
+	// Permit, when set, drops audit rows whose namespace it rejects before the
+	// limit applies. Set by the HTTP layer from the token's namespace globs.
+	Permit    func(namespace string) bool
 	EventType string
 	// Actor is a case-sensitive substring filter on the actor column. Empty
 	// means no filter. Backed by SQL LIKE; small audit_events table makes
@@ -2042,6 +2050,9 @@ JOIN record_tags rt ON rt.record_id = r.record_id AND rt.tag IN (` + placeholder
 		if !matchNamespace(sel.Namespaces, rec.Namespace) {
 			continue
 		}
+		if sel.Permit != nil && !sel.Permit(rec.Namespace) {
+			continue
+		}
 		if pointersJSON != "" && pointersJSON != "[]" {
 			_ = json.Unmarshal([]byte(pointersJSON), &rec.Pointers)
 		}
@@ -2411,8 +2422,13 @@ WHERE 1=1`
 		query += "\n  AND created_at <= ?"
 		args = append(args, u)
 	}
-	query += "\nORDER BY id DESC\nLIMIT ?"
-	args = append(args, q.Limit+1)
+	query += "\nORDER BY id DESC"
+	if q.Permit == nil {
+		// With a permit filter the limit is applied after filtering, in the
+		// loop below, so a restricted caller still gets a full page.
+		query += "\nLIMIT ?"
+		args = append(args, q.Limit+1)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -2422,10 +2438,16 @@ WHERE 1=1`
 
 	out := make([]AuditEvent, 0, q.Limit+1)
 	for rows.Next() {
+		if q.Permit != nil && len(out) > q.Limit {
+			break
+		}
 		var event AuditEvent
 		var metadata string
 		if err := rows.Scan(&event.ID, &event.EventType, &event.Actor, &event.Namespace, &event.Key, &event.Revision, &event.RecordID, &event.CreatedAt, &metadata); err != nil {
 			return nil, nil, err
+		}
+		if q.Permit != nil && !q.Permit(event.Namespace) {
+			continue
 		}
 		if strings.TrimSpace(metadata) != "" {
 			event.Metadata = json.RawMessage(metadata)

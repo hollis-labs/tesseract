@@ -113,9 +113,11 @@ func (s *Server) handleContextPlan(w http.ResponseWriter, r *http.Request) {
 	// When no managed auth, permit all.
 	permittedGlobs := []string{"*"}
 	if claims, ok := getTokenClaims(r); ok {
-		if len(claims.NamespaceGlobs) > 0 {
-			permittedGlobs = claims.NamespaceGlobs
-		}
+		// A token with no globs permits nothing; it must not widen to "*".
+		permittedGlobs = claims.NamespaceGlobs
+	} else if authModeConfigured(r) {
+		writeError(w, http.StatusForbidden, "namespace_not_permitted", "request carries no token claims", nil)
+		return
 	}
 
 	var warnings []string
