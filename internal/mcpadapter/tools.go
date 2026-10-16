@@ -640,12 +640,11 @@ func (a *Adapter) handleWrite(ctx context.Context, req map[string]any) (any, err
 		Actor:      actor,
 		Payload:    payload,
 		RecordType: recordType,
+		Audit:      &contextstore.AuditSpec{EventType: contextstore.EventWrite, Actor: actor, Metadata: json.RawMessage(`{"source":"mcp"}`)},
 	})
 	if err != nil {
 		return toolError(codeWriteFailed, err.Error()), nil
 	}
-
-	_ = a.Store.EmitWrite(ctx, actor, ns, key, rec.Revision, rec.RecordID, json.RawMessage(`{"source":"mcp"}`))
 
 	return toolJSON(map[string]any{
 		"record_id": rec.RecordID,
@@ -715,21 +714,23 @@ func (a *Adapter) handlePromoteRequest(ctx context.Context, req map[string]any) 
 	}
 
 	namespace := "app/mcp-agent/promotions"
-	reqRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: namespace,
 		Key:       requestID,
 		Actor:     actor,
 		Payload:   payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteRequest,
+			Actor:     actor,
+			Metadata: json.RawMessage(fmt.Sprintf(
+				`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
+				requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
+			)),
+		},
 	})
 	if err != nil {
 		return toolError(codePromoteFailed, err.Error()), nil
 	}
-
-	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteRequest, actor, namespace, requestID, reqRec.Revision, reqRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"source_namespace":%q,"source_key":%q,"target_namespace":%q,"target_key":%q}`,
-			requestID, pr.SourceNamespace, pr.SourceKey, pr.TargetNamespace, pr.TargetKey,
-		)))
 
 	return toolJSON(map[string]any{
 		"request_id": requestID,
@@ -865,18 +866,20 @@ func (a *Adapter) handlePromoteApprove(ctx context.Context, req map[string]any) 
 		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
 		return toolError(codeInternalError, "serialize approved promotion request: "+err.Error()), nil
 	}
-	updRec, err := a.Store.AppendRecord(ctx, contextstore.AppendInput{
+	_, err = a.Store.AppendRecord(ctx, contextstore.AppendInput{
 		Namespace: reqNamespace,
 		Key:       requestID,
 		Actor:     actor,
 		Payload:   updPayload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromoteApprove,
+			Actor:     actor,
+			Metadata:  json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)),
+		},
 	})
 	if err != nil {
 		return toolError(codeApproveFailed, err.Error()), nil
 	}
-
-	_ = a.Store.EmitPromote(ctx, contextstore.EventPromoteApprove, actor, reqNamespace, requestID, updRec.Revision, updRec.RecordID,
-		json.RawMessage(fmt.Sprintf(`{"request_id":%q,"approval_id":%q}`, requestID, approvalID)))
 
 	return toolJSON(map[string]any{
 		"approval_id": approvalID,
@@ -923,6 +926,16 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req map[string]any) (a
 		Key:       pr.TargetKey,
 		Actor:     actor,
 		Payload:   srcRec.Payload,
+		Audit: &contextstore.AuditSpec{
+			EventType: contextstore.EventPromote,
+			Actor:     actor,
+			MetadataFor: func(recordID string, _ int64) json.RawMessage {
+				return json.RawMessage(fmt.Sprintf(
+					`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
+					requestID, pr.ApprovalID, recordID,
+				))
+			},
+		},
 	})
 	if err != nil {
 		// codeApplyFailed means "accepted, and the work did not complete". A
@@ -951,12 +964,6 @@ func (a *Adapter) handlePromoteApply(ctx context.Context, req map[string]any) (a
 		//nolint:nilerr // MCP application errors are encoded in the tool result; the transport error remains nil.
 		return toolError(codeApplyFailed, "record applied promotion state: "+err.Error()), nil
 	}
-
-	_ = a.Store.EmitPromote(ctx, contextstore.EventPromote, actor, pr.TargetNamespace, pr.TargetKey, newRec.Revision, newRec.RecordID,
-		json.RawMessage(fmt.Sprintf(
-			`{"request_id":%q,"approval_id":%q,"record_id":%q}`,
-			requestID, pr.ApprovalID, newRec.RecordID,
-		)))
 
 	return toolJSON(map[string]any{
 		"record_id":        newRec.RecordID,
