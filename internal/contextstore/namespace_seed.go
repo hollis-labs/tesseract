@@ -74,7 +74,7 @@ VALUES (?, ?, ?, ?, ?)`,
 				"owner_type": "project",
 				"owner_id":   slug,
 			})
-			_ = s.EmitNamespaceRegister(context.WithoutCancel(ctx), "system", ns, meta)
+			_ = s.EmitNamespaceRegister(asInternalPath(context.WithoutCancel(ctx)), "system", ns, meta)
 		}
 	}
 	return insertedCount, nil

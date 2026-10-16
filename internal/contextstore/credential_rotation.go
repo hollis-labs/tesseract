@@ -265,7 +265,7 @@ func recordCredentialOperation(ctx context.Context, tx *sql.Tx, actor, principal
 }
 func auditCredentialMutation(ctx context.Context, tx *sql.Tx, actor, principal, credential, kind, source string, generation int64) error {
 	metadata, _ := json.Marshal(map[string]string{"principal_id": principal, "credential_id": credential, "source": source})
-	if err := recordAuditWithOutbox(ctx, tx, AuditEvent{EventType: "credential." + kind, Actor: "credential:" + actor, Namespace: "system/security/credentials", Key: principal, Revision: generation, RecordID: credential, Metadata: metadata}); err != nil {
+	if err := recordAuditWithOutbox(asInternalPath(ctx), tx, AuditEvent{EventType: "credential." + kind, Actor: "credential:" + actor, Namespace: "system/security/credentials", Key: principal, Revision: generation, RecordID: credential, Metadata: metadata}); err != nil {
 		return ErrCredentialUnavailable
 	}
 	return nil

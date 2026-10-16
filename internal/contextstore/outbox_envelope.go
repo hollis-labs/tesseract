@@ -88,9 +88,10 @@ func auditActor(ctx context.Context, claimed string) (*runtimeevents.Actor, stri
 	switch {
 	case claimed == "cli":
 		return &runtimeevents.Actor{URN: "msg://user/local/operator", Kind: "user", Role: "operator", Verified: "claimed"}, ""
-	case claimed == "system" || strings.HasPrefix(claimed, "credential:"):
-		// Internal paths only: nothing a caller sent.
-		return &runtimeevents.Actor{URN: "msg://service/tesseract/system", Kind: "service", Role: "system", Verified: "none"}, ""
+	case isInternalPath(ctx):
+		// Only contextstore's own code marks a context internal; the actor
+		// string a caller sent never selects this branch.
+		return &runtimeevents.Actor{URN: "msg://service/tesseract/system", Kind: "service", Role: "system", Verified: "none"}, claimedActorFor(claimed, "")
 	}
 	// An unauthenticated call has no attributable actor; what it claimed stays
 	// in the payload as claimed_actor.
@@ -106,10 +107,27 @@ func urnAuthority(urn string) string {
 }
 
 func claimedActorFor(claimed, verifiedID string) string {
-	if claimed == "" || claimed == verifiedID || claimed == "system" || claimed == "cli" || strings.HasPrefix(claimed, "credential:") {
+	// Whatever the caller sent is kept as claimed_actor unless it merely
+	// repeats the verified identity. Nothing is erased because it looks like an
+	// internal name.
+	if claimed == "" || claimed == verifiedID {
 		return ""
 	}
 	return claimed
+}
+
+type internalPathKey struct{}
+
+// asInternalPath marks ctx as originating in contextstore's own code (seeding,
+// credential rotation), which is the only way an envelope gets the
+// service/system actor. It is unexported on purpose: a request cannot set it.
+func asInternalPath(ctx context.Context) context.Context {
+	return context.WithValue(ctx, internalPathKey{}, true)
+}
+
+func isInternalPath(ctx context.Context) bool {
+	v, _ := ctx.Value(internalPathKey{}).(bool)
+	return v
 }
 
 func validActorKind(k string) bool {

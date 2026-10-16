@@ -100,10 +100,31 @@ func TestOutboxUnauthenticatedCallHasNoActor(t *testing.T) {
 	}
 }
 
-// Internal paths keep the service/system actor.
+// service/system is selected by contextstore's own marker, never by an actor
+// string a caller can send: a spoofed "system" or "credential:x" gets no actor
+// and the claim survives as claimed_actor.
+func TestOutboxClaimedSystemIsNotAnInternalPath(t *testing.T) {
+	for _, claimed := range []string{"system", "credential:x"} {
+		s := newTestStore(t)
+		if err := s.EmitWrite(context.Background(), claimed, "app/x/session", "k", 1, "r", nil); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := s.ReadOutbox(context.Background(), 0, 10)
+		ev := readEnvelope(t, got[0])
+		if ev.Actor != nil {
+			t.Fatalf("claimed %q: actor = %+v, want nil", claimed, ev.Actor)
+		}
+		var p map[string]any
+		_ = json.Unmarshal(ev.Payload, &p)
+		if p["claimed_actor"] != claimed {
+			t.Fatalf("claimed %q: payload = %v", claimed, p)
+		}
+	}
+}
+
 func TestOutboxInternalPathIsServiceSystem(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.EmitWrite(context.Background(), "system", "app/x/session", "k", 1, "r", nil); err != nil {
+	if err := s.EmitWrite(asInternalPath(context.Background()), "system", "app/x/session", "k", 1, "r", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.ReadOutbox(context.Background(), 0, 10)

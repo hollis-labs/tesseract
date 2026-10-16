@@ -3088,7 +3088,7 @@ func (s *Store) FinishNamespaceRegistration(ctx context.Context, namespace, sour
 		"owner_id":   ownerID,
 	})
 	if err == nil {
-		_ = s.EmitNamespaceRegister(context.WithoutCancel(ctx), "system", ns, meta)
+		_ = s.EmitNamespaceRegister(asInternalPath(context.WithoutCancel(ctx)), "system", ns, meta)
 	}
 }
 
