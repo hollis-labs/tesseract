@@ -109,23 +109,43 @@ func TestOutboxSubjectMapping(t *testing.T) {
 	}
 }
 
-// A failure in the outbox half must leave no audit row, and the emit must say so.
-func TestEmitIsAtomicWithAuditRow(t *testing.T) {
+// The outbox is derived: a failure confined to the outbox insert (here the
+// generation row is gone) rolls back to the savepoint, the audit row commits,
+// no half-written outbox row remains, and the gap is counted.
+func TestOutboxDatabaseFailureKeepsAuditRow(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM store_identity`); err != nil {
 		t.Fatal(err)
 	}
-	err := s.EmitWrite(ctx, "cli", "app/x/session", "k", 1, "r", nil)
-	if err == nil {
-		t.Fatal("emit must fail loudly when the outbox cannot be written")
+	before := OutboxSkipped()
+	if err := s.EmitWrite(ctx, "cli", "app/x/session", "k", 1, "r", nil); err != nil {
+		t.Fatalf("emit must succeed when only the outbox insert fails: %v", err)
 	}
-	evs, _ := s.ListAuditEvents(ctx, 10)
-	if len(evs) != 0 {
-		t.Fatalf("half-state: %d audit rows without an outbox row", len(evs))
+	if evs, _ := s.ListAuditEvents(ctx, 10); len(evs) != 1 {
+		t.Fatalf("audit rows = %d, want 1", len(evs))
 	}
 	if out, _ := s.ReadOutbox(ctx, 0, 10); len(out) != 0 {
-		t.Fatalf("half-state: %d outbox rows", len(out))
+		t.Fatalf("outbox rows = %d, want 0 (no half-written row)", len(out))
+	}
+	if OutboxSkipped()-before != 1 {
+		t.Fatalf("skipped counter moved by %d", OutboxSkipped()-before)
+	}
+}
+
+// A failure of the surrounding transaction loses both rows, never one.
+func TestEmitTxFailureLosesBothRows(t *testing.T) {
+	s := newTestStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.EmitWrite(ctx, "cli", "app/x/session", "k", 1, "r", nil); err == nil {
+		t.Fatal("a cancelled context must fail the emit")
+	}
+	if evs, _ := s.ListAuditEvents(context.Background(), 10); len(evs) != 0 {
+		t.Fatalf("audit rows = %d", len(evs))
+	}
+	if out, _ := s.ReadOutbox(context.Background(), 0, 10); len(out) != 0 {
+		t.Fatalf("outbox rows = %d", len(out))
 	}
 }
 

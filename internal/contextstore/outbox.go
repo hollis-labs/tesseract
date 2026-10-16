@@ -3,12 +3,15 @@ package contextstore
 // Events outbox (CW-20261016-0140, O1 step 1).
 //
 // Every audit event is also written, as a complete event-stream envelope v1.1,
-// to events_outbox in the SAME transaction as its audit_events row. A database
-// error rolls both back and is returned. An envelope MAPPING or validation
-// error does not: the audit row is the system of record and commits, the
-// outbox insert is skipped, and the failure is logged at ERROR and counted
-// (OutboxSkipped). That best-effort stance holds until the mapper has run in
-// production (orch call, CW-20261016-0140).
+// to events_outbox in the SAME transaction as its audit_events row. The outbox
+// is derived; audit_events is the record of truth, so the outbox insert runs
+// under a SAVEPOINT: if it fails for any reason (mapping, validation or a
+// database error confined to that insert) the savepoint rolls back, the audit
+// row still commits, and the gap is logged at ERROR and counted
+// (OutboxSkipped). Only a failure of the whole transaction loses both rows
+// (orch decision, CW-20261016-0140). In step 2 the same insert joins the
+// mutation's transaction, so a mapper failure can never reject a valid
+// mutation.
 //
 // What this is not yet: atomic with the MUTATION. Store.emit still runs after
 // the caller's own commit (the Emit* callers discard its error), so a crash
@@ -206,17 +209,15 @@ VALUES (?, ?, ?, ?, ?, ?, '', ?)`,
 }
 
 // mappingError marks a failure to express a record as a valid envelope, as
-// opposed to a database failure. The audit choke point treats the two
-// differently: a mapping error must not lose the audit row.
+// opposed to a database failure. AppendOutbox returns both kinds to its caller
+// unchanged; the type lets a caller tell them apart.
 type mappingError struct{ err error }
 
 func (e mappingError) Error() string { return "outbox: " + e.err.Error() }
 func (e mappingError) Unwrap() error { return e.err }
 
 // outboxSkipped counts audit events committed WITHOUT an outbox envelope
-// because the envelope could not be built. Until the mapper has run in
-// production the outbox is best-effort for mapping errors; database errors
-// still roll back both rows.
+// because the outbox insert failed and was rolled back to its savepoint.
 var outboxSkipped atomic.Int64
 
 // OutboxSkipped returns how many audit events skipped the outbox since start.

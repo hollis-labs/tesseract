@@ -2398,21 +2398,29 @@ func recordAuditWithOutbox(ctx context.Context, tx *sql.Tx, event AuditEvent) er
 	if err := tx.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
 		return fmt.Errorf("outbox: audit row id: %w", err)
 	}
-	if err := writeOutboxEvent(ctx, tx, event, id); err != nil {
-		var me mappingError
-		if errors.As(err, &me) {
-			// The audit row is the system of record: keep it, skip the
-			// envelope, say so loudly and count it.
-			outboxSkipped.Add(1)
-			typ, sid := auditSubject(event)
-			slog.Default().ErrorContext(ctx, "audit recorded without outbox envelope: mapping failed",
-				"kind", outboxKindAudit, "subject", "msg://"+typ+"/"+outboxApp+"/"+sid,
-				"event_type", event.EventType, "err", me)
-			return nil
-		}
+	// The outbox is derived from audit_events, which stays the record of
+	// truth. Any failure of the outbox insert rolls back to this savepoint and
+	// the audit row still commits; the gap is logged at ERROR and counted.
+	// A failure of the surrounding transaction itself still loses both rows.
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT outbox_insert`); err != nil {
 		return err
 	}
-	return nil
+	if err := writeOutboxEvent(ctx, tx, event, id); err != nil {
+		if _, rbErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT outbox_insert`); rbErr != nil {
+			return errors.Join(err, rbErr)
+		}
+		if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_insert`); relErr != nil {
+			return errors.Join(err, relErr)
+		}
+		outboxSkipped.Add(1)
+		typ, sid := auditSubject(event)
+		slog.Default().ErrorContext(ctx, "audit recorded without outbox envelope",
+			"kind", outboxKindAudit, "subject", "msg://"+typ+"/"+outboxApp+"/"+sid,
+			"event_type", event.EventType, "err", err)
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT outbox_insert`)
+	return err
 }
 
 // ListAuditEvents returns newest-first audit events with deterministic ordering.
