@@ -9,11 +9,11 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
-// newTestStore opens a temp-dir store for testing.
+// newTestStore opens an independent copy of the migrated test database.
 func newTestStore(t *testing.T) *contextstore.Store {
 	t.Helper()
 	root := t.TempDir()
-	s, err := contextstore.Open(context.Background(), contextstore.Config{RootDir: root})
+	s, err := testStoreTemplate.Open(context.Background(), contextstore.Config{RootDir: root})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
