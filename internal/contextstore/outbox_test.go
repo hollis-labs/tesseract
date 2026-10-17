@@ -34,7 +34,7 @@ func TestEmitWritesAuditRecordedEnvelope(t *testing.T) {
 	if err := ev.Validate(); err != nil {
 		t.Fatalf("envelope invalid: %v", err)
 	}
-	if string(ev.Kind) != "audit.recorded" || ev.Subject != "msg://context/tesseract/app/x/session/k" {
+	if string(ev.Kind) != "audit.recorded" || ev.Subject != "msg://context/tesseract/ctx_5df2de6366dd39eb10f5079dc7a4db1c" {
 		t.Fatalf("kind/subject = %s %s", ev.Kind, ev.Subject)
 	}
 	if !strings.HasPrefix(ev.ID, "evt_") || len(ev.ID) != 36 || ev.ID != got[0].EventID {
@@ -171,8 +171,10 @@ func TestOutboxDevicePrincipalWritesValidEnvelopeWithoutActor(t *testing.T) {
 }
 
 func TestOutboxSubjectSegmentsArePathEscaped(t *testing.T) {
-	typ, id := auditSubject(AuditEvent{EventType: "write", Namespace: "project/my x", Key: "a/b#c"})
-	if got := "msg://" + typ + "/tesseract/" + id; got != "msg://context/tesseract/project/my%20x/a%2Fb%23c" {
+	// Memory-domain subjects without an item id still use the escaped
+	// namespace/key fallback.
+	typ, id := auditSubject(AuditEvent{EventType: "memory.write", Namespace: "project/my x", Key: "a/b#c"})
+	if got := "msg://" + typ + "/tesseract/" + id; got != "msg://memory/tesseract/project/my%20x/a%2Fb%23c" {
 		t.Fatalf("subject = %s", got)
 	}
 	typ, id = auditSubject(AuditEvent{EventType: EventNamespaceRegister, Namespace: "project/a b", Key: "project/a b"})
@@ -189,8 +191,8 @@ func TestOutboxSubjectMapping(t *testing.T) {
 	}{
 		{"namespace", AuditEvent{EventType: EventNamespaceRegister, Namespace: "project/x", Key: "project/x"}, "msg://namespace/tesseract/project/x"},
 		{"memory", AuditEvent{EventType: "memory.write", Namespace: "project/x", Key: "note"}, "msg://memory/tesseract/project/x/note"},
-		{"context", AuditEvent{EventType: EventPacket, Namespace: "project/x", Key: "req-1"}, "msg://context/tesseract/project/x/req-1"},
-		{"empty namespace", AuditEvent{EventType: EventPacket, Key: "req-1"}, "msg://context/tesseract/req-1"},
+		{"context", AuditEvent{EventType: EventPacket, Namespace: "project/x", Key: "req-1"}, "msg://context/tesseract/ctx_6453431e5c82d634b08ce187cfa1d303"},
+		{"empty namespace", AuditEvent{EventType: EventPacket, Key: "req-1"}, "msg://context/tesseract/ctx_404877d3a1c4aaa47d6d1ac31160b02f"},
 	}
 	for _, c := range cases {
 		typ, id := auditSubject(c.ev)
@@ -456,5 +458,55 @@ func TestKeylessSubjectIsAMappingErrorNotABareNamespace(t *testing.T) {
 	var oe outboxError
 	if !errors.As(err, &oe) || oe.class != classKeyless {
 		t.Fatalf("keyless subject must be a keyless-class outbox error, got %v", err)
+	}
+}
+
+// Context records get a derived opaque id: stable across revisions, different
+// per key, no key text in the subject (architect ruling).
+func TestContextSubjectIsStableAcrossRevisionsAndDiffersPerKey(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := s.AppendRecord(ctx, AppendInput{Namespace: "app/x/session", Key: "k", Actor: "t", Payload: json.RawMessage(`{"v":1}`),
+			Audit: &AuditSpec{EventType: EventWrite}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.AppendRecord(ctx, AppendInput{Namespace: "app/x/session", Key: "other", Actor: "t", Payload: json.RawMessage(`{"v":1}`),
+		Audit: &AuditSpec{EventType: EventWrite}}); err != nil {
+		t.Fatal(err)
+	}
+	var subjects []string
+	refs := map[string]bool{}
+	for _, e := range mutationOutbox(s) {
+		subjects = append(subjects, e.Subject)
+		var p map[string]any
+		_ = json.Unmarshal(readEnvelope(t, e).Payload, &p)
+		refs[p["ref"].(string)] = true
+		sub := p["subject"].(map[string]any)
+		if sub["type"] != "context" || !strings.HasPrefix(sub["id"].(string), "ctx_") || len(sub["id"].(string)) != 36 {
+			t.Fatalf("payload subject = %v", sub)
+		}
+	}
+	if len(subjects) != 3 {
+		t.Fatalf("subjects = %v", subjects)
+	}
+	if subjects[0] != subjects[1] {
+		t.Fatalf("two revisions of one record must share a subject: %v", subjects)
+	}
+	if subjects[0] == subjects[2] {
+		t.Fatalf("different keys must have different subjects: %v", subjects)
+	}
+	if len(refs) != 3 {
+		t.Fatalf("ref (the revision's record_id) must differ per revision: %v", refs)
+	}
+	for _, sub := range subjects {
+		if strings.Contains(sub, "app/x") || strings.Contains(sub, "session") || strings.Contains(sub, "other") {
+			t.Fatalf("subject leaks namespace/key text: %s", sub)
+		}
+	}
+	// Golden value, computed independently: sha256("app/x/session\x00k")[:32].
+	if want := "msg://context/tesseract/ctx_5df2de6366dd39eb10f5079dc7a4db1c"; subjects[0] != want {
+		t.Fatalf("subject = %s, want %s", subjects[0], want)
 	}
 }

@@ -48,9 +48,9 @@ func payloadOf(t *testing.T, e OutboxEntry) map[string]any {
 	return p
 }
 
-// A memory write's audit event is recorded in the revision's own transaction,
-// with the revision id in ref.
-func TestMemoryWriteAuditInRevisionTx(t *testing.T) {
+// A memory write's audit event is recorded in the revision's own transaction
+// and its subject is the stable item id, with the revision id in ref.
+func TestMemoryWriteAuditUsesItemIDInRevisionTx(t *testing.T) {
 	s, ms := newMemoryWithSink(t)
 	rev, err := ms.WriteRevision(context.Background(), memSessionInput("prefs.x"))
 	if err != nil {
@@ -60,10 +60,9 @@ func TestMemoryWriteAuditInRevisionTx(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("memory outbox rows = %d, want 1", len(out))
 	}
-	// Interim subject form (namespace/key); the item_id switch is the next PR.
-	wantSubject := "msg://memory/tesseract/user/chrispian/session/sess123/memory/notes/prefs.x"
+	wantSubject := "msg://memory/tesseract/" + rev.MemoryID
 	if out[0].Subject != wantSubject {
-		t.Fatalf("subject = %s, want %s", out[0].Subject, wantSubject)
+		t.Fatalf("subject = %s, want %s (item id, not namespace/key)", out[0].Subject, wantSubject)
 	}
 	p := payloadOf(t, out[0])
 	if p["action"] != "memory.write" || p["ref"] != rev.RevisionID {
@@ -111,11 +110,9 @@ func TestMemoryPromoteIsOneTxWithThreeEvents(t *testing.T) {
 	if len(out) != 3 {
 		t.Fatalf("promote events = %v, want 3", actions)
 	}
-	if !subjects["msg://memory/tesseract/user/chrispian/session/sess123/memory/notes/prefs.y"] ||
-		!subjects["msg://memory/tesseract/user/chrispian/memory/notes/prefs.y"] {
-		t.Fatalf("subjects = %v, want the source and promoted namespace/key", subjects)
+	if !subjects["msg://memory/tesseract/"+src.MemoryID] || !subjects["msg://memory/tesseract/"+promoted.MemoryID] {
+		t.Fatalf("subjects = %v, want source and promoted item ids", subjects)
 	}
-	_ = promoted
 	want := map[string]bool{"memory.write": false, "memory.deprecate": false, "memory.promote": false}
 	for _, a := range actions {
 		want[a] = true
@@ -168,7 +165,7 @@ func TestMemoryDeprecateAuditInTx(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := memoryOutbox(s)[before:]
-	if len(out) != 1 || payloadOf(t, out[0])["action"] != "memory.deprecate" || out[0].Subject != "msg://memory/tesseract/user/chrispian/session/sess123/memory/notes/prefs.d" {
+	if len(out) != 1 || payloadOf(t, out[0])["action"] != "memory.deprecate" || out[0].Subject != "msg://memory/tesseract/"+rev.MemoryID {
 		t.Fatalf("deprecate events = %+v", out)
 	}
 }
