@@ -2962,6 +2962,7 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 		return 0, err
 	}
 	if dryRun || len(targets) == 0 {
+		_ = s.finishMaintenanceAudit(ctx, nil, int64(len(targets)))
 		return int64(len(targets)), nil
 	}
 
@@ -2985,6 +2986,9 @@ ORDER BY created_at ASC`, namespacePattern, cutoffISO)
 		}
 		_ = os.Remove(filepath.Join(s.recordsDir, td.path))
 		deleted++
+	}
+	if err = s.finishMaintenanceAudit(ctx, tx, deleted); err != nil {
+		return 0, err
 	}
 	if err = tx.Commit(); err != nil {
 		return 0, err
@@ -3045,6 +3049,7 @@ WHERE rn > ?`, namespacePattern, maxRevisions)
 		return 0, err
 	}
 	if dryRun || len(targets) == 0 {
+		_ = s.finishMaintenanceAudit(ctx, nil, int64(len(targets)))
 		return int64(len(targets)), nil
 	}
 
@@ -3066,6 +3071,9 @@ WHERE rn > ?`, namespacePattern, maxRevisions)
 		_ = os.Remove(filepath.Join(s.recordsDir, td.path))
 		deleted++
 	}
+	if err = s.finishMaintenanceAudit(ctx, tx, deleted); err != nil {
+		return 0, err
+	}
 	if err = tx.Commit(); err != nil {
 		return 0, err
 	}
@@ -3077,6 +3085,12 @@ WHERE rn > ?`, namespacePattern, maxRevisions)
 
 // UpsertNamespacePolicy persists namespace owner/policy metadata.
 func (s *Store) UpsertNamespacePolicy(ctx context.Context, entry NamespacePolicyEntry) error {
+	return upsertNamespacePolicy(ctx, s.db, entry)
+}
+
+// upsertNamespacePolicy is UpsertNamespacePolicy against any executor, so a
+// caller can run it inside its own transaction.
+func upsertNamespacePolicy(ctx context.Context, exec auditExecutor, entry NamespacePolicyEntry) error {
 	if strings.TrimSpace(entry.Namespace) == "" {
 		return errors.New("namespace required")
 	}
@@ -3097,7 +3111,7 @@ func (s *Store) UpsertNamespacePolicy(ctx context.Context, entry NamespacePolicy
 	if strings.TrimSpace(entry.UpdatedAt) == "" {
 		entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := exec.ExecContext(ctx, `
 INSERT INTO namespace_policies (namespace, owner_type, owner_id, policy_json, updated_at)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(namespace) DO UPDATE SET
@@ -3160,12 +3174,10 @@ func (s *Store) EnsureNamespaceRegistered(ctx context.Context, namespace string)
 // to the INSERT. INSERT OR IGNORE + RowsAffected() is the sole idempotency
 // gate — no preliminary SELECT.
 func (s *Store) ensureNamespaceRegistered(ctx context.Context, namespace, source string) (bool, error) {
-	inserted, err := insertNamespaceRegistration(ctx, s.db, namespace, source)
-	if err != nil || !inserted {
-		return inserted, err
-	}
-	s.FinishNamespaceRegistration(ctx, namespace, source)
-	return true, nil
+	// The registry row and its namespace.register event commit together
+	// (CW-20261016-0140). FinishNamespaceRegistration remains for callers that
+	// register inside their own transaction and emit after it commits.
+	return s.registerNamespaceAudited(ctx, namespace, source)
 }
 
 // FinishNamespaceRegistration emits the established best-effort audit record

@@ -1826,7 +1826,9 @@ func (c *CLI) runMaintenanceTrim(ctx context.Context, args []string) int {
 		return c.fail("retention must be a valid duration (e.g. 72h)")
 	}
 	cutoff := time.Now().UTC().Add(-dur).Format(time.RFC3339)
-	trimmed, err := c.Store.TrimRecords(ctx, *namespace, cutoff, *dryRun)
+	trimmed, err := c.Store.TrimRecords(contextstore.WithMaintenanceAudit(ctx, contextstore.MaintenanceAudit{
+		EventType: contextstore.EventMaintenanceTrim, Actor: "cli", Pattern: *namespace, DryRun: *dryRun, OnlyWhenAffected: true,
+	}), *namespace, cutoff, *dryRun)
 	if err != nil {
 		return c.fail(err.Error())
 	}
@@ -1837,7 +1839,6 @@ func (c *CLI) runMaintenanceTrim(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprintf(c.Stdout, "Nothing to trim in %s (0 records matched retention policy)\n", *namespace)
 	} else {
 		_, _ = fmt.Fprintf(c.Stdout, "Trimmed %d records from %s\n", trimmed, *namespace)
-		_ = c.Store.EmitMaintenance(ctx, contextstore.EventMaintenanceTrim, "cli", *namespace, nil)
 	}
 	return 0
 }
@@ -1855,7 +1856,9 @@ func (c *CLI) runMaintenanceCompact(ctx context.Context, args []string) int {
 		return c.fail("--namespace is required")
 	}
 
-	compacted, err := c.Store.CompactNamespace(ctx, *namespace, *maxRevisions, *dryRun)
+	compacted, err := c.Store.CompactNamespace(contextstore.WithMaintenanceAudit(ctx, contextstore.MaintenanceAudit{
+		EventType: contextstore.EventMaintenanceCompact, Actor: "cli", Pattern: *namespace, DryRun: *dryRun, OnlyWhenAffected: true,
+	}), *namespace, *maxRevisions, *dryRun)
 	if err != nil {
 		return c.fail(err.Error())
 	}
@@ -1866,7 +1869,6 @@ func (c *CLI) runMaintenanceCompact(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprintf(c.Stdout, "Nothing to compact in %s (0 excess revisions found)\n", *namespace)
 	} else {
 		_, _ = fmt.Fprintf(c.Stdout, "Compacted %d revisions from %s\n", compacted, *namespace)
-		_ = c.Store.EmitMaintenance(ctx, contextstore.EventMaintenanceCompact, "cli", *namespace, nil)
 	}
 	return 0
 }
