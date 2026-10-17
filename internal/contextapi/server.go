@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hollis-labs/tesseract/internal/nsglob"
 	"io"
 	"io/fs"
 	"net/http"
@@ -22,7 +21,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hollis-labs/libs/core/util/apppaths"
+	"github.com/hollis-labs/tesseract/internal/nsglob"
+
+	paths "github.com/hollis-labs/libs/core/util/apppaths"
 	hollisotel "github.com/hollis-labs/libs/core/util/otel"
 	llmcontracts "github.com/hollis-labs/libs/llm/core/llmcontracts"
 	"github.com/hollis-labs/libs/llm/core/modelsdev"
@@ -1029,14 +1030,6 @@ func (s *Server) handleAdminNamespaceUpdate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	entry := resp.Entry
-	if err := s.Store.UpsertNamespacePolicy(r.Context(), entry); err != nil {
-		writeError(w, http.StatusInternalServerError, "write_failed", err.Error(), nil)
-		return
-	}
-	if err := s.Policy.RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy); err != nil {
-		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
-		return
-	}
 	meta, _ := json.Marshal(map[string]any{
 		"owner_type":     entry.OwnerType,
 		"owner_id":       entry.OwnerID,
@@ -1044,10 +1037,14 @@ func (s *Server) handleAdminNamespaceUpdate(w http.ResponseWriter, r *http.Reque
 		"changed_fields": resp.ChangedFields,
 		"exists_before":  resp.Exists,
 	})
-	if resp.Exists {
-		_ = s.Store.EmitNamespaceUpdate(r.Context(), "system", entry.Namespace, meta)
-	} else {
-		_ = s.Store.EmitNamespaceRegister(r.Context(), "system", entry.Namespace, meta)
+	// The registry row and its register/update event commit together.
+	if err := s.Store.UpsertNamespacePolicyAudited(r.Context(), entry, resp.Exists, meta); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error(), nil)
+		return
+	}
+	if err := s.Policy.RegisterNamespace(entry.Namespace, entry.OwnerType, entry.OwnerID, entry.Policy); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"entry":          entry,
@@ -3188,13 +3185,13 @@ func (s *Server) handleMaintenanceTrim(w http.ResponseWriter, r *http.Request) {
 	}
 	cutoff := time.Now().UTC().Add(-dur).Format(time.RFC3339)
 	start := time.Now()
-	trimmed, err := s.Store.TrimRecordsPermit(r.Context(), req.NamespacePattern, cutoff, req.DryRun, maintenancePermit)
+	trimmed, err := s.Store.TrimRecordsPermit(contextstore.WithMaintenanceAudit(r.Context(), contextstore.MaintenanceAudit{
+		EventType: contextstore.EventMaintenanceTrim, Actor: "system", Pattern: req.NamespacePattern, DryRun: req.DryRun,
+	}), req.NamespacePattern, cutoff, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.EmitMaintenance(r.Context(), contextstore.EventMaintenanceTrim, "system", req.NamespacePattern,
-		json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, trimmed, req.DryRun)))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trimmed":           trimmed,
 		"namespace_pattern": req.NamespacePattern,
@@ -3230,13 +3227,13 @@ func (s *Server) handleMaintenanceCompact(w http.ResponseWriter, r *http.Request
 		req.MaxRevisions = 1
 	}
 	start := time.Now()
-	compacted, err := s.Store.CompactNamespacePermit(r.Context(), req.NamespacePattern, req.MaxRevisions, req.DryRun, maintenancePermit)
+	compacted, err := s.Store.CompactNamespacePermit(contextstore.WithMaintenanceAudit(r.Context(), contextstore.MaintenanceAudit{
+		EventType: contextstore.EventMaintenanceCompact, Actor: "system", Pattern: req.NamespacePattern, DryRun: req.DryRun,
+	}), req.NamespacePattern, req.MaxRevisions, req.DryRun, maintenancePermit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance_failed", err.Error(), nil)
 		return
 	}
-	_ = s.Store.EmitMaintenance(r.Context(), contextstore.EventMaintenanceCompact, "system", req.NamespacePattern,
-		json.RawMessage(fmt.Sprintf(`{"records_affected":%d,"dry_run":%t}`, compacted, req.DryRun)))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"compacted":         compacted,
 		"namespace_pattern": req.NamespacePattern,
