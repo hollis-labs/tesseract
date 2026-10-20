@@ -141,6 +141,8 @@ The mode, the verifier chain, the namespace ceiling and the guard that applies t
 
 A reload never forgets a revocation. If the deny-list URL is unchanged, the new generation keeps the list the previous one had learned (an edit or `SIGHUP` during an outage of the issuer's deny-list cannot un-revoke a token). If the URL is new or changed there is nothing known to keep, so the reload requires a validated first fetch from it and is refused (the running configuration kept) if that fails. Likewise a reload to a JWKS URL with no bootstrap key requires the first key fetch to succeed. These error messages never contain the endpoint URL.
 
+**Dev posture, and the release constraint.** In dev, an edit to `config.yaml` or a `SIGHUP` may relax auth on a loopback listener (for example `enforce` to `permissive`, or removing the JWT verifier): the config file is the owner's, and the change is logged (`Auth reloaded: ...`). That is a dev decision, not a release one. A release posture has to constrain it: at minimum no runtime relaxation without a fresh, attributable approval, and the non-loopback guard above stays. The release-posture note owns the exact rule; until it lands this is the dev default, and a build must not treat "reload can relax auth" as a supported release behavior.
+
 ## Scopes
 
 Canonical scopes, deliberately few so a minted token is readable:
