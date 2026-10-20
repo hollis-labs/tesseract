@@ -76,6 +76,10 @@ func (f *fixture) jwt(scope string, over map[string]any) string {
 		"exp": time.Now().Add(10 * time.Minute).Unix(), "iat": time.Now().Unix(), "jti": "j-" + scope, "kind": "agent", "sid": "s1",
 	}
 	for k, v := range over {
+		if v == nil { // a nil override removes the claim
+			delete(c, k)
+			continue
+		}
 		c[k] = v
 	}
 	enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
@@ -635,14 +639,21 @@ func TestServiceJWTIsConfinedByNamespaceGlobs(t *testing.T) {
 	if rec.Code != 403 || errCode(t, rec) != "namespace_not_permitted" {
 		t.Fatalf("service token escaped the namespace ceiling: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := s.do("GET", "/v1/memory/current?namespace=app/allowed/memory/x&key=k", tok, nil); rec.Code == 403 || rec.Code == 401 {
-		t.Fatalf("allowed namespace rejected for a service token: %d %s", rec.Code, rec.Body.String())
+	rec = s.do("GET", "/v1/memory/current?namespace=app/allowed/memory/x&key=k", tok, nil)
+	// Permitted by the ceiling and the scope; the key simply does not exist.
+	// Anything else (a 500, a 403) is a failure, not "not rejected".
+	if rec.Code != 404 || errCode(t, rec) != "not_found" {
+		t.Fatalf("allowed namespace, absent key: want 404 not_found, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestServiceJWTWithoutExpIsRefused(t *testing.T) {
 	f := newFixture(t)
 	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: f.jwtConfig()}, nil)
-	tok := f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": 0})
-	wantStatus(t, s.do("GET", "/v1/namespaces/list", tok, nil), 401, "a token with no exp is never valid")
+	for name, tok := range map[string]string{
+		"exp is zero":   f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": 0}),
+		"exp is absent": f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": nil}),
+	} {
+		wantStatus(t, s.do("GET", "/v1/namespaces/list", tok, nil), 401, "a token with "+name+" is never valid")
+	}
 }
