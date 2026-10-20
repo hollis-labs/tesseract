@@ -10,7 +10,7 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
-- Dev service tokens are documented and tested (CW-20261020-0004): a `kind=service` Tether JWT with a distant `exp` is admitted and scoped in off, permissive and enforce, stays inside `auth.jwt.namespace_globs`, and a token with no `exp` is refused. `docs/auth.md` states the revocation bound and that `auth.jwt` is read at startup only.
+- Dev service tokens are documented and tested (CW-20261020-0004): a `kind=service` Tether JWT with a distant `exp` is admitted and scoped in off, permissive and enforce, stays inside `auth.jwt.namespace_globs`, and a token with no `exp` is refused. `docs/auth.md` states how revocation behaves (within one poll interval after a successful poll; stale list during an outage) and that `auth.jwt` is read at startup only.
 
 ### Changed
 

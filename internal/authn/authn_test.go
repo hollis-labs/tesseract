@@ -621,9 +621,18 @@ func TestServiceJWTAdmittedAndScopedInEveryMode(t *testing.T) {
 			f := newFixture(t)
 			s := f.serve(config.AuthConfig{Mode: mode, JWT: f.jwtConfig()}, nil)
 			read := f.svcJWT("tesseract.read", "svc-read")
-			wantStatus(t, s.do("GET", "/v1/namespaces/list", read, nil), 200, "service token reads")
+			rec := s.do("GET", "/v1/namespaces/list", read, nil)
+			wantStatus(t, rec, 200, "service token reads")
+			var list map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list) == 0 {
+				t.Fatalf("namespaces list is not a JSON object with content: %v %q", err, rec.Body.String())
+			}
 			if mode == "enforce" {
-				wantStatus(t, s.do("POST", "/v1/context/write", read, map[string]any{}), 403, "read-only service token cannot write")
+				w := s.do("POST", "/v1/context/write", read, map[string]any{})
+				wantStatus(t, w, 403, "read-only service token cannot write")
+				if errCode(t, w) != "insufficient_scope" {
+					t.Fatalf("read-only service token refused for the wrong reason: %s", w.Body.String())
+				}
 			}
 		})
 	}
