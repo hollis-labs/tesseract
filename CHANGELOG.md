@@ -8,6 +8,10 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Added
+
+- Dev service tokens are documented and tested (CW-20261020-0004): a `kind=service` Tether JWT with a distant `exp` is admitted and scoped in off, permissive and enforce, stays inside `auth.jwt.namespace_globs`, and a token with no `exp` is refused. `docs/auth.md` states how revocation behaves (within one poll interval after a successful poll; stale list during an outage) and that `auth.jwt` is read at startup only.
+
 ### Changed
 
 - MCP tools enforce token namespace globs consistently in enforce mode; permissive and off modes log namespace would-deny decisions. `context_promote` request now requires a grant covering `app/mcp-agent/promotions` as well as the source and target namespaces (CW-20261016-0205).

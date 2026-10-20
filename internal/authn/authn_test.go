@@ -76,6 +76,10 @@ func (f *fixture) jwt(scope string, over map[string]any) string {
 		"exp": time.Now().Add(10 * time.Minute).Unix(), "iat": time.Now().Unix(), "jti": "j-" + scope, "kind": "agent", "sid": "s1",
 	}
 	for k, v := range over {
+		if v == nil { // a nil override removes the claim
+			delete(c, k)
+			continue
+		}
 		c[k] = v
 	}
 	enc := func(v any) string { b, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(b) }
@@ -596,4 +600,69 @@ func waitFor(t *testing.T, cond func() bool, what string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for: %s", what)
+}
+
+// --- dev service tokens (security direction v1) ---
+
+// svcJWT is a dev service token as Tether issues it: kind=service, no
+// session, and an exp about ten years out (go-auth rejects a token without
+// exp, so "no expiry" is a distant exp), revocable by jti.
+func (f *fixture) svcJWT(scope, jti string) string {
+	f.t.Helper()
+	return f.jwt(scope, map[string]any{
+		"sub": "msg://service/local/agent-os", "kind": "service", "sid": "", "jti": jti,
+		"exp": time.Now().Add(10 * 365 * 24 * time.Hour).Unix(),
+	})
+}
+
+func TestServiceJWTAdmittedAndScopedInEveryMode(t *testing.T) {
+	for _, mode := range []string{"off", "permissive", "enforce"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFixture(t)
+			s := f.serve(config.AuthConfig{Mode: mode, JWT: f.jwtConfig()}, nil)
+			read := f.svcJWT("tesseract.read", "svc-read")
+			rec := s.do("GET", "/v1/namespaces/list", read, nil)
+			wantStatus(t, rec, 200, "service token reads")
+			var list map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list) == 0 {
+				t.Fatalf("namespaces list is not a JSON object with content: %v %q", err, rec.Body.String())
+			}
+			if mode == "enforce" {
+				w := s.do("POST", "/v1/context/write", read, map[string]any{})
+				wantStatus(t, w, 403, "read-only service token cannot write")
+				if errCode(t, w) != "insufficient_scope" {
+					t.Fatalf("read-only service token refused for the wrong reason: %s", w.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestServiceJWTIsConfinedByNamespaceGlobs(t *testing.T) {
+	f := newFixture(t)
+	jc := f.jwtConfig()
+	jc.NamespaceGlobs = []string{"app/allowed/*"}
+	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: jc}, nil)
+	tok := f.svcJWT("tesseract.read", "svc-ns")
+	rec := s.do("GET", "/v1/memory/current?namespace=app/other/memory/x&key=k", tok, nil)
+	if rec.Code != 403 || errCode(t, rec) != "namespace_not_permitted" {
+		t.Fatalf("service token escaped the namespace ceiling: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = s.do("GET", "/v1/memory/current?namespace=app/allowed/memory/x&key=k", tok, nil)
+	// Permitted by the ceiling and the scope; the key simply does not exist.
+	// Anything else (a 500, a 403) is a failure, not "not rejected".
+	if rec.Code != 404 || errCode(t, rec) != "not_found" {
+		t.Fatalf("allowed namespace, absent key: want 404 not_found, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestServiceJWTWithoutExpIsRefused(t *testing.T) {
+	f := newFixture(t)
+	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: f.jwtConfig()}, nil)
+	for name, tok := range map[string]string{
+		"exp is zero":   f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": 0}),
+		"exp is absent": f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": nil}),
+	} {
+		wantStatus(t, s.do("GET", "/v1/namespaces/list", tok, nil), 401, "a token with "+name+" is never valid")
+	}
 }
