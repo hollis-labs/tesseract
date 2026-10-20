@@ -597,3 +597,52 @@ func waitFor(t *testing.T, cond func() bool, what string) {
 	}
 	t.Fatalf("timed out waiting for: %s", what)
 }
+
+// --- dev service tokens (security direction v1) ---
+
+// svcJWT is a dev service token as Tether issues it: kind=service, no
+// session, and an exp about ten years out (go-auth rejects a token without
+// exp, so "no expiry" is a distant exp), revocable by jti.
+func (f *fixture) svcJWT(scope, jti string) string {
+	f.t.Helper()
+	return f.jwt(scope, map[string]any{
+		"sub": "msg://service/local/agent-os", "kind": "service", "sid": "", "jti": jti,
+		"exp": time.Now().Add(10 * 365 * 24 * time.Hour).Unix(),
+	})
+}
+
+func TestServiceJWTAdmittedAndScopedInEveryMode(t *testing.T) {
+	for _, mode := range []string{"off", "permissive", "enforce"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFixture(t)
+			s := f.serve(config.AuthConfig{Mode: mode, JWT: f.jwtConfig()}, nil)
+			read := f.svcJWT("tesseract.read", "svc-read")
+			wantStatus(t, s.do("GET", "/v1/namespaces/list", read, nil), 200, "service token reads")
+			if mode == "enforce" {
+				wantStatus(t, s.do("POST", "/v1/context/write", read, map[string]any{}), 403, "read-only service token cannot write")
+			}
+		})
+	}
+}
+
+func TestServiceJWTIsConfinedByNamespaceGlobs(t *testing.T) {
+	f := newFixture(t)
+	jc := f.jwtConfig()
+	jc.NamespaceGlobs = []string{"app/allowed/*"}
+	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: jc}, nil)
+	tok := f.svcJWT("tesseract.read", "svc-ns")
+	rec := s.do("GET", "/v1/memory/current?namespace=app/other/memory/x&key=k", tok, nil)
+	if rec.Code != 403 || errCode(t, rec) != "namespace_not_permitted" {
+		t.Fatalf("service token escaped the namespace ceiling: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := s.do("GET", "/v1/memory/current?namespace=app/allowed/memory/x&key=k", tok, nil); rec.Code == 403 || rec.Code == 401 {
+		t.Fatalf("allowed namespace rejected for a service token: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestServiceJWTWithoutExpIsRefused(t *testing.T) {
+	f := newFixture(t)
+	s := f.serve(config.AuthConfig{Mode: "enforce", JWT: f.jwtConfig()}, nil)
+	tok := f.jwt("tesseract.read", map[string]any{"kind": "service", "sid": "", "exp": 0})
+	wantStatus(t, s.do("GET", "/v1/namespaces/list", tok, nil), 401, "a token with no exp is never valid")
+}

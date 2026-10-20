@@ -125,6 +125,14 @@ no `user/*`. User namespaces stay reachable only through managed tokens that car
 explicit user globs. Writing `["*"]` is still possible, but it is a deliberate,
 visible choice, not a default. Managed and static tokens are unchanged.
 
+### Dev service tokens
+
+A service token is a Tether JWT with `kind=service`, `aud=tesseract`, scopes such as `tesseract.read tesseract.write` and an `exp` about ten years away. The verifier requires `exp`, so "no expiry" is a distant one; the token needs no refresher. It is held to the same `auth.jwt.namespace_globs` ceiling as every other issuer-minted token, so the ceiling is the only namespace constraint it has (there is no per-token namespace claim yet).
+
+Revoke it by putting its `jti` (or `sub`) on Tether's deny-list. Tesseract rejects it after its next poll, at most 30 seconds later, and only if `auth.deny_list.url` is configured: without a deny-list a service token cannot be revoked short of rotating the issuer key. Today the deny-list endpoint is read with a credential (`bearer_ref` above); a public minimal deny-list is planned (CW-20261019-0044).
+
+`auth.jwt` and `auth.deny_list` are read once at startup, so adding or changing them needs a restart. Reloading them live is tracked in CW-20261020-0004 and waits on the shared reloader in `libs/security/auth`.
+
 ## Scopes
 
 Canonical scopes, deliberately few so a minted token is readable:
