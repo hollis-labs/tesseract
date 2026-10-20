@@ -70,7 +70,7 @@ func (m *MCPSession) principal(ctx context.Context) (auth.Principal, bool) {
 	if err != nil || tok == "" {
 		return auth.Principal{}, false
 	}
-	p, err := m.rt.Verify(ctx, tok)
+	p, err := m.rt.verify(ctx, tok)
 	if err != nil {
 		return auth.Principal{}, false
 	}

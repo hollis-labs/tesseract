@@ -139,6 +139,8 @@ All or nothing: if anything in the new section fails (a JWT without `namespace_g
 
 The mode, the verifier chain, the namespace ceiling and the guard that applies them are one snapshot: a request takes it once, on entry, and is judged entirely by it (verification, mode decision and ceiling), so it is never judged by a mixed pair. A request already in flight when a reload lands finishes under the generation it started with; the next request sees the new one.
 
+A reload never forgets a revocation. If the deny-list URL is unchanged, the new generation keeps the list the previous one had learned (an edit or `SIGHUP` during an outage of the issuer's deny-list cannot un-revoke a token). If the URL is new or changed there is nothing known to keep, so the reload requires a validated first fetch from it and is refused (the running configuration kept) if that fails. Likewise a reload to a JWKS URL with no bootstrap key requires the first key fetch to succeed. These error messages never contain the endpoint URL.
+
 ## Scopes
 
 Canonical scopes, deliberately few so a minted token is readable:

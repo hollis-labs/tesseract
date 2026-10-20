@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,9 +79,14 @@ type runtimeState struct {
 	jwtGlob []string
 	jwtOn   bool
 	denyOn  bool
-	mode    auth.Mode
-	source  string
-	cancel  context.CancelFunc
+	// denyList and denyURL are carried into the next generation when the
+	// deny-list endpoint is unchanged, so a reload (an edit, a SIGHUP) never
+	// forgets a known revocation.
+	denyList *auth.DenyList
+	denyURL  string
+	mode     auth.Mode
+	source   string
+	cancel   context.CancelFunc
 }
 
 // Build resolves the mode, validates the bind, builds the verifiers and the
@@ -151,22 +157,43 @@ func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtim
 			return fail(errors.New("auth.jwt.namespace_globs is required when auth.jwt is configured (a JWT carries no namespace claim); " +
 				"set it explicitly, e.g. [project/*, session/*, app/*, org/*, system/*] to keep issuer-minted tokens out of user/* (see docs/auth.md)"))
 		}
+		denyURL := strings.TrimSpace(cfg.DenyList.URL)
+		prev := rt.state.Load() // nil at startup; Reload holds rt.reload, so this is stable
 		dl := auth.NewDenyList()
-		v, err := auth.NewJWTVerifier(auth.JWTConfig{
+		reusedDenyList := false
+		if prev != nil && denyURL != "" && prev.denyURL == denyURL && prev.denyList != nil {
+			// Same deny-list endpoint: keep what it has told us. The new
+			// generation must not start from an empty list, or a reload during
+			// an outage of that endpoint would un-revoke every revoked token.
+			dl, reusedDenyList = prev.denyList, true
+		}
+		jcfg := auth.JWTConfig{
 			Issuer:           strings.TrimSpace(cfg.JWT.Issuer),
 			Audience:         firstNonEmpty(cfg.JWT.Audience, DefaultAudience),
 			JWKSURL:          strings.TrimSpace(cfg.JWT.JWKSURL),
 			BootstrapKeyFile: strings.TrimSpace(cfg.JWT.BootstrapKeyFile),
 			DenyList:         dl,
-		})
+		}
+		v, err := auth.NewJWTVerifier(jcfg)
 		if err != nil {
 			return fail(fmt.Errorf("auth.jwt: %w", err))
+		}
+		if prev != nil && jcfg.JWKSURL != "" && jcfg.BootstrapKeyFile == "" {
+			// A reload must not swap in a verifier that cannot verify yet: fetch
+			// the key set first, and keep the running generation if it fails.
+			rctx, rcancel := context.WithTimeout(ctx, reloadFetchTimeout)
+			rerr := v.Refresh(rctx)
+			rcancel()
+			if rerr != nil {
+				return fail(fmt.Errorf("auth.jwt: first JWKS fetch failed (the running configuration is kept): %s", scrubTransport(rerr)))
+			}
 		}
 		jv = v
 		st.jwtOn = true
 		st.jwtGlob = globs
-		if u := strings.TrimSpace(cfg.DenyList.URL); u != "" {
-			poller := &auth.DenyListPoller{URL: u, List: dl, Logger: slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))}
+		st.denyList, st.denyURL = dl, denyURL
+		if denyURL != "" {
+			poller := &auth.DenyListPoller{URL: denyURL, List: dl, Logger: slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))}
 			if ref := strings.TrimSpace(cfg.DenyList.BearerRef); ref != "" {
 				if !credentials.IsRef(ref) {
 					return fail(errors.New("auth.deny_list.bearer_ref must be a go-secrets reference (file://, op://, keychain://, helper://), not a literal"))
@@ -176,6 +203,17 @@ func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtim
 					return fail(fmt.Errorf("auth.deny_list.bearer_ref: %w", err))
 				}
 				poller.Header = http.Header{"Authorization": []string{"Bearer " + bearer}}
+			}
+			if prev != nil && !reusedDenyList {
+				// A deny-list endpoint we have not heard from: there is no known
+				// state to keep, so require a validated first fetch before this
+				// generation is published. The running one is kept on failure.
+				pctx, pcancel := context.WithTimeout(ctx, reloadFetchTimeout)
+				perr := poller.Poll(pctx)
+				pcancel()
+				if perr != nil {
+					return fail(fmt.Errorf("auth.deny_list: first fetch from the new endpoint failed (the running configuration is kept): %s", scrubTransport(perr)))
+				}
 			}
 			st.denyOn = true
 			// Everything above can fail; only now start the loops.
@@ -202,6 +240,23 @@ func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtim
 	}
 	st.guard = g
 	return st, nil
+}
+
+// reloadFetchTimeout bounds the first JWKS / deny-list fetch a reload requires.
+const reloadFetchTimeout = 10 * time.Second
+
+// scrubTransport describes a fetch error without the request URL, which comes
+// from configuration and may embed a credential.
+func scrubTransport(err error) string {
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil {
+		return ue.Err.Error()
+	}
+	msg := err.Error()
+	if i := strings.Index(msg, "http"); i >= 0 {
+		return strings.TrimSpace(msg[:i]) + " (request URL omitted)"
+	}
+	return msg
 }
 
 // snapshotKey carries the generation a request was admitted under.
@@ -262,8 +317,11 @@ func (rt *Runtime) announce() {
 	}
 }
 
-// Verify resolves a bearer through the same verifiers the guard uses.
-func (rt *Runtime) Verify(ctx context.Context, token string) (auth.Principal, error) {
+// verify resolves a bearer through the verifiers of the generation ctx was
+// pinned to. It is unexported on purpose: a caller that verified and then
+// translated claims without carrying the same pinned context could mix
+// generations (an old verifier with a new namespace ceiling).
+func (rt *Runtime) verify(ctx context.Context, token string) (auth.Principal, error) {
 	p, err := rt.snapshot(ctx).verify.Verify(ctx, token)
 	if err == nil {
 		p.Verified = true
