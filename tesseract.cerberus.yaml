@@ -10,6 +10,9 @@ resources:
     type: process
     project: tesseract
     connector: local
+    env: dev
+    owner: self
+    admin: self
     config:
       build_strategy:
         kind: make_standard
@@ -45,6 +48,9 @@ resources:
     type: process
     project: tesseract
     connector: local
+    env: dev
+    owner: self
+    admin: self
     config:
       command:
         - npm
@@ -60,11 +66,14 @@ resources:
       - frontend
       - vite
       - v2
-registry_urn: msg://agent/agent-mux/prj_4sj839lwz0
-  - name: Tesseract DB Backup
+  - id: tesseract-db-backup
+    name: Tesseract DB Backup
     type: process
     project: tesseract
     connector: local
+    env: dev
+    owner: self
+    admin: self
     config:
       command:
         - sqlite-backup
@@ -74,3 +83,4 @@ registry_urn: msg://agent/agent-mux/prj_4sj839lwz0
         - --keep-hourly=48
         - --keep-daily=14
       dir: .
+registry_urn: msg://agent/agent-mux/prj_4sj839lwz0
