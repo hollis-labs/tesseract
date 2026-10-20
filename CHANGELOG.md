@@ -10,6 +10,8 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
+- Auth reload may loosen the mode only on a loopback listener (CW-20261020-0038, `security/auth` v0.3.0). A tailnet address still passes the startup bind rule but is not loopback for a reload: `enforce` to `permissive`/`off`, or `permissive` to `off`, is refused (`ErrLoosenRefused`), the running generation stays, and the reason is reported. Keeping or tightening the mode is allowed everywhere.
+
 - Auth configuration reloads without a restart (CW-20261020-0004): `auth.mode`, `auth.jwt` and `auth.deny_list` are re-read from `config.yaml` on an edit or `SIGHUP` while `tesseract serve` runs, built completely and published as one atomic snapshot (mode, verifier chain, namespace ceiling and the guard), taken once per request; a failed reload (including relaxing auth on a non-loopback listener, a deleted file, or an unparsable file) changes nothing. A reload keeps the known deny-list when its endpoint is unchanged and requires a validated first fetch (deny-list, and JWKS when there is no bootstrap key) from a new one. Relaxing auth by reload on a loopback listener is dev posture only; the release constraint is documented in `docs/auth.md` and owned by the release-posture note. Uses `security/auth` v0.2.0.
 
 ### Added

@@ -129,6 +129,14 @@ func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtim
 			return nil, fmt.Errorf("%w (set HOLLIS_AUTH_TESSERACT=enforce or config auth.mode: enforce)", err)
 		}
 	}
+	// A reload may keep or tighten the mode anywhere, but may loosen it only on
+	// a loopback listener: a tailnet address passes the startup rule above and
+	// is still reachable from other machines (security/auth v0.3.0
+	// IsLoopbackAddr). The generation is built here before anything starts, so a
+	// refusal leaves the running one untouched.
+	if prev := rt.state.Load(); prev != nil && o.Addr != "" && mode.WeakerThan(prev.mode) && !auth.IsLoopbackAddr(o.Addr) {
+		return nil, fmt.Errorf("%w: %s -> %s on a listener that is not loopback (restart to change it)", auth.ErrLoosenRefused, prev.mode, mode)
+	}
 
 	ctx, cancel := context.WithCancel(rt.base)
 	st := &runtimeState{mode: mode, source: source, cancel: cancel}
