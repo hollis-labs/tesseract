@@ -195,11 +195,13 @@ func TestWatchAppliesAConfigEditAndIgnoresABadOne(t *testing.T) {
 		}
 	}
 	write("auth:\n  mode: permissive\n")
-	s := f.serve(config.AuthConfig{Mode: "permissive"}, nil)
+	s := f.serve(config.AuthConfig{Mode: "permissive"}, quietStderr) // the reloader and the would-deny summary both log
 	r := s.rt.Reloader(path, 10*time.Millisecond, nil)
 	r.NoSignal = true
+	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { _ = r.Run(t.Context()); close(done) }()
+	go func() { _ = r.Run(ctx); close(done) }()
+	defer func() { stop(); <-done }() // the watcher ends before the test does
 	time.Sleep(60 * time.Millisecond)
 
 	write("auth:\n  mode: enforce\n")
@@ -217,5 +219,4 @@ func TestWatchAppliesAConfigEditAndIgnoresABadOne(t *testing.T) {
 	}
 	write("auth:\n  mode: permissive\n")
 	waitFor(t, func() bool { return anonymousStatus(s) == 200 }, "a valid edit back to permissive")
-	_ = done
 }
