@@ -51,7 +51,6 @@ type Options struct {
 // The verifier chain, the JWT namespace ceiling and the deny-list belong to a
 // runtimeState that Reload replaces as a whole; the live mode is the Guard's.
 type Runtime struct {
-	Guard   *auth.Guard
 	Summary *Summary
 
 	store *StoreVerifier
@@ -66,10 +65,15 @@ type Runtime struct {
 	stderr  io.Writer
 }
 
-// runtimeState is one generation of reloadable auth configuration. It is
-// immutable once published; cancel stops the JWKS refresh and deny-list loops
+// runtimeState is one generation of reloadable auth configuration: the mode,
+// the verifier chain, the JWT namespace ceiling and the guard that applies
+// them, together. It is immutable once published and a request takes it once,
+// on entry (Middleware, MCPSession.Authorize), then carries it in its context,
+// so the verifier, the mode and the ceiling that judge a request always belong
+// to the same generation. cancel stops the JWKS refresh and deny-list loops
 // that belong to it.
 type runtimeState struct {
+	guard   *auth.Guard
 	verify  auth.Verifier // routed: JWT or opaque
 	jwtGlob []string
 	jwtOn   bool
@@ -95,19 +99,6 @@ func Build(ctx context.Context, o Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger := slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))
-	g, err := auth.New(auth.Config{
-		Mode: st.mode, Verifier: st.verify, Scopes: o.Scopes, Logger: logger, Addr: o.Addr,
-		Audit: rt.Summary.Audit(),
-		OnRequest: func(r *http.Request, _ auth.Principal, ev auth.Event) {
-			rt.Summary.RecordRequest(r, contextapi.RoutePattern(r.Method, r.URL.Path), ev)
-		},
-	})
-	if err != nil {
-		st.cancel()
-		return nil, err
-	}
-	rt.Guard = g
 	rt.state.Store(st)
 
 	rt.announce()
@@ -198,26 +189,54 @@ func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtim
 	}
 
 	st.verify = routed{jwt: jv, opaque: auth.Chain(opaque...)}
+	g, err := auth.New(auth.Config{
+		Mode: mode, Verifier: st.verify, Scopes: o.Scopes, Addr: o.Addr,
+		Logger: slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Audit:  rt.Summary.Audit(),
+		OnRequest: func(r *http.Request, _ auth.Principal, ev auth.Event) {
+			rt.Summary.RecordRequest(r, contextapi.RoutePattern(r.Method, r.URL.Path), ev)
+		},
+	})
+	if err != nil {
+		return fail(err)
+	}
+	st.guard = g
 	return st, nil
+}
+
+// snapshotKey carries the generation a request was admitted under.
+type snapshotKey struct{}
+
+func withSnapshot(ctx context.Context, st *runtimeState) context.Context {
+	return context.WithValue(ctx, snapshotKey{}, st)
+}
+
+// snapshot is the generation ctx was admitted under, or the current one for a
+// caller with no request (a CLI path, a test).
+func (rt *Runtime) snapshot(ctx context.Context) *runtimeState {
+	if st, ok := ctx.Value(snapshotKey{}).(*runtimeState); ok && st != nil {
+		return st
+	}
+	return rt.state.Load()
 }
 
 // startSummaryIfNeeded starts the periodic would-deny summary once, the first
 // time the mode is not enforce (at startup, or after a reload that relaxes it).
 func (rt *Runtime) startSummaryIfNeeded() {
-	if rt.Guard.Mode() == auth.ModeEnforce {
+	if rt.state.Load().mode == auth.ModeEnforce {
 		return
 	}
 	rt.summary.Do(func() { go rt.Summary.Run(rt.base, rt.stderr, rt.opts.SummaryInterval) })
 }
 
 // Mode is the live mode. Source says where it came from (default, config, env).
-func (rt *Runtime) Mode() auth.Mode { return rt.Guard.Mode() }
+func (rt *Runtime) Mode() auth.Mode { return rt.state.Load().mode }
 
 // Source is where the live mode came from: SourceDefault, SourceConfig or SourceEnv.
 func (rt *Runtime) Source() string { return rt.state.Load().source }
 
 // Status is the "auth=<mode>" string for health, whoami and the startup line.
-func (rt *Runtime) Status() string { return rt.Guard.Status() }
+func (rt *Runtime) Status() string { return rt.state.Load().guard.Status() }
 
 // Describe is a one-line operator description (mode, where it came from,
 // which verifiers are live). Contains no secret.
@@ -238,14 +257,14 @@ func (rt *Runtime) announce() {
 		return
 	}
 	_, _ = fmt.Fprintf(rt.stderr, "  Auth: %s\n", rt.Describe())
-	if mode := rt.Guard.Mode(); mode != auth.ModeEnforce {
+	if mode := rt.state.Load().mode; mode != auth.ModeEnforce {
 		_, _ = fmt.Fprintf(rt.stderr, "  !! auth is %s: requests without a valid bearer are NOT rejected. Would-deny summaries are logged; flip with config auth.mode: enforce (docs/auth.md).\n", mode)
 	}
 }
 
 // Verify resolves a bearer through the same verifiers the guard uses.
 func (rt *Runtime) Verify(ctx context.Context, token string) (auth.Principal, error) {
-	p, err := rt.state.Load().verify.Verify(ctx, token)
+	p, err := rt.snapshot(ctx).verify.Verify(ctx, token)
 	if err == nil {
 		p.Verified = true
 	}
@@ -261,7 +280,7 @@ func (rt *Runtime) Verify(ctx context.Context, token string) (auth.Principal, er
 //   - JWT: canonical scopes expanded by authscope.ToLegacy, namespace globs
 //     from config auth.jwt.namespace_globs (required when JWT is configured, no
 //     default); a JWT carries none.
-func (rt *Runtime) ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool) {
+func (rt *Runtime) ClaimsFor(ctx context.Context, p auth.Principal) (contextstore.AuthToken, bool) {
 	if !p.Verified {
 		return contextstore.AuthToken{}, false
 	}
@@ -276,7 +295,7 @@ func (rt *Runtime) ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool) {
 		Label:          firstNonEmpty(p.Display, p.ID),
 		ClientID:       p.ID,
 		Scopes:         authscope.ToLegacy(p.Scopes),
-		NamespaceGlobs: append([]string(nil), rt.state.Load().jwtGlob...),
+		NamespaceGlobs: append([]string(nil), rt.snapshot(ctx).jwtGlob...),
 	}
 	if !p.ExpiresAt.IsZero() {
 		c.ExpiresAt = p.ExpiresAt.UTC().Format(time.RFC3339)
@@ -298,13 +317,14 @@ type Whoami struct {
 }
 
 // WhoamiFor builds the whoami body for the principal stamped on a request.
-func (rt *Runtime) WhoamiFor(p auth.Principal, ok bool) Whoami {
-	w := Whoami{Auth: rt.Status(), Mode: string(rt.Mode()), Source: rt.Source()}
+func (rt *Runtime) WhoamiFor(ctx context.Context, p auth.Principal, ok bool) Whoami {
+	st := rt.snapshot(ctx)
+	w := Whoami{Auth: st.guard.Status(), Mode: string(st.mode), Source: st.source}
 	if !ok {
 		return w
 	}
 	w.Verified, w.Principal, w.Display, w.Kind, w.Scopes = p.Verified, p.ID, p.Display, p.Kind, p.Scopes
-	if c, has := rt.ClaimsFor(p); has {
+	if c, has := rt.ClaimsFor(ctx, p); has {
 		w.Globs = c.NamespaceGlobs
 	}
 	return w
@@ -322,10 +342,17 @@ func discardIfNil(w io.Writer) io.Writer {
 }
 
 // Middleware implements contextapi.Authenticator.
-func (rt *Runtime) Middleware(next http.Handler) http.Handler { return rt.Guard.Middleware(next) }
+func (rt *Runtime) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		st := rt.state.Load() // one generation for the whole request
+		st.guard.Middleware(next).ServeHTTP(w, r.WithContext(withSnapshot(r.Context(), st)))
+	})
+}
 
 // WhoamiBody implements contextapi.Authenticator.
-func (rt *Runtime) WhoamiBody(p auth.Principal, ok bool) any { return rt.WhoamiFor(p, ok) }
+func (rt *Runtime) WhoamiBody(ctx context.Context, p auth.Principal, ok bool) any {
+	return rt.WhoamiFor(ctx, p, ok)
+}
 
 // SummaryBody implements contextapi.Authenticator.
 func (rt *Runtime) SummaryBody() any {

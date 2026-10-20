@@ -32,12 +32,12 @@ import (
 // unreadable config does nothing, so a half-saved file cannot change
 // anything.
 //
-// Install is two steps: Guard.Apply swaps the mode and verifier together, then
-// the runtime state (verifier chain, namespace ceiling) is published. A request
-// that is verified in the instant between them can be judged by the new
-// verifier with the previous ceiling, or the other way round for the request
-// that straddles it. The window is a single in-flight request at the moment of
-// the swap; the next request sees the new generation entirely.
+// Install is one atomic publish of a whole generation: the mode, the verifier
+// chain, the namespace ceiling and the guard that applies them. A request takes
+// the generation once, on entry, and carries it (in its context) through
+// verification, the mode decision and the namespace ceiling, so it is judged
+// entirely by the generation it started under and never by a mixed pair. A
+// request already in flight at the swap finishes under the old generation.
 
 // Reload applies cfg as the new auth configuration. It is safe to call
 // concurrently with requests; calls are serialized.
@@ -45,16 +45,16 @@ func (rt *Runtime) Reload(cfg config.AuthConfig) error {
 	rt.reload.Lock()
 	defer rt.reload.Unlock()
 
+	// Build the whole next generation (verifiers, deny-list bearer, loops and
+	// the guard that applies its mode) before anything is published. Any
+	// failure, including the bind guard refusing to relax a non-loopback
+	// listener, leaves the running generation untouched.
 	next, err := rt.buildState(cfg, false)
 	if err != nil {
 		return fmt.Errorf("auth reload: %w", err)
 	}
-	if err := rt.Guard.Apply(next.mode, next.verify); err != nil {
-		next.cancel()
-		return fmt.Errorf("auth reload: %w", err)
-	}
-	prev := rt.state.Swap(next)
-	prev.cancel() // stops the previous generation's JWKS refresh and deny-list poll
+	prev := rt.state.Swap(next) // ONE atomic publish: mode, verifier and ceiling together
+	prev.cancel()               // stops the previous generation's JWKS refresh and deny-list poll
 	rt.startSummaryIfNeeded()
 	if rt.stderr != nil {
 		_, _ = fmt.Fprintf(rt.stderr, "  Auth reloaded: %s\n", rt.Describe())

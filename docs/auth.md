@@ -133,11 +133,11 @@ Revoke it by putting its `jti` (or `sub`) on Tether's deny-list, and only if `au
 
 ### Reloading without a restart
 
-`auth.mode`, `auth.jwt` and `auth.deny_list` reload while `tesseract serve` runs (CW-20261020-0004): edit `config.yaml` (the daemon checks every 2 seconds and applies a change once the file has been stable for two checks) or send `SIGHUP`. A reload rebuilds the JWT verifier (issuer, audience, JWKS URL, bootstrap key, `namespace_globs`) and the deny-list (URL, `bearer_ref`, which is resolved again) and swaps the mode and verifier in together; the previous generation's JWKS refresh and deny-list loops stop. The startup line is followed by `Auth reloaded: ...` when it lands.
+`auth.mode`, `auth.jwt` and `auth.deny_list` reload while `tesseract serve` runs (CW-20261020-0004): edit `config.yaml` (the daemon checks every 2 seconds and applies a change once the file has been stable for two checks) or send `SIGHUP`. A reload rebuilds the JWT verifier (issuer, audience, JWKS URL, bootstrap key, `namespace_globs`) and the deny-list (URL, `bearer_ref`, which is resolved again) and publishes the new generation in one atomic step; the previous generation's JWKS refresh and deny-list loops stop. The startup line is followed by `Auth reloaded: ...` when it lands.
 
 All or nothing: if anything in the new section fails (a JWT without `namespace_globs`, a deny-list without a verifier, a literal `bearer_ref`, an unreadable bootstrap key, an unknown mode, a config file that does not parse or has been deleted) the running configuration is unchanged and the reason is logged. It also cannot relax auth on a non-loopback listener: the bind guard that refuses `off` or `permissive` at startup applies to a reload. `HOLLIS_AUTH_TESSERACT` / `HOLLIS_AUTH` still win over `auth.mode`, and the environment does not change under a running process. The managed-token store, `--static-token` and the listener are not part of the config file and do not reload. `tesseract mcp` (stdio) reads its config once.
 
-A request that is being verified at the instant of the swap can be judged by the new verifier with the previous namespace ceiling (or the reverse); the next request sees the new generation entirely.
+The mode, the verifier chain, the namespace ceiling and the guard that applies them are one snapshot: a request takes it once, on entry, and is judged entirely by it (verification, mode decision and ceiling), so it is never judged by a mixed pair. A request already in flight when a reload lands finishes under the generation it started with; the next request sees the new one.
 
 ## Scopes
 

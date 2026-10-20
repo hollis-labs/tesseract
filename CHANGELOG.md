@@ -10,7 +10,7 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
-- Auth configuration reloads without a restart (CW-20261020-0004): `auth.mode`, `auth.jwt` and `auth.deny_list` are re-read from `config.yaml` on an edit or `SIGHUP` while `tesseract serve` runs, built completely before they are installed and applied atomically with the libs `Guard.Apply`; a failed reload (including relaxing auth on a non-loopback listener, a deleted file, or an unparsable file) changes nothing. Uses `security/auth` v0.2.0.
+- Auth configuration reloads without a restart (CW-20261020-0004): `auth.mode`, `auth.jwt` and `auth.deny_list` are re-read from `config.yaml` on an edit or `SIGHUP` while `tesseract serve` runs, built completely and published as one atomic snapshot (mode, verifier chain, namespace ceiling and the guard), taken once per request; a failed reload (including relaxing auth on a non-loopback listener, a deleted file, or an unparsable file) changes nothing. Uses `security/auth` v0.2.0.
 
 ### Added
 

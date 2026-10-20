@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +58,7 @@ func TestReloadMovesTheModeLive(t *testing.T) {
 	if s.rt.Mode() != "enforce" || s.rt.Source() != SourceConfig {
 		t.Fatalf("live mode %q source %q", s.rt.Mode(), s.rt.Source())
 	}
-	w := s.rt.WhoamiFor(auth.Principal{}, false)
+	w := s.rt.WhoamiFor(context.Background(), auth.Principal{}, false)
 	if w.Mode != "enforce" || w.Auth != "auth=enforce" {
 		t.Fatalf("whoami after reload: %+v", w)
 	}
