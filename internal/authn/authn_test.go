@@ -516,12 +516,12 @@ func TestBindGuardRefusesNonEnforceOnNonLoopback(t *testing.T) {
 		Config: config.AuthConfig{}, Addr: "0.0.0.0:8089", Loopback: false,
 		Store: f.store, Scopes: contextapi.RouteScopeTable(),
 	})
-	if err != nil || rt.Mode != auth.ModeEnforce {
+	if err != nil || rt.Mode() != auth.ModeEnforce {
 		t.Fatalf("non-loopback default must be enforce, got %v / %v", rt, err)
 	}
 	// a tailnet bind is not loopback, so it defaults to enforce too
 	rt, err = Build(context.Background(), Options{Addr: "100.74.49.44:8089", Loopback: false, Store: f.store, Scopes: contextapi.RouteScopeTable()})
-	if err != nil || rt.Mode != auth.ModeEnforce {
+	if err != nil || rt.Mode() != auth.ModeEnforce {
 		t.Fatalf("tailnet default must be enforce: %v %v", rt, err)
 	}
 }
@@ -564,8 +564,8 @@ func TestLoopbackFlipIsConfigOnly(t *testing.T) {
 		t.Run(st.name, func(t *testing.T) {
 			t.Setenv("HOLLIS_AUTH_TESSERACT", st.env)
 			s := f.serve(st.cfg, nil)
-			if s.rt.Mode != st.want {
-				t.Fatalf("mode %s, want %s", s.rt.Mode, st.want)
+			if s.rt.Mode() != st.want {
+				t.Fatalf("mode %s, want %s", s.rt.Mode(), st.want)
 			}
 			wantStatus(t, s.do("GET", "/v1/namespaces/list", "", nil), st.anon, "anonymous request")
 		})

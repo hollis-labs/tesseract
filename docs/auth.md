@@ -108,7 +108,7 @@ auth:
 ```
 
 Store the deny-list bearer (a Tether credential holding `tether.maintain`) with
-`secrets set file://tesseract/denylist-bearer`. It is read once at startup. A
+`secrets set file://tesseract/denylist-bearer`. It is read at startup and again on every reload. A
 JWT verifier or deny-list that is configured but cannot be built (missing
 bootstrap file, unresolvable reference, deny-list without a JWT verifier)
 stops startup. Nothing falls back to fewer checks. The deny-list is polled
@@ -131,7 +131,17 @@ A service token is a Tether JWT with `kind=service`, `aud=tesseract`, scopes suc
 
 Revoke it by putting its `jti` (or `sub`) on Tether's deny-list, and only if `auth.deny_list.url` is configured (without a deny-list a service token cannot be revoked short of rotating the issuer key). Revocation takes effect within one poll interval (30 seconds) after a successful poll. If the issuer or its deny-list is unreachable, the last list stays in force (stale), so a revoked token keeps being accepted for as long as the outage lasts; for a long-lived service token there is no hard bound on that outage. Today the deny-list endpoint is read with a credential (`bearer_ref` above); a public minimal deny-list is planned (CW-20261019-0044).
 
-`auth.jwt` and `auth.deny_list` are read once at startup, so adding or changing them needs a restart. Reloading them live is tracked in CW-20261020-0004 and waits on the shared reloader in `libs/security/auth`.
+### Reloading without a restart
+
+`auth.mode`, `auth.jwt` and `auth.deny_list` reload while `tesseract serve` runs (CW-20261020-0004): edit `config.yaml` (the daemon checks every 2 seconds and applies a change once the file has been stable for two checks) or send `SIGHUP`. A reload rebuilds the JWT verifier (issuer, audience, JWKS URL, bootstrap key, `namespace_globs`) and the deny-list (URL, `bearer_ref`, which is resolved again) and publishes the new generation in one atomic step; the previous generation's JWKS refresh and deny-list loops stop. The startup line is followed by `Auth reloaded: ...` when it lands.
+
+All or nothing: if anything in the new section fails (a JWT without `namespace_globs`, a deny-list without a verifier, a literal `bearer_ref`, an unreadable bootstrap key, an unknown mode, a config file that does not parse or has been deleted) the running configuration is unchanged and the reason is logged. It also cannot relax auth on a non-loopback listener: the bind guard that refuses `off` or `permissive` at startup applies to a reload. `HOLLIS_AUTH_TESSERACT` / `HOLLIS_AUTH` still win over `auth.mode`, and the environment does not change under a running process. The managed-token store, `--static-token` and the listener are not part of the config file and do not reload. `tesseract mcp` (stdio) reads its config once.
+
+The mode, the verifier chain, the namespace ceiling and the guard that applies them are one snapshot: a request takes it once, on entry, and is judged entirely by it (verification, mode decision and ceiling), so it is never judged by a mixed pair. A request already in flight when a reload lands finishes under the generation it started with; the next request sees the new one.
+
+A reload never forgets a revocation. If the deny-list URL is unchanged, the new generation keeps the list the previous one had learned (an edit or `SIGHUP` during an outage of the issuer's deny-list cannot un-revoke a token). If the URL is new or changed there is nothing known to keep, so the reload requires a validated first fetch from it and is refused (the running configuration kept) if that fails. Likewise a reload to a JWKS URL with no bootstrap key requires the first key fetch to succeed. These error messages never contain the endpoint URL.
+
+**Dev posture, and the release constraint.** In dev, an edit to `config.yaml` or a `SIGHUP` may relax auth on a loopback listener (for example `enforce` to `permissive`, or removing the JWT verifier): the config file is the owner's, and the change is logged (`Auth reloaded: ...`). That is a dev decision, not a release one. A release posture has to constrain it: at minimum no runtime relaxation without a fresh, attributable approval, and the non-loopback guard above stays. The release-posture note owns the exact rule; until it lands this is the dev default, and a build must not treat "reload can relax auth" as a supported release behavior.
 
 ## Scopes
 

@@ -119,11 +119,13 @@ type Authenticator interface {
 	// Status is "auth=<mode>".
 	Status() string
 	// ClaimsFor translates a verified principal into the legacy claims the
-	// fine-grained handler checks read.
-	ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool)
+	// fine-grained handler checks read. ctx is the admitted request's context:
+	// it carries the auth generation the guard judged the request under, so the
+	// claims (namespace ceiling) come from that same generation.
+	ClaimsFor(ctx context.Context, p auth.Principal) (contextstore.AuthToken, bool)
 	// WhoamiBody and SummaryBody are the JSON bodies of /v1/auth/whoami and
 	// /v1/auth/summary.
-	WhoamiBody(p auth.Principal, ok bool) any
+	WhoamiBody(ctx context.Context, p auth.Principal, ok bool) any
 	SummaryBody() any
 }
 
@@ -683,7 +685,7 @@ func (s *Server) authorizeWithGuard(w http.ResponseWriter, r *http.Request) *htt
 	if !ok || !p.Verified {
 		return admitted
 	}
-	claims, ok := s.Auth.ClaimsFor(p)
+	claims, ok := s.Auth.ClaimsFor(admitted.Context(), p)
 	if !ok {
 		// A verified principal the translator does not know is a wiring bug:
 		// fail closed rather than admit it claim-less.
@@ -811,7 +813,7 @@ func (s *Server) handleAuthWhoami(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, ok := auth.FromContext(r.Context())
-	writeJSON(w, http.StatusOK, s.Auth.WhoamiBody(p, ok))
+	writeJSON(w, http.StatusOK, s.Auth.WhoamiBody(r.Context(), p, ok))
 }
 
 // handleAuthSummary returns the would-deny caller table: who is still sending

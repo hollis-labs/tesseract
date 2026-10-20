@@ -38,11 +38,13 @@ type mcpNamespaceAudit struct {
 
 // Authorize implements mcpadapter.Authorizer.
 func (m *MCPSession) Authorize(ctx context.Context, tool string) (context.Context, error) {
+	st := m.rt.state.Load() // one generation for this tool call
+	ctx = withSnapshot(ctx, st)
 	ctx = context.WithValue(ctx, mcpToolKey{}, &mcpNamespaceAudit{tool: tool})
 	if p, ok := m.principal(ctx); ok {
 		ctx = auth.WithPrincipal(ctx, p)
 	}
-	return ctx, m.rt.Guard.AuthorizeTool(ctx, tool)
+	return ctx, st.guard.AuthorizeTool(ctx, tool)
 }
 
 // ClaimsFromContext implements mcpadapter.Authorizer.
@@ -51,7 +53,7 @@ func (m *MCPSession) ClaimsFromContext(ctx context.Context) (contextstore.AuthTo
 	if !ok || !p.Verified {
 		return contextstore.AuthToken{}, false
 	}
-	return m.rt.ClaimsFor(p)
+	return m.rt.ClaimsFor(ctx, p)
 }
 
 // principal verifies the current token. An unreadable source, an empty token,
@@ -68,7 +70,7 @@ func (m *MCPSession) principal(ctx context.Context) (auth.Principal, bool) {
 	if err != nil || tok == "" {
 		return auth.Principal{}, false
 	}
-	p, err := m.rt.Verify(ctx, tok)
+	p, err := m.rt.verify(ctx, tok)
 	if err != nil {
 		return auth.Principal{}, false
 	}
@@ -81,7 +83,7 @@ func (m *MCPSession) NamespaceDecision(ctx context.Context, allowed bool) bool {
 	if allowed {
 		return true
 	}
-	if m.rt.Mode == auth.ModeEnforce {
+	if m.rt.snapshot(ctx).mode == auth.ModeEnforce {
 		return false
 	}
 	audit, _ := ctx.Value(mcpToolKey{}).(*mcpNamespaceAudit)

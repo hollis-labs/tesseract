@@ -170,11 +170,11 @@ func TestMCPDefaultsToPermissiveWithoutAListener(t *testing.T) {
 	t.Setenv("HOLLIS_AUTH_TESSERACT", "")
 	f := newFixture(t)
 	h := f.mcp(config.AuthConfig{}, "", nil)
-	if h.rt.Mode != auth.ModePermissive {
-		t.Fatalf("stdio MCP default = %s", h.rt.Mode)
+	if h.rt.Mode() != auth.ModePermissive {
+		t.Fatalf("stdio MCP default = %s", h.rt.Mode())
 	}
 	h = f.mcp(config.AuthConfig{}, "", func(o *Options) { o.ConfigFailed = true })
-	if h.rt.Mode != auth.ModeEnforce {
-		t.Fatalf("an unreadable config must default to enforce, got %s", h.rt.Mode)
+	if h.rt.Mode() != auth.ModeEnforce {
+		t.Fatalf("an unreadable config must default to enforce, got %s", h.rt.Mode())
 	}
 }
