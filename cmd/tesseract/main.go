@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -1025,6 +1026,10 @@ func runServe(ctx context.Context, store *contextstore.Store, stderr *os.File, c
 		return 1
 	}
 	srv.Auth = rt
+	// Auth config (mode, JWT verifier, deny-list) reloads on a config.yaml
+	// edit or SIGHUP without a restart; a bad edit changes nothing.
+	go rt.Watch(ctx, filepath.Join(layout.ConfigDir(), "config.yaml"), 0,
+		slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	srv.EnableMetrics = cfg.EnableMetrics
 	srv.EnableRequestLogging = cfg.EnableRequestLogs
 	srv.RequestLogMode = cfg.RequestLogMode

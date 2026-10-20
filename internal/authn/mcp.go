@@ -81,7 +81,7 @@ func (m *MCPSession) NamespaceDecision(ctx context.Context, allowed bool) bool {
 	if allowed {
 		return true
 	}
-	if m.rt.Mode == auth.ModeEnforce {
+	if m.rt.Mode() == auth.ModeEnforce {
 		return false
 	}
 	audit, _ := ctx.Value(mcpToolKey{}).(*mcpNamespaceAudit)

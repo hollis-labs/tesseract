@@ -108,7 +108,7 @@ auth:
 ```
 
 Store the deny-list bearer (a Tether credential holding `tether.maintain`) with
-`secrets set file://tesseract/denylist-bearer`. It is read once at startup. A
+`secrets set file://tesseract/denylist-bearer`. It is read at startup and again on every reload. A
 JWT verifier or deny-list that is configured but cannot be built (missing
 bootstrap file, unresolvable reference, deny-list without a JWT verifier)
 stops startup. Nothing falls back to fewer checks. The deny-list is polled
@@ -131,7 +131,13 @@ A service token is a Tether JWT with `kind=service`, `aud=tesseract`, scopes suc
 
 Revoke it by putting its `jti` (or `sub`) on Tether's deny-list, and only if `auth.deny_list.url` is configured (without a deny-list a service token cannot be revoked short of rotating the issuer key). Revocation takes effect within one poll interval (30 seconds) after a successful poll. If the issuer or its deny-list is unreachable, the last list stays in force (stale), so a revoked token keeps being accepted for as long as the outage lasts; for a long-lived service token there is no hard bound on that outage. Today the deny-list endpoint is read with a credential (`bearer_ref` above); a public minimal deny-list is planned (CW-20261019-0044).
 
-`auth.jwt` and `auth.deny_list` are read once at startup, so adding or changing them needs a restart. Reloading them live is tracked in CW-20261020-0004 and waits on the shared reloader in `libs/security/auth`.
+### Reloading without a restart
+
+`auth.mode`, `auth.jwt` and `auth.deny_list` reload while `tesseract serve` runs (CW-20261020-0004): edit `config.yaml` (the daemon checks every 2 seconds and applies a change once the file has been stable for two checks) or send `SIGHUP`. A reload rebuilds the JWT verifier (issuer, audience, JWKS URL, bootstrap key, `namespace_globs`) and the deny-list (URL, `bearer_ref`, which is resolved again) and swaps the mode and verifier in together; the previous generation's JWKS refresh and deny-list loops stop. The startup line is followed by `Auth reloaded: ...` when it lands.
+
+All or nothing: if anything in the new section fails (a JWT without `namespace_globs`, a deny-list without a verifier, a literal `bearer_ref`, an unreadable bootstrap key, an unknown mode, a config file that does not parse or has been deleted) the running configuration is unchanged and the reason is logged. It also cannot relax auth on a non-loopback listener: the bind guard that refuses `off` or `permissive` at startup applies to a reload. `HOLLIS_AUTH_TESSERACT` / `HOLLIS_AUTH` still win over `auth.mode`, and the environment does not change under a running process. The managed-token store, `--static-token` and the listener are not part of the config file and do not reload. `tesseract mcp` (stdio) reads its config once.
+
+A request that is being verified at the instant of the swap can be judged by the new verifier with the previous namespace ceiling (or the reverse); the next request sees the new generation entirely.
 
 ## Scopes
 

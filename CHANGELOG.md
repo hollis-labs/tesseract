@@ -10,7 +10,11 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
-- Dev service tokens are documented and tested (CW-20261020-0004): a `kind=service` Tether JWT with a distant `exp` is admitted and scoped in off, permissive and enforce, stays inside `auth.jwt.namespace_globs`, and a token with no `exp` is refused. `docs/auth.md` states how revocation behaves (within one poll interval after a successful poll; stale list during an outage) and that `auth.jwt` is read at startup only.
+- Auth configuration reloads without a restart (CW-20261020-0004): `auth.mode`, `auth.jwt` and `auth.deny_list` are re-read from `config.yaml` on an edit or `SIGHUP` while `tesseract serve` runs, built completely before they are installed and applied atomically with the libs `Guard.Apply`; a failed reload (including relaxing auth on a non-loopback listener, a deleted file, or an unparsable file) changes nothing. Uses `security/auth` v0.2.0.
+
+### Added
+
+- Dev service tokens are documented and tested (CW-20261020-0004): a `kind=service` Tether JWT with a distant `exp` is admitted and scoped in off, permissive and enforce, stays inside `auth.jwt.namespace_globs`, and a token with no `exp` is refused. `docs/auth.md` states how revocation behaves (within one poll interval after a successful poll; stale list during an outage) (it also said `auth.jwt` was read at startup only; see the reload entry above, which supersedes that).
 
 ### Changed
 

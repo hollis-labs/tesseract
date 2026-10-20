@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	auth "github.com/hollis-labs/libs/security/auth"
@@ -45,19 +47,36 @@ type Options struct {
 }
 
 // Runtime is the assembled guard plus everything the handlers need from it.
+//
+// The verifier chain, the JWT namespace ceiling and the deny-list belong to a
+// runtimeState that Reload replaces as a whole; the live mode is the Guard's.
 type Runtime struct {
 	Guard   *auth.Guard
-	Mode    auth.Mode
-	Source  string // SourceDefault | SourceConfig | SourceEnv
 	Summary *Summary
 
-	store   *StoreVerifier
-	verify  auth.Verifier
+	store *StoreVerifier
+	opts  Options
+	base  context.Context // process lifetime: parent of every state's loops
+
+	state   atomic.Pointer[runtimeState]
+	reload  sync.Mutex // serializes Reload
+	summary sync.Once  // starts the would-deny summary the first time mode != enforce
+
+	surface string
+	stderr  io.Writer
+}
+
+// runtimeState is one generation of reloadable auth configuration. It is
+// immutable once published; cancel stops the JWKS refresh and deny-list loops
+// that belong to it.
+type runtimeState struct {
+	verify  auth.Verifier // routed: JWT or opaque
 	jwtGlob []string
 	jwtOn   bool
 	denyOn  bool
-	surface string
-	stderr  io.Writer
+	mode    auth.Mode
+	source  string
+	cancel  context.CancelFunc
 }
 
 // Build resolves the mode, validates the bind, builds the verifiers and the
@@ -65,8 +84,45 @@ type Runtime struct {
 // Anything it cannot construct is an error: a verifier that was asked for and
 // cannot be built must stop startup, not silently fall back to fewer checks.
 func Build(ctx context.Context, o Options) (*Runtime, error) {
+	if o.Store == nil {
+		return nil, errors.New("authn: a store is required for the managed-token verifier")
+	}
+	rt := &Runtime{
+		Summary: NewSummary(), store: &StoreVerifier{Store: o.Store}, opts: o, base: ctx,
+		surface: o.Surface, stderr: o.Stderr,
+	}
+	st, err := rt.buildState(o.Config, o.ConfigFailed)
+	if err != nil {
+		return nil, err
+	}
+	logger := slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))
+	g, err := auth.New(auth.Config{
+		Mode: st.mode, Verifier: st.verify, Scopes: o.Scopes, Logger: logger, Addr: o.Addr,
+		Audit: rt.Summary.Audit(),
+		OnRequest: func(r *http.Request, _ auth.Principal, ev auth.Event) {
+			rt.Summary.RecordRequest(r, contextapi.RoutePattern(r.Method, r.URL.Path), ev)
+		},
+	})
+	if err != nil {
+		st.cancel()
+		return nil, err
+	}
+	rt.Guard = g
+	rt.state.Store(st)
+
+	rt.announce()
+	rt.startSummaryIfNeeded()
+	return rt, nil
+}
+
+// buildState resolves the mode from cfg and builds one generation of verifiers.
+// It starts background loops (JWKS refresh, deny-list poll) under a child of
+// the process context; on error nothing is left running. It never touches the
+// live Guard.
+func (rt *Runtime) buildState(cfg config.AuthConfig, configFailed bool) (*runtimeState, error) {
+	o := rt.opts
 	mode, source, err := ResolveMode(ModeInput{
-		Config: o.Config, Loopback: o.Loopback, Credentialed: o.Credentialed, ConfigFailed: o.ConfigFailed,
+		Config: cfg, Loopback: o.Loopback, Credentialed: o.Credentialed, ConfigFailed: configFailed,
 	})
 	if err != nil {
 		return nil, err
@@ -76,14 +132,12 @@ func Build(ctx context.Context, o Options) (*Runtime, error) {
 			return nil, fmt.Errorf("%w (set HOLLIS_AUTH_TESSERACT=enforce or config auth.mode: enforce)", err)
 		}
 	}
-	if o.Store == nil {
-		return nil, errors.New("authn: a store is required for the managed-token verifier")
-	}
 
-	rt := &Runtime{
-		Mode: mode, Source: source, Summary: NewSummary(),
-		store:   &StoreVerifier{Store: o.Store},
-		surface: o.Surface, stderr: o.Stderr,
+	ctx, cancel := context.WithCancel(rt.base)
+	st := &runtimeState{mode: mode, source: source, cancel: cancel}
+	fail := func(err error) (*runtimeState, error) {
+		cancel()
+		return nil, err
 	}
 
 	opaque := []auth.Verifier{rt.store}
@@ -97,69 +151,70 @@ func Build(ctx context.Context, o Options) (*Runtime, error) {
 	}
 
 	var jv auth.Verifier
-	if jwtConfigured(o.Config.JWT) {
+	if jwtConfigured(cfg.JWT) {
 		// A JWT carries no namespace claim, so these globs are the only thing
 		// confining an issuer-minted token. There is deliberately no default:
 		// a "*" fallback would hand every aud=tesseract JWT the user/* scopes.
-		globs := cleanGlobs(o.Config.JWT.NamespaceGlobs)
+		globs := cleanGlobs(cfg.JWT.NamespaceGlobs)
 		if len(globs) == 0 {
-			return nil, errors.New("auth.jwt.namespace_globs is required when auth.jwt is configured (a JWT carries no namespace claim); " +
-				"set it explicitly, e.g. [project/*, session/*, app/*, org/*, system/*] to keep issuer-minted tokens out of user/* (see docs/auth.md)")
+			return fail(errors.New("auth.jwt.namespace_globs is required when auth.jwt is configured (a JWT carries no namespace claim); " +
+				"set it explicitly, e.g. [project/*, session/*, app/*, org/*, system/*] to keep issuer-minted tokens out of user/* (see docs/auth.md)"))
 		}
 		dl := auth.NewDenyList()
 		v, err := auth.NewJWTVerifier(auth.JWTConfig{
-			Issuer:           strings.TrimSpace(o.Config.JWT.Issuer),
-			Audience:         firstNonEmpty(o.Config.JWT.Audience, DefaultAudience),
-			JWKSURL:          strings.TrimSpace(o.Config.JWT.JWKSURL),
-			BootstrapKeyFile: strings.TrimSpace(o.Config.JWT.BootstrapKeyFile),
+			Issuer:           strings.TrimSpace(cfg.JWT.Issuer),
+			Audience:         firstNonEmpty(cfg.JWT.Audience, DefaultAudience),
+			JWKSURL:          strings.TrimSpace(cfg.JWT.JWKSURL),
+			BootstrapKeyFile: strings.TrimSpace(cfg.JWT.BootstrapKeyFile),
 			DenyList:         dl,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("auth.jwt: %w", err)
+			return fail(fmt.Errorf("auth.jwt: %w", err))
 		}
 		jv = v
-		rt.jwtOn = true
-		rt.jwtGlob = globs
-		go v.Run(ctx)
-		if u := strings.TrimSpace(o.Config.DenyList.URL); u != "" {
+		st.jwtOn = true
+		st.jwtGlob = globs
+		if u := strings.TrimSpace(cfg.DenyList.URL); u != "" {
 			poller := &auth.DenyListPoller{URL: u, List: dl, Logger: slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))}
-			if ref := strings.TrimSpace(o.Config.DenyList.BearerRef); ref != "" {
+			if ref := strings.TrimSpace(cfg.DenyList.BearerRef); ref != "" {
 				if !credentials.IsRef(ref) {
-					return nil, errors.New("auth.deny_list.bearer_ref must be a go-secrets reference (file://, op://, keychain://, helper://), not a literal")
+					return fail(errors.New("auth.deny_list.bearer_ref must be a go-secrets reference (file://, op://, keychain://, helper://), not a literal"))
 				}
 				bearer, err := credentials.Resolve(ctx, o.Resolver, ref)
 				if err != nil {
-					return nil, fmt.Errorf("auth.deny_list.bearer_ref: %w", err)
+					return fail(fmt.Errorf("auth.deny_list.bearer_ref: %w", err))
 				}
 				poller.Header = http.Header{"Authorization": []string{"Bearer " + bearer}}
 			}
-			rt.denyOn = true
+			st.denyOn = true
+			// Everything above can fail; only now start the loops.
+			go v.Run(ctx)
 			go poller.Run(ctx)
+		} else {
+			go v.Run(ctx)
 		}
-	} else if strings.TrimSpace(o.Config.DenyList.URL) != "" {
-		return nil, errors.New("auth.deny_list.url is set but no JWT verifier is configured (auth.jwt.issuer + jwks_url)")
+	} else if strings.TrimSpace(cfg.DenyList.URL) != "" {
+		return fail(errors.New("auth.deny_list.url is set but no JWT verifier is configured (auth.jwt.issuer + jwks_url)"))
 	}
 
-	rt.verify = routed{jwt: jv, opaque: auth.Chain(opaque...)}
-	logger := slog.New(slog.NewTextHandler(discardIfNil(o.Stderr), &slog.HandlerOptions{Level: slog.LevelWarn}))
-	g, err := auth.New(auth.Config{
-		Mode: mode, Verifier: rt.verify, Scopes: o.Scopes, Logger: logger,
-		Audit: rt.Summary.Audit(),
-		OnRequest: func(r *http.Request, _ auth.Principal, ev auth.Event) {
-			rt.Summary.RecordRequest(r, contextapi.RoutePattern(r.Method, r.URL.Path), ev)
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	rt.Guard = g
-
-	rt.announce()
-	if mode != auth.ModeEnforce {
-		go rt.Summary.Run(ctx, o.Stderr, o.SummaryInterval)
-	}
-	return rt, nil
+	st.verify = routed{jwt: jv, opaque: auth.Chain(opaque...)}
+	return st, nil
 }
+
+// startSummaryIfNeeded starts the periodic would-deny summary once, the first
+// time the mode is not enforce (at startup, or after a reload that relaxes it).
+func (rt *Runtime) startSummaryIfNeeded() {
+	if rt.Guard.Mode() == auth.ModeEnforce {
+		return
+	}
+	rt.summary.Do(func() { go rt.Summary.Run(rt.base, rt.stderr, rt.opts.SummaryInterval) })
+}
+
+// Mode is the live mode. Source says where it came from (default, config, env).
+func (rt *Runtime) Mode() auth.Mode { return rt.Guard.Mode() }
+
+// Source is where the live mode came from: SourceDefault, SourceConfig or SourceEnv.
+func (rt *Runtime) Source() string { return rt.state.Load().source }
 
 // Status is the "auth=<mode>" string for health, whoami and the startup line.
 func (rt *Runtime) Status() string { return rt.Guard.Status() }
@@ -167,14 +222,15 @@ func (rt *Runtime) Status() string { return rt.Guard.Status() }
 // Describe is a one-line operator description (mode, where it came from,
 // which verifiers are live). Contains no secret.
 func (rt *Runtime) Describe() string {
+	st := rt.state.Load()
 	v := []string{"managed-token-store"}
-	if rt.jwtOn {
+	if st.jwtOn {
 		v = append(v, "jwt/jwks")
 	}
-	if rt.denyOn {
+	if st.denyOn {
 		v = append(v, "deny-list")
 	}
-	return fmt.Sprintf("%s (source=%s, surface=%s, verifiers=%s)", rt.Status(), rt.Source, rt.surface, strings.Join(v, "+"))
+	return fmt.Sprintf("%s (source=%s, surface=%s, verifiers=%s)", rt.Status(), st.source, rt.surface, strings.Join(v, "+"))
 }
 
 func (rt *Runtime) announce() {
@@ -182,14 +238,14 @@ func (rt *Runtime) announce() {
 		return
 	}
 	_, _ = fmt.Fprintf(rt.stderr, "  Auth: %s\n", rt.Describe())
-	if rt.Mode != auth.ModeEnforce {
-		_, _ = fmt.Fprintf(rt.stderr, "  !! auth is %s: requests without a valid bearer are NOT rejected. Would-deny summaries are logged; flip with config auth.mode: enforce (docs/auth.md).\n", rt.Mode)
+	if mode := rt.Guard.Mode(); mode != auth.ModeEnforce {
+		_, _ = fmt.Fprintf(rt.stderr, "  !! auth is %s: requests without a valid bearer are NOT rejected. Would-deny summaries are logged; flip with config auth.mode: enforce (docs/auth.md).\n", mode)
 	}
 }
 
 // Verify resolves a bearer through the same verifiers the guard uses.
 func (rt *Runtime) Verify(ctx context.Context, token string) (auth.Principal, error) {
-	p, err := rt.verify.Verify(ctx, token)
+	p, err := rt.state.Load().verify.Verify(ctx, token)
 	if err == nil {
 		p.Verified = true
 	}
@@ -220,7 +276,7 @@ func (rt *Runtime) ClaimsFor(p auth.Principal) (contextstore.AuthToken, bool) {
 		Label:          firstNonEmpty(p.Display, p.ID),
 		ClientID:       p.ID,
 		Scopes:         authscope.ToLegacy(p.Scopes),
-		NamespaceGlobs: append([]string(nil), rt.jwtGlob...),
+		NamespaceGlobs: append([]string(nil), rt.state.Load().jwtGlob...),
 	}
 	if !p.ExpiresAt.IsZero() {
 		c.ExpiresAt = p.ExpiresAt.UTC().Format(time.RFC3339)
@@ -243,7 +299,7 @@ type Whoami struct {
 
 // WhoamiFor builds the whoami body for the principal stamped on a request.
 func (rt *Runtime) WhoamiFor(p auth.Principal, ok bool) Whoami {
-	w := Whoami{Auth: rt.Status(), Mode: string(rt.Mode), Source: rt.Source}
+	w := Whoami{Auth: rt.Status(), Mode: string(rt.Mode()), Source: rt.Source()}
 	if !ok {
 		return w
 	}
@@ -276,8 +332,8 @@ func (rt *Runtime) SummaryBody() any {
 	rows, dropped := rt.Summary.Snapshot()
 	return map[string]any{
 		"auth":    rt.Status(),
-		"mode":    string(rt.Mode),
-		"source":  rt.Source,
+		"mode":    string(rt.Mode()),
+		"source":  rt.Source(),
 		"callers": rows,
 		"dropped": dropped,
 		"note":    "callers that enforce would reject; empty and meaningless in enforce mode",
