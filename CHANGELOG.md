@@ -8,6 +8,10 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Security
+
+- Go toolchain 1.26.10 (`go` directive and CI pin) for GO-2026-6809 (crypto/x509); no behavior change.
+
 ### Added
 
 - Auth reload may loosen the mode only on a loopback listener (CW-20261020-0038, `security/auth` v0.3.0). A tailnet address still passes the startup bind rule but is not loopback for a reload: `enforce` to `permissive`/`off`, or `permissive` to `off`, is refused (`ErrLoosenRefused`), the running generation stays, and the reason is reported. Keeping or tightening the mode is allowed everywhere.
