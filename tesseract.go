@@ -146,6 +146,7 @@ func Open(ctx context.Context, cfg Config, opts ...Option) (*Tesseract, error) {
 
 	memStore := memory.NewStore(store.DB(), o.embedder, o.embeddingModel, o.dedupThreshold, jobQueue)
 	memStore.SetAuditSink(store)
+	memStore.SetTouchSink(store)
 	memStore.SetNamespaceRegistrar(store)
 	workspaceStore := workspace.NewStore(store.DB())
 	promotionStore := promotion.NewStore(store, memStore)
