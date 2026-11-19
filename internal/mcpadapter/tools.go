@@ -110,11 +110,12 @@ func (a *Adapter) registerTools(s *toolRegistrar) {
 
 	a.addTool(s, gomcpTool("context_namespace_register",
 		"Read this first: call `tesseract_skills namespaces` for the canonical tier patterns and what each owner_type implies — registering a namespace under the wrong owner is not a per-call mistake, it changes who may write there afterwards. "+
-			"Registers a namespace with ownership policy. Requires 'namespace.admin' scope.",
+			"Registers a namespace with ownership policy. Default overwrites; if_unset atomically claims only absent or inferred owners and returns the actual owner and changed. Requires 'namespace.admin' scope.",
 		inputSchema(
 			strProp("namespace", "Namespace path to register", true),
 			strProp("owner_type", "Ownership type: user or app", true),
 			strProp("owner_id", "Owner identity (e.g. my-agent)", true),
+			boolProp("if_unset", "Only assign an absent or inferred owner (default false). An explicit owner is preserved; response returns actual owner and changed=false.", false),
 		),
 		toolAnnotations{},
 		a.handleNamespaceRegister,
@@ -127,7 +128,7 @@ func (a *Adapter) registerTools(s *toolRegistrar) {
 		inputSchema(
 			strProp("kind", registryKindArgDescription, true),
 			strProp("name", "kind=namespaces only: return the single named namespace's ownership policy instead of the list. "+
-				"Answers `{namespace, owner_type, owner_id, policy}` — a different shape from the list, because it is a different question. "+
+				"Answers `{namespace, owner_type, owner_id, policy, owner_explicit}` (false means inferred) — a different shape from the list, because it is a different question. "+
 				"Not accepted under kind=types or kind=views, and not accepted together with any list-shaping argument "+
 				"(`prefix`, `match`, `match_mode`, `owner_type`, `owner_id`, `sort`, `dir`, `limit`, `cursor`), which shape a list this arm does not return. "+
 				"Every one of those is a validation_error rather than a silently ignored knob. "+
@@ -1240,6 +1241,16 @@ func (a *Adapter) handleNamespaceRegister(ctx context.Context, req map[string]an
 		OwnerType: ownerType,
 		OwnerID:   ownerID,
 	}
+	if argBool(req, "if_unset", false) {
+		actual, changed, err := a.Store.SetNamespaceOwnerIfUnset(ctx, entry)
+		if err != nil {
+			return toolError(codeRegisterFailed, err.Error()), nil
+		}
+		return toolJSON(map[string]any{
+			"namespace": actual.Namespace, "owner_type": actual.OwnerType,
+			"owner_id": actual.OwnerID, "changed": changed, "owner_explicit": actual.OwnerExplicit(),
+		}), nil
+	}
 	if err := a.Store.UpsertNamespacePolicy(ctx, entry); err != nil {
 		return toolError(codeRegisterFailed, err.Error()), nil
 	}
@@ -1267,10 +1278,11 @@ func (a *Adapter) namespaceShowResult(ctx context.Context, ns string) any {
 	}
 
 	return toolJSON(map[string]any{
-		"namespace":  entry.Namespace,
-		"owner_type": entry.OwnerType,
-		"owner_id":   entry.OwnerID,
-		"policy":     entry.Policy,
+		"namespace":      entry.Namespace,
+		"owner_type":     entry.OwnerType,
+		"owner_id":       entry.OwnerID,
+		"policy":         entry.Policy,
+		"owner_explicit": entry.OwnerExplicit(),
 	})
 }
 

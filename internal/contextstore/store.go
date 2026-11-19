@@ -3123,15 +3123,65 @@ ON CONFLICT(namespace) DO UPDATE SET
 	return err
 }
 
+// SetNamespaceOwnerIfUnset atomically claims an absent or inferred registration.
+// The first statement acquires SQLite's write lock; the following read therefore
+// returns the winning owner even when another connection claimed it first.
+func (s *Store) SetNamespaceOwnerIfUnset(ctx context.Context, entry NamespacePolicyEntry) (NamespacePolicyEntry, bool, error) {
+	if strings.TrimSpace(entry.Namespace) == "" || strings.TrimSpace(entry.OwnerType) == "" || strings.TrimSpace(entry.OwnerID) == "" {
+		return NamespacePolicyEntry{}, false, errors.New("namespace, owner_type, and owner_id required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return NamespacePolicyEntry{}, false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
+INSERT INTO namespace_policies (namespace, owner_type, owner_id, policy_json, updated_at)
+VALUES (?, ?, ?, '', ?)
+ON CONFLICT(namespace) DO UPDATE SET
+ owner_type=excluded.owner_type, owner_id=excluded.owner_id,
+ policy_json=excluded.policy_json, updated_at=excluded.updated_at
+WHERE json_extract(NULLIF(namespace_policies.policy_json, ''), '$.source') IN ('inferred', 'inferred-backfill')`,
+		entry.Namespace, entry.OwnerType, entry.OwnerID, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return NamespacePolicyEntry{}, false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return NamespacePolicyEntry{}, false, err
+	}
+	actual, err := getNamespacePolicy(ctx, tx, entry.Namespace)
+	if err != nil {
+		return NamespacePolicyEntry{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return NamespacePolicyEntry{}, false, err
+	}
+	return actual, rows != 0, nil
+}
+
+// OwnerExplicit reports whether the row was deliberately registered rather than
+// auto-registered. An empty policy on an explicit registration still has an owner.
+func (entry NamespacePolicyEntry) OwnerExplicit() bool {
+	source, _ := entry.Policy["source"].(string)
+	return source != "inferred" && source != "inferred-backfill"
+}
+
 // GetNamespacePolicy returns persisted namespace metadata.
 func (s *Store) GetNamespacePolicy(ctx context.Context, namespace string) (NamespacePolicyEntry, error) {
+	return getNamespacePolicy(ctx, s.db, namespace)
+}
+
+func getNamespacePolicy(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, namespace string) (NamespacePolicyEntry, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
 		return NamespacePolicyEntry{}, errors.New("namespace required")
 	}
 	var entry NamespacePolicyEntry
 	var policyJSON string
-	err := s.db.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 SELECT namespace, owner_type, owner_id, COALESCE(policy_json, ''), updated_at
 FROM namespace_policies
 WHERE namespace = ?
