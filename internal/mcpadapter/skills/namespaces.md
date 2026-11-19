@@ -129,3 +129,20 @@ user/{user_id}/event/{type}        # human personal journal
 - **Using `app/` to write *about* an application.** `app/tether` is Tether's private datastore; engineering work about Tether is `project/tether`.
 - **Treating `/knowledge` as a prefix.** A bare `/knowledge` matches only that exact namespace. To sweep, always append `/*` (`project/tether/knowledge/*`).
 - **Putting dates, categories, or ticket IDs in namespace paths.** Categories and tickets are tags; timestamps are metadata. Paths carry scope and domain.
+
+## Registering and reading owners
+
+`context_namespace_register` requires `namespace.admin` and the caller's namespace
+permission. Its default behavior replaces the namespace's owner. Pass
+`if_unset: true` to claim an absent or inferred registration atomically: the
+response contains the actual `owner_type`, `owner_id`, and `changed`. An existing
+explicit owner is preserved and returned with `changed: false`, including when
+another concurrent claimant wins. Auto-registration sources `inferred` and
+`inferred-backfill` count as unset; an explicitly registered owner with no policy
+still counts as set.
+
+Read the exact registration with `context_registry_list` using
+`kind: "namespaces", name: "project/example"`. The response includes
+`owner_explicit`: true for a deliberately registered row, false for an inferred
+row. This reads the named row, without scope-head fallback; a missing row remains
+a not-found result.

@@ -158,7 +158,7 @@ func TestMCPNamespaceToolWalk(t *testing.T) {
 		"context_embed":              {deny(map[string]any{"record_id": contexts["blocked"].RecordID, "namespace": bns, "key": "entry"}), deny(map[string]any{"record_id": contexts["blocked"].RecordID, "namespace": "app/allowed/docs", "key": "entry"})},
 		"context_estimate":           {clean(map[string]any{"selector": `{"namespaces":["*"]}`})},
 		"context_ingest":             {deny(map[string]any{"mode": "chunked", "namespace": bns, "key_prefix": "new", "text": "attempt"}), {map[string]any{"items": `[{"namespace":"app/blocked/docs","key":"new","payload":{"title":"attempt"}}]`}, "does not permit"}},
-		"context_namespace_register": {deny(map[string]any{"namespace": bns, "owner_type": "app", "owner_id": "changed"})},
+		"context_namespace_register": {deny(map[string]any{"namespace": bns, "owner_type": "app", "owner_id": "changed"}), deny(map[string]any{"namespace": bns, "owner_type": "app", "owner_id": "changed", "if_unset": true})},
 		"context_pack":               {clean(map[string]any{"view_id": "task_exec"}), clean(map[string]any{"shape": "packet", "namespaces": "*"})},
 		"context_plan":               {clean(map[string]any{"intent": "custom", "execute": true}), clean(map[string]any{"intent": "custom"})},
 		"context_promote":            {deny(map[string]any{"stage": "request", "source_namespace": bns, "source_key": "entry", "target_namespace": "app/allowed/docs", "target_key": "new"}), deny(map[string]any{"stage": "approve", "request_id": "request"}), deny(map[string]any{"stage": "apply", "request_id": "request"})},
