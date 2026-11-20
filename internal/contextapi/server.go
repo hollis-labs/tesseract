@@ -28,6 +28,7 @@ import (
 	llmcontracts "github.com/hollis-labs/libs/llm/core/llmcontracts"
 	"github.com/hollis-labs/libs/llm/core/modelsdev"
 	auth "github.com/hollis-labs/libs/security/auth"
+	"github.com/hollis-labs/tesseract/internal/authscope"
 	"github.com/hollis-labs/tesseract/internal/config"
 	"github.com/hollis-labs/tesseract/internal/contextpolicy"
 	"github.com/hollis-labs/tesseract/internal/contextstore"
@@ -758,7 +759,8 @@ func (s *Server) authorizeRequest(w http.ResponseWriter, r *http.Request) *http.
 		claims, err := s.Store.ValidateAuthTokenWithClaims(r.Context(), token)
 		if err == nil {
 			// Attach claims to context for scope/namespace checking downstream.
-			ctx := context.WithValue(r.Context(), tokenClaimsKey, claims)
+			ctx := auth.WithPrincipal(r.Context(), authscope.ManagedPrincipal(claims.TokenID, claims.Scopes))
+			ctx = context.WithValue(ctx, tokenClaimsKey, claims)
 			ctx = context.WithValue(ctx, authConfiguredKey, true)
 			return r.WithContext(ctx)
 		}
@@ -799,7 +801,8 @@ func (s *Server) authorizeRequest(w http.ResponseWriter, r *http.Request) *http.
 	// The static token carries no stored metadata, so synthesize its claims
 	// (see staticTokenClaims) instead of letting the request travel
 	// claim-less — that is what keeps the scope guards live in this mode.
-	ctx := context.WithValue(r.Context(), tokenClaimsKey, staticTokenClaims)
+	ctx := auth.WithPrincipal(r.Context(), auth.Principal{Verified: true, ID: authscope.StaticPrincipalID, Scopes: authscope.FromLegacy(staticTokenClaims.Scopes)})
+	ctx = context.WithValue(ctx, tokenClaimsKey, staticTokenClaims)
 	ctx = context.WithValue(ctx, authConfiguredKey, true)
 	return r.WithContext(ctx)
 }

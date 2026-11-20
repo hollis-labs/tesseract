@@ -73,6 +73,9 @@ func (s *Store) txAuditSink() TxAuditSink {
 // event was recorded in the transaction (false with a sink that is not
 // transaction-aware, in which case FinishRevisionWrite still emits).
 func (s *Store) AuditRevisionInTx(ctx context.Context, tx *sql.Tx, rev Revision, in WriteInput) bool {
+	if rev.replayed {
+		return false
+	}
 	sink := s.txAuditSink()
 	if sink == nil {
 		return false

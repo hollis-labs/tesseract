@@ -1,13 +1,6 @@
-// Package event implements the Event domain on top of the shared memory
-// revision store. An event is a narrative log entry: an agent's reasoning
-// about what it is doing, or Chrispian's personal log and journal
-// (CW-20260909-0035).
-//
-// It is NOT telemetry. Spans and metrics exist and are someone else's job; the
-// distinguishing property of an Event is that it carries reasoning in prose,
-// which is exactly what a trace discards. If a caller reaching for this
-// package is trying to record a duration, a count or a structured span, it
-// wants a metrics pipeline, not this.
+// Package event implements narrative logs (reasoning and journal) and the
+// explicit status operational-transition stream on the shared revision store.
+// Status records discrete transitions, not spans, metrics, or periodic chatter.
 //
 // The domain's storage policy is what makes it a domain rather than a registry
 // type, and none of it lives here — it lives in memory.eventPolicy: no
@@ -55,9 +48,10 @@ func New(ms *memory.Store) *Store {
 // it is held to memory's dot-notation vocabulary rather than waved through the
 // way knowledge's externally-sourced slugs are.
 type WriteInput struct {
-	Namespace    string
-	Key          string
-	WorkstreamID *string
+	Namespace      string
+	Key            string
+	IdempotencyKey string
+	WorkstreamID   *string
 
 	// Summary is required; Body optional. Both feed embeddings.
 	//
@@ -125,11 +119,12 @@ func (s *Store) Write(ctx context.Context, in WriteInput) (memory.Revision, erro
 	}
 
 	memIn := memory.WriteInput{
-		Domain:       domains.Event,
-		Namespace:    in.Namespace,
-		MemoryKey:    in.Key,
-		WorkstreamID: in.WorkstreamID,
-		Supersedes:   in.Supersedes,
+		Domain:         domains.Event,
+		Namespace:      in.Namespace,
+		MemoryKey:      in.Key,
+		IdempotencyKey: in.IdempotencyKey,
+		WorkstreamID:   in.WorkstreamID,
+		Supersedes:     in.Supersedes,
 		// StatusCanonical, not the StatusDraft every other write path defaults
 		// to. The draft → reviewed → canonical ladder is an EPISTEMIC one: it
 		// tracks how settled a claim is. A log entry makes no claim to settle —

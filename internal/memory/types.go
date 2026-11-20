@@ -238,6 +238,11 @@ type Revision struct {
 	Payload      Payload        `json:"payload"`
 	Facets       Facets         `json:"facets,omitempty"`
 
+	// WriterPrincipal is the authenticated credential principal captured by the
+	// server. Author is caller-claimed; neither author nor payload can set this.
+	WriterPrincipal string `json:"writer_principal,omitempty"`
+	replayed        bool
+
 	// ConsumerState is the consumer's own operational bag, stored as JSON in
 	// memory_revisions.consumer_state (CW-20260909-0036).
 	//

@@ -352,7 +352,7 @@ var scopedNamespaceSegments = []string{memoryNamespaceSegment, eventNamespaceSeg
 // one list entry rather than a second parser.
 //
 // {type} is validated against the `event.type` vocabulary in the type
-// registry, which ships `journal` and `reasoning`. The segment names the
+// registry, which ships `journal`, `reasoning`, and `status`. The segment names the
 // STREAM rather than a taxonomy of what happened; see defaultEventTypes for
 // why that is the axis that earns a path segment.
 //

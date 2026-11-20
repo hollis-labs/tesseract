@@ -85,6 +85,10 @@ const (
 // without needing a join through memory_state.current_revision.
 type EventLogInput struct {
 	WorkstreamID string
+	// AuthorAgentID exactly matches the claimed author, not authenticated identity.
+	AuthorAgentID string
+	// StateFilters apply consumer-state scalar predicates in SQL before paging.
+	StateFilters []StateFilter
 	// Namespaces selects which logs to read, exact or by prefix — the same
 	// vocabulary recall accepts, so `user/chrispian/event` reads every stream
 	// and `user/chrispian/event/journal` reads one. Required: a log read with
@@ -209,6 +213,10 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 		limit = MaxEventLogLimit
 	}
 
+	stateWhere, stateArgs, err := buildStateFilterClauses(in.StateFilters)
+	if err != nil {
+		return EventLogPage{}, err
+	}
 	fingerprint := eventLogOrderingFingerprint(in)
 	pos, err := decodeLogCursor(in.Cursor, fingerprint)
 	if err != nil {
@@ -225,6 +233,13 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 		where = append(where, "r.workstream_id = ?")
 		args = append(args, in.WorkstreamID)
 	}
+
+	if in.AuthorAgentID != "" {
+		where = append(where, "r.author_agent_id = ?")
+		args = append(args, in.AuthorAgentID)
+	}
+	where = append(where, stateWhere...)
+	args = append(args, stateArgs...)
 
 	// See EventLogInput: retraction is what deprecation means for a log entry.
 	where = append(where, "r.status != ?")
@@ -409,7 +424,7 @@ func decodeLogCursor(raw, fingerprint string) (*logPosition, error) {
 	}
 	if p.F != fingerprint {
 		return nil, fmt.Errorf("%w: cursor was issued for a different log read — "+
-			"namespaces, direction, since, until, or workstream_id changed since it was issued; "+
+			"namespaces, direction, since, until, workstream_id, author_agent_id, or state_filters changed since it was issued; "+
 			"restart paging without a cursor", ErrInvalidCursor)
 	}
 	return &p.P, nil
@@ -427,16 +442,20 @@ func eventLogOrderingFingerprint(in EventLogInput) string {
 		direction = LogNewestFirst
 	}
 	return fingerprintOf(struct {
-		Namespaces   []string `json:"ns"`
-		Direction    string   `json:"dir"`
-		Since        string   `json:"since"`
-		Until        string   `json:"until"`
-		WorkstreamID string   `json:"workstream_id"`
+		Namespaces    []string `json:"ns"`
+		Direction     string   `json:"dir"`
+		Since         string   `json:"since"`
+		Until         string   `json:"until"`
+		WorkstreamID  string   `json:"workstream_id"`
+		AuthorAgentID string   `json:"author_agent_id"`
+		StateFilters  []string `json:"state_filters"`
 	}{
-		Namespaces:   sortedCopy(in.Namespaces),
-		Direction:    string(direction),
-		Since:        formatTimePtr(in.Since),
-		Until:        formatTimePtr(in.Until),
-		WorkstreamID: in.WorkstreamID,
+		Namespaces:    sortedCopy(in.Namespaces),
+		Direction:     string(direction),
+		Since:         formatTimePtr(in.Since),
+		Until:         formatTimePtr(in.Until),
+		WorkstreamID:  in.WorkstreamID,
+		AuthorAgentID: in.AuthorAgentID,
+		StateFilters:  stateFilterFingerprint(in.StateFilters),
 	})
 }

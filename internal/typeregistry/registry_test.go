@@ -47,7 +47,7 @@ func TestEveryShippedVocabularyIsRegistered(t *testing.T) {
 // no producer can fill is worse than a gap.
 func TestEventTypeVocabulary(t *testing.T) {
 	r := typeregistry.NewRegistry()
-	want := []string{"journal", "reasoning"}
+	want := []string{"journal", "reasoning", "status"}
 	got := r.Values(typeregistry.VocabEventType)
 	if len(got) != len(want) {
 		t.Fatalf("event types = %v, want %v", got, want)

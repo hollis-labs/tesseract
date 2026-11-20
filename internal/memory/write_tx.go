@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	auth "github.com/hollis-labs/libs/security/auth"
+
 	"github.com/hollis-labs/tesseract/internal/memorylinks"
 )
 
@@ -74,6 +76,17 @@ func (s *Store) writeRevisionInTx(ctx context.Context, tx *sql.Tx, in WriteInput
 		return Revision{}, err
 	}
 
+	principal := ""
+	if p, ok := auth.FromContext(ctx); ok && p.Verified {
+		principal = p.ID
+	}
+	digest, replay, err := s.eventWriteReplay(ctx, tx, in, principal)
+	if err != nil {
+		return Revision{}, err
+	}
+	if replay != nil {
+		return *replay, nil
+	}
 	payload := Payload{Summary: in.Summary, Body: in.Body, Data: in.Data, DataSchemaHash: in.DataSchemaHash}
 	var item resolvedItem
 	if fixedItemID == "" {
@@ -189,19 +202,24 @@ INSERT INTO memory_revisions (
     confidence, tags, ttl_seconds, expires_at, payload_summary, payload_body,
     payload_data, payload_data_schema_hash,
     facet_kind, facet_source, facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
-    consumer_state, workstream_id, write_context
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    consumer_state, workstream_id, write_context, writer_principal
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		revisionID, memoryID, string(in.Domain), in.Namespace, nullStr(in.MemoryKey), string(status), nullStr(in.Supersedes),
 		now.Format(memoryTimeFormat), in.Author.AgentID, in.Author.AgentVersion, string(in.Trigger), in.SessionID,
 		string(in.DerivedFrom), in.Confidence, string(tagsJSON), nullInt(ttlSeconds), nullTime(expiresAt),
 		nullStr(payload.Summary), nullStr(payload.Body), nullStr(string(payload.Data)), nullStr(payload.DataSchemaHash),
 		nullStr(in.Facets.Kind), nullStr(in.Facets.Source), nullStr(pointerScheme), nullStr(pointerLocator),
-		nullTime(pointerResolvedAt), nullStr(string(in.ConsumerState)), optionalWorkstream(workstreamID), writeContextValue,
+		nullTime(pointerResolvedAt), nullStr(string(in.ConsumerState)), optionalWorkstream(workstreamID), writeContextValue, nullStr(principal),
 	)
 	if err != nil {
 		return Revision{}, fmt.Errorf("insert revision: %w", err)
 	}
 
+	if in.IdempotencyKey != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO event_write_receipts VALUES (?, ?, ?, ?, ?)`, in.Namespace, principal, in.IdempotencyKey, digest, revisionID); err != nil {
+			return Revision{}, err
+		}
+	}
 	if in.Supersedes != "" {
 		if err := deprecateRevisionTx(ctx, tx, in.Supersedes); err != nil {
 			return Revision{}, fmt.Errorf("deprecate superseded: %w", err)
@@ -230,8 +248,9 @@ INSERT INTO memory_revisions (
 		Status: status, Supersedes: in.Supersedes, CreatedAt: now, Author: in.Author, Trigger: in.Trigger,
 		SessionID: in.SessionID, DerivedFrom: in.DerivedFrom, Confidence: in.Confidence, Tags: tags,
 		TTLSeconds: ttlSeconds, ExpiresAt: expiresAt, Payload: payload, Facets: in.Facets,
-		ConsumerState: in.ConsumerState,
-		WriteOutcome:  outcome, PreviousRevisionID: item.CurrentRevisionID,
+		ConsumerState:   in.ConsumerState,
+		WriterPrincipal: principal,
+		WriteOutcome:    outcome, PreviousRevisionID: item.CurrentRevisionID,
 	}, nil
 }
 
@@ -245,6 +264,9 @@ func (s *Store) FinishRevisionWrite(ctx context.Context, rev Revision, in WriteI
 }
 
 func (s *Store) finishRevisionWrite(ctx context.Context, rev Revision, in WriteInput, auditedInTx bool) {
+	if rev.replayed {
+		return
+	}
 	postCommitCtx := context.WithoutCancel(ctx)
 	if err := s.queue.Enqueue(postCommitCtx, Job{
 		Kind: EmbedJobKind, Payload: []byte(fmt.Sprintf(`{"revision_id":%q}`, rev.RevisionID)),

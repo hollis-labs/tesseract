@@ -54,7 +54,7 @@ Shipped skills (13):
 | `views` | primitive | Selectors-not-processors; namespace globs. |
 | `memory` | domain | When to use memory, common patterns. |
 | `knowledge` | domain | Content addressed by key, with `kind`/`source`/`pointer` facets. |
-| `event` | domain | The append-only narrative log and its chronological read. |
+| `event` | domain | Narrative logs and operational status transitions, with chronological reads. |
 | `workspace` | domain | Mutable project scratch, retry receipts, version tokens, tombstones, recall, and touch. |
 | `context-packet` | feature | Boot workflows, plan and fetch, budget tuning. |
 | `audit` | feature | Querying the audit log. |
@@ -66,7 +66,7 @@ Workflow-specific skills for downstream apps belong in those app repos. Tesserac
 - **Context** — generic revisioned key-value records. Read/write, typed schemas, views, packet assembly, promotion workflow, embeddings, audit. Several of these tools carry an arm selector (`shape`, `mode`, `stage`, `kind`, `execute`, `full_evaluation`) rather than being split into one tool per fidelity; the catalog below names the selector on each.
 - **Memory** — append-only agent memory revisions with recall (activation/chronological/similarity/relevance rankings).
 - **Knowledge** — content a later session will go looking for by name (a project canonical, handoff, playbook, doc, package) with structured facets. Backed by the memory revision store with `domain=knowledge`. The boundary against memory, with its limits, is stated once in `tesseract_skills start-here`.
-- **Event** — append-only narrative log, excluded from unqualified recall and activation.
+- **Event** — append-only narrative and status-transition logs, excluded from unqualified recall and activation.
 - **Workspace** — mutable project-owned scratch with stable `item_id`, optimistic `version_token`, no history, and identity tombstones.
 - **Cross-domain** — one `get`, one `history`, one `recall`, and two revision-level ops that span every domain. `domain` is an argument, not a tool-name prefix.
 
@@ -82,7 +82,7 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 | Prefix | Covers |
 |---|---|
 | `context_` | the context domain only — generic revisioned records |
-| `event_` | the event domain only — the append-only narrative log |
+| `event_` | the event domain only — narrative and operational status logs |
 | `knowledge_` | the knowledge domain only — content addressed by key |
 | `memory_` | the memory domain only — agent-authored revisions |
 | `tesseract_` | spans every domain, or serves the surface itself |
@@ -161,12 +161,12 @@ This whole section is generated from `internal/mcpadapter/toolvocab.go`. `tests/
 
 ### Event
 
-The append-only narrative log — reasoning in prose, not telemetry. Two properties set it apart from every other domain and both are visible on this surface: `tesseract_recall` does **not** search it unless you pass `domains: ["event"]`, and `ranking=activation` over it is an error rather than an answer. See `tesseract_skills event`.
+Append-only reasoning/journal narratives and explicit `status` operational transitions; no spans or metrics. Two properties set it apart from every other domain and both are visible on this surface: `tesseract_recall` does **not** search it unless you pass `domains: ["event"]`, and `ranking=activation` over it is an error rather than an answer. See `tesseract_skills event`.
 
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
-| `event_write` | `memory:write` | `POST /v1/event/write` | `tesseract_skills event` | Append one log entry. `key` is optional and usually omitted — a log entry records that something happened, not a current value. Stamped `status=canonical`. |
-| `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`. No total, by design. Deprecated entries excluded. |
+| `event_write` | `memory:write` | `POST /v1/event/write` | `tesseract_skills event` | Append one narrative or operational status entry. Keyless `idempotency_key` retries deduplicate; authenticated `writer_principal` is server-set. `key` is optional and usually omitted — a log entry records that something happened, not a current value. Stamped `status=canonical`. |
+| `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`, exact `workstream_id`/`author_agent_id`, `state_filters`. All selection filters bind the cursor and run before LIMIT. No total. Deprecated and expired entries excluded. |
 
 ### Workspace
 

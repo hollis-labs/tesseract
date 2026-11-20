@@ -277,9 +277,8 @@ func buildStateFilterClauses(filters []StateFilter) ([]string, []interface{}, er
 // two callers who asked the same question in a different order page against
 // one ordering instead of restarting.
 //
-// Values render through %v rather than being marshaled back to JSON: this
-// string is hashed, never parsed, and the only property it needs is that two
-// different filter sets produce two different strings.
+// Typed scalar encodings are marshaled as JSON arrays so punctuation inside
+// a string cannot make two different value sets share one fingerprint.
 func stateFilterFingerprint(filters []StateFilter) []string {
 	out := make([]string, 0, len(filters))
 	for _, f := range filters {
@@ -297,7 +296,8 @@ func stateFilterFingerprint(filters []StateFilter) []string {
 			}
 		}
 		sort.Strings(vals)
-		out = append(out, f.Field+"="+strings.Join(vals, ","))
+		encoded, _ := json.Marshal(vals) // length-delimited JSON prevents values containing commas from colliding
+		out = append(out, f.Field+"="+string(encoded))
 	}
 	sort.Strings(out)
 	return out

@@ -91,6 +91,12 @@ func ToolScopeTable() *auth.ScopeTable {
 func (a *Adapter) withAuth(name string, next gomcpserver.ToolHandler) gomcpserver.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		if a.Auth == nil {
+			// Legacy managed tokens still carry authenticated identity. Stamp
+			// only claims successfully validated against the credential store;
+			// handler scope/namespace refusals retain their existing behavior.
+			if claims, ok := a.loadClaims(ctx); ok {
+				ctx = auth.WithPrincipal(ctx, authscope.ManagedPrincipal(claims.TokenID, claims.Scopes))
+			}
 			return next(ctx, args)
 		}
 		ctx, err := a.Auth.Authorize(ctx, name)

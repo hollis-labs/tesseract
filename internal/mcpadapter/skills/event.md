@@ -1,26 +1,26 @@
 ---
 name: event
-description: The event domain - the append-only narrative log. Reasoning in prose, not telemetry. Namespace grammar, the linear read path, and why recall does not search it by default.
+description: The event domain - reasoning, journal, and operational status transitions. Namespace grammar, the linear read path, and why recall does not search it by default.
 scope_hint: memory:read
 related: [memory, knowledge, recall-and-ranking, namespaces]
 ---
 
 # Event domain
 
-Event is the **append-only narrative log**: an agent's reasoning about what it is doing, and Chrispian's personal log and journal.
+Event is the **append-only narrative log**: an agent's reasoning about what it is doing, Chrispian's personal log and journal, plus the explicit `status` operational-transition stream.
 
-## It is not telemetry
+## Narrative and operational streams
 
-This is the distinction that decides whether you are using the right system at all.
+Reasoning and journal keep their narrative contract. Status expands the domain to discrete operational transitions; it does not admit metrics, spans, or periodic chatter.
 
-A trace records *that* something happened, how long it took, and how it was labeled. An event records *why* — what you were trying, what you chose against, what you noticed and did not act on. **The reasoning in prose is exactly what a trace discards**, and recovering it later is the entire reason this domain exists.
+A trace records *that* something happened, how long it took, and how it was labeled. A reasoning event records *why* — what you were trying, what you chose against, what you noticed and did not act on. **The reasoning in prose is exactly what a trace discards**, and recovering it later is the entire reason this domain exists.
 
 So:
 
 - If what you are recording is a duration, a count, a status code or a structured span — this is the wrong tool, and Tesseract is the wrong system. Use a metrics pipeline.
 - If a future session reading it would learn something it would otherwise have to re-derive — that is an event.
 
-The test in one line: **would a trace already have this?** If yes, do not write it here.
+For reasoning and journal, ask whether the prose preserves something a trace discards. For status, record an operational transition with a concise summary and optional short body.
 
 ## Event vs. memory vs. knowledge
 
@@ -51,6 +51,7 @@ user/{user_id}/event/{type}
 |---|---|
 | `reasoning` | an agent's log of what it is doing and why |
 | `journal` | a personal log |
+| `status` | explicit operational transitions, independently read by workstream/day/writer/subject/state |
 
 Pick the scope by what you would read back as a unit:
 
@@ -84,7 +85,7 @@ separately on the revision as an unverified `provenance.write_context` receipt.
 }
 ```
 
-**`body` is the field the domain exists for.** A summary on its own is a log line, which is what a trace already gives you.
+For reasoning, `body` preserves the why. For status, a summary and optional short body are sufficient.
 
 ### Keyless by default
 
@@ -136,13 +137,15 @@ It answers `{entries: [...], manifest: {returned, limit, direction, has_more, ne
 - **`direction`** — `newest_first` (default: what just happened) or `oldest_first` (replay, in the order it was reasoned).
 - **`since` / `until`** — RFC3339 bounds on `created_at`, inclusive. This is why namespaces carry no date segments.
 - **`payload_mode`** — `keys` | `summary` | `full`, as on recall. Under `keys` and `summary` an absent `payload.body` means **withheld, never empty**; the manifest says which mode you got.
-- **`workstream_id`** — exact association filter, applied before the page limit.
+- **`workstream_id`** — exact Registry association filter, applied before the page limit.
+- **`author_agent_id`** — exact claimed writer filter, applied in SQL before LIMIT.
+- **`state_filters`** — consumer-state filters, AND across fields, OR across values; e.g. `[{"field":"state","values":["blocked"]}]`. Deprecated and expired revisions are always excluded.
 
 ### Paging is by position, not offset
 
 `next_cursor` names the entry the page stopped at. Entries appended while you are paging do not shift what you have already seen — which an offset cursor cannot promise on a log that grows at the head.
 
-A cursor is bound to the namespaces, direction and time window it was issued for. Change any of them and you get an error, not a plausible wrong page. `next_cursor: null` means there is nothing left.
+A cursor is bound to the namespaces, direction, time window, workstream_id, author_agent_id and state_filters it was issued for. Change any of them and you get an error, not a plausible wrong page. `next_cursor: null` means there is nothing left.
 
 ### There is no total, deliberately
 
@@ -181,3 +184,54 @@ For the same reason, `tesseract_touch` on an event revision reports it under `no
 Every event has an `item_id`, including the keyless majority. `tesseract_get item_id=<item_id>` returns its current revision and `tesseract_history item_id=<item_id>` returns its history without changing activation. The legacy `domain="event"` + namespace + key selector still works on the keyed minority. Use `event_list` when you want the chronological log rather than one known item.
 
 The HTTP equivalents are `GET /v1/items/{item_id}` and `/v1/items/{item_id}/history`. There are no `/v1/event/current` or `/v1/event/history` keyed routes.
+
+## Status entry contract
+
+Write to `project/{slug}/event/status`, with a Registry `workstream_id`, a
+summary, and an optional short body. `author_agent_id` is the claimed writer;
+`consumer_state.subject_urn` names the agent the transition is about.
+
+```json
+{
+  "namespace": "project/example/event/status",
+  "workstream_id": "<Registry workstream id>",
+  "summary": "Validation complete",
+  "author_agent_id": "dispatcher",
+  "session_id": "session-42",
+  "idempotency_key": "transition-42",
+  "consumer_state": {"state":"done","subject_urn":"msg://agent/example/worker","task":"T-42","run":"run-42"},
+  "data": {"session":"session-42","ref":"commit:abc123","token_jti":"receipt-id-only"}
+}
+```
+
+`state` and `subject_urn` are required consumer-state keys; `task` and `run`
+are optional. Data contains only `session`, optional `ref`, and optional
+`token_jti` (an identifier, never a token). Neither `verified` nor `urn` is a
+payload field. Never put token material anywhere in an entry.
+
+`writer_principal` is an immutable server-set receipt of the authenticated
+credential principal. It is absent for unauthenticated/library writes without
+an authentication context and for older entries. HTTP and MCP refuse callers
+supplying it. An author naming ops or dispatcher remains a claim: a consumer
+may call a transition verified only when `writer_principal` matches its trusted
+authenticated ops-server or dispatcher service principal. Do not trust token
+labels, author strings, consumer state, data, or unverified write_context as
+identity evidence. Tesseract records provenance; it does not choose that trust
+mapping or emit a `verified` flag.
+
+For keyless writes, an optional `idempotency_key` (at most 256 bytes) returns
+the original revision on an identical retry. Keys are scoped to namespace and
+authenticated principal (anonymous writes share the empty principal scope).
+Changed request content with the same key is refused. The receipt and revision
+commit atomically; retries enqueue and audit nothing. Distinct keys or omitted
+keys append distinct entries. Keyed event writes refuse this option.
+
+Tail: `event_list` with namespace and `limit`. By day: add RFC3339 `since` and
+`until`. By workstream: add `workstream_id`. By writer: add `author_agent_id`.
+HTTP uses `GET /v1/event/log`, repeatable `namespace`, and JSON-encoded
+`state_filters`; MCP uses the same filter names. The library accepts
+`EventLogInput.AuthorAgentID` and `StateFilters`. There is no event log CLI
+surface: the CLI explicitly directs event reads/writes to HTTP or MCP.
+
+Switching orchestrator/dispatcher writers and retiring the Torque STATUS mirror
+remain integration follow-ups, after the boot digest reads this stream.

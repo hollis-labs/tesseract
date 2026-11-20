@@ -27,6 +27,8 @@ type WriteInput struct {
 	Actor     string
 	ClientID  string
 	MemoryKey string
+	// IdempotencyKey deduplicates keyless event writes atomically.
+	IdempotencyKey string
 	// WorkstreamID is presence-capable: nil preserves the current association,
 	// a nonempty value sets it, and a pointer to empty clears it.
 	WorkstreamID   *string
@@ -137,6 +139,10 @@ func (s *Store) WriteRevision(ctx context.Context, in WriteInput) (Revision, err
 	rev, err := s.WriteRevisionInTx(ctx, tx, in)
 	if err != nil {
 		return Revision{}, err
+	}
+
+	if rev.replayed {
+		return rev, nil
 	}
 
 	// The audit event commits with the revision (CW-20261016-0140).
