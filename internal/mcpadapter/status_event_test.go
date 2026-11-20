@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tesseract/internal/contextstore"
 	"github.com/hollis-labs/tesseract/internal/memory"
 )
 
@@ -67,5 +68,65 @@ func TestStatusMCPRefusesCallerWriterPrincipal(t *testing.T) {
 	raw := mustJSONText(t, res)
 	if !strings.Contains(raw, "writer_principal") || !strings.Contains(raw, "validation_error") {
 		t.Fatalf("spoofed principal accepted: %s", raw)
+	}
+}
+
+func TestStatusLegacyMCPCredentialProvenanceAndRetryIsolation(t *testing.T) {
+	a, ms := newEventAdapter(t)
+	ctx := context.Background()
+	firstClaims, err := a.Store.ValidateAuthTokenWithClaims(ctx, a.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := a.Store.CreateAuthToken(ctx, contextstore.TokenCreateInput{Label: "trusted-dispatcher", Scopes: []string{"memory:read", "memory:write", "write"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondClaims, err := a.Store.ValidateAuthTokenWithClaims(ctx, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := gomcpserver.NewServer("status-legacy-auth", "0")
+	a.RegisterAllTools(registry)
+	args := map[string]any{"namespace": "project/status-legacy/event/status", "summary": "done", "author_agent_id": "trusted-dispatcher", "session_id": "s", "idempotency_key": "same-retry-key", "consumer_state": `{"state":"done","subject_urn":"msg://agent/test/a"}`}
+	seen := map[string]bool{}
+	for _, credential := range []struct{ token, id string }{{a.Token, firstClaims.TokenID}, {second, secondClaims.TokenID}} {
+		a.Token = credential.token
+		var first memory.Revision
+		for attempt := 0; attempt < 2; attempt++ {
+			result, err := registry.CallTool(ctx, "event_write", args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw := mustJSONText(t, result)
+			var rev memory.Revision
+			if err := json.Unmarshal([]byte(raw), &rev); err != nil || rev.RevisionID == "" {
+				t.Fatalf("write: %s %v", raw, err)
+			}
+			if rev.WriterPrincipal != "tesseract-token/"+credential.id {
+				t.Fatalf("legacy MCP lost credential identity: %q", rev.WriterPrincipal)
+			}
+			if attempt == 0 {
+				first = rev
+				if seen[rev.RevisionID] {
+					t.Fatal("distinct MCP credentials shared retry scope")
+				}
+				seen[rev.RevisionID] = true
+			} else if first.RevisionID != rev.RevisionID {
+				t.Fatal("MCP retry appended")
+			}
+		}
+	}
+	page, err := ms.ReadEventLog(ctx, memory.EventLogInput{Namespaces: []string{"project/status-legacy/event/status"}})
+	if err != nil || len(page.Entries) != 2 {
+		t.Fatalf("expected two isolated receipts: %+v %v", page, err)
+	}
+	a.Token = "invalid-test-credential"
+	result, err := registry.CallTool(ctx, "event_write", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw := mustJSONText(t, result); !strings.Contains(raw, "auth_required") && !strings.Contains(raw, "namespace_not_permitted") {
+		t.Fatalf("invalid legacy MCP credential admitted: %s", raw)
 	}
 }

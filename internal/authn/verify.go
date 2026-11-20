@@ -12,11 +12,8 @@ import (
 	"github.com/hollis-labs/tesseract/internal/contextstore"
 )
 
-// idPrefixToken marks a principal that came from the managed token store.
-const idPrefixToken = "tesseract-token/"
-
 // StaticTokenID is the principal id of the legacy --static-token credential.
-const StaticTokenID = "static-token"
+const StaticTokenID = authscope.StaticPrincipalID
 
 // StoreVerifier is the go-auth Verifier backed by Tesseract's managed token
 // store (auth_tokens). It reuses the store's own validation, so the existing
@@ -43,21 +40,15 @@ func (v *StoreVerifier) Verify(ctx context.Context, token string) (auth.Principa
 	default:
 		return auth.Principal{}, auth.ErrUnavailable
 	}
-	id := idPrefixToken + c.TokenID
+	id := authscope.ManagedPrincipalPrefix + c.TokenID
 	v.mu.Lock()
 	if v.claims == nil {
 		v.claims = map[string]contextstore.AuthToken{}
 	}
 	v.claims[id] = c
 	v.mu.Unlock()
-	p := auth.Principal{
-		Verified: true,
-		ID:       id,
-		Kind:     auth.KindService,
-		Display:  firstNonEmpty(c.Label, c.ClientID, c.TokenID),
-		Scopes:   authscope.FromLegacy(c.Scopes),
-		TokenID:  c.TokenID,
-	}
+	p := authscope.ManagedPrincipal(c.TokenID, c.Scopes)
+	p.Display = firstNonEmpty(c.Label, c.ClientID, c.TokenID)
 	if t, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.ExpiresAt)); perr == nil {
 		p.ExpiresAt = t
 	}

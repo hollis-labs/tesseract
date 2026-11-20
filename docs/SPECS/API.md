@@ -682,7 +682,10 @@ persistence boundary, not from request JSON, author, data or gateway metadata.
 An author string naming ops or dispatcher remains claimed. Consumers may verify
 only entries whose writer_principal matches their trusted authenticated ops or
 dispatcher service principal. Anonymous and historical entries have no receipt.
-This API does not infer a trust mapping or return a `verified` flag.
+This API does not infer a trust mapping or return a `verified` flag. Guard and
+legacy credential modes use the same identity: `tesseract-token/<TokenID>` for
+a validated managed credential, `static-token` for the configured static
+credential. Display labels and client IDs never determine writer identity.
 
 Keyless event writes accept `idempotency_key` (up to 256 bytes), scoped to exact
 namespace and authenticated principal (empty for anonymous). An identical retry
