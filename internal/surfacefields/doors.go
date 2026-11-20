@@ -135,6 +135,7 @@ var Doors = []Door{
 		HTTPPath:   "/v1/event/write",
 		Derived:    true,
 		Fields: []Field{
+			{Concept: "idempotency_key", MCP: "idempotency_key", HTTP: "idempotency_key"},
 			{Concept: "namespace", MCP: "namespace", HTTP: "namespace"},
 			{Concept: "key", MCP: "key", HTTP: "key"},
 			{Concept: "summary", MCP: "summary", HTTP: "summary"},

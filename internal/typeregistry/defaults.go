@@ -19,53 +19,10 @@ func DefaultVocabularies() []Vocabulary {
 	}
 }
 
-// defaultEventTypes is the {type} segment of an event namespace
-// (CW-20260909-0035).
-//
-// The segment names the STREAM, not a taxonomy of what happened. The test a
-// value has to pass is "do I routinely read this partition whole, or exclude
-// it whole" — and exactly one distinction passes it: the two producers. Asking
-// for the journal must not return agent reasoning, and at the volumes an event
-// log reaches the reasoning stream would drown the journal in any mixed read.
-// Finer classification is what tags and the registry's other axes are for;
-// this is the partition.
-//
-// Deliberately two values, not three. `friction` was the obvious candidate and
-// was SETTLED AGAINST on 2026-09-11 (CW-20260910-0059), on the stream test
-// above rather than on the absence of a producer:
-//
-//   - Friction is read whole — aggregate review is its stated purpose — but
-//     nothing needs it excluded whole, which is the half that earns a path
-//     segment.
-//   - The partition axis here is the PRODUCER. Friction is agent-written
-//     commentary about process: a subject, not a producer. Admitting it makes
-//     {type} a mixed axis, where two values answer "who wrote this" and one
-//     answers "what is it about".
-//   - The volume argument that earns {type} runs the other way. A segment beats
-//     a tag filter when the thing being filtered out is one to two orders of
-//     magnitude larger than the thing wanted — which is true of reasoning
-//     against journal, and false of friction against anything. Friction is a
-//     rounding error inside the reasoning stream, so the tag filter is the
-//     cheap shape, not the expensive one.
-//
-// `/process-friction` therefore writes user/{id}/event/reasoning tagged
-// `friction`, which is what this comment already says finer classification is
-// for. Count the corpus rather than trusting a number here — the figure this
-// comment used to carry was ten short after a day:
-//
-//	SELECT COUNT(*) FROM memory_state s
-//	  JOIN memory_revisions r ON r.revision_id = s.current_revision
-//	 WHERE s.namespace = 'user/chrispian/memory/notes'
-//	   AND r.tags LIKE '%process_friction%';
-//
-// Those historical notes do NOT migrate: domain is stamped at creation and
-// resolveOrCreateMemory refuses a change, so friction written before the switch
-// stays in memory permanently ([[domain_is_immutable_no_migration_path]]).
-//
-// What would reopen this: friction volume rising to where excluding it from a
-// reasoning read is a routine need rather than a hypothetical one. That is
-// measurable, not a matter of taste — compare the tagged subset against the
-// stream that holds it.
+// defaultEventTypes names independently readable streams. Reasoning and journal
+// retain their narrative contract. Status is the explicit operational-transition
+// expansion (CW-20261118-0049): it is read independently for workstream catch-up.
+// Friction remains a tag within reasoning, rather than its own stream.
 func defaultEventTypes() Vocabulary {
 	return Vocabulary{
 		VocabularyID: VocabEventType,
@@ -73,6 +30,7 @@ func defaultEventTypes() Vocabulary {
 		Types: []Type{
 			{TypeID: "journal"},
 			{TypeID: "reasoning"},
+			{TypeID: "status", RequiredFields: []string{"state", "subject_urn"}, HotFields: []string{"state", "subject_urn", "task", "run"}},
 		},
 	}
 }

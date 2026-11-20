@@ -13,7 +13,7 @@ Tesseract is a local-first context and memory service. You reach it through the 
 
 - **Memory** — decisions, limitations, follow-ups, feedback, outcomes, what a session learned. Recall by activation, chronological order, semantic similarity, or hybrid relevance. Start with `tesseract_skills memory`.
 - **Knowledge** — canonical definitions, ADRs, playbooks, investigation dossiers, templates, doc or package references. Every knowledge write carries `kind`/`source`/`pointer` facets. Start with `tesseract_skills knowledge`.
-- **Event** — the append-only narrative log: reasoning about what you are doing, session-close summaries, and personal journal entries. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
+- **Event** — the append-only narrative log: reasoning about what you are doing, session-close summaries, personal journal entries, and explicit operational status transitions. **Not telemetry** — its value is the prose a trace throws away. Read it in order with `event_list`. Start with `tesseract_skills event`.
 - **Context** — generic revisioned records for app-scoped state (session workspaces, typed payloads, packets). Used heavily by framework tooling; agents typically reach for memory or knowledge instead.
 - **Workspace** — project-owned working state: drafts, scratchpad analysis, handoffs, boot prompts, session plans, and replaceable working state. One mutable current value per item, guarded by a version token, with a tombstone after deletion and no content history. Start with `tesseract_skills workspace`.
 

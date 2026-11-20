@@ -292,3 +292,24 @@ const (
 
 // LinkRelationVocabulary returns the accepted link relations in stable order.
 var LinkRelationVocabulary = internal.LinkRelationVocabulary
+
+// EventLogInput selects a chronological window, including exact writer and
+// consumer-state filters. Cursors are bound to every selection filter.
+type EventLogInput = internal.EventLogInput
+
+// EventLogPage is the chronological page and keyset manifest.
+type EventLogPage = internal.EventLogPage
+
+// EventLogManifest describes paging without counting the corpus.
+type EventLogManifest = internal.EventLogManifest
+
+// StateFilter matches a consumer-state field against scalar values.
+type StateFilter = internal.StateFilter
+
+// LogDirection selects chronological traversal direction.
+type LogDirection = internal.LogDirection
+
+const (
+	LogNewestFirst = internal.LogNewestFirst
+	LogOldestFirst = internal.LogOldestFirst
+)

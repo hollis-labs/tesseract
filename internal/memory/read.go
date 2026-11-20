@@ -37,7 +37,7 @@ const revisionColumns = `revision_id, memory_id, domain, namespace, COALESCE(mem
        COALESCE(embedding_model, ''), embedding_vector,
        facet_kind, facet_source,
        facet_pointer_scheme, facet_pointer_locator, facet_pointer_resolved_at,
-       consumer_state, workstream_id, write_context`
+       consumer_state, workstream_id, write_context, COALESCE(writer_principal, '')`
 
 // scanRevision scans a single revision row from the shared column list.
 func scanRevision(r rowScanner) (Revision, error) {
@@ -62,7 +62,7 @@ func scanRevision(r rowScanner) (Revision, error) {
 		&rev.EmbeddingModel, &embeddingBlob,
 		&facetKind, &facetSource,
 		&pointerScheme, &pointerLocator, &pointerResolvedAt,
-		&consumerState, &workstreamID, &writeContext,
+		&consumerState, &workstreamID, &writeContext, &rev.WriterPrincipal,
 	)
 	if err != nil {
 		return Revision{}, err

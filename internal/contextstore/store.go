@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	schemaVersion = 31
+	schemaVersion = 32
 
 	// defaultTokenScopes is the full-access scopes JSON assigned to legacy tokens and new tokens without explicit scopes.
 	defaultTokenScopes = `["write","promote.request","promote.approve","promote.apply","packet","repair","namespace.register"]`
@@ -1607,6 +1607,37 @@ FROM workspace_promotion_requests`); err != nil {
 		case 31:
 			if err = migrateAuditDropped(ctx, tx); err != nil {
 				return err
+			}
+		case 32:
+			// Status provenance is never backfilled from claimed authors. Retry
+			// receipts and indexed state predicates support the operational stream.
+			present, checkErr := columnExists(ctx, tx, "memory_revisions", "writer_principal")
+			if checkErr != nil {
+				return checkErr
+			}
+			if !present {
+				if _, err = tx.ExecContext(ctx, `ALTER TABLE memory_revisions ADD COLUMN writer_principal TEXT NULL`); err != nil {
+					return err
+				}
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS event_write_receipts (
+                namespace TEXT NOT NULL, principal TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+                digest TEXT NOT NULL, revision_id TEXT NOT NULL REFERENCES memory_revisions(revision_id),
+                PRIMARY KEY(namespace, principal, idempotency_key))`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_event_author_time ON memory_revisions(author_agent_id, created_at, revision_id) WHERE domain = 'event'`); err != nil {
+				return err
+			}
+			for _, ddl := range []string{
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_state ON memory_revisions(json_extract(consumer_state, '$.state')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_subject_urn ON memory_revisions(json_extract(consumer_state, '$.subject_urn')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_task ON memory_revisions(json_extract(consumer_state, '$.task')) WHERE consumer_state IS NOT NULL`,
+				`CREATE INDEX IF NOT EXISTS idx_memory_revisions_state_run ON memory_revisions(json_extract(consumer_state, '$.run')) WHERE consumer_state IS NOT NULL`,
+			} {
+				if _, err = tx.ExecContext(ctx, ddl); err != nil {
+					return err
+				}
 			}
 		}
 

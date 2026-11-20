@@ -45,7 +45,7 @@ type ToolPrefix struct {
 // surface itself; `<domain>_` when it is domain-specific.
 var ToolPrefixRule = []ToolPrefix{
 	{"context", "the context domain only — generic revisioned records"},
-	{"event", "the event domain only — the append-only narrative log"},
+	{"event", "the event domain only — narrative and operational status logs"},
 	{"knowledge", "the knowledge domain only — content addressed by key"},
 	{"memory", "the memory domain only — agent-authored revisions"},
 	{"tesseract", "spans every domain, or serves the surface itself"},

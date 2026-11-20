@@ -241,8 +241,8 @@ for migration, private delivery, overlap, and lost-delivery handling.
 | `POST /v1/knowledge/write` | namespace | Append a pointer-first knowledge revision. Optional `status` and `derived_from` (default `canonical` and `reference`); opt-in write guards below. |
 | `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `key`. |
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
-| `POST /v1/event/write` | namespace | Append one event-log entry. `key` optional; a keyless write appends a new entry. |
-| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `limit`, `cursor`, `payload_mode`. Every namespace named is authorized, not just the first. |
+| `POST /v1/event/write` | namespace | Append one narrative or status transition entry. `key` optional; keyless `idempotency_key` retries deduplicate atomically. `writer_principal` comes only from authenticated credentials. |
+| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `workstream_id`, exact `author_agent_id`, JSON `state_filters`, `limit`, `cursor`, `payload_mode`. Filters run before LIMIT and bind the cursor. Deprecated and expired revisions are excluded. Every namespace named is authorized, not just the first. |
 | `POST /v1/workspace/write` | `write` + namespace | Create by `namespace`, or edit by `item_id` + `version_token`. Keyless create requires `idempotency_key`; an exact retry returns the original identity without returning a stale token. |
 | `POST /v1/workspace/delete` | `write` + resolved namespace | Conditionally delete current content and retain an identity tombstone. Repeated delete returns the same successful deleted receipt. |
 | `GET /v1/workspace/current` | namespace | Read and reinforce one keyed workspace item by `namespace` + `key`. |
@@ -666,3 +666,33 @@ See [the views contract](VIEWS.md) for selector fields, bounds, and ordering.
   field are not part of the three-stage contract.
 - HTTP and MCP share store/domain logic but do not always share request shapes.
   Use [MCP_TOOLS.md](../MCP_TOOLS.md) for MCP arguments.
+
+### Status transition contract
+
+`project/{slug}/event/status` is an explicit operational-transition stream.
+Reasoning and journal retain their existing narrative contracts. Status entries
+carry a summary, optional short body, Registry `workstream_id`,
+`consumer_state: {state, subject_urn, task?, run?}` and
+`data: {session, ref?, token_jti?}`. Author is the claimed writer; subject_urn
+is the agent the transition concerns. No token material belongs anywhere in an
+entry, and neither `verified` nor `urn` is a payload field.
+
+An immutable `writer_principal` is set from the authenticated credential at the
+persistence boundary, not from request JSON, author, data or gateway metadata.
+An author string naming ops or dispatcher remains claimed. Consumers may verify
+only entries whose writer_principal matches their trusted authenticated ops or
+dispatcher service principal. Anonymous and historical entries have no receipt.
+This API does not infer a trust mapping or return a `verified` flag.
+
+Keyless event writes accept `idempotency_key` (up to 256 bytes), scoped to exact
+namespace and authenticated principal (empty for anonymous). An identical retry
+returns the original revision; conflicting request reuse is a validation error.
+Receipt and revision commit atomically. No audit or queue effect is repeated.
+This option is refused on keyed writes.
+
+`GET /v1/event/log` accepts `author_agent_id` and JSON-encoded `state_filters`
+using the recall filter grammar: AND across fields, OR across scalar values.
+Both filters apply in SQL before the page limit and participate in the keyset
+cursor fingerprint, together with namespace, direction, time and workstream.
+MCP `event_list` and library `memory.EventLogInput` use the same store path.
+The CLI has no event-domain surface; it directs callers to HTTP or MCP.
