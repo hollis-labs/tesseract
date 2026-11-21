@@ -293,8 +293,8 @@ const (
 // LinkRelationVocabulary returns the accepted link relations in stable order.
 var LinkRelationVocabulary = internal.LinkRelationVocabulary
 
-// EventLogInput selects a chronological window, including exact writer and
-// consumer-state filters. Cursors are bound to every selection filter.
+// EventLogInput selects a chronological window, including trailing event
+// stream, workstream, exact writer, and consumer-state filters. Cursors are bound to every selection filter.
 type EventLogInput = internal.EventLogInput
 
 // EventLogPage is the chronological page and keyset manifest.

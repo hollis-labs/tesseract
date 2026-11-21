@@ -242,7 +242,7 @@ for migration, private delivery, overlap, and lost-delivery handling.
 | `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `key`. |
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
 | `POST /v1/event/write` | namespace | Append one narrative or status transition entry. `key` optional; keyless `idempotency_key` retries deduplicate atomically. `writer_principal` comes only from authenticated credentials. |
-| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `workstream_id`, exact `author_agent_id`, JSON `state_filters`, `limit`, `cursor`, `payload_mode`. Filters run before LIMIT and bind the cursor. Deprecated and expired revisions are excluded. Every namespace named is authorized, not just the first. |
+| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `workstream_id`, exact `author_agent_id`, JSON `state_filters`, trailing event-type `stream`, `limit`, `cursor`, `payload_mode`. Filters run before LIMIT and bind the cursor. Deprecated and expired revisions are excluded. Every namespace named is authorized, not just the first. |
 | `POST /v1/workspace/write` | `write` + namespace | Create by `namespace`, or edit by `item_id` + `version_token`. Keyless create requires `idempotency_key`; an exact retry returns the original identity without returning a stale token. |
 | `POST /v1/workspace/delete` | `write` + resolved namespace | Conditionally delete current content and retain an identity tombstone. Repeated delete returns the same successful deleted receipt. |
 | `GET /v1/workspace/current` | namespace | Read and reinforce one keyed workspace item by `namespace` + `key`. |
@@ -699,3 +699,17 @@ Both filters apply in SQL before the page limit and participate in the keyset
 cursor fingerprint, together with namespace, direction, time and workstream.
 MCP `event_list` and library `memory.EventLogInput` use the same store path.
 The CLI has no event-domain surface; it directs callers to HTTP or MCP.
+
+### Cross-project event streams
+
+`GET /v1/event/log?namespace=project/&stream=status&workstream_id=status-writing`
+reads only status events across project namespaces. `namespace=project/*` is
+an equivalent explicit prefix. Interior wildcards such as
+`project/*/event/status` are unsupported. Omit `stream` to preserve the
+all-streams behavior; valid values are `status`, `reasoning`, and `journal`.
+All existing state/time/writer filters compose before LIMIT. Consumer-state
+filters name the stored keys exactly (for example `task`, `run`, `task_id`,
+or `run_id`). Continue with the same selectors and `cursor`; changing `stream`
+rejects the cursor. Every payload mode retains `namespace` and any recorded
+`writer_principal`, allowing readers to apply their trusted-writer mapping.
+The credential must authorize the full prefix, not merely one project.

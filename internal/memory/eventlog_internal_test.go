@@ -234,3 +234,25 @@ func newEventLogTestStore(t *testing.T) (*Store, func()) {
 	ms := NewStore(cs.DB(), nil, "", 0, NoopQueue{})
 	return ms, func() { _ = cs.Close() }
 }
+
+// Adding stream must not invalidate cursors issued before it existed when the
+// caller keeps the historical all-streams selection.
+func TestEventLogEmptyStreamPreservesCursorFingerprint(t *testing.T) {
+	in := EventLogInput{Namespaces: []string{"project/*"}, WorkstreamID: "ws"}
+	legacy := fingerprintOf(struct {
+		Namespaces    []string `json:"ns"`
+		Direction     string   `json:"dir"`
+		Since         string   `json:"since"`
+		Until         string   `json:"until"`
+		WorkstreamID  string   `json:"workstream_id"`
+		AuthorAgentID string   `json:"author_agent_id"`
+		StateFilters  []string `json:"state_filters"`
+	}{Namespaces: sortedCopy(in.Namespaces), Direction: string(LogNewestFirst), WorkstreamID: in.WorkstreamID, StateFilters: stateFilterFingerprint(nil)})
+	if got := eventLogOrderingFingerprint(in); got != legacy {
+		t.Fatalf("all-streams fingerprint changed: got %s want %s", got, legacy)
+	}
+	in.Stream = "status"
+	if eventLogOrderingFingerprint(in) == legacy {
+		t.Fatal("stream failed to bind cursor")
+	}
+}

@@ -143,7 +143,7 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 		// Every namespace is authorized, not just the first. A read that
 		// checked one and served several would let a token widen its own reach
 		// by appending parameters.
-		if !requireNamespaceAccess(w, r, ns) {
+		if !requireNamespaceSelectorAccess(w, r, memory.EventLogNamespaceSelector(ns), "event") {
 			return
 		}
 	}
@@ -155,6 +155,7 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := memory.EventLogInput{
+		Stream:        q.Get("stream"),
 		Namespaces:    namespaces,
 		AuthorAgentID: q.Get("author_agent_id"),
 		WorkstreamID:  workstreamID,

@@ -145,7 +145,7 @@ It answers `{entries: [...], manifest: {returned, limit, direction, has_more, ne
 
 `next_cursor` names the entry the page stopped at. Entries appended while you are paging do not shift what you have already seen — which an offset cursor cannot promise on a log that grows at the head.
 
-A cursor is bound to the namespaces, direction, time window, workstream_id, author_agent_id and state_filters it was issued for. Change any of them and you get an error, not a plausible wrong page. `next_cursor: null` means there is nothing left.
+A cursor is bound to the namespaces, stream, direction, time window, workstream_id, author_agent_id and state_filters it was issued for. Change any of them and you get an error, not a plausible wrong page. `next_cursor: null` means there is nothing left.
 
 ### There is no total, deliberately
 
@@ -235,3 +235,37 @@ surface: the CLI explicitly directs event reads/writes to HTTP or MCP.
 
 Switching orchestrator/dispatcher writers and retiring the Torque STATUS mirror
 remain integration follow-ups, after the boot digest reads this stream.
+
+## Reading a stream across projects
+
+Use a scope prefix plus the trailing event type, rather than a mid-path
+wildcard. `project/*/event/status` is not a supported namespace selector.
+
+```json
+{
+  "namespaces": ["project/"],
+  "stream": "status",
+  "workstream_id": "status-writing",
+  "state_filters": [{"field":"task_id","values":["T-42"]},{"field":"run_id","values":["run-42"]}],
+  "limit": 50
+}
+```
+
+`project/` and `project/*` select the same descendants. `stream` accepts the
+closed event-type vocabulary (`status`, `reasoning`, `journal`); omit it to
+retain the existing all-streams read. It matches the final `/event/{type}`
+suffix exactly, and combines with namespace, workstream, consumer-state,
+writer, and inclusive `since`/`until` filters before LIMIT. State filter names
+refer to literal consumer-state keys: use `task`/`run` when writers follow the
+status contract above, or `task_id`/`run_id` when those keys were stored.
+
+HTTP: `GET /v1/event/log?namespace=project/&stream=status&workstream_id=status-writing`.
+Pass JSON-encoded `state_filters`, RFC3339 time bounds, and the returned cursor
+as query parameters. Library: `memory.EventLogInput{Namespaces: []string{"project/"}, Stream: "status", WorkstreamID: "status-writing"}`.
+
+Follow `manifest.next_cursor` with the same selection, including `stream`;
+changing it rejects the cursor. Every row retains `namespace` and, when
+recorded, `writer_principal` in keys, summary, and full payload modes. Use the
+receipt with your trusted-principal mapping; stream selection does not verify
+a writer. Credentials must authorize the entire requested namespace scope;
+a single-project grant cannot read the cross-project prefix.

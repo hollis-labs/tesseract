@@ -166,7 +166,7 @@ Append-only reasoning/journal narratives and explicit `status` operational trans
 | Tool | Scope | HTTP peer | Deeper | Notes |
 |---|---|---|---|---|
 | `event_write` | `memory:write` | `POST /v1/event/write` | `tesseract_skills event` | Append one narrative or operational status entry. Keyless `idempotency_key` retries deduplicate; authenticated `writer_principal` is server-set. `key` is optional and usually omitted — a log entry records that something happened, not a current value. Stamped `status=canonical`. |
-| `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`, exact `workstream_id`/`author_agent_id`, `state_filters`. All selection filters bind the cursor and run before LIMIT. No total. Deprecated and expired entries excluded. |
+| `event_list` | `memory:read` | `GET /v1/event/log` | `tesseract_skills event` | The linear read: chronological, keyset-paged, `direction` + `since`/`until`, exact `workstream_id`/`author_agent_id`, `state_filters`, trailing event-type `stream`. `namespaces: ["project/"]` (or `["project/*"]`) plus `stream: "status"` reads status across projects; namespace and writer_principal remain on every row. All selection filters bind the cursor and run before LIMIT. No total. Deprecated and expired entries excluded. |
 
 ### Workspace
 

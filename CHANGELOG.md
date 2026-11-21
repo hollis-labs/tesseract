@@ -8,6 +8,10 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ## [Unreleased]
 
+### Added
+
+- `event_list` and `GET /v1/event/log` accept `stream` (the trailing event type), including cross-project reads using `project/` or `project/*`. Stream, workstream, consumer-state, and time filters apply before keyset paging; each row retains its namespace and authenticated writer receipt (CW-20261121-0031).
+
 ### Security
 
 - Go toolchain 1.26.10 (`go` directive and CI pin) for GO-2026-6809 (crypto/x509); no behavior change.

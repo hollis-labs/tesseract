@@ -57,7 +57,7 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 			"• **Result shape:** `{entries: [...], manifest: {returned, limit, direction, has_more, next_cursor, payload_mode}}`.\n"+
 			"• **Scope:** `memory:read`.\n"+
 			"• **No total, deliberately.** Counting a log means scanning it, which is the cost this read exists to avoid, and on an append-only log the answer would be stale before you read it. `has_more` is the question a total is a proxy for.\n"+
-			"• **Paging is by position, not offset.** `next_cursor` names the entry the page stopped at, so entries appended while you page do not shift what you have already seen. A cursor is bound to its namespaces, direction, time window, workstream_id, author_agent_id and state_filters: change any of them and it is an error, not a plausible wrong page.\n"+
+			"• **Paging is by position, not offset.** `next_cursor` names the entry the page stopped at, so entries appended while you page do not shift what you have already seen. A cursor is bound to its namespaces, stream, direction, time window, workstream_id, author_agent_id and state_filters: change any of them and it is an error, not a plausible wrong page.\n"+
 			"• **`direction`:** `newest_first` (default — what just happened) or `oldest_first` (replay, in the order it was reasoned).\n"+
 			"• **`since`/`until`:** the time window. This is why event namespaces carry no date segments.\n"+
 			"• **Use this when:** you want to know what happened, in order — catching up on a session, replaying reasoning, reading a journal.\n"+
@@ -67,7 +67,8 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 		inputSchema(
 			strProp("namespaces",
 				"JSON array of event namespaces. Exact (`project/tesseract/event/reasoning`) or prefix — a bare "+
-					"`project/tesseract/event` reads every stream under that scope, as does an explicit `project/tesseract/event/*`.", true),
+					"`project/tesseract/event` reads every stream under that scope, as does an explicit `project/tesseract/event/*`. A trailing slash is also a prefix: `project/` reads across projects; add stream=status for status only.", true),
+			strProp("stream", "Trailing event type filter: "+memory.EventTypeList()+". Omit for all streams. Combine with namespaces [\"project/\"] to read across projects; interior wildcards are not supported.", false),
 			strProp("direction", "newest_first (default) | oldest_first", false),
 			strProp("since", "RFC3339 lower bound on created_at, inclusive", false),
 			strProp("until", "RFC3339 upper bound on created_at, inclusive", false),
@@ -149,7 +150,7 @@ func (a *Adapter) handleEventList(ctx context.Context, req map[string]any) (any,
 	}
 	if claims, ok := a.loadClaims(ctx); ok {
 		for _, ns := range namespaces {
-			if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, ns, []string{"event"})) {
+			if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, memory.EventLogNamespaceSelector(ns), []string{"event"})) {
 				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit this event selector"), nil
 			}
 		}
@@ -165,6 +166,7 @@ func (a *Adapter) handleEventList(ctx context.Context, req map[string]any) (any,
 	}
 	in := memory.EventLogInput{
 		AuthorAgentID: argString(req, "author_agent_id", ""),
+		Stream:        argString(req, "stream", ""),
 		StateFilters:  stateFilters,
 		Namespaces:    namespaces,
 		WorkstreamID:  workstreamID,
