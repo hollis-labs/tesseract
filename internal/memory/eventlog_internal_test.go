@@ -256,3 +256,29 @@ func TestEventLogEmptyStreamPreservesCursorFingerprint(t *testing.T) {
 		t.Fatal("stream failed to bind cursor")
 	}
 }
+
+func TestEventStreamMatchesExactTrailingType(t *testing.T) {
+	ms, cleanup := newEventLogTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	for _, ns := range []string{"project/one/event/status", "project/two/event/status", "project/one/event/prestatus", "project/one/event/status-extra", "project/one/event/status/detail", "project/one/event/status/status"} {
+		rev, err := ms.WriteRevision(ctx, WriteInput{Domain: domains.Event, Actor: "user", Namespace: "project/fixture/event/reasoning", Author: Author{AgentID: "test"}, SessionID: "s", Summary: "entry", Status: StatusCanonical, DerivedFrom: DerivedFromObservation, Trigger: TriggerManual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Historical/malformed namespace rows cannot be written by today's parser.
+		// Pin them directly to exercise the SQL suffix boundary independently.
+		if _, err := ms.db.ExecContext(ctx, `UPDATE memory_revisions SET namespace=? WHERE revision_id=?`, ns, rev.RevisionID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := ms.ReadEventLog(ctx, EventLogInput{Namespaces: []string{"project/"}, Stream: "status"})
+	if err != nil || len(page.Entries) != 2 {
+		t.Fatalf("stream boundary: %+v %v", page, err)
+	}
+	for _, rev := range page.Entries {
+		if rev.Namespace != "project/one/event/status" && rev.Namespace != "project/two/event/status" {
+			t.Fatalf("lookalike leaked: %s", rev.Namespace)
+		}
+	}
+}

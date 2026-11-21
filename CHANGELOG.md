@@ -10,7 +10,7 @@ Consumers should watch this file for new MCP tools, HTTP routes, store-method ad
 
 ### Added
 
-- `event_list` and `GET /v1/event/log` accept `stream` (the trailing event type), including cross-project reads using `project/` or `project/*`. Stream, workstream, consumer-state, and time filters apply before keyset paging; each row retains its namespace and authenticated writer receipt (CW-20261121-0031).
+- `event_list` and `GET /v1/event/log` accept `stream` (the trailing event type), including cross-project reads using `project/` or `project/*`. Stream, workstream (scalar or OR-list), consumer-state, and time filters apply before keyset paging. `since` also accepts a cursor. Rows retain revision fields and add `id`/`at` plus projection-appropriate status aliases, namespace, and authenticated writer receipts (CW-20261121-0031).
 
 ### Security
 

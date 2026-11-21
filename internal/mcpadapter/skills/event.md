@@ -269,3 +269,52 @@ recorded, `writer_principal` in keys, summary, and full payload modes. Use the
 receipt with your trusted-principal mapping; stream selection does not verify
 a writer. Credentials must authorize the entire requested namespace scope;
 a single-project grant cannot read the cross-project prefix.
+
+### Consumer workstream lists and row aliases
+
+On **event_list only**, `workstream_id` accepts a scalar ID or a native array
+of Registry IDs (a JSON-encoded array string is also accepted). HTTP accepts
+repeated `workstream_id=ID` query parameters or one JSON-array value. The IDs
+OR together; that set ANDs with the other filters before paging. Empty lists,
+empty/invalid elements, and lists longer than 500 entries are refused. IDs
+remain opaque, exact, and case-sensitive; Registry ULIDs are passed unchanged.
+List order and duplicates do not affect cursor selection; a singleton list
+and its scalar spelling are equivalent. Other tools retain scalar filters.
+
+```json
+{
+  "namespaces": ["project/"],
+  "stream": "status",
+  "workstream_id": ["01M7WQC9BNP2BY914K3H69WHR9", "01M7WQC9BNP2BY914K3H69WHRA"],
+  "limit": 50,
+  "payload_mode": "summary"
+}
+```
+
+`since` accepts either an inclusive RFC3339 timestamp or the opaque
+`manifest.next_cursor`. For cursor-as-since, keep the other selection fields
+unchanged and omit `cursor`. New cursors carry their original `since` bound,
+so the alias also resumes a time-bounded first page. Existing cursors remain
+valid with the existing `cursor` parameter and original time bounds. `until`
+remains an inclusive RFC3339 bound; `limit` may change between pages.
+
+The envelope remains `entries` plus `manifest`. Every row retains its original
+revision fields and adds `id` (= `revision_id`) and `at` (= `created_at`,
+RFC3339). Namespace, workstream_id, and recorded writer_principal stay in every
+payload mode. In summary (default) and full modes, rows additionally expose:
+
+| Field | Stored source |
+|---|---|
+| `summary` | `payload.summary` |
+| `state` | string `consumer_state.state` |
+| `task_id` | string `consumer_state.task_id`; fall back to `task` only if task_id is absent |
+| `run_id` | string `consumer_state.run_id`; fall back to `run` only if run_id is absent |
+| `team_id` | string `consumer_state.team_id`, when present |
+| `workstream_key` | string `consumer_state.workstream_key`, when present |
+
+Only full mode adds optional `detail` (= `payload.body`) and `link` (= string
+`payload.data.ref`), preserving the payload-withholding contract. Keys mode
+adds only identity aliases. Missing, empty, or non-string optional sources are
+omitted; no Registry lookup, trust decision, or missing value is inferred.
+Workstream-key filtering is available through existing `state_filters` only
+when writers stored that consumer-state key; there is no Registry key lookup.

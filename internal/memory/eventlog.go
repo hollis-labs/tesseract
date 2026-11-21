@@ -88,6 +88,8 @@ type EventLogInput struct {
 	// Empty preserves the existing all-streams selection.
 	Stream       string
 	WorkstreamID string
+	// WorkstreamIDs ORs exact associations; the scalar remains supported.
+	WorkstreamIDs []string
 	// AuthorAgentID exactly matches the claimed author, not authenticated identity.
 	AuthorAgentID string
 	// StateFilters apply consumer-state scalar predicates in SQL before paging.
@@ -196,8 +198,9 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 			return EventLogPage{}, fmt.Errorf("%w: stream must be one of %s", ErrInvalidInput, EventTypeList())
 		}
 	}
-	if err := ValidateWorkstreamID(in.WorkstreamID); err != nil {
-		return EventLogPage{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	workstreams, err := canonicalEventWorkstreams(in.WorkstreamID, in.WorkstreamIDs)
+	if err != nil {
+		return EventLogPage{}, err
 	}
 	if len(in.Namespaces) == 0 {
 		return EventLogPage{}, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
@@ -251,9 +254,11 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 		where = append(where, "substr(r.namespace, -?) = ?")
 		args = append(args, len(suffix), suffix)
 	}
-	if in.WorkstreamID != "" {
-		where = append(where, "r.workstream_id = ?")
-		args = append(args, in.WorkstreamID)
+	if len(workstreams) > 0 {
+		where = append(where, "r.workstream_id IN ("+placeholders(len(workstreams))+")")
+		for _, id := range workstreams {
+			args = append(args, id)
+		}
 	}
 
 	if in.AuthorAgentID != "" {
@@ -359,7 +364,7 @@ LIMIT ?`
 		next := encodeLogCursor(logPosition{
 			CreatedAt:  last.CreatedAt.UTC().Format(memoryTimeFormat),
 			RevisionID: last.RevisionID,
-		}, fingerprint)
+		}, fingerprint, in.Since)
 		page.Manifest.NextCursor = &next
 	}
 	return page, nil
@@ -389,9 +394,10 @@ type logPosition struct {
 // is what makes them recognizable as the same kind of token; sharing the
 // payload would make them confusable, which is the opposite goal.
 type logCursorPayload struct {
-	V int         `json:"v"`
-	P logPosition `json:"p"`
-	F string      `json:"f"`
+	V     int         `json:"v"`
+	P     logPosition `json:"p"`
+	F     string      `json:"f"`
+	Since string      `json:"since,omitempty"`
 }
 
 // encodeLogCursor produces the opaque resume token for a position under an
@@ -404,8 +410,8 @@ type logCursorPayload struct {
 // through. Exporting it would advertise a knob nothing turns and put
 // logPosition — a type whose whole contract is that callers do not look at it —
 // into the package's public API.
-func encodeLogCursor(pos logPosition, fingerprint string) string {
-	raw, err := json.Marshal(logCursorPayload{V: logCursorVersion, P: pos, F: fingerprint})
+func encodeLogCursor(pos logPosition, fingerprint string, since *time.Time) string {
+	raw, err := json.Marshal(logCursorPayload{V: logCursorVersion, P: pos, F: fingerprint, Since: formatTimePtr(since)})
 	if err != nil {
 		// Three strings and an int; Marshal cannot fail. An empty token reads
 		// as "no next page", which under-promises rather than mislead.
@@ -459,6 +465,12 @@ func decodeLogCursor(raw, fingerprint string) (*logPosition, error) {
 // Namespaces are sorted because a set of namespaces is a set: asking for [a,b]
 // and [b,a] selects the same rows in the same order.
 func eventLogOrderingFingerprint(in EventLogInput) string {
+	workstreams, _ := canonicalEventWorkstreams(in.WorkstreamID, in.WorkstreamIDs)
+	workstreamID := ""
+	if len(workstreams) == 1 {
+		workstreamID = workstreams[0]
+		workstreams = nil
+	}
 	direction := in.Direction
 	if direction == "" {
 		direction = LogNewestFirst
@@ -470,6 +482,7 @@ func eventLogOrderingFingerprint(in EventLogInput) string {
 		Since         string   `json:"since"`
 		Until         string   `json:"until"`
 		WorkstreamID  string   `json:"workstream_id"`
+		WorkstreamIDs []string `json:"workstream_ids,omitempty"`
 		AuthorAgentID string   `json:"author_agent_id"`
 		StateFilters  []string `json:"state_filters"`
 	}{
@@ -478,7 +491,8 @@ func eventLogOrderingFingerprint(in EventLogInput) string {
 		Direction:     string(direction),
 		Since:         formatTimePtr(in.Since),
 		Until:         formatTimePtr(in.Until),
-		WorkstreamID:  in.WorkstreamID,
+		WorkstreamID:  workstreamID,
+		WorkstreamIDs: workstreams,
 		AuthorAgentID: in.AuthorAgentID,
 		StateFilters:  stateFilterFingerprint(in.StateFilters),
 	})

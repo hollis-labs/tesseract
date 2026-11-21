@@ -242,7 +242,7 @@ for migration, private delivery, overlap, and lost-delivery handling.
 | `GET /v1/knowledge/current` | namespace | Current knowledge revision for `namespace` + `key`. |
 | `GET /v1/knowledge/history` | namespace | Knowledge history for `namespace` + `key`. |
 | `POST /v1/event/write` | namespace | Append one narrative or status transition entry. `key` optional; keyless `idempotency_key` retries deduplicate atomically. `writer_principal` comes only from authenticated credentials. |
-| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since`, `until`, `workstream_id`, exact `author_agent_id`, JSON `state_filters`, trailing event-type `stream`, `limit`, `cursor`, `payload_mode`. Filters run before LIMIT and bind the cursor. Deprecated and expired revisions are excluded. Every namespace named is authorized, not just the first. |
+| `GET /v1/event/log` | namespace, per entry | Chronological, keyset-paged read of the event log. `namespace` repeats; `direction`, `since` (RFC3339 or cursor), `until`, scalar/list `workstream_id`, exact `author_agent_id`, JSON `state_filters`, trailing event-type `stream`, `limit`, `cursor`, `payload_mode`. Filters run before LIMIT and bind the cursor. Deprecated and expired revisions are excluded. Every namespace named is authorized, not just the first. |
 | `POST /v1/workspace/write` | `write` + namespace | Create by `namespace`, or edit by `item_id` + `version_token`. Keyless create requires `idempotency_key`; an exact retry returns the original identity without returning a stale token. |
 | `POST /v1/workspace/delete` | `write` + resolved namespace | Conditionally delete current content and retain an identity tombstone. Repeated delete returns the same successful deleted receipt. |
 | `GET /v1/workspace/current` | namespace | Read and reinforce one keyed workspace item by `namespace` + `key`. |
@@ -713,3 +713,29 @@ or `run_id`). Continue with the same selectors and `cursor`; changing `stream`
 rejects the cursor. Every payload mode retains `namespace` and any recorded
 `writer_principal`, allowing readers to apply their trusted-writer mapping.
 The credential must authorize the full prefix, not merely one project.
+
+#### Consumer list and convenience fields
+
+Event-log `workstream_id` accepts repeated scalar query values or one
+JSON-array-of-strings value (at most 500 entries). MCP accepts a scalar,
+native array, or JSON-encoded array string. IDs OR together before LIMIT;
+other filters AND with that set. Lists cannot be empty or contain empty or
+malformed values. IDs remain opaque and exact; list order and duplicates do
+not change the selection, and a singleton list equals its scalar spelling.
+No association filter is applied when the parameter is omitted.
+
+`since` may be RFC3339 or the previous `manifest.next_cursor`. A cursor-valued
+`since` is mutually exclusive with `cursor`; new cursors restore their original
+lower time bound. Keep the other filters (including `until`) unchanged.
+Existing cursors continue to work through `cursor` and their original bounds.
+
+Rows retain generic revision fields and add `id` (= revision_id), `at`
+(= created_at, RFC3339). Summary/full also expose `summary`, string
+`consumer_state.state` as `state`, and string `task_id`, `run_id`, `team_id`,
+`workstream_key` from consumer_state when present. `task`/`run` are fallback
+sources only when task_id/run_id are absent. Full mode additionally exposes
+optional `detail` (= payload.body), `link` (= string payload.data.ref).
+Keys mode adds only identity aliases; summary mode withholds detail/link.
+Missing, empty, or non-string optional values are omitted. No Registry lookup
+or verification is inferred. Workstream-key filtering may use state_filters
+if that key was stored; no Registry key expansion is performed.
