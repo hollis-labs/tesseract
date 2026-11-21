@@ -115,7 +115,8 @@ func (s *Server) handleEventWrite(w http.ResponseWriter, r *http.Request) {
 //
 //	?namespace=user/chrispian/event/journal   (repeatable)
 //	&direction=newest_first|oldest_first
-//	&since=RFC3339&until=RFC3339
+//	&stream=status&workstream_id=ID1&workstream_id=ID2
+//	&since=RFC3339-or-cursor&until=RFC3339
 //	&limit=50&cursor=...&payload_mode=summary
 //
 // `namespace` is repeatable rather than comma-separated because a namespace is
@@ -126,7 +127,11 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	workstreamID := q.Get("workstream_id")
+	workstreamIDs, workstreamErr := memory.ParseEventWorkstreamSelectors(q["workstream_id"])
+	if workstreamErr != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", workstreamErr.Error(), nil)
+		return
+	}
 
 	namespaces := q["namespace"]
 	if len(namespaces) == 0 {
@@ -143,21 +148,16 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 		// Every namespace is authorized, not just the first. A read that
 		// checked one and served several would let a token widen its own reach
 		// by appending parameters.
-		if !requireNamespaceAccess(w, r, ns) {
-			return
-		}
-	}
-	if q.Has("workstream_id") {
-		if err := memory.ValidateWorkstreamFilter(workstreamID); err != nil {
-			writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		if !requireNamespaceSelectorAccess(w, r, memory.EventLogNamespaceSelector(ns), "event") {
 			return
 		}
 	}
 
 	in := memory.EventLogInput{
+		Stream:        q.Get("stream"),
 		Namespaces:    namespaces,
 		AuthorAgentID: q.Get("author_agent_id"),
-		WorkstreamID:  workstreamID,
+		WorkstreamIDs: workstreamIDs,
 		Direction:     memory.LogDirection(q.Get("direction")),
 		Cursor:        q.Get("cursor"),
 	}
@@ -176,14 +176,9 @@ func (s *Server) handleEventLog(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Limit = n
 	}
-	if raw := q.Get("since"); raw != "" {
-		t, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "validation_error",
-				"since must be RFC3339: "+err.Error(), nil)
-			return
-		}
-		in.Since = &t
+	if err := memory.ApplyEventLogSince(&in, q.Get("since")); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
+		return
 	}
 	if raw := q.Get("until"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)

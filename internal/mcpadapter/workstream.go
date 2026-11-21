@@ -36,3 +36,28 @@ func workstreamReadArg(req map[string]any) (string, any) {
 	}
 	return value, nil
 }
+
+// eventWorkstreamReadArg is event-list's additive scalar-or-list contract.
+// Other read tools retain their scalar association argument.
+func eventWorkstreamReadArg(req map[string]any) ([]string, any) {
+	raw, present := req["workstream_id"]
+	if !present {
+		return nil, nil
+	}
+	if value, ok := raw.(string); ok {
+		values, err := memory.ParseEventWorkstreamSelectors([]string{value})
+		if err != nil {
+			return nil, toolError(codeValidationError, err.Error())
+		}
+		return values, nil
+	}
+	values, _, err := parseStringArrayArg(req, "workstream_id")
+	if err != nil || values == nil || len(values) == 0 {
+		return nil, toolError(codeValidationError, "workstream_id must be a non-empty string or array of strings")
+	}
+	checked, checkErr := memory.NormalizeEventWorkstreamIDs(values)
+	if checkErr != nil {
+		return nil, toolError(codeValidationError, checkErr.Error())
+	}
+	return checked, nil
+}

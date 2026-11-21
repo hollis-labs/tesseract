@@ -51,11 +51,20 @@ func TestMCPWorkstreamReadFilterRejectsMalformedValuesWithoutAResultEnvelope(t *
 			}
 		})
 
-		for name, value := range map[string]any{
+		invalidValues := map[string]any{
 			"null": nil, "boolean": true, "number": 7,
-			"object": map[string]any{"value": "ws-a"}, "array": []string{"ws-a"},
-			"empty": "", "padded": " ws-a",
-		} {
+			"object": map[string]any{"value": "ws-a"},
+			"empty":  "", "padded": " ws-a",
+		}
+		if tool == "event_list" {
+			// Event-list now accepts native lists; malformed lists still fail
+			// closed, and every other read tool retains its scalar contract.
+			invalidValues["empty-array"] = []string{}
+			invalidValues["non-string-array"] = []any{7}
+		} else {
+			invalidValues["array"] = []string{"ws-a"}
+		}
+		for name, value := range invalidValues {
 			t.Run(tool+"/"+name, func(t *testing.T) {
 				body := mustCallRegistered(t, a, tool, map[string]any{
 					"namespaces": []string{namespace}, "workstream_id": value,

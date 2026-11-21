@@ -54,12 +54,12 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 	a.addTool(s, gomcpTool("event_list",
 		"**Read the event log in order** — the linear read path, not a ranked search.\n"+
 			"• **Kind of content:** event-domain revisions in chronological order, newest first by default.\n"+
-			"• **Result shape:** `{entries: [...], manifest: {returned, limit, direction, has_more, next_cursor, payload_mode}}`.\n"+
+			"• **Result shape:** `{entries: [...], manifest: {returned, limit, direction, has_more, next_cursor, payload_mode}}`. Rows retain revision fields plus id=revision_id, at=created_at. Summary/full add summary and string consumer-state aliases state/task_id/run_id/team_id/workstream_key; task/run are fallback source keys. Full adds detail=payload.body and link=payload.data.ref when present. Keys mode withholds content aliases.\n"+
 			"• **Scope:** `memory:read`.\n"+
 			"• **No total, deliberately.** Counting a log means scanning it, which is the cost this read exists to avoid, and on an append-only log the answer would be stale before you read it. `has_more` is the question a total is a proxy for.\n"+
-			"• **Paging is by position, not offset.** `next_cursor` names the entry the page stopped at, so entries appended while you page do not shift what you have already seen. A cursor is bound to its namespaces, direction, time window, workstream_id, author_agent_id and state_filters: change any of them and it is an error, not a plausible wrong page.\n"+
+			"• **Paging is by position, not offset.** `next_cursor` names the entry the page stopped at, so entries appended while you page do not shift what you have already seen. A cursor is bound to its namespaces, stream, direction, time window, workstream_id, author_agent_id and state_filters: change any of them and it is an error, not a plausible wrong page.\n"+
 			"• **`direction`:** `newest_first` (default — what just happened) or `oldest_first` (replay, in the order it was reasoned).\n"+
-			"• **`since`/`until`:** the time window. This is why event namespaces carry no date segments.\n"+
+			"• **`since`/`until`:** RFC3339 time window. since also accepts next_cursor to resume (do not also pass cursor); new cursors restore the original since bound.\n"+
 			"• **Use this when:** you want to know what happened, in order — catching up on a session, replaying reasoning, reading a journal.\n"+
 			"• **Don't use this for:** finding an entry by topic. That is `tesseract_recall` with `domains: [\"event\"]` and a query.\n"+
 			"• **Deprecated and expired entries are excluded.** Retracting a log entry is what `tesseract_deprecate` means here; `tesseract_history` still shows it.\n"+
@@ -67,9 +67,10 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 		inputSchema(
 			strProp("namespaces",
 				"JSON array of event namespaces. Exact (`project/tesseract/event/reasoning`) or prefix — a bare "+
-					"`project/tesseract/event` reads every stream under that scope, as does an explicit `project/tesseract/event/*`.", true),
+					"`project/tesseract/event` reads every stream under that scope, as does an explicit `project/tesseract/event/*`. A trailing slash is also a prefix: `project/` reads across projects; add stream=status for status only.", true),
+			strProp("stream", "Trailing event type filter: "+memory.EventTypeList()+". Omit for all streams. Combine with namespaces [\"project/\"] to read across projects; interior wildcards are not supported.", false),
 			strProp("direction", "newest_first (default) | oldest_first", false),
-			strProp("since", "RFC3339 lower bound on created_at, inclusive", false),
+			strProp("since", "RFC3339 lower bound on created_at (inclusive), or opaque next_cursor to resume. Do not combine a cursor-valued since with cursor.", false),
 			strProp("until", "RFC3339 upper bound on created_at, inclusive", false),
 			numProp("limit", "Entries per page (default 50, max 500)", false),
 			strProp("cursor",
@@ -78,7 +79,7 @@ func (a *Adapter) registerEventTools(s *toolRegistrar) {
 			strProp("payload_mode", payloadModeArgDescription, false),
 			strProp("author_agent_id", "Exact claimed writer filter, applied before paging; not proof of identity.", false),
 			strProp("state_filters", stateFiltersArgDescription, false),
-			strProp("workstream_id", "Exact opaque workstream association filter.", false),
+			propDef{name: "workstream_id", schema: map[string]any{"type": []string{"string", "array"}, "items": map[string]any{"type": "string"}, "description": "Exact workstream association or OR-list of IDs (native or JSON-encoded array); at most 500. Omit for no association filter."}},
 		),
 		toolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 		a.handleEventList,
@@ -149,14 +150,22 @@ func (a *Adapter) handleEventList(ctx context.Context, req map[string]any) (any,
 	}
 	if claims, ok := a.loadClaims(ctx); ok {
 		for _, ns := range namespaces {
-			if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, ns, []string{"event"})) {
+			if !a.namespaceDecision(ctx, globsPermitRecallScope(claims.NamespaceGlobs, memory.EventLogNamespaceSelector(ns), []string{"event"})) {
 				return toolError(codeNamespaceNotPermitted, "token namespace globs do not permit this event selector"), nil
 			}
 		}
 	}
-	workstreamID, workstreamErr := workstreamReadArg(req)
+	workstreamIDs, workstreamErr := eventWorkstreamReadArg(req)
 	if workstreamErr != nil {
 		return workstreamErr, nil
+	}
+
+	for _, key := range []string{"stream", "since"} {
+		if raw, present := req[key]; present {
+			if _, ok := raw.(string); !ok {
+				return toolError(codeValidationError, key+" must be a string"), nil
+			}
+		}
 	}
 
 	stateFilters, filterErr := parseStateFiltersArg(req)
@@ -165,19 +174,16 @@ func (a *Adapter) handleEventList(ctx context.Context, req map[string]any) (any,
 	}
 	in := memory.EventLogInput{
 		AuthorAgentID: argString(req, "author_agent_id", ""),
+		Stream:        argString(req, "stream", ""),
 		StateFilters:  stateFilters,
 		Namespaces:    namespaces,
-		WorkstreamID:  workstreamID,
+		WorkstreamIDs: workstreamIDs,
 		Direction:     memory.LogDirection(argString(req, "direction", "")),
 		Limit:         int(argFloat(req, "limit", 0)),
 		Cursor:        argString(req, "cursor", ""),
 	}
-	if raw := argString(req, "since", ""); raw != "" {
-		t, parseErr := time.Parse(time.RFC3339, raw)
-		if parseErr != nil {
-			return toolError(codeValidationError, "since must be RFC3339: "+parseErr.Error()), nil //nolint:nilerr // MCP tool pattern: a caller error is a tool result, not a transport error
-		}
-		in.Since = &t
+	if sinceErr := memory.ApplyEventLogSince(&in, argString(req, "since", "")); sinceErr != nil {
+		return toolError(codeValidationError, sinceErr.Error()), nil
 	}
 	if raw := argString(req, "until", ""); raw != "" {
 		t, parseErr := time.Parse(time.RFC3339, raw)

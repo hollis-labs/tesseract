@@ -84,14 +84,20 @@ const (
 // the same transaction, so the log shows exactly one row per logical entry
 // without needing a join through memory_state.current_revision.
 type EventLogInput struct {
+	// Stream matches the trailing event type (status, reasoning, or journal).
+	// Empty preserves the existing all-streams selection.
+	Stream       string
 	WorkstreamID string
+	// WorkstreamIDs ORs exact associations; the scalar remains supported.
+	WorkstreamIDs []string
 	// AuthorAgentID exactly matches the claimed author, not authenticated identity.
 	AuthorAgentID string
 	// StateFilters apply consumer-state scalar predicates in SQL before paging.
 	StateFilters []StateFilter
 	// Namespaces selects which logs to read, exact or by prefix — the same
 	// vocabulary recall accepts, so `user/chrispian/event` reads every stream
-	// and `user/chrispian/event/journal` reads one. Required: a log read with
+	// and `user/chrispian/event/journal` reads one. A trailing slash is an
+	// explicit prefix too: `project/` reads across projects. Required: a log read with
 	// no namespace is a request for every event ever written by anyone, which
 	// is never the question being asked.
 	Namespaces []string
@@ -112,7 +118,7 @@ type EventLogInput struct {
 
 	// Cursor resumes a previous page. It carries the position the last page
 	// stopped at and a fingerprint of the selection it was issued for, so
-	// resuming a cursor against a different namespace set, direction or time
+	// resuming a cursor against a different namespace set, stream, direction or time
 	// window is an error rather than a plausible wrong page.
 	Cursor string
 }
@@ -183,8 +189,18 @@ func ProjectEventLogPage(page EventLogPage, mode PayloadMode) EventLogResponse {
 // and knowledge are curated corpora read by relevance, and a log read over
 // them would be a second door onto the same rows with no question behind it.
 func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPage, error) {
-	if err := ValidateWorkstreamID(in.WorkstreamID); err != nil {
-		return EventLogPage{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	if in.Stream != "" {
+		valid := false
+		for _, stream := range EventTypeAllowlist() {
+			valid = valid || in.Stream == stream
+		}
+		if !valid {
+			return EventLogPage{}, fmt.Errorf("%w: stream must be one of %s", ErrInvalidInput, EventTypeList())
+		}
+	}
+	workstreams, err := canonicalEventWorkstreams(in.WorkstreamID, in.WorkstreamIDs)
+	if err != nil {
+		return EventLogPage{}, err
 	}
 	if len(in.Namespaces) == 0 {
 		return EventLogPage{}, fmt.Errorf("%w: at least one namespace is required", ErrInvalidInput)
@@ -226,12 +242,23 @@ func (s *Store) ReadEventLog(ctx context.Context, in EventLogInput) (EventLogPag
 	where := []string{"r.domain = ?"}
 	args := []any{string(domains.Event)}
 
-	nsFrag, nsArgs := buildNamespaceClause(in.Namespaces, []string{string(domains.Event)})
+	selectors := make([]string, len(in.Namespaces))
+	for i, ns := range in.Namespaces {
+		selectors[i] = EventLogNamespaceSelector(ns)
+	}
+	nsFrag, nsArgs := buildNamespaceClause(selectors, []string{string(domains.Event)})
 	where = append(where, nsFrag)
 	args = append(args, nsArgs...)
-	if in.WorkstreamID != "" {
-		where = append(where, "r.workstream_id = ?")
-		args = append(args, in.WorkstreamID)
+	if in.Stream != "" {
+		suffix := "/event/" + in.Stream
+		where = append(where, "substr(r.namespace, -?) = ?")
+		args = append(args, len(suffix), suffix)
+	}
+	if len(workstreams) > 0 {
+		where = append(where, "r.workstream_id IN ("+placeholders(len(workstreams))+")")
+		for _, id := range workstreams {
+			args = append(args, id)
+		}
 	}
 
 	if in.AuthorAgentID != "" {
@@ -337,7 +364,7 @@ LIMIT ?`
 		next := encodeLogCursor(logPosition{
 			CreatedAt:  last.CreatedAt.UTC().Format(memoryTimeFormat),
 			RevisionID: last.RevisionID,
-		}, fingerprint)
+		}, fingerprint, in.Since)
 		page.Manifest.NextCursor = &next
 	}
 	return page, nil
@@ -367,9 +394,10 @@ type logPosition struct {
 // is what makes them recognizable as the same kind of token; sharing the
 // payload would make them confusable, which is the opposite goal.
 type logCursorPayload struct {
-	V int         `json:"v"`
-	P logPosition `json:"p"`
-	F string      `json:"f"`
+	V     int         `json:"v"`
+	P     logPosition `json:"p"`
+	F     string      `json:"f"`
+	Since string      `json:"since,omitempty"`
 }
 
 // encodeLogCursor produces the opaque resume token for a position under an
@@ -382,8 +410,8 @@ type logCursorPayload struct {
 // through. Exporting it would advertise a knob nothing turns and put
 // logPosition — a type whose whole contract is that callers do not look at it —
 // into the package's public API.
-func encodeLogCursor(pos logPosition, fingerprint string) string {
-	raw, err := json.Marshal(logCursorPayload{V: logCursorVersion, P: pos, F: fingerprint})
+func encodeLogCursor(pos logPosition, fingerprint string, since *time.Time) string {
+	raw, err := json.Marshal(logCursorPayload{V: logCursorVersion, P: pos, F: fingerprint, Since: formatTimePtr(since)})
 	if err != nil {
 		// Three strings and an int; Marshal cannot fail. An empty token reads
 		// as "no next page", which under-promises rather than mislead.
@@ -424,7 +452,7 @@ func decodeLogCursor(raw, fingerprint string) (*logPosition, error) {
 	}
 	if p.F != fingerprint {
 		return nil, fmt.Errorf("%w: cursor was issued for a different log read — "+
-			"namespaces, direction, since, until, workstream_id, author_agent_id, or state_filters changed since it was issued; "+
+			"namespaces, stream, direction, since, until, workstream_id, author_agent_id, or state_filters changed since it was issued; "+
 			"restart paging without a cursor", ErrInvalidCursor)
 	}
 	return &p.P, nil
@@ -437,25 +465,46 @@ func decodeLogCursor(raw, fingerprint string) (*logPosition, error) {
 // Namespaces are sorted because a set of namespaces is a set: asking for [a,b]
 // and [b,a] selects the same rows in the same order.
 func eventLogOrderingFingerprint(in EventLogInput) string {
+	workstreams, _ := canonicalEventWorkstreams(in.WorkstreamID, in.WorkstreamIDs)
+	workstreamID := ""
+	if len(workstreams) == 1 {
+		workstreamID = workstreams[0]
+		workstreams = nil
+	}
 	direction := in.Direction
 	if direction == "" {
 		direction = LogNewestFirst
 	}
 	return fingerprintOf(struct {
+		Stream        string   `json:"stream,omitempty"`
 		Namespaces    []string `json:"ns"`
 		Direction     string   `json:"dir"`
 		Since         string   `json:"since"`
 		Until         string   `json:"until"`
 		WorkstreamID  string   `json:"workstream_id"`
+		WorkstreamIDs []string `json:"workstream_ids,omitempty"`
 		AuthorAgentID string   `json:"author_agent_id"`
 		StateFilters  []string `json:"state_filters"`
 	}{
+		Stream:        in.Stream,
 		Namespaces:    sortedCopy(in.Namespaces),
 		Direction:     string(direction),
 		Since:         formatTimePtr(in.Since),
 		Until:         formatTimePtr(in.Until),
-		WorkstreamID:  in.WorkstreamID,
+		WorkstreamID:  workstreamID,
+		WorkstreamIDs: workstreams,
 		AuthorAgentID: in.AuthorAgentID,
 		StateFilters:  stateFilterFingerprint(in.StateFilters),
 	})
+}
+
+// EventLogNamespaceSelector makes an explicit trailing slash a descendant
+// prefix, e.g. project/ is equivalent to project/*. Use the same selector for
+// authorization and SQL selection so neither surface can authorize less than
+// the store reads. Other namespace spellings retain their existing meaning.
+func EventLogNamespaceSelector(namespace string) string {
+	if strings.HasSuffix(namespace, "/") {
+		return namespace + "*"
+	}
+	return namespace
 }

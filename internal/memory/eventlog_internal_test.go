@@ -234,3 +234,51 @@ func newEventLogTestStore(t *testing.T) (*Store, func()) {
 	ms := NewStore(cs.DB(), nil, "", 0, NoopQueue{})
 	return ms, func() { _ = cs.Close() }
 }
+
+// Adding stream must not invalidate cursors issued before it existed when the
+// caller keeps the historical all-streams selection.
+func TestEventLogEmptyStreamPreservesCursorFingerprint(t *testing.T) {
+	in := EventLogInput{Namespaces: []string{"project/*"}, WorkstreamID: "ws"}
+	legacy := fingerprintOf(struct {
+		Namespaces    []string `json:"ns"`
+		Direction     string   `json:"dir"`
+		Since         string   `json:"since"`
+		Until         string   `json:"until"`
+		WorkstreamID  string   `json:"workstream_id"`
+		AuthorAgentID string   `json:"author_agent_id"`
+		StateFilters  []string `json:"state_filters"`
+	}{Namespaces: sortedCopy(in.Namespaces), Direction: string(LogNewestFirst), WorkstreamID: in.WorkstreamID, StateFilters: stateFilterFingerprint(nil)})
+	if got := eventLogOrderingFingerprint(in); got != legacy {
+		t.Fatalf("all-streams fingerprint changed: got %s want %s", got, legacy)
+	}
+	in.Stream = "status"
+	if eventLogOrderingFingerprint(in) == legacy {
+		t.Fatal("stream failed to bind cursor")
+	}
+}
+
+func TestEventStreamMatchesExactTrailingType(t *testing.T) {
+	ms, cleanup := newEventLogTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	for _, ns := range []string{"project/one/event/status", "project/two/event/status", "project/one/event/prestatus", "project/one/event/status-extra", "project/one/event/status/detail", "project/one/event/status/status"} {
+		rev, err := ms.WriteRevision(ctx, WriteInput{Domain: domains.Event, Actor: "user", Namespace: "project/fixture/event/reasoning", Author: Author{AgentID: "test"}, SessionID: "s", Summary: "entry", Status: StatusCanonical, DerivedFrom: DerivedFromObservation, Trigger: TriggerManual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Historical/malformed namespace rows cannot be written by today's parser.
+		// Pin them directly to exercise the SQL suffix boundary independently.
+		if _, err := ms.db.ExecContext(ctx, `UPDATE memory_revisions SET namespace=? WHERE revision_id=?`, ns, rev.RevisionID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := ms.ReadEventLog(ctx, EventLogInput{Namespaces: []string{"project/"}, Stream: "status"})
+	if err != nil || len(page.Entries) != 2 {
+		t.Fatalf("stream boundary: %+v %v", page, err)
+	}
+	for _, rev := range page.Entries {
+		if rev.Namespace != "project/one/event/status" && rev.Namespace != "project/two/event/status" {
+			t.Fatalf("lookalike leaked: %s", rev.Namespace)
+		}
+	}
+}
